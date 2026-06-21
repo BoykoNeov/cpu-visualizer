@@ -9,11 +9,7 @@
  * the trace layer defines; {@link toProgramImage} adapts an `AssembledProgram`.
  */
 
-export {
-  SingleCycleProcessor,
-  SINGLE_CYCLE_CAPABILITIES,
-  toProgramImage,
-} from './processor';
+export { SingleCycleProcessor, SINGLE_CYCLE_CAPABILITIES, toProgramImage } from './processor';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const SINGLE_CYCLE_MODEL_ID = 'single-cycle';

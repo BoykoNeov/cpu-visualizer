@@ -82,7 +82,9 @@ describe('single-cycle: model identity', () => {
 
 describe('single-cycle: control & halting', () => {
   it('runs add (5 + 37 = 42 in x5) and halts on ecall without advancing pc', () => {
-    const ts = run(['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join('\n'));
+    const ts = run(
+      ['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join('\n'),
+    );
     expect(ts).toHaveLength(4); // one cycle per instruction, including the ecall
     expect(sreg(last(ts), 5)).toBe(42);
     expect(last(ts).state.halted).toBe(true);
@@ -110,12 +112,14 @@ describe('single-cycle: control & halting', () => {
 
   it('halts loudly on an unknown instruction word', () => {
     const p = new SingleCycleProcessor();
-    p.reset(toProgramImage({
-      words: new Uint32Array([0xffffffff]),
-      sourceMap: new Map(),
-      symbols: new Map(),
-      data: [],
-    }));
+    p.reset(
+      toProgramImage({
+        words: new Uint32Array([0xffffffff]),
+        sourceMap: new Map(),
+        symbols: new Map(),
+        data: [],
+      }),
+    );
     const ts = runAll(p);
     expect(ts).toHaveLength(1);
     expect(last(ts).state.halted).toBe(true);
@@ -137,7 +141,9 @@ describe('single-cycle: control & halting', () => {
   });
 
   it('reset() ignores config (single-cycle honors none) — same result with forwarding on', () => {
-    const src = ['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join('\n');
+    const src = ['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join(
+      '\n',
+    );
     const image = toProgramImage(asm(src));
 
     const a = new SingleCycleProcessor();
@@ -164,7 +170,9 @@ describe('single-cycle: control & halting', () => {
 
 describe('single-cycle: per-cycle state is an independent snapshot (handoff §6)', () => {
   it('a register overwritten each cycle keeps its per-cycle value in each recorded trace', () => {
-    const ts = run(['.text', 'addi x1, x0, 1', 'addi x1, x0, 2', 'addi x1, x0, 3', 'ecall'].join('\n'));
+    const ts = run(
+      ['.text', 'addi x1, x0, 1', 'addi x1, x0, 2', 'addi x1, x0, 3', 'ecall'].join('\n'),
+    );
     // If snapshots aliased the live register file, every trace would show the FINAL 3.
     expect(sreg(ts[0]!, 1)).toBe(1);
     expect(sreg(ts[1]!, 1)).toBe(2);
@@ -201,7 +209,9 @@ describe('single-cycle: per-cycle state is an independent snapshot (handoff §6)
 
 describe('single-cycle: trace events & instruction identity', () => {
   it('emits the full datapath event stream for an R-type add', () => {
-    const ts = run(['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join('\n'));
+    const ts = run(
+      ['.text', 'addi x1, x0, 5', 'addi x2, x0, 37', 'add x5, x1, x2', 'ecall'].join('\n'),
+    );
 
     // The first addi reads x0 (the datapath still drives the port) and writes x1.
     const addi = ts[0]!;
@@ -291,7 +301,9 @@ describe('single-cycle: ISA sign-handling parity (the classic traps)', () => {
   });
 
   it('srli is logical, srai is arithmetic on a high-bit value', () => {
-    const ts = run(['.text', 'lui x1, 0x80000', 'srli x2, x1, 4', 'srai x3, x1, 4', 'ecall'].join('\n'));
+    const ts = run(
+      ['.text', 'lui x1, 0x80000', 'srli x2, x1, 4', 'srai x3, x1, 4', 'ecall'].join('\n'),
+    );
     expect(ureg(last(ts), 2)).toBe(0x08000000); // zero-filled
     expect(ureg(last(ts), 3)).toBe(0xf8000000); // sign-filled
   });
@@ -333,13 +345,22 @@ describe('single-cycle: ISA sign-handling parity (the classic traps)', () => {
 
 describe('single-cycle: full ALU coverage (oracles mirrored from the golden reference)', () => {
   it('subtracts into a negative result', () => {
-    const ts = run(['.text', 'addi x1, x0, 5', 'addi x2, x0, 8', 'sub x3, x1, x2', 'ecall'].join('\n'));
+    const ts = run(
+      ['.text', 'addi x1, x0, 5', 'addi x2, x0, 8', 'sub x3, x1, x2', 'ecall'].join('\n'),
+    );
     expect(sreg(last(ts), 3)).toBe(-3);
   });
 
   it('slt is signed, sltu is unsigned (-1 vs 1)', () => {
     const ts = run(
-      ['.text', 'addi x1, x0, -1', 'addi x2, x0, 1', 'slt x3, x1, x2', 'sltu x4, x1, x2', 'ecall'].join('\n'),
+      [
+        '.text',
+        'addi x1, x0, -1',
+        'addi x2, x0, 1',
+        'slt x3, x1, x2',
+        'sltu x4, x1, x2',
+        'ecall',
+      ].join('\n'),
     );
     expect(sreg(last(ts), 3)).toBe(1); // signed: -1 < 1
     expect(sreg(last(ts), 4)).toBe(0); // unsigned: 0xffffffff < 1 is false
@@ -372,7 +393,14 @@ describe('single-cycle: full ALU coverage (oracles mirrored from the golden refe
 
   it('srl is logical, sra is arithmetic on a high-bit value (register forms)', () => {
     const ts = run(
-      ['.text', 'lui x1, 0x80000', 'addi x4, x0, 4', 'srl x2, x1, x4', 'sra x3, x1, x4', 'ecall'].join('\n'),
+      [
+        '.text',
+        'lui x1, 0x80000',
+        'addi x4, x0, 4',
+        'srl x2, x1, x4',
+        'sra x3, x1, x4',
+        'ecall',
+      ].join('\n'),
     );
     expect(ureg(last(ts), 2)).toBe(0x08000000); // zero-filled
     expect(ureg(last(ts), 3)).toBe(0xf8000000); // sign-filled
@@ -380,7 +408,9 @@ describe('single-cycle: full ALU coverage (oracles mirrored from the golden refe
 
   it('slli shifts left; lui and auipc place the upper immediate', () => {
     const ts = run(
-      ['.text', 'auipc x1, 1', 'lui x2, 0x12345', 'addi x3, x0, 1', 'slli x4, x3, 4', 'ecall'].join('\n'),
+      ['.text', 'auipc x1, 1', 'lui x2, 0x12345', 'addi x3, x0, 1', 'slli x4, x3, 4', 'ecall'].join(
+        '\n',
+      ),
     );
     expect(ureg(last(ts), 1)).toBe(0x1000); // pc(0) + (1 << 12) — exercises auipc's own path
     expect(ureg(last(ts), 2)).toBe(0x12345000);

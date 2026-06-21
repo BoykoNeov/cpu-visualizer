@@ -102,10 +102,10 @@ Each step should be testable before the next.
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
 - [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
-      type surface (INV-2, INV-3). _Mechanically enforced (ESLint import-boundary rule + tsconfig
-      references, verified to fire). Re-confirmed against the **real** single-cycle engine (step
-      4): it imports only `isa`/`assembler`/`trace`, communicates purely via `CycleTrace`, and is
-      oblivious to depth tiers. Final box waits on the `web`/`curriculum` consumers existing._
+  type surface (INV-2, INV-3). _Mechanically enforced (ESLint import-boundary rule + tsconfig
+  references, verified to fire). Re-confirmed against the **real** single-cycle engine (step
+  4): it imports only `isa`/`assembler`/`trace`, communicates purely via `CycleTrace`, and is
+  oblivious to depth tiers. Final box waits on the `web`/`curriculum` consumers existing._
 
 ## Decisions
 
