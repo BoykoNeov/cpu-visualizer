@@ -14,8 +14,7 @@
 
 import { decode } from '@cpu-viz/isa';
 import { TEXT_BASE, type AssembledProgram } from '@cpu-viz/assembler';
-import { makeRegisters, type MachineState } from '@cpu-viz/trace';
-import { SparseMemory } from './memory';
+import { makeRegisters, SparseMemory, type MachineState } from '@cpu-viz/trace';
 
 /** Why {@link run} stopped. Only `ecall`/`ebreak` are architectural halts. */
 export type HaltReason =

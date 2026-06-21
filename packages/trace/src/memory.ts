@@ -1,21 +1,29 @@
 /**
- * Sparse, byte-addressed memory for the golden reference (handoff §5, §9).
+ * Sparse, byte-addressed memory — the concrete {@link MemoryView} every engine and the
+ * golden reference use (handoff §5, §9). It lives in `trace` (not in an engine) because
+ * it implements a trace type and the step-6 driver/recorder restores per-cycle memory
+ * snapshots; both engines and the driver need it.
  *
- * One flat address space holds BOTH the instruction words and `.data` — fetch,
- * load, and store all go through the same path, which is the simplest thing that
- * is obviously correct (§9). Windowing this down to a "text / data / stack" view
- * is the VIEW's job, not the engine's (INV-2, INV-3): the engine emits full state
- * and the renderer decides what to show. So `definedAddresses()` legitimately
- * includes the loaded text — a consumer that only wants data filters by region.
+ * One flat address space holds BOTH the instruction words and `.data` — fetch, load, and
+ * store all go through the same path, which is the simplest thing that is obviously
+ * correct (§9). Windowing this down to a "text / data / stack" view is the VIEW's job, not
+ * the engine's (INV-2, INV-3): the engine emits full state and the renderer decides what
+ * to show. So `definedAddresses()` legitimately includes the loaded text — a consumer that
+ * only wants data filters by region.
  *
- * Backed by a `Map<byteAddr, 0..255>`; never-written bytes read as 0. All reads
- * are little-endian (RV32I). Loads/stores normalize addresses to unsigned 32-bit.
+ * Backed by a `Map<byteAddr, 0..255>`; never-written bytes read as 0. All reads are
+ * little-endian (RV32I). Loads/stores normalize addresses to unsigned 32-bit.
  */
 
-import type { MemoryView } from '@cpu-viz/trace';
+import type { MemoryView } from './schema';
 
 export class SparseMemory implements MemoryView {
-  private readonly bytes = new Map<number, number>();
+  private readonly bytes: Map<number, number>;
+
+  /** Start empty, or as an independent copy of `bytes` (used by {@link snapshot}). */
+  constructor(bytes?: ReadonlyMap<number, number>) {
+    this.bytes = bytes ? new Map(bytes) : new Map();
+  }
 
   /** Place raw bytes at `addr` (used to load `.data` segments at reset). */
   loadBytes(addr: number, data: Uint8Array): void {
@@ -66,5 +74,14 @@ export class SparseMemory implements MemoryView {
       words.add((addr & ~0x3) >>> 0);
     }
     return [...words].sort((a, b) => a - b);
+  }
+
+  /**
+   * An independent deep copy — the per-cycle snapshot the recorder keeps so time-travel
+   * shows the memory as it was AT that cycle, not the latest mutation (handoff §6). The
+   * clone shares no mutable state with the original.
+   */
+  snapshot(): SparseMemory {
+    return new SparseMemory(this.bytes);
   }
 }

@@ -6,7 +6,6 @@
 
 export { run } from './run';
 export type { ReferenceResult, RunOptions, HaltReason } from './run';
-export { SparseMemory } from './memory';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const REFERENCE_MODEL_ID = 'reference';

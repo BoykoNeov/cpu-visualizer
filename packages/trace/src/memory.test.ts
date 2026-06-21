@@ -53,4 +53,16 @@ describe('SparseMemory', () => {
     m.writeWord(0x1004, 0);
     expect(m.definedAddresses()).toEqual([0x1000, 0x1004]);
   });
+
+  it('snapshot() is an independent copy: later writes do not leak into it', () => {
+    const m = new SparseMemory();
+    m.writeWord(0x7000, 0x11111111);
+    const snap = m.snapshot();
+    m.writeWord(0x7000, 0x22222222); // mutate the original after snapshotting
+    expect(snap.readWord(0x7000) >>> 0).toBe(0x11111111); // snapshot is frozen at its value
+    expect(m.readWord(0x7000) >>> 0).toBe(0x22222222);
+    // ...and writing the snapshot does not bleed back into the original.
+    snap.writeWord(0x7004, 0x33333333);
+    expect(m.readWord(0x7004)).toBe(0);
+  });
 });
