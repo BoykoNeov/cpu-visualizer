@@ -22,9 +22,18 @@ Each step should be testable before the next.
       (97 tests green). NOTE: `format` is an **encoding** class, not an assembly-**syntax**
       class — step 2 layers operand syntax (`lw rd,imm(rs1)` vs `addi rd,rs1,imm`, `jalr`
       forms) on top.
-- [ ] **2. `assembler`** — parse RV32I + labels + `.text`/`.data`/`.word`, common
-      pseudo-instructions, good line/column errors; produce `AssembledProgram` (machine code +
-      source-map + symbols). _Output contract seeded; parser/encoder TODO._
+- [x] **2. `assembler`** — DONE (2026-06-21). Two-pass driver (layout+symbols, then
+      resolve+encode) over a small hand tokenizer with 1-based `line:column` diagnostics.
+      Parses the full base integer set, `x0..x31` **and** ABI register names, labels,
+      pseudo-instructions (`li`, `mv`, `nop`, `j`, `jr`, `ret`, `la`, `beqz`, `bnez`), and
+      `.text`/`.data`/`.word`/`.byte`/`.asciz`/`.globl`. An **operand-syntax** layer sits on
+      top of the ISA encoding `format` (the step-1 NOTE): `lw rd,imm(rs1)`, `sw rs2,imm(rs1)`,
+      the `jalr` forms, and `lui`'s pre-shifted immediate. `li`/`la` share a `hiLo` 32-bit
+      materialization; the `lui`+`addi` +1 sign-correction is pinned by a decode-and-sum
+      round-trip test. `assemble()` returns `{ program | null, errors[] }` and collects
+      multiple located errors. Single-instruction encodings are checked against the same
+      hand-verified oracle hexes as `isa`'s `codec.test.ts`; the real `content/programs/add.s`
+      is assembled from disk as a fixture. 62 tests green.
 - [ ] **3. `engine/reference`** — dead-simple golden interpreter (obviously correct).
 - [ ] **4. `engine/single-cycle`** — first model behind the `Processor` interface (§6).
 - [ ] **5. `trace` driver/recorder** — step forward / back / scrub via recorded snapshots
@@ -42,7 +51,9 @@ Each step should be testable before the next.
 
 ## Acceptance criteria (spec §11)
 
-- [ ] Assembler assembles every example program; known-good encodings round-trip exactly.
+- [~] Assembler assembles every example program; known-good encodings round-trip exactly.
+  _Assembler done: `add.s` assembles; oracle encodings + `li` round-trip pinned. Re-confirm
+  as more example programs land alongside the engines._
 - [ ] Single-cycle final reg+mem state equals the golden reference for every program (INV-8).
 - [ ] Load → step forward to completion → step back to start → scrub to any cycle; shown
       state always matches the recorded trace.
@@ -76,8 +87,24 @@ Each step should be testable before the next.
   and have the driver enrich `pc → sourceLine` afterward — this keeps `trace` pure _and_ lets it
   host the driver. Fallback if `sourceLine` must be engine-filled: (b) a small `engine-api`
   package above both. Avoid (a) `trace`-depends-on-`assembler`.
-- **Pseudo-instruction set & directive coverage — direction set, settle in step 2.** Minimal,
-  corpus-driven set (the example programs are the test fixtures, §9): pseudos `li`, `mv`,
-  `nop`, `j`, `ret`/`jr`, `la`, `beqz`, `bnez` (plus branch swaps as programs need them);
-  directives `.text`, `.data`, `.word`, `.byte`, `.asciz`, `.globl`. Round-trip-test `li`
-  specifically — the `lui`+`addi` sign-correction `+1` is the classic off-by-one.
+- **Pseudo-instruction set & directive coverage — RESOLVED (2026-06-21, step 2).** Shipped the
+  minimal corpus-driven set: pseudos `li`, `mv`, `nop`, `j`, `jr`, `ret`, `la`, `beqz`, `bnez`;
+  directives `.text`, `.data`, `.word`, `.byte`, `.asciz` (+ `.string`/`.asciiz` aliases),
+  `.globl` (+ `.global`). The `lui`+`addi` `+1` sign-correction is round-trip-tested across the
+  signed-12 boundary and full 32-bit range. Branch-swap pseudos (`bgt`, `ble`, …) are not yet
+  needed by the corpus — add when a program requires one (the syntax/expansion seams are in place).
+- **Memory map — RESOLVED (2026-06-21, step 2); CROSS-PACKAGE CONTRACT (INV-7).** `.text`
+  assembles upward from **`TEXT_BASE = 0x0000_0000`**, `.data` from **`DATA_BASE = 0x1000_0000`**
+  (exported from `@cpu-viz/assembler`). **Execution entry is `TEXT_BASE`** (PC starts at the first
+  word of `words`); `.globl _start` is parsed but does not yet pick an entry (M1 has no relocation
+  of the entry point). Symbols are absolute addresses in this map; branch/jump offsets are
+  `target − pc`; `la`/`li` of a data address need the full `lui`+`addi` because the bases are far
+  apart (which is the pedagogical point). **The reference and single-cycle engines (steps 3–4)
+  must load text/data at these bases and begin at `TEXT_BASE`** — when they consume a
+  `ProgramImage` (decision (c) above), thread these constants through, don't re-pick them.
+- **Section discipline & alignment — RESOLVED (2026-06-21, step 2).** Instructions are only legal
+  in `.text` and data directives only in `.data` (each emits to a clean stream — `words` vs `data`
+  — matching the `AssembledProgram` split; a data directive in `.text` is a located error). Data is
+  emitted **contiguously with no auto-alignment** (there is no `.align` in scope, so a label always
+  binds before the next byte with no padding ambiguity); a `.word` after an odd number of `.byte`s
+  is intentionally unaligned. Revisit only if an engine needs aligned loads or `.align` lands.
