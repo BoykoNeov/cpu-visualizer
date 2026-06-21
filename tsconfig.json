@@ -1,0 +1,12 @@
+{
+  "//": "Solution-style root config. `tsc -b` builds every library package in dependency order. The web app is typechecked separately (see packages/web) because it is bundled by Vite, not emitted by tsc.",
+  "files": [],
+  "references": [
+    { "path": "packages/isa" },
+    { "path": "packages/trace" },
+    { "path": "packages/assembler" },
+    { "path": "packages/engine/reference" },
+    { "path": "packages/engine/single-cycle" },
+    { "path": "packages/curriculum" }
+  ]
+}

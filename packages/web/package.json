@@ -1,0 +1,22 @@
+{
+  "name": "@cpu-viz/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "React app, SVG datapath views, depth-tier renderer. Depends on all other packages. Handoff §14.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

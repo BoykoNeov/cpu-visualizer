@@ -1,0 +1,22 @@
+{
+  "name": "@cpu-viz/assembler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RV32I assembly -> AssembledProgram (machine code + source-map + symbols). Handoff §8.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@cpu-viz/trace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CycleTrace types (THE contract between engine and the rest) plus driver/recorder. Handoff §5, §6.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*"
+  }
+}

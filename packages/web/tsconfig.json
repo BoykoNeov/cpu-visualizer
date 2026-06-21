@@ -1,0 +1,22 @@
+{
+  "//": "The web app is bundled by Vite, not emitted by tsc, so it overrides the composite/emit settings from the base and is typechecked with `tsc --noEmit`. `paths` resolve workspace imports to source, mirroring the Vite aliases, so no library pre-build is needed.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "paths": {
+      "@cpu-viz/isa": ["../isa/src/index.ts"],
+      "@cpu-viz/trace": ["../trace/src/index.ts"],
+      "@cpu-viz/assembler": ["../assembler/src/index.ts"],
+      "@cpu-viz/curriculum": ["../curriculum/src/index.ts"],
+      "@cpu-viz/engine-reference": ["../engine/reference/src/index.ts"],
+      "@cpu-viz/engine-single-cycle": ["../engine/single-cycle/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

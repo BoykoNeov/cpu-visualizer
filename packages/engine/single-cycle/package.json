@@ -1,0 +1,24 @@
+{
+  "name": "@cpu-viz/engine-single-cycle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-cycle datapath: the first microarchitecture behind the Processor interface. Handoff §11.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*",
+    "@cpu-viz/assembler": "*",
+    "@cpu-viz/trace": "*"
+  }
+}

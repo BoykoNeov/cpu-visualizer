@@ -1,0 +1,10 @@
+# Normalize line endings to LF for all text files so the repo is consistent across
+# platforms and matches .editorconfig and the Linux CI. Binary files are auto-detected.
+* text=auto eol=lf
+
+# Explicit binaries (none yet, but keep the convention obvious for future assets).
+*.png binary
+*.jpg binary
+*.gif binary
+*.woff binary
+*.woff2 binary
