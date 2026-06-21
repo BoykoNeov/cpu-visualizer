@@ -42,8 +42,10 @@ Each step should be testable before the next.
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
-- [x] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
-      type surface (INV-2, INV-3). _Enforced by ESLint + tsconfig references from day one._
+- [ ] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
+      type surface (INV-2, INV-3). _Mechanically enforced from day one (ESLint import-boundary
+      rule + tsconfig references, verified to fire); re-confirm against the real engine once it
+      is built._
 
 ## Open decisions (resolve as the relevant step is built)
 
