@@ -48,9 +48,36 @@ Each step should be testable before the next.
       and `srli`/`srai` on a high bit, `lb`/`lh` sign-extension, `.word`→`lw` endianness, a
       backward branch, all six branch variants incl. the `bltu`/`bgeu` unsigned trap, the
       bitwise ops, `jal`/`jalr` call/return). 31 tests green (239 total).
-- [ ] **4. `engine/single-cycle`** — first model behind the `Processor` interface (§6).
+- [x] **4. `engine/single-cycle`** — DONE (2026-06-21). First model behind the `Processor`
+      interface (§6). Per `step()` it fetches/decodes/executes/retires exactly one instruction
+      (no hazards by construction) and emits a `CycleTrace`: one `InstructionInstance`
+      (`location: "single-cycle"`, stable id `i${seq}` — a fresh id per **dynamic** execution,
+      so a looped instruction gets a new id each iteration, INV-4) plus an ordered event stream
+      (`instr-fetch` → `reg-read`s → `alu-op` → `mem-*` → `reg-write` → `instr-retire`; every
+      `event.instr` equals the instance id). **State is an independent per-cycle snapshot**
+      (`registers.slice()` + `SparseMemory.snapshot()`) — the load-bearing requirement for
+      step-5 time-travel (pinned by a test that overwrites a reg/mem cell across cycles and
+      asserts each recorded trace keeps ITS value). Halt timing mirrors the reference so final
+      state will match the reference (the INV-8 _equivalence_ is formally proven in step 6):
+      `ecall`/`ebreak`/unknown halt without advancing pc; running off text-end folds into the
+      last cycle with `pc` = the out-of-range value; empty image is halted at reset; `step()`
+      after halt throws. The ALU/sign idioms (`s`/`u`, `imm & 0x1f`, `>>> 0` at the memory
+      boundary) are mirrored **verbatim** from the reference — those are ISA semantics, identical
+      in every model; what is independently implemented (and what the step-6 diff therefore
+      validates) is the per-cycle plumbing + events. Oracles are hand-computed (this engine does
+      NOT import the reference — see `toProgramImage` note); coverage was brought up to the
+      reference's — **all 40 base ops + `fence`/`ecall`/`ebreak` are each directly executed**
+      (the register-form ALU set, all six branches, every load/store width, `auipc`) so no
+      instruction rests on the step-6 net + the thin example corpus alone. Also pins the trace
+      shape, the snapshot contract, the classic sign traps, loop-id freshness, and call/return.
+      28 tests green (268 total).
 - [ ] **5. `trace` driver/recorder** — step forward / back / scrub via recorded snapshots
-      (§6). _Trace schema seeded; driver + `Processor` interface TODO (see decisions below)._
+      (§6). _`Processor` interface + pure `ProgramImage` now live in `trace` (decision below,
+      RESOLVED); `SparseMemory.snapshot()` is in place. Driver/recorder itself TODO: index into
+      the recorded `CycleTrace[]`, append on step-forward (see `runAll` in the single-cycle
+      test for the shape). DEFERRED: the §5 `PhasedEvent` phase ordinal — event **order** already
+      encodes fetch→decode→execute→mem→writeback, so add the explicit ordinal only when step 8's
+      within-cycle animation actually consumes it, not before._
 - [ ] **6. Differential tests** — reference vs single-cycle final reg+mem state on every
       example program (INV-8).
 - [ ] **7. `web` shell** — load a program, drive the engine, show source↔machine-code,
@@ -74,10 +101,11 @@ Each step should be testable before the next.
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
-- [ ] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
-      type surface (INV-2, INV-3). _Mechanically enforced from day one (ESLint import-boundary
-      rule + tsconfig references, verified to fire); re-confirm against the real engine once it
-      is built._
+- [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
+      type surface (INV-2, INV-3). _Mechanically enforced (ESLint import-boundary rule + tsconfig
+      references, verified to fire). Re-confirmed against the **real** single-cycle engine (step
+      4): it imports only `isa`/`assembler`/`trace`, communicates purely via `CycleTrace`, and is
+      oblivious to depth tiers. Final box waits on the `web`/`curriculum` consumers existing._
 
 ## Decisions
 
@@ -93,15 +121,25 @@ Each step should be testable before the next.
   **deferred** — differential testing compares reg+mem, not stdout, so it's off the M1 critical
   path; when added it goes under the same `ecall` mechanism (output via a trace event / state
   field, per INV-3). Keep the syscall table frozen-tiny (§10). _(Engine work; steps 3–4.)_
-- **Where do the `Processor` interface and driver/recorder live? — leaning (c), decide at
-  step 4/5.** Spec §14 puts the driver in `trace`, but `Processor.reset(program, …)` references
-  `AssembledProgram` (from `assembler`), and the pure trace schema must depend only on `isa`.
-  Leaning: define a minimal pure `ProgramImage` (words + data + entry) that the engine consumes,
-  and have the driver enrich `pc → sourceLine` afterward — this keeps `trace` pure _and_ lets it
-  host the driver. Fallback if `sourceLine` must be engine-filled: (b) a small `engine-api`
-  package above both. Avoid (a) `trace`-depends-on-`assembler`. _Step 3 update: `engine/reference`
-  consumed `AssembledProgram` **directly** (it only touches `words` + `data`), deferring the
-  `ProgramImage` abstraction to step 4/5 as planned — the later migration is a cheap, local change._
+- **Where do the `Processor` interface and driver/recorder live? — RESOLVED (2026-06-21, step 4):
+  leaning (c).** `Processor`, `ProcessorConfig`, `ProcessorCapabilities`, and a pure
+  `ProgramImage` now live in **`trace`** (`packages/trace/src/processor.ts`). `ProgramImage` =
+  `{ words; data; entry; sourceMap }` — pure data, NO `assembler` type — so `trace` stays
+  `isa`-only and the step-5 driver can wrap any `Processor` without inverting the DAG.
+  Refinement over the original leaning: `sourceMap` is folded **into** `ProgramImage` so the
+  **engine fills `InstructionInstance.sourceLine` itself** (the map is engine _input_, not a
+  back-door accessor → INV-3 holds), which is cleaner than "driver enriches afterward" and
+  needs no `engine-api` package (fallback (b) not taken). The `AssembledProgram → ProgramImage`
+  adapter is `toProgramImage()`, a standalone free function exported from `engine/single-cycle`
+  (it touches both `assembler` + `trace`; kept free-standing so the reference's step-6 diff
+  path never imports an engine). When the second engine lands, hoist `toProgramImage` to a
+  shared spot.
+- **`SparseMemory` hoisted to `trace` — RESOLVED (2026-06-21, step 4).** The concrete
+  byte-addressed `MemoryView` moved from `engine/reference` into `packages/trace/src/memory.ts`
+  (it implements a `trace` type and has no other deps) and gained `snapshot()` (deep-copies the
+  byte map). Both engines now construct it from `trace`, and the step-5 driver will use the same
+  class to restore per-cycle memory snapshots. The reference's behavior is unchanged; its
+  `SparseMemory` re-export was dropped (no external consumer — import from `@cpu-viz/trace`).
 - **Reference memory model — RESOLVED (2026-06-21, step 3).** One **flat sparse byte-addressed
   memory** holds both the instruction words (loaded little-endian at `TEXT_BASE`) and `.data`;
   fetch, load, and store share a single path. Windowing this to a text/data/stack view is the

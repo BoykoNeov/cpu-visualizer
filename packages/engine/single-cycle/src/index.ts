@@ -5,9 +5,15 @@
  * full pipeline of project plumbing: ISA -> assembler -> engine -> trace -> driver ->
  * view -> depth-tiering -> curriculum.
  *
- * Scaffold seed: the model identity is fixed here; the datapath semantics behind the
- * Processor interface (handoff §6) are build-order step 4 (handoff §11).
+ * Implements the {@link Processor} interface (handoff §6) over the pure {@link ProgramImage}
+ * the trace layer defines; {@link toProgramImage} adapts an `AssembledProgram`.
  */
+
+export {
+  SingleCycleProcessor,
+  SINGLE_CYCLE_CAPABILITIES,
+  toProgramImage,
+} from './processor';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const SINGLE_CYCLE_MODEL_ID = 'single-cycle';
