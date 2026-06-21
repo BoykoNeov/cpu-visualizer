@@ -29,6 +29,28 @@ function exec(source: string, maxSteps?: number): ReferenceResult {
 const sreg = (r: ReferenceResult, i: number): number => r.state.registers[i]!;
 const ureg = (r: ReferenceResult, i: number): number => r.state.registers[i]! >>> 0;
 
+/**
+ * Did `<mnemonic> x1, x2, taken` jump? Loads `a`/`b` into x1/x2, then records which path
+ * ran (taken → x10=200, fall-through → x10=100). Pins the signed/unsigned branch trap.
+ */
+function branchTaken(mnemonic: string, a: number, b: number): boolean {
+  const r = exec(
+    [
+      '.text',
+      `addi x1, x0, ${a}`,
+      `addi x2, x0, ${b}`,
+      `${mnemonic} x1, x2, taken`,
+      'addi x10, x0, 100', // not-taken (fall-through) path
+      'j done',
+      'taken:',
+      'addi x10, x0, 200', // taken path
+      'done:',
+      'ecall',
+    ].join('\n'),
+  );
+  return sreg(r, 10) === 200;
+}
+
 describe('reference: control & halting', () => {
   it('runs add.s (5 + 37 = 42 in x5)', () => {
     const r = exec(
@@ -158,6 +180,32 @@ describe('reference: ALU & sign handling', () => {
     expect(ureg(r, 2)).toBe(0x12345000);
     expect(sreg(r, 4)).toBe(16);
   });
+
+  it('computes the bitwise ops (register and immediate forms)', () => {
+    // x1 = 0x5a, x2 = 0x3c.
+    const r = exec(
+      [
+        '.text',
+        'addi x1, x0, 0x5a',
+        'addi x2, x0, 0x3c',
+        'xor  x3, x1, x2', // 0x66
+        'or   x4, x1, x2', // 0x7e
+        'and  x5, x1, x2', // 0x18
+        'xori x6, x1, 0xf', // 0x55
+        'ori  x7, x1, 0xf', // 0x5f
+        'andi x8, x1, 0xf', // 0x0a
+        'sll  x9, x1, x2', // shift amount = 0x3c & 31 = 28
+        'ecall',
+      ].join('\n'),
+    );
+    expect(sreg(r, 3)).toBe(0x66);
+    expect(sreg(r, 4)).toBe(0x7e);
+    expect(sreg(r, 5)).toBe(0x18);
+    expect(sreg(r, 6)).toBe(0x55);
+    expect(sreg(r, 7)).toBe(0x5f);
+    expect(sreg(r, 8)).toBe(0x0a);
+    expect(ureg(r, 9)).toBe(0xa0000000); // 0x5a << 28, low 5 bits of the shift count
+  });
 });
 
 describe('reference: branches & jumps', () => {
@@ -191,6 +239,21 @@ describe('reference: branches & jumps', () => {
       ].join('\n'),
     );
     expect(sreg(r, 1)).toBe(107); // 7 (in func) then +100 (after return)
+  });
+
+  it('takes beq/bne on equality', () => {
+    expect(branchTaken('beq', 5, 5)).toBe(true);
+    expect(branchTaken('beq', -1, 1)).toBe(false);
+    expect(branchTaken('bne', -1, 1)).toBe(true);
+    expect(branchTaken('bne', 5, 5)).toBe(false);
+  });
+
+  it('distinguishes signed (blt/bge) from unsigned (bltu/bgeu) on -1 vs 1', () => {
+    // x1 = -1 = 0xffffffff, x2 = 1.
+    expect(branchTaken('blt', -1, 1)).toBe(true); // signed: -1 < 1
+    expect(branchTaken('bltu', -1, 1)).toBe(false); // unsigned: 0xffffffff < 1 is false
+    expect(branchTaken('bge', -1, 1)).toBe(false); // signed: -1 >= 1 is false
+    expect(branchTaken('bgeu', -1, 1)).toBe(true); // unsigned: 0xffffffff >= 1
   });
 });
 
@@ -253,5 +316,23 @@ describe('reference: memory (loads, stores, endianness, sign-extension)', () => 
     );
     expect(sreg(r, 3)).toBe(99);
     expect(sreg(r, 5)).toBe(7);
+  });
+
+  it('stores and reloads a halfword (sh/lhu), truncating to 16 bits', () => {
+    const r = exec(
+      [
+        '.data',
+        'slot: .word 0',
+        '.text',
+        'la   x1, slot',
+        'lui  x2, 0x10000', // x2 = 0x10000000
+        'addi x2, x2, 0x7ff', // x2 = 0x100007ff
+        'sh   x3, 0(x1)', // x3 = 0 -> store 0
+        'sh   x2, 0(x1)', // store low half 0x07ff
+        'lhu  x4, 0(x1)', // -> 0x07ff
+        'ecall',
+      ].join('\n'),
+    );
+    expect(ureg(r, 4)).toBe(0x07ff); // only the low 16 bits of x2 are stored
   });
 });

@@ -46,7 +46,8 @@ Each step should be testable before the next.
       oracles** (the reference is the root of trust — it can't be diff-tested against anything),
       built with the real assembler, covering the sign traps (`sltiu` vs `slti`, `srl`/`sra`
       and `srli`/`srai` on a high bit, `lb`/`lh` sign-extension, `.word`→`lw` endianness, a
-      backward branch, `jal`/`jalr` call/return). 27 tests green (235 total).
+      backward branch, all six branch variants incl. the `bltu`/`bgeu` unsigned trap, the
+      bitwise ops, `jal`/`jalr` call/return). 31 tests green (239 total).
 - [ ] **4. `engine/single-cycle`** — first model behind the `Processor` interface (§6).
 - [ ] **5. `trace` driver/recorder** — step forward / back / scrub via recorded snapshots
       (§6). _Trace schema seeded; driver + `Processor` interface TODO (see decisions below)._
