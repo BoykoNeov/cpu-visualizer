@@ -11,9 +11,17 @@ Each step should be testable before the next.
 - [x] **0. Scaffold** — monorepo (npm workspaces), TypeScript project references, Vitest,
       ESLint with dependency-boundary rules, Prettier, CI, and a real RV32I decoder seed in
       `isa` proving the toolchain end-to-end.
-- [ ] **1. `isa`** — full instruction definitions, field encodings, and decoder (~40 base
-      RV32I instructions). _Seed exists: field extraction + sign-extended immediates + a
-      representative subset (`addi`, `add`, `sub`, `lw`, `sw`, `beq`, `bne`, `lui`, `jal`, …)._
+- [x] **1. `isa`** — full instruction definitions, field encodings, decoder **and encoder**
+      (40 base RV32I integer instructions). One declarative table (`instructions.ts`) is the
+      single source of truth for **encoding** — it drives both the by-opcode decode index and
+      the by-mnemonic encode index, plus a co-located per-format immediate codec
+      (`immediates.ts`), so decode/encode can't drift and "round-trip exactly" holds by
+      construction. `fence` decodes as a no-op; `ecall`/`ebreak` decoded (split on imm[11:0]);
+      Zicsr/`fence.i` deliberately out of scope. Tested: hand-verified `(asm, hex)` oracles
+      (both directions), the shift/SYSTEM gotchas, and whole-table + boundary round-trips
+      (97 tests green). NOTE: `format` is an **encoding** class, not an assembly-**syntax**
+      class — step 2 layers operand syntax (`lw rd,imm(rs1)` vs `addi rd,rs1,imm`, `jalr`
+      forms) on top.
 - [ ] **2. `assembler`** — parse RV32I + labels + `.text`/`.data`/`.word`, common
       pseudo-instructions, good line/column errors; produce `AssembledProgram` (machine code +
       source-map + symbols). _Output contract seeded; parser/encoder TODO._
@@ -47,15 +55,29 @@ Each step should be testable before the next.
       rule + tsconfig references, verified to fire); re-confirm against the real engine once it
       is built._
 
-## Open decisions (resolve as the relevant step is built)
+## Decisions
 
-- **Where do the `Processor` interface and driver/recorder live?** Spec §14 puts the
-  driver in `trace`, but `Processor.reset(program, …)` references `AssembledProgram` (from
-  `assembler`), and the pure trace schema must depend only on `isa`. Options: (a) let `trace`
-  depend on `assembler` and host both; (b) a small `engine-api` package above both. Decide at
-  step 4/5. Current scaffold keeps `trace` pure and defers this.
-- **Signed/unsigned register representation.** `Int32Array` for GPRs; unsigned compares and
-  `sltu`/shifts need care. Pin down in `isa`/reference (step 1/3).
-- **Halt / print convention** for example programs — a minimal syscall-like mechanism
-  (spec §16). Needed before example programs can signal completion (step 1–3).
-- Exact pseudo-instruction set and directive coverage (spec §16) — settle during step 2.
+- **Signed/unsigned register representation — RESOLVED (2026-06-21).** `Int32Array` is the
+  canonical GPR representation (matches the §5 trace schema; `.slice()` is a cheap snapshot for
+  the step-5 recorder). This is an _execution_ concern that lives in `engine/reference` and
+  `single-cycle`, **not** in `isa` — the decoder/encoder stay representation-agnostic. The ~6
+  unsigned-sensitive ops (`sltu`/`sltiu`, `srl`/`srli`, `bltu`/`bgeu`) read via centralized
+  `asU32`/`asS32` helpers; normalize effective addresses with `>>> 0` at the memory interface.
+  INV-8 differential testing is the backstop. _(Engine work; tracked for steps 3–4.)_
+- **Halt / print convention — RESOLVED (2026-06-21).** `ecall` with the RARS exit convention
+  (`a7=10`) is the canonical halt; `ecall`/`ebreak` are decoded now (base RV32I). Print is
+  **deferred** — differential testing compares reg+mem, not stdout, so it's off the M1 critical
+  path; when added it goes under the same `ecall` mechanism (output via a trace event / state
+  field, per INV-3). Keep the syscall table frozen-tiny (§10). _(Engine work; steps 3–4.)_
+- **Where do the `Processor` interface and driver/recorder live? — leaning (c), decide at
+  step 4/5.** Spec §14 puts the driver in `trace`, but `Processor.reset(program, …)` references
+  `AssembledProgram` (from `assembler`), and the pure trace schema must depend only on `isa`.
+  Leaning: define a minimal pure `ProgramImage` (words + data + entry) that the engine consumes,
+  and have the driver enrich `pc → sourceLine` afterward — this keeps `trace` pure _and_ lets it
+  host the driver. Fallback if `sourceLine` must be engine-filled: (b) a small `engine-api`
+  package above both. Avoid (a) `trace`-depends-on-`assembler`.
+- **Pseudo-instruction set & directive coverage — direction set, settle in step 2.** Minimal,
+  corpus-driven set (the example programs are the test fixtures, §9): pseudos `li`, `mv`,
+  `nop`, `j`, `ret`/`jr`, `la`, `beqz`, `bnez` (plus branch swaps as programs need them);
+  directives `.text`, `.data`, `.word`, `.byte`, `.asciz`, `.globl`. Round-trip-test `li`
+  specifically — the `lui`+`addi` sign-correction `+1` is the classic off-by-one.
