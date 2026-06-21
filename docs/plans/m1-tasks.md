@@ -34,7 +34,19 @@ Each step should be testable before the next.
       multiple located errors. Single-instruction encodings are checked against the same
       hand-verified oracle hexes as `isa`'s `codec.test.ts`; the real `content/programs/add.s`
       is assembled from disk as a fixture. 62 tests green.
-- [ ] **3. `engine/reference`** — dead-simple golden interpreter (obviously correct).
+- [x] **3. `engine/reference`** — DONE (2026-06-21). Dead-simple golden interpreter:
+      pure fetch/decode/execute over all 40 RV32I instructions, no microarchitecture, no
+      `CycleTrace`. `run(program, {maxSteps?}) → { state, steps, haltReason }`, returning a
+      trace `MachineState` (reuses `makeRegisters`/`MemoryView`) so the step-6 differential
+      comparison is uniform across engines. **One flat sparse byte-memory** holds text + data
+      (fetch/load/store share one path) — windowing to a text/data/stack view is the _view's_
+      job, not the engine's (INV-2/INV-3), so `definedAddresses()` legitimately includes text.
+      `decode`'s `'unknown'` is trapped (halts loudly, never silently advances); off-end is
+      `pc-out-of-range`; `ecall`/`ebreak` halt; `fence` is a no-op. Tests are **hand-computed
+      oracles** (the reference is the root of trust — it can't be diff-tested against anything),
+      built with the real assembler, covering the sign traps (`sltiu` vs `slti`, `srl`/`sra`
+      and `srli`/`srai` on a high bit, `lb`/`lh` sign-extension, `.word`→`lw` endianness, a
+      backward branch, `jal`/`jalr` call/return). 27 tests green (235 total).
 - [ ] **4. `engine/single-cycle`** — first model behind the `Processor` interface (§6).
 - [ ] **5. `trace` driver/recorder** — step forward / back / scrub via recorded snapshots
       (§6). _Trace schema seeded; driver + `Processor` interface TODO (see decisions below)._
@@ -86,7 +98,16 @@ Each step should be testable before the next.
   Leaning: define a minimal pure `ProgramImage` (words + data + entry) that the engine consumes,
   and have the driver enrich `pc → sourceLine` afterward — this keeps `trace` pure _and_ lets it
   host the driver. Fallback if `sourceLine` must be engine-filled: (b) a small `engine-api`
-  package above both. Avoid (a) `trace`-depends-on-`assembler`.
+  package above both. Avoid (a) `trace`-depends-on-`assembler`. _Step 3 update: `engine/reference`
+  consumed `AssembledProgram` **directly** (it only touches `words` + `data`), deferring the
+  `ProgramImage` abstraction to step 4/5 as planned — the later migration is a cheap, local change._
+- **Reference memory model — RESOLVED (2026-06-21, step 3).** One **flat sparse byte-addressed
+  memory** holds both the instruction words (loaded little-endian at `TEXT_BASE`) and `.data`;
+  fetch, load, and store share a single path. Windowing this to a text/data/stack view is the
+  **view's** job (INV-2/INV-3 — the engine emits full, expert-complete state), so the engine does
+  **not** exclude text from memory and `definedAddresses()` legitimately reports text addresses; a
+  consumer wanting only data filters by region. This is the simplest "obviously correct" model
+  (§9). The single-cycle engine (step 4) should mirror it so the INV-8 memory comparison lines up.
 - **Pseudo-instruction set & directive coverage — RESOLVED (2026-06-21, step 2).** Shipped the
   minimal corpus-driven set: pseudos `li`, `mv`, `nop`, `j`, `jr`, `ret`, `la`, `beqz`, `bnez`;
   directives `.text`, `.data`, `.word`, `.byte`, `.asciz` (+ `.string`/`.asciiz` aliases),
