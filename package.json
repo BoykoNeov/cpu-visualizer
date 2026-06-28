@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "A pedagogical RISC-V (RV32I) processor simulator: load and run programs and watch how a CPU actually works across a family of microarchitectures.",
-  "license": "MIT",
+  "license": "BNCL-1.0",
   "engines": {
     "node": ">=20"
   },
