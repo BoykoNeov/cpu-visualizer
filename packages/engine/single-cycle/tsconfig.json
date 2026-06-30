@@ -5,5 +5,12 @@
     "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "references": [{ "path": "../../isa" }, { "path": "../../assembler" }, { "path": "../../trace" }]
+  "references": [
+    { "path": "../../isa" },
+    { "path": "../../assembler" },
+    { "path": "../../trace" },
+    // Test-only edge: the INV-8 differential suite (differential.test.ts) runs the golden
+    // reference alongside this engine. Hoist to a shared harness when a second model lands.
+    { "path": "../reference" }
+  ]
 }

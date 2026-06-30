@@ -91,9 +91,27 @@ Each step should be testable before the next.
       recorder reaches the same final reg+mem as a hand-driven run; each loop id follows to its
       one cycle). 19 new tests (287 total). DEFERRED (unchanged): the §5 `PhasedEvent` phase
       ordinal — event **order** already encodes fetch→decode→execute→mem→writeback, so add the
-      explicit ordinal only when step 8's within-cycle animation actually consumes it, not before._
-- [ ] **6. Differential tests** — reference vs single-cycle final reg+mem state on every
-      example program (INV-8).
+      explicit ordinal only when step 8's within-cycle animation actually consumes it, not before.\_
+- [x] **6. Differential tests** — DONE (2026-06-30). The INV-8 net:
+      `packages/engine/single-cycle/src/differential.test.ts` enumerates every `.s` in
+      `content/programs/` **from disk** and, per program, runs BOTH the golden reference
+      (`run`) and the single-cycle engine to a halt — driving the **raw `Processor`**, not the
+      recorder, so step-6 (engine equivalence) stays isolated from step-5 (the recorder, already
+      integration-tested). It then asserts equal final state: all 32 registers + every memory
+      word either engine touched (**union** of both `definedAddresses()`), plus `pc`/`halted` as
+      a strengthening that pins step-4's "halt timing mirrors the reference" claim. Equality
+      alone isn't correctness — two engines could share a bug, and these programs double as lesson
+      fixtures — so each authored program also carries a **hand-computed headline-result oracle**
+      asserted against the reference (the root of trust); the equality check then carries that
+      guarantee to single-cycle (mirrors the reference's own hand-oracle methodology). Grew the
+      corpus from `add.s` alone to **five** (one corpus, three jobs — §9): `sum-loop` (counting
+      loop / backward branch → 55), `array-sum` (`.data` walk, `lw`/`sw`, a negative word → 120),
+      `call-return` (`jal`/`ret` linkage, `max(17,42)` → 42), `byte-loads` (`lb`/`lbu`
+      sign-vs-zero trap → -128 / 128). `add.s` is the **pc-out-of-range canary** — the only
+      program that halts by running off text-end, not via `ecall`, where a halt-timing mismatch
+      would surface first. A discovery guard fails if the corpus globs empty (no vacuous pass);
+      a `MAX_STEPS` cap turns a runaway authoring bug into a failure, not a hang. 6 new tests
+      (293 total).
 - [ ] **7. `web` shell** — load a program, drive the engine, show source↔machine-code,
       register, and memory panels. _Decoder-preview placeholder exists._
 - [ ] **8. SVG datapath view** — the canonical single-cycle datapath, wired to trace events.
@@ -105,15 +123,18 @@ Each step should be testable before the next.
 
 ## Acceptance criteria (spec §11)
 
-- [~] Assembler assembles every example program; known-good encodings round-trip exactly.
-  _Assembler done: `add.s` assembles; oracle encodings + `li` round-trip pinned. Re-confirm
-  as more example programs land alongside the engines._
-- [ ] Single-cycle final reg+mem state equals the golden reference for every program (INV-8).
+- [x] Assembler assembles every example program; known-good encodings round-trip exactly.
+      _All five corpus programs assemble from disk (the step-6 differential test assembles each
+      before running it); oracle encodings + `li` round-trip pinned in `isa`/`assembler`._
+- [x] Single-cycle final reg+mem state equals the golden reference for every program (INV-8).
+      _Proven headlessly by `differential.test.ts` over the five-program corpus (step 6),
+      registers + memory + `pc`/`halted`; new programs dropped into `content/programs/` are
+      covered automatically._
 - [~] Load → step forward to completion → step back to start → scrub to any cycle; shown
-      state always matches the recorded trace. _Driver/recorder (`TraceRecorder`, step 5) proves
-      this headlessly against the real single-cycle engine: every cursor's `currentState()` is
-      the recorded cycle's own snapshot, and a register overwritten each cycle reads back its
-      per-cycle value on scrub. The visual "shown" half waits on the web timeline UI (steps 7–8)._
+  state always matches the recorded trace. _Driver/recorder (`TraceRecorder`, step 5) proves
+  this headlessly against the real single-cycle engine: every cursor's `currentState()` is
+  the recorded cycle's own snapshot, and a register overwritten each cycle reads back its
+  per-cycle value on scrub. The visual "shown" half waits on the web timeline UI (steps 7–8)._
 - [ ] Switching depth tier changes datapath detail and narration without changing engine
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
@@ -126,6 +147,27 @@ Each step should be testable before the next.
 
 ## Decisions
 
+- **Where does the differential test live? — RESOLVED (2026-06-30, step 6).** In
+  **`engine/single-cycle`** (`differential.test.ts`), importing `run` from `engine/reference`.
+  The reference never imports an engine (its diff path stays clean — that is exactly why
+  `toProgramImage` is a free-standing function); the model-under-test owns its INV-8 test and
+  imports the **reference, the root of trust**. This is the first **test-only** project
+  reference: single-cycle's `tsconfig` `references` gained `../reference` (commented as
+  test-only), while production single-cycle code still imports only isa/assembler/trace, so
+  `npm run typecheck` (`tsc -b`) resolves the test import without inverting the DAG, and the
+  ESLint engine-boundary rule (which only forbids `curriculum`/`web`) is satisfied. A dedicated
+  conformance package was considered and **rejected as YAGNI**: M1 has one model, and the
+  decisions log already defers the shared-harness extraction to when the **second** model lands
+  (alongside hoisting `toProgramImage`). When that happens, lift the corpus enumeration + the
+  equality/oracle helpers there so each model differentially tests against the reference.
+- **Example-program corpus — RESOLVED (2026-06-30, step 6).** Five programs in
+  `content/programs/`: `add.s` (seed) + `sum-loop`, `array-sum`, `call-return`, `byte-loads`.
+  Chosen to be **integration-flavored** (loops, `.data` + load/store, call/return, the
+  sign-extension trap) rather than re-covering the 40 base ops — step 4 already executes every
+  op directly; the corpus exercises programs end-to-end. They use only the shipped pseudo set
+  (no branch-swap `ble`/`bgt`, which aren't implemented yet) and end in `li a7,10; ecall` except
+  `add.s`. Each is one corpus serving three jobs (§9): differential fixture, free-play library,
+  and (later) lesson fixture.
 - **Signed/unsigned register representation — RESOLVED (2026-06-21).** `Int32Array` is the
   canonical GPR representation (matches the §5 trace schema; `.slice()` is a cheap snapshot for
   the step-5 recorder). This is an _execution_ concern that lives in `engine/reference` and
