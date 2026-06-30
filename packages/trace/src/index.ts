@@ -1,8 +1,9 @@
 /**
  * `@cpu-viz/trace` — the contract between the engine and everything else (INV-3). It holds
  * the {@link CycleTrace} schema (§5), the {@link Processor} interface and {@link ProgramImage}
- * the engines implement/consume (§6), and {@link SparseMemory}, the concrete `MemoryView`
- * the engines and the driver/recorder share. It depends only on `isa`.
+ * the engines implement/consume (§6), {@link SparseMemory} (the concrete `MemoryView` the
+ * engines and recorder share), and {@link TraceRecorder}, the driver that gives the UI
+ * scrubbable time-travel over any model. It depends only on `isa`.
  */
 
 export {
@@ -23,3 +24,4 @@ export {
   type ProcessorCapabilities,
   type Processor,
 } from './processor';
+export { TraceRecorder, type InstructionSighting } from './recorder';

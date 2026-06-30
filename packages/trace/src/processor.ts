@@ -86,7 +86,12 @@ export interface Processor {
   reset(image: ProgramImage, config: ProcessorConfig): void;
   /** Advance exactly one cycle and return what happened. Throws if already halted. */
   step(): CycleTrace;
-  /** The current full architectural state. */
+  /**
+   * The current full architectural state, as an INDEPENDENT snapshot — the same contract
+   * {@link CycleTrace.state} makes. The driver/recorder captures this at reset as the pre-run
+   * (cursor -1) state and trusts it not to mutate as the engine steps on, so it must not
+   * alias the live register file or memory.
+   */
   getState(): MachineState;
   /** Has the machine halted (architectural halt, or pc ran off the end of text)? */
   isHalted(): boolean;

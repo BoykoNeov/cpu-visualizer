@@ -71,13 +71,27 @@ Each step should be testable before the next.
       instruction rests on the step-6 net + the thin example corpus alone. Also pins the trace
       shape, the snapshot contract, the classic sign traps, loop-id freshness, and call/return.
       28 tests green (268 total).
-- [ ] **5. `trace` driver/recorder** — step forward / back / scrub via recorded snapshots
-      (§6). _`Processor` interface + pure `ProgramImage` now live in `trace` (decision below,
-      RESOLVED); `SparseMemory.snapshot()` is in place. Driver/recorder itself TODO: index into
-      the recorded `CycleTrace[]`, append on step-forward (see `runAll` in the single-cycle
-      test for the shape). DEFERRED: the §5 `PhasedEvent` phase ordinal — event **order** already
-      encodes fetch→decode→execute→mem→writeback, so add the explicit ordinal only when step 8's
-      within-cycle animation actually consumes it, not before._
+- [x] **5. `trace` driver/recorder** — DONE (2026-06-30). `TraceRecorder`
+      (`packages/trace/src/recorder.ts`) wraps any `Processor` and keeps the full
+      `CycleTrace[]`; navigation is a cursor in `[-1, recordedCycles-1]` where **-1 is the
+      pre-run state** (program loaded, nothing executed — captured via `getState()`).
+      `stepBack`/`scrubTo` move the cursor and read the snapshot already there — they **never
+      re-run the engine** (a unit test pins reference-identical replay + an unchanged `step()`
+      count); `stepForward`/`scrubTo`/`runToEnd` past the high-water mark are the ONLY paths that
+      call `engine.step()` and append. `stepForward` returns `null` at a halted end instead of
+      throwing (unlike raw `step()`); `load(image, config?)` owns the reset+record lifecycle so a
+      new program restarts cleanly. `follow(id)` is the §6 "follow this instruction" (INV-4):
+      every recorded cycle an id is in-flight plus its `location` (one sighting in single-cycle;
+      generalizes to a pipeline's IF→…→WB). Strengthened the `Processor.getState()` doc to
+      **require an independent snapshot** (the pre-run capture relies on it; single-cycle already
+      complied). Tested two ways: a `trace` unit suite drives a hand-scripted **stub** `Processor`
+      (the DAG forbids importing an engine here) to pin the cursor/replay/scrub/clamp logic; an
+      `engine/single-cycle` **integration** suite drives the REAL engine through the recorder for
+      the actual acceptance flow (load → run → back → scrub with per-cycle snapshots matching;
+      recorder reaches the same final reg+mem as a hand-driven run; each loop id follows to its
+      one cycle). 19 new tests (287 total). DEFERRED (unchanged): the §5 `PhasedEvent` phase
+      ordinal — event **order** already encodes fetch→decode→execute→mem→writeback, so add the
+      explicit ordinal only when step 8's within-cycle animation actually consumes it, not before._
 - [ ] **6. Differential tests** — reference vs single-cycle final reg+mem state on every
       example program (INV-8).
 - [ ] **7. `web` shell** — load a program, drive the engine, show source↔machine-code,
@@ -95,8 +109,11 @@ Each step should be testable before the next.
   _Assembler done: `add.s` assembles; oracle encodings + `li` round-trip pinned. Re-confirm
   as more example programs land alongside the engines._
 - [ ] Single-cycle final reg+mem state equals the golden reference for every program (INV-8).
-- [ ] Load → step forward to completion → step back to start → scrub to any cycle; shown
-      state always matches the recorded trace.
+- [~] Load → step forward to completion → step back to start → scrub to any cycle; shown
+      state always matches the recorded trace. _Driver/recorder (`TraceRecorder`, step 5) proves
+      this headlessly against the real single-cycle engine: every cursor's `currentState()` is
+      the recorded cycle's own snapshot, and a register overwritten each cycle reads back its
+      per-cycle value on scrub. The visual "shown" half waits on the web timeline UI (steps 7–8)._
 - [ ] Switching depth tier changes datapath detail and narration without changing engine
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).

@@ -28,7 +28,9 @@ function makeProc(source: string): SingleCycleProcessor {
   return p;
 }
 
-/** Drive to halt, collecting every CycleTrace — a stand-in for the step-5 driver/recorder. */
+/** Drive to halt, collecting every CycleTrace. (The real step-5 driver — `TraceRecorder` in
+ *  `@cpu-viz/trace` — is exercised against this engine in `recorder.test.ts`; this local
+ *  helper keeps the semantics suite independent of it.) */
 function runAll(p: SingleCycleProcessor, maxCycles = 1000): CycleTrace[] {
   const traces: CycleTrace[] = [];
   while (!p.isHalted()) {
