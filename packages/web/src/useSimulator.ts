@@ -75,9 +75,11 @@ export function useSimulator(): Simulator {
     [rerender],
   );
 
-  // Load the first example on mount so the shell is never empty.
+  // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
+  // counting loop is the clearest first teaching example; `add` (which sorts first) halts
+  // by running off text-end, so its final pc is an out-of-range value that reads as odd.
   useEffect(() => {
-    const first = EXAMPLE_PROGRAMS[0];
+    const first = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop') ?? EXAMPLE_PROGRAMS[0];
     if (first) select(first.name);
   }, [select]);
 

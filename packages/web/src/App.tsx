@@ -27,7 +27,8 @@ export function App(): React.JSX.Element {
   const writtenRegs = useMemo(() => {
     const set = new Set<number>();
     for (const e of sim.cycleTrace?.events ?? []) {
-      if (e.type === 'reg-write') set.add(e.reg);
+      // x0 is hardwired to 0; a reg-write targeting it is a no-op, so don't highlight it.
+      if (e.type === 'reg-write' && e.reg !== 0) set.add(e.reg);
     }
     return set;
   }, [sim.cycleTrace]);
