@@ -17,10 +17,17 @@
  * they exist,
  * falling back to `decoded.imm` / the instruction `pc` for segments no event covers.
  *
- * Each node/wire carries an optional `minTier` — reserved for build-order step 9 (depth-tier
- * rendering). No tier logic lives here yet; the view stays tier-oblivious (INV-2).
+ * DEPTH TIERS (build-order step 9, handoff §4 "structural detail" layer): each node carries an
+ * optional `minTier` (absent ⇒ `essentials`, always drawn); the view draws only elements at or
+ * below the selected tier. A wire is drawn iff **both** its endpoint nodes are drawn — so the
+ * tiering can hide a box without leaving a wire stabbing into empty space (INV-5 lawful
+ * simplification: a lower tier omits detail, it never contradicts a higher tier). Tiering is a
+ * pure *render filter* over this geometry; {@link activate} stays completely tier-oblivious
+ * (INV-2) — it always reports the full expert path, and the renderer intersects that with the
+ * tier's visible geometry.
  */
 
+import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import type { CycleTrace } from '@cpu-viz/trace';
 
 /** The five textbook within-cycle phases. Single-cycle does all of them in one physical tick;
@@ -55,22 +62,31 @@ export interface DatapathNode {
   readonly stage: Phase;
   /** Draw as a trapezoid (a mux/adder) rather than a plain box. */
   readonly shape?: 'box' | 'mux' | 'adder';
-  /** Reserved for step-9 depth tiers; unused today. */
-  readonly minTier?: number;
+  /** Lowest depth tier at which this component is drawn (handoff §4). Absent ⇒ `essentials`. */
+  readonly minTier?: DepthTier;
+  /** The control signal this mux is driven by — shown as an annotation only at `expert` tier. */
+  readonly controlLabel?: string;
 }
 
+// Depth-tier assignment (handoff §4 "structural detail"; INV-5 lawful simplification):
+//  - essentials (minTier absent): the register-only spine + closed fetch/writeback loops —
+//    pc, imem, regfile, alu, dmem, wbmux, pcsel, add4. A clean add/lw story.
+//  - detailed: the immediate path (immgen, alusrc) and the branch-target adder (branchadd).
+//  - expert: no new boxes — the muxes gain a `controlLabel` revealing the control line (below).
 const NODE_LIST: readonly DatapathNode[] = [
+  // `pcsel` carries its identity label at every tier already, so it needs no separate expert
+  // control-line label; the two otherwise-blank muxes (alusrc, wbmux) get theirs below.
   { id: 'pcsel', label: 'PCsrc', x: 30, y: 150, w: 26, h: 70, stage: 'WB', shape: 'mux' },
   { id: 'pc', label: 'PC', x: 20, y: 258, w: 46, h: 44, stage: 'IF' },
   { id: 'add4', label: '+4', x: 118, y: 48, w: 66, h: 46, stage: 'IF', shape: 'adder' },
   { id: 'imem', label: 'Instr\nMemory', x: 112, y: 256, w: 98, h: 88, stage: 'IF' },
   { id: 'regfile', label: 'Registers', x: 286, y: 214, w: 116, h: 132, stage: 'ID' },
-  { id: 'immgen', label: 'Imm\nGen', x: 286, y: 378, w: 116, h: 48, stage: 'ID' },
-  { id: 'branchadd', label: '+', x: 452, y: 66, w: 66, h: 52, stage: 'EX', shape: 'adder' },
-  { id: 'alusrc', label: '', x: 448, y: 256, w: 26, h: 78, stage: 'EX', shape: 'mux' },
+  { id: 'immgen', label: 'Imm\nGen', x: 286, y: 378, w: 116, h: 48, stage: 'ID', minTier: 'detailed' }, // prettier-ignore
+  { id: 'branchadd', label: '+', x: 452, y: 66, w: 66, h: 52, stage: 'EX', shape: 'adder', minTier: 'detailed' }, // prettier-ignore
+  { id: 'alusrc', label: '', x: 448, y: 256, w: 26, h: 78, stage: 'EX', shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrc' }, // prettier-ignore
   { id: 'alu', label: 'ALU', x: 512, y: 236, w: 88, h: 100, stage: 'EX', shape: 'adder' },
   { id: 'dmem', label: 'Data\nMemory', x: 652, y: 256, w: 98, h: 88, stage: 'MEM' },
-  { id: 'wbmux', label: '', x: 812, y: 256, w: 26, h: 78, stage: 'WB', shape: 'mux' },
+  { id: 'wbmux', label: '', x: 812, y: 256, w: 26, h: 78, stage: 'WB', shape: 'mux', controlLabel: 'MemToReg' }, // prettier-ignore
 ] as const;
 
 export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
@@ -104,63 +120,65 @@ function elbowV(a: Pt, b: Pt, midy: number): Pt[] {
 
 export interface DatapathWire {
   readonly id: string;
+  /** The two node ids this wire physically connects (its polyline runs edge-to-edge between
+   *  them). Drives depth-tier visibility: a wire is drawn iff BOTH ends are drawn, so hiding a
+   *  box never leaves a dangling wire (unlike the `id`, which is a display name and does NOT
+   *  reliably name the endpoints — e.g. `regfile-rs2` actually terminates at `alusrc`). */
+  readonly ends: readonly [string, string];
   readonly points: readonly Pt[];
   readonly stage: Phase;
-  readonly minTier?: number;
 }
 
 const WIRE_LIST: readonly DatapathWire[] = [
   // --- IF: PC drives instruction fetch and the +4 adder ---
-  { id: 'pc-imem', points: [at('pc', 'r'), at('imem', 'l')], stage: 'IF' },
-  { id: 'pc-add4', points: elbowH(at('pc', 'r', -12), at('add4', 'l'), 92), stage: 'IF' },
-  { id: 'add4-pcsel', points: elbowH(at('add4', 'l'), at('pcsel', 't'), 78), stage: 'IF' },
-  { id: 'pcsel-pc', points: [at('pcsel', 'b'), at('pc', 't')], stage: 'WB' },
+  { id: 'pc-imem', ends: ['pc', 'imem'], points: [at('pc', 'r'), at('imem', 'l')], stage: 'IF' },
+  { id: 'pc-add4', ends: ['pc', 'add4'], points: elbowH(at('pc', 'r', -12), at('add4', 'l'), 92), stage: 'IF' }, // prettier-ignore
+  { id: 'add4-pcsel', ends: ['add4', 'pcsel'], points: elbowH(at('add4', 'l'), at('pcsel', 't'), 78), stage: 'IF' }, // prettier-ignore
+  { id: 'pcsel-pc', ends: ['pcsel', 'pc'], points: [at('pcsel', 'b'), at('pc', 't')], stage: 'WB' },
   // --- ID: the fetched word feeds the register file and the immediate generator ---
-  {
-    id: 'imem-regfile',
-    points: elbowH(at('imem', 'r'), at('regfile', 'l', -34), 250),
-    stage: 'ID',
-  },
-  { id: 'imem-immgen', points: elbowH(at('imem', 'r'), at('immgen', 'l'), 250), stage: 'ID' },
+  { id: 'imem-regfile', ends: ['imem', 'regfile'], points: elbowH(at('imem', 'r'), at('regfile', 'l', -34), 250), stage: 'ID' }, // prettier-ignore
+  { id: 'imem-immgen', ends: ['imem', 'immgen'], points: elbowH(at('imem', 'r'), at('immgen', 'l'), 250), stage: 'ID' }, // prettier-ignore
   // --- EX: register values + immediate into the ALU / branch adder ---
-  { id: 'regfile-rs1', points: [at('regfile', 'r', -34), at('alu', 'l', -20)], stage: 'EX' },
-  {
-    id: 'regfile-rs2',
-    points: elbowH(at('regfile', 'r', 20), at('alusrc', 't'), 430),
-    stage: 'EX',
-  },
-  { id: 'imm-alusrc', points: elbowH(at('immgen', 'r'), at('alusrc', 'b'), 424), stage: 'EX' },
-  { id: 'alusrc-alu', points: [at('alusrc', 'r'), at('alu', 'l', 20)], stage: 'EX' },
-  {
-    id: 'pc-branchadd',
-    points: elbowH(at('pc', 'r', -12), at('branchadd', 'l', -12), 92),
-    stage: 'EX',
-  },
-  {
-    id: 'imm-branchadd',
-    points: elbowH(at('immgen', 'r'), at('branchadd', 'l', 12), 438),
-    stage: 'EX',
-  },
+  { id: 'regfile-rs1', ends: ['regfile', 'alu'], points: [at('regfile', 'r', -34), at('alu', 'l', -20)], stage: 'EX' }, // prettier-ignore
+  { id: 'regfile-rs2', ends: ['regfile', 'alusrc'], points: elbowH(at('regfile', 'r', 20), at('alusrc', 't'), 430), stage: 'EX' }, // prettier-ignore
+  { id: 'imm-alusrc', ends: ['immgen', 'alusrc'], points: elbowH(at('immgen', 'r'), at('alusrc', 'b'), 424), stage: 'EX' }, // prettier-ignore
+  { id: 'alusrc-alu', ends: ['alusrc', 'alu'], points: [at('alusrc', 'r'), at('alu', 'l', 20)], stage: 'EX' }, // prettier-ignore
+  { id: 'pc-branchadd', ends: ['pc', 'branchadd'], points: elbowH(at('pc', 'r', -12), at('branchadd', 'l', -12), 92), stage: 'EX' }, // prettier-ignore
+  { id: 'imm-branchadd', ends: ['immgen', 'branchadd'], points: elbowH(at('immgen', 'r'), at('branchadd', 'l', 12), 438), stage: 'EX' }, // prettier-ignore
   // --- MEM: ALU result addresses data memory; rs2 supplies store data ---
-  { id: 'alu-dmem', points: [at('alu', 'r'), at('dmem', 'l')], stage: 'MEM' },
-  { id: 'rs2-dmem', points: elbowV(at('regfile', 'r', 34), at('dmem', 'b'), 360), stage: 'MEM' },
+  { id: 'alu-dmem', ends: ['alu', 'dmem'], points: [at('alu', 'r'), at('dmem', 'l')], stage: 'MEM' }, // prettier-ignore
+  { id: 'rs2-dmem', ends: ['regfile', 'dmem'], points: elbowV(at('regfile', 'r', 34), at('dmem', 'b'), 360), stage: 'MEM' }, // prettier-ignore
   // --- WB: writeback source into the mux, then back to the register write port ---
-  { id: 'alu-wb', points: elbowH(at('alu', 'r', 34), at('wbmux', 'b'), 626), stage: 'WB' },
-  { id: 'dmem-wb', points: [at('dmem', 'r'), at('wbmux', 't')], stage: 'WB' },
-  { id: 'imm-wb', points: elbowV(at('immgen', 'b'), at('wbmux', 'b'), 448), stage: 'WB' },
-  { id: 'pc4-wb', points: elbowV(at('add4', 'r'), at('wbmux', 't'), 30), stage: 'WB' },
-  { id: 'branchadd-wb', points: elbowV(at('branchadd', 'r'), at('wbmux', 't'), 42), stage: 'WB' },
-  { id: 'wb-regfile', points: elbowV(at('wbmux', 'b'), at('regfile', 'b'), 456), stage: 'WB' },
+  { id: 'alu-wb', ends: ['alu', 'wbmux'], points: elbowH(at('alu', 'r', 34), at('wbmux', 'b'), 626), stage: 'WB' }, // prettier-ignore
+  { id: 'dmem-wb', ends: ['dmem', 'wbmux'], points: [at('dmem', 'r'), at('wbmux', 't')], stage: 'WB' }, // prettier-ignore
+  { id: 'imm-wb', ends: ['immgen', 'wbmux'], points: elbowV(at('immgen', 'b'), at('wbmux', 'b'), 448), stage: 'WB' }, // prettier-ignore
+  { id: 'pc4-wb', ends: ['add4', 'wbmux'], points: elbowV(at('add4', 'r'), at('wbmux', 't'), 30), stage: 'WB' }, // prettier-ignore
+  { id: 'branchadd-wb', ends: ['branchadd', 'wbmux'], points: elbowV(at('branchadd', 'r'), at('wbmux', 't'), 42), stage: 'WB' }, // prettier-ignore
+  { id: 'wb-regfile', ends: ['wbmux', 'regfile'], points: elbowV(at('wbmux', 'b'), at('regfile', 'b'), 456), stage: 'WB' }, // prettier-ignore
   // --- PC select: the taken target routes back to the next-PC mux ---
-  {
-    id: 'branchadd-pcsel',
-    points: elbowV(at('branchadd', 't'), at('pcsel', 'l'), 30),
-    stage: 'WB',
-  },
-  { id: 'alu-pcsel', points: elbowV(at('alu', 't'), at('pcsel', 'l'), 18), stage: 'WB' },
+  { id: 'branchadd-pcsel', ends: ['branchadd', 'pcsel'], points: elbowV(at('branchadd', 't'), at('pcsel', 'l'), 30), stage: 'WB' }, // prettier-ignore
+  { id: 'alu-pcsel', ends: ['alu', 'pcsel'], points: elbowV(at('alu', 't'), at('pcsel', 'l'), 18), stage: 'WB' }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
+
+// --- Depth tiers (structural detail; handoff §4) -----------------------------------------
+
+/** True when an element requiring `minTier` (absent ⇒ `essentials`) is drawn at `current`. */
+export function tierVisible(minTier: DepthTier | undefined, current: DepthTier): boolean {
+  return DEPTH_TIERS.indexOf(minTier ?? 'essentials') <= DEPTH_TIERS.indexOf(current);
+}
+
+/** Whether a node is drawn at `tier`. */
+export function nodeVisibleAt(node: DatapathNode, tier: DepthTier): boolean {
+  return tierVisible(node.minTier, tier);
+}
+
+/** Whether a wire is drawn at `tier`: iff BOTH endpoint nodes are drawn (INV-5 — hiding a box
+ *  hides the wires into it, so no wire ever dangles into empty space). */
+export function wireVisibleAt(wire: DatapathWire, tier: DepthTier): boolean {
+  return wire.ends.every((id) => nodeVisibleAt(NODES.get(id)!, tier));
+}
 
 // --- Activation ---------------------------------------------------------------------------
 

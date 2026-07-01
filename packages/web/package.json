@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cpu-viz/assembler": "*",
+    "@cpu-viz/curriculum": "*",
     "@cpu-viz/engine-single-cycle": "*",
     "@cpu-viz/isa": "*",
     "@cpu-viz/trace": "*",

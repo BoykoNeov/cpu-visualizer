@@ -154,8 +154,31 @@ Each step should be testable before the next.
       live, no memory/writeback), and **`lui`** (no reg-read/alu-op, imm→writeback) — plus a
       geometry sanity check; the visual half was eyeballed via headless-Chrome screenshots of the
       load/store/branch/pre-run states (as step 7 was). 5 new tests (301 total). `npm run build` + `dev` verified.
-- [ ] **9. Depth-tier rendering** — three tiers on the datapath view (`minTier` on elements;
-      narration variants resolved highest ≤ current tier — helper seeded in `curriculum`).
+- [x] **9. Depth-tier rendering** — DONE (2026-07-01). The **structural-detail** layer (§4) on
+      the datapath view: three depth tiers (`essentials → detailed → expert`, axis B). Each
+      `DatapathNode` carries an optional `minTier: DepthTier` (imported from `curriculum` — the
+      single source of the tier order; absent ⇒ `essentials`, always drawn) and the view draws
+      only elements at or below the selected tier. `activate` stays **completely tier-oblivious**
+      (INV-2): tiering is a pure *render filter* over the fixed geometry, intersected with the
+      full expert activation. **Wire visibility is endpoint-driven, not id-driven** — each wire
+      gained an explicit `ends: [a, b]` (the two node ids it physically connects; the display
+      `id` does NOT reliably name them — e.g. `regfile-rs2` terminates at `alusrc`), and a wire is
+      drawn iff BOTH ends are drawn, so hiding a box can never leave a wire stabbing into empty
+      space (INV-5 lawful simplification). Assignment: essentials = the register-only spine +
+      closed fetch/writeback loops (pc, imem, regfile, alu, dmem, wbmux, pcsel, add4); detailed
+      adds the immediate path + branch-target adder (immgen, alusrc, branchadd); expert adds no
+      new geometry — the two otherwise-blank muxes gain an italic control-line label
+      (`ALUSrc`/`MemToReg`) via a `controlLabel` field ("expert reveals every control line", §4).
+      A `DepthDial` in the web header (defaulting to `detailed`) drives it; the narration half of
+      the acceptance criterion ships via the already-seeded `resolveNarration` (curriculum) and is
+      exercised when lessons land (step 11). Tests (`datapath.test.ts`, +7 → 12): `tierVisible`
+      semantics, **monotone containment** (essentials ⊆ detailed ⊆ expert, expert = all geometry),
+      the essentials assignment, a **no-dangling-wire** coherence check at every tier, and an
+      **`ends` drift guard** (each wire's first/last point lies on its named node's box). The
+      visual half — the reduced/annotated diagram reads coherently at each tier — was eyeballed via
+      headless-Chrome screenshots across the three tiers (as steps 7–8 were). `web` gained
+      `@cpu-viz/curriculum` as a declared dependency (Vite alias + tsconfig path already existed).
+      308 tests green. `npm run build` verified.
 - [ ] **10. `curriculum`** — lesson format + runner + event-anchoring. _Types + narration
       resolver seeded._
 - [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
@@ -174,8 +197,12 @@ Each step should be testable before the next.
       the visual half is now live in the step-7 web shell — the transport + scrub slider drive the
       recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
       forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
-- [ ] Switching depth tier changes datapath detail and narration without changing engine
-      behavior and without violating lawful simplification (INV-5).
+- [~] Switching depth tier changes datapath detail and narration without changing engine
+      behavior and without violating lawful simplification (INV-5). _Structural half DONE (step 9):
+      the depth dial changes how much datapath geometry is drawn (essentials ⊆ detailed ⊆ expert,
+      proven monotone + coherent + eyeballed); `activate`/the engine are untouched (INV-2). The
+      narration half awaits the lessons that author variants (step 11) — the `resolveNarration`
+      resolver is already seeded and tested in `curriculum`._
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
 - [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared

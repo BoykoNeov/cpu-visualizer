@@ -4,19 +4,27 @@
  * components/wires that {@link activate} reports for the current cycle, labelling active wires
  * with the value flowing on them. A within-cycle phase stepper (Fetch→…→Writeback) progressively
  * reveals the path — the animation "sub-cycle phases" of §5, derived from the trace, not baked
- * into the engine (INV-2). Depth tiers are a later step (9); this view is tier-oblivious.
+ * into the engine (INV-2).
+ *
+ * DEPTH TIER (step 9, handoff §4): the `tier` prop selects how much structural detail is drawn.
+ * The filter is purely a render concern — {@link activate} always reports the full expert path;
+ * this view intersects it with the tier's visible geometry ({@link nodeVisibleAt} /
+ * {@link wireVisibleAt}), and reveals the mux control-line labels only at `expert`.
  */
 
+import type { DepthTier } from '@cpu-viz/curriculum';
 import type { CycleTrace } from '@cpu-viz/trace';
 import { useEffect, useMemo, useState } from 'react';
 import {
   activate,
   CANVAS,
   NODES,
+  nodeVisibleAt,
   PHASE_LABELS,
   PHASES,
   phaseVisibleAt,
   WIRES,
+  wireVisibleAt,
   type DatapathNode,
   type Fmt,
   type Phase,
@@ -46,8 +54,12 @@ function midOf(points: readonly (readonly [number, number])[]): readonly [number
   return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 }
 
-export function Datapath(props: { trace: CycleTrace | null; cycleKey: number }): React.JSX.Element {
-  const { trace, cycleKey } = props;
+export function Datapath(props: {
+  trace: CycleTrace | null;
+  cycleKey: number;
+  tier: DepthTier;
+}): React.JSX.Element {
+  const { trace, cycleKey, tier } = props;
   // The phase stepper is view-local: the recorder cursor is per-cycle, so there is no sub-cycle
   // index in the trace. Default to the final phase (whole path visible) and reset on cycle change.
   const [phase, setPhase] = useState<Phase>('WB');
@@ -122,6 +134,7 @@ export function Datapath(props: { trace: CycleTrace | null; cycleKey: number }):
 
         {/* Wires first, so component boxes sit on top of their endpoints. */}
         {WIRES.map((wire) => {
+          if (!wireVisibleAt(wire, tier)) return null;
           const a = act.wires.get(wire.id);
           const on = a !== undefined && phaseVisibleAt(wire.stage, phase);
           return (
@@ -138,6 +151,7 @@ export function Datapath(props: { trace: CycleTrace | null; cycleKey: number }):
 
         {/* Value labels on active wires. */}
         {WIRES.map((wire) => {
+          if (!wireVisibleAt(wire, tier)) return null;
           const a = act.wires.get(wire.id);
           if (!a || a.value === undefined || !phaseVisibleAt(wire.stage, phase)) return null;
           const [mx, my] = midOf(wire.points);
@@ -169,22 +183,30 @@ export function Datapath(props: { trace: CycleTrace | null; cycleKey: number }):
           );
         })}
 
-        {/* Components. */}
-        {Array.from(NODES.values()).map((node) => (
-          <NodeShape
-            key={node.id}
-            node={node}
-            active={act.components.has(node.id) && phaseIdx >= PHASES.indexOf(node.stage)}
-          />
-        ))}
+        {/* Components. `expert` also reveals each mux's control-line label (handoff §4). */}
+        {Array.from(NODES.values())
+          .filter((node) => nodeVisibleAt(node, tier))
+          .map((node) => (
+            <NodeShape
+              key={node.id}
+              node={node}
+              active={act.components.has(node.id) && phaseIdx >= PHASES.indexOf(node.stage)}
+              showControl={tier === 'expert'}
+            />
+          ))}
       </svg>
     </section>
   );
 }
 
-/** Draw one component as a box / mux / adder, highlighted when active this cycle. */
-function NodeShape(props: { node: DatapathNode; active: boolean }): React.JSX.Element {
-  const { node, active } = props;
+/** Draw one component as a box / mux / adder, highlighted when active this cycle. At `expert`
+ *  tier (`showControl`) a mux also gets its control-line label (e.g. "ALUSrc"). */
+function NodeShape(props: {
+  node: DatapathNode;
+  active: boolean;
+  showControl: boolean;
+}): React.JSX.Element {
+  const { node, active, showControl } = props;
   const stroke = active ? ACTIVE : IDLE;
   const fill = active ? ACTIVE_FILL : IDLE_FILL;
   const cx = node.x + node.w / 2;
@@ -246,6 +268,18 @@ function NodeShape(props: { node: DatapathNode; active: boolean }): React.JSX.El
           {line}
         </text>
       ))}
+      {showControl && node.controlLabel ? (
+        <text
+          x={cx}
+          y={node.y - 4}
+          textAnchor="middle"
+          fontSize={7.5}
+          fontStyle="italic"
+          fill={active ? ACTIVE : '#8a8f99'}
+        >
+          {node.controlLabel}
+        </text>
+      ) : null}
     </g>
   );
 }

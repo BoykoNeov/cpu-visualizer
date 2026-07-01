@@ -1,6 +1,7 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
+import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import type { InstructionInstance } from '@cpu-viz/trace';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
@@ -12,10 +13,15 @@ import { useSimulator } from './useSimulator';
  * {@link useSimulator} recorder, and show the source↔machine-code, register, and memory panels.
  * Everything shown is read from the recorded trace at the current cursor, so stepping forward,
  * stepping back, and scrubbing always display the exact recorded state (acceptance §11). The
- * SVG datapath view and depth tiers are later build-order steps (8–9).
+ * SVG datapath view (step 8) and its depth-tier dial (step 9, axis B / handoff §4) sit on top;
+ * the depth dial is a pure view concern — the engine and trace are oblivious to it (INV-2).
  */
 export function App(): React.JSX.Element {
   const sim = useSimulator();
+  // Explanation depth (axis B, handoff §4) — a view/curriculum concern only; the engine is
+  // oblivious (INV-2). Default to `detailed`: the full structural datapath, with `essentials`
+  // simplifying it and `expert` adding the control-line labels.
+  const [tier, setTier] = useState<DepthTier>('detailed');
 
   const source = useMemo(
     () => EXAMPLE_PROGRAMS.find((p) => p.name === sim.programName)?.source ?? '',
@@ -50,20 +56,31 @@ export function App(): React.JSX.Element {
       <header style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: '1.4rem', margin: 0 }}>CPU Visualizer</h1>
         <span style={{ color: '#888' }}>single-cycle RV32I</span>
-        <label style={{ marginLeft: 'auto' }}>
-          Program:{' '}
-          <select
-            value={sim.programName ?? ''}
-            onChange={(e) => sim.select(e.target.value)}
-            style={{ fontSize: '0.95rem', padding: '0.2rem' }}
-          >
-            {EXAMPLE_PROGRAMS.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            gap: '1.25rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <DepthDial tier={tier} setTier={setTier} />
+          <label>
+            Program:{' '}
+            <select
+              value={sim.programName ?? ''}
+              onChange={(e) => sim.select(e.target.value)}
+              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
+            >
+              {EXAMPLE_PROGRAMS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
 
       {sim.errors ? (
@@ -72,7 +89,7 @@ export function App(): React.JSX.Element {
         <>
           <Transport sim={sim} atStart={atStart} lastCycle={lastCycle} inFlight={inFlight} />
 
-          <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} />
+          <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
 
           {sim.state && sim.program ? (
             <div
@@ -94,6 +111,50 @@ export function App(): React.JSX.Element {
         </>
       )}
     </main>
+  );
+}
+
+/** The explanation-depth dial (axis B, handoff §4): essentials → detailed → expert. Changes how
+ *  much datapath detail is drawn; the engine and trace are unaffected (INV-2). */
+function DepthDial(props: { tier: DepthTier; setTier: (t: DepthTier) => void }): React.JSX.Element {
+  const { tier, setTier } = props;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: '#888',
+        }}
+      >
+        Depth
+      </span>
+      <div style={{ display: 'flex', gap: 3 }}>
+        {DEPTH_TIERS.map((t) => {
+          const on = t === tier;
+          return (
+            <button
+              key={t}
+              onClick={() => setTier(t)}
+              title={`${t} depth`}
+              style={{
+                fontSize: '0.72rem',
+                padding: '0.15rem 0.5rem',
+                borderRadius: 5,
+                textTransform: 'capitalize',
+                border: `1px solid ${on ? '#1e6fe0' : '#ccc'}`,
+                background: on ? '#1e6fe0' : '#f7f7f9',
+                color: on ? '#fff' : '#555',
+                cursor: 'pointer',
+              }}
+            >
+              {t}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

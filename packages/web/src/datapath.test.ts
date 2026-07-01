@@ -1,6 +1,15 @@
+import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import type { CycleTrace } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
-import { activate, NODES, phaseVisibleAt, WIRES } from './datapath';
+import {
+  activate,
+  NODES,
+  nodeVisibleAt,
+  phaseVisibleAt,
+  tierVisible,
+  WIRES,
+  wireVisibleAt,
+} from './datapath';
 import { loadSource } from './simulator';
 
 /**
@@ -37,6 +46,76 @@ describe('datapath geometry', () => {
     // Sanity: the canonical components are all present.
     for (const id of ['pc', 'imem', 'regfile', 'immgen', 'alu', 'dmem', 'wbmux', 'branchadd']) {
       expect(NODES.has(id), `missing node ${id}`).toBe(true);
+    }
+  });
+});
+
+describe('depth tiers (structural detail; handoff §4, INV-5)', () => {
+  const visibleNodes = (t: DepthTier): Set<string> =>
+    new Set([...NODES.values()].filter((n) => nodeVisibleAt(n, t)).map((n) => n.id));
+  const visibleWires = (t: DepthTier): Set<string> =>
+    new Set(WIRES.filter((wire) => wireVisibleAt(wire, t)).map((wire) => wire.id));
+
+  it('tierVisible: an element shows once the selected tier reaches its minTier', () => {
+    expect(tierVisible(undefined, 'essentials')).toBe(true); // absent ⇒ essentials, always on
+    expect(tierVisible('detailed', 'essentials')).toBe(false); // not yet
+    expect(tierVisible('detailed', 'detailed')).toBe(true);
+    expect(tierVisible('detailed', 'expert')).toBe(true); // higher tier keeps lower detail
+  });
+
+  it('reveals strictly more detail as the tier climbs (monotone containment)', () => {
+    // essentials ⊆ detailed ⊆ expert, and each transition adds something (lawful simplification:
+    // a higher tier only ever GAINS machinery — INV-5). Expert draws the whole diagram.
+    for (const set of [visibleNodes, visibleWires]) {
+      const [ess, det, exp] = DEPTH_TIERS.map(set) as [Set<string>, Set<string>, Set<string>];
+      expect([...ess].every((id) => det.has(id))).toBe(true);
+      expect([...det].every((id) => exp.has(id))).toBe(true);
+      expect(det.size).toBeGreaterThan(ess.size); // detailed adds the immediate path + branch adder
+    }
+    expect(visibleNodes('expert').size).toBe(NODES.size); // expert hides no geometry
+    expect(visibleWires('expert').size).toBe(WIRES.length);
+  });
+
+  it('essentials draws the register-only spine and hides the immediate path', () => {
+    const nodes = visibleNodes('essentials');
+    for (const id of ['pc', 'imem', 'regfile', 'alu', 'dmem', 'wbmux', 'pcsel', 'add4']) {
+      expect(nodes.has(id), `essentials should draw ${id}`).toBe(true);
+    }
+    for (const id of ['immgen', 'alusrc', 'branchadd']) {
+      expect(nodes.has(id), `essentials should hide ${id}`).toBe(false);
+    }
+  });
+
+  it('never draws a wire whose endpoint node is hidden (no dangling wires — INV-5)', () => {
+    for (const tier of DEPTH_TIERS) {
+      const nodes = visibleNodes(tier);
+      for (const wire of WIRES) {
+        if (!wireVisibleAt(wire, tier)) continue;
+        for (const end of wire.ends) {
+          expect(nodes.has(end), `wire ${wire.id} shown at ${tier} but ${end} hidden`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("each wire's polyline actually runs edge-to-edge between its declared `ends`", () => {
+    // The `ends` are load-bearing (they drive tier visibility); guard them against drifting
+    // away from the geometry by checking the first/last point lies on each named node's box.
+    const eps = 0.5;
+    const onNode = (pt: readonly [number, number], id: string): boolean => {
+      const n = NODES.get(id)!;
+      return (
+        pt[0] >= n.x - eps &&
+        pt[0] <= n.x + n.w + eps &&
+        pt[1] >= n.y - eps &&
+        pt[1] <= n.y + n.h + eps
+      );
+    };
+    for (const wire of WIRES) {
+      const first = wire.points[0]!;
+      const last = wire.points[wire.points.length - 1]!;
+      expect(onNode(first, wire.ends[0]), `${wire.id} start not on ${wire.ends[0]}`).toBe(true);
+      expect(onNode(last, wire.ends[1]), `${wire.id} end not on ${wire.ends[1]}`).toBe(true);
     }
   });
 });
