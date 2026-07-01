@@ -7,6 +7,10 @@ const pkg = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  // The example programs live at the repo root (`content/programs/*.s`), outside this
+  // package. Eager `import.meta.glob` inlines them at build time, but the dev server
+  // must also be allowed to read from the repo root.
+  server: { fs: { allow: ['../..'] } },
   resolve: {
     alias: {
       '@cpu-viz/isa': pkg('../isa/src/index.ts'),

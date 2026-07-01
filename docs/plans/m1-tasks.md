@@ -112,8 +112,28 @@ Each step should be testable before the next.
       would surface first. A discovery guard fails if the corpus globs empty (no vacuous pass);
       a `MAX_STEPS` cap turns a runaway authoring bug into a failure, not a hang. 6 new tests
       (293 total).
-- [ ] **7. `web` shell** — load a program, drive the engine, show source↔machine-code,
-      register, and memory panels. _Decoder-preview placeholder exists._
+- [x] **7. `web` shell** — DONE (2026-07-01). Replaced the decoder-preview scaffold with a
+      real shell that drives the single-cycle engine through the **`TraceRecorder`** (never the
+      engine directly — INV-3). `useSimulator` (`packages/web/src/useSimulator.ts`) holds the
+      recorder in a ref and uses a bare tick counter to re-render; **every panel reads live from
+      `recorder.currentState()` / `recorder.current()`** — no register/memory state is ever
+      shadow-copied into React, which is what makes "shown state always matches the recorded
+      trace" hold by construction. Transport = reset / back / step / run + a scrub slider
+      (`min=-1` "start (pre-run)" … `max=recordedCycles-1`); `select` runs the program to end up
+      front (fixed-length scrub bar) then parks the cursor at -1. Three panels
+      (`panels.tsx`): source↔machine-code (inverts `sourceMap` to show each line's word(s),
+      highlights the in-flight line), registers (all 32 GPRs, ABI+`xN`+hex+signed, current-cycle
+      writes highlighted), and **data memory** — filtered to `addr >= DATA_BASE` because the flat
+      model's `definedAddresses()` legitimately includes text (windowing is the view's job,
+      INV-2/3; the instruction words already show in the source panel). Programs come from the
+      **real corpus** via `import.meta.glob('…/content/programs/*.s', {query:'?raw',eager:true})`
+      (INV-7 — no duplication; `server.fs.allow:['../..']` lets the dev server read the repo
+      root). The one non-React unit (`simulator.ts`: assemble → `toProgramImage` → `recorder.load`)
+      is headlessly tested (`simulator.test.ts`: a corpus program runs to its hand-known result;
+      bad source yields located errors; the glob discovers the whole corpus) — the transport
+      itself is already fully proven in `trace`, so no jsdom was added. 3 new tests (296 total).
+      Verified end-to-end via `npm run build` (glob inlined) and `npm run dev` (raw `.s` served,
+      HTTP 200).
 - [ ] **8. SVG datapath view** — the canonical single-cycle datapath, wired to trace events.
 - [ ] **9. Depth-tier rendering** — three tiers on the datapath view (`minTier` on elements;
       narration variants resolved highest ≤ current tier — helper seeded in `curriculum`).
@@ -130,11 +150,11 @@ Each step should be testable before the next.
       _Proven headlessly by `differential.test.ts` over the five-program corpus (step 6),
       registers + memory + `pc`/`halted`; new programs dropped into `content/programs/` are
       covered automatically._
-- [~] Load → step forward to completion → step back to start → scrub to any cycle; shown
-  state always matches the recorded trace. _Driver/recorder (`TraceRecorder`, step 5) proves
-  this headlessly against the real single-cycle engine: every cursor's `currentState()` is
-  the recorded cycle's own snapshot, and a register overwritten each cycle reads back its
-  per-cycle value on scrub. The visual "shown" half waits on the web timeline UI (steps 7–8)._
+- [x] Load → step forward to completion → step back to start → scrub to any cycle; shown
+  state always matches the recorded trace. _Headlessly proven by `TraceRecorder` (step 5);
+  the visual half is now live in the step-7 web shell — the transport + scrub slider drive the
+  recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
+  forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
 - [ ] Switching depth tier changes datapath detail and narration without changing engine
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
