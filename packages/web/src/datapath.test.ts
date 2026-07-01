@@ -1,6 +1,6 @@
 import type { CycleTrace } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
-import { activate, NODES, WIRES } from './datapath';
+import { activate, NODES, phaseVisibleAt, WIRES } from './datapath';
 import { loadSource } from './simulator';
 
 /**
@@ -41,6 +41,17 @@ describe('datapath geometry', () => {
   });
 });
 
+describe('phaseVisibleAt (within-cycle progressive reveal)', () => {
+  it('reveals a stage only once the stepper has reached it', () => {
+    // Earlier-or-equal phases are visible; later ones are hidden until the stepper advances.
+    expect(phaseVisibleAt('IF', 'EX')).toBe(true);
+    expect(phaseVisibleAt('EX', 'EX')).toBe(true);
+    expect(phaseVisibleAt('WB', 'ID')).toBe(false); // writeback stays hidden at Decode
+    expect(phaseVisibleAt('MEM', 'EX')).toBe(false); // memory hidden until we reach it
+    expect(phaseVisibleAt('WB', 'WB')).toBe(true); // full path at the final phase
+  });
+});
+
 describe('activate', () => {
   it('is empty for the pre-run state (no in-flight instruction)', () => {
     const a = activate(null);
@@ -69,6 +80,17 @@ describe('activate', () => {
     expect(a.wires.has('branchadd-pcsel')).toBe(true);
     // A branch neither touches data memory nor writes a register.
     expect(a.components.has('dmem')).toBe(false);
+    expect(a.wires.has('wb-regfile')).toBe(false);
+    expect(a.writtenReg).toBeNull();
+  });
+
+  it('lights the store data path (rs2→memory) with no writeback', () => {
+    const a = activate(firstCycle('  sw x0, 4(x0)'));
+    expect(a.components.has('alu')).toBe(true); // effective-address calc
+    expect(a.components.has('dmem')).toBe(true);
+    expect(a.wires.has('alu-dmem')).toBe(true); // address into memory
+    expect(a.wires.has('rs2-dmem')).toBe(true); // the datum being stored
+    // A store retires without touching the register file.
     expect(a.wires.has('wb-regfile')).toBe(false);
     expect(a.writtenReg).toBeNull();
   });
