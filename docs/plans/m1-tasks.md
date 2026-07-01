@@ -191,8 +191,37 @@ Each step should be testable before the next.
       screenshots across all three tiers on `lui`/`addi`/`lw` (the gap-exposing instructions).
       `web` gained `@cpu-viz/curriculum` as a declared dependency (Vite alias + tsconfig path
       already existed). 308 tests green. `npm run build` verified.
-- [ ] **10. `curriculum`** — lesson format + runner + event-anchoring. _Types + narration
-      resolver seeded._
+- [x] **10. `curriculum`** — lesson format + runner + event-anchoring. DONE (2026-07-01).
+      Split the seed `index.ts` into `lesson.ts` (the declarative FORMAT) + `runner.ts` (the
+      event-anchoring RUNNER), with `index.ts` a barrel. **Format:** added a first-class
+      `LessonTrigger` (`event` + `nth?` + `where?`) and a `config?: ProcessorConfig` on `Lesson`
+      (spec §13; optional — single-cycle ignores config, consumers fall back to `defaultConfig()`).
+      `where` is a **declarative shallow-equality object** (`Record<string, number|string|boolean>`),
+      NOT a function predicate — lessons must stay serializable DATA the engine doesn't compile
+      against (§13), so "the first `reg-write` to reg 10" is `{ event:'reg-write', where:{reg:10} }`;
+      a key absent on the event reads `undefined` and simply fails to match (no throw), naturally
+      scoping `where` to its event type. **Runner (INV-6):** anchoring is the expensive STATIC step
+      (`anchorLesson` → `AnchoredStep[]`, each carrying `{cycle, eventIndex}` or `null`); the depth
+      tier is a LIVE dial, so narration is a separate PURE query (`narrationFor`, delegating the
+      tier fallback to the existing `resolveNarration`, INV-5) — a tier change re-resolves without
+      re-anchoring (no stateful class; memo-friendly for web). `activeStepAt` resolves by
+      **`(anchorCycle, eventIndex)` position, not authoring order** (two steps can share a cycle; the
+      later-firing event wins) and **skips unanchored (`null`) steps** so a never-firing trigger
+      can't swallow the active slot. Non-monotonic anchors are an **authoring** bug, not a runner
+      bug: the query path stays graceful, and a dev-time `anchorOrderViolations` flags steps that
+      anchor backward (for lesson-authoring validation, never the query path). **PRECONDITION** (in
+      the runner doc): anchor against a COMPLETE recording — the recorder records lazily at the
+      high-water mark, so callers `runToEnd()` first (web's `select` already does). Framework-agnostic:
+      depends only on `@cpu-viz/trace` (no new dep; `ProcessorConfig`/`CycleTrace`/`TraceEvent` all
+      from there) — the DAG (`curriculum ← trace` only) is unchanged. Tested (`runner.test.ts`, 14 +
+      the 3 moved narration tests = 17) with **hand-built `CycleTrace[]` fixtures** — the DAG forbids
+      importing an engine here (same pattern `trace` used with a stub `Processor`); one fixture
+      mirrors the REAL single-cycle event order (fetch → reg-read(s) → alu-op → mem-\* → reg-write →
+      retire) so anchoring is validated against real shape, not an invented one. Covers nth-across-
+      cycles, `where` match/absent-key/mismatch, unanchored→null, same-cycle tie-break by eventIndex,
+      skip-unanchored, narration tier fallback + undefined-when-nothing-active, and the order-violation
+      check. A **real-engine integration test lands in `web` at step 11** when actual lessons exist.
+      322 tests green.
 - [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
 
 ## Acceptance criteria (spec §11)

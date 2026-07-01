@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEPTH_TIERS, resolveNarration } from './index';
+import { DEPTH_TIERS, resolveNarration } from './lesson';
 
 describe('resolveNarration (lawful simplification, INV-5)', () => {
   it('lists three depth tiers in increasing detail', () => {
