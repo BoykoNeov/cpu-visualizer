@@ -6,10 +6,13 @@
  * reveals the path — the animation "sub-cycle phases" of §5, derived from the trace, not baked
  * into the engine (INV-2).
  *
- * DEPTH TIER (step 9, handoff §4): the `tier` prop selects how much structural detail is drawn.
- * The filter is purely a render concern — {@link activate} always reports the full expert path;
- * this view intersects it with the tier's visible geometry ({@link nodeVisibleAt} /
- * {@link wireVisibleAt}), and reveals the mux control-line labels only at `expert`.
+ * DEPTH TIER (step 9, handoff §4): the `tier` prop selects the representational fidelity drawn
+ * over the (tier-invariant) geometry. `essentials` shows the bare lit path; `detailed` adds the
+ * value on each active wire ({@link showValueLabels}); `expert` adds the mux control-line labels
+ * ({@link showControlLabels}). The filter is purely a render concern — {@link activate} always
+ * reports the full expert path with values; this view chooses which labels to draw. (The
+ * {@link nodeVisibleAt}/{@link wireVisibleAt} geometry filter is also applied, but no single-cycle
+ * node sets `minTier`, so it is a no-op here — it is kept for the pipeline tier.)
  */
 
 import type { DepthTier } from '@cpu-viz/curriculum';
@@ -23,6 +26,8 @@ import {
   PHASE_LABELS,
   PHASES,
   phaseVisibleAt,
+  showControlLabels,
+  showValueLabels,
   WIRES,
   wireVisibleAt,
   type DatapathNode,
@@ -149,39 +154,41 @@ export function Datapath(props: {
           );
         })}
 
-        {/* Value labels on active wires. */}
-        {WIRES.map((wire) => {
-          if (!wireVisibleAt(wire, tier)) return null;
-          const a = act.wires.get(wire.id);
-          if (!a || a.value === undefined || !phaseVisibleAt(wire.stage, phase)) return null;
-          const [mx, my] = midOf(wire.points);
-          const text = fmtValue(a.value, a.fmt);
-          return (
-            <g key={`v-${wire.id}`}>
-              <rect
-                x={mx - text.length * 3.2 - 3}
-                y={my - 8}
-                width={text.length * 6.4 + 6}
-                height={14}
-                rx={3}
-                fill="#fff"
-                stroke={ACTIVE}
-                strokeWidth={0.6}
-                opacity={0.95}
-              />
-              <text
-                x={mx}
-                y={my + 2}
-                textAnchor="middle"
-                fontSize={9}
-                fontFamily="ui-monospace, monospace"
-                fill={ACTIVE}
-              >
-                {text}
-              </text>
-            </g>
-          );
-        })}
+        {/* Value labels on active wires — a `detailed`+ representational detail (handoff §4).
+            `essentials` omits them all (showing only some would imply a value with no source). */}
+        {showValueLabels(tier) &&
+          WIRES.map((wire) => {
+            if (!wireVisibleAt(wire, tier)) return null;
+            const a = act.wires.get(wire.id);
+            if (!a || a.value === undefined || !phaseVisibleAt(wire.stage, phase)) return null;
+            const [mx, my] = midOf(wire.points);
+            const text = fmtValue(a.value, a.fmt);
+            return (
+              <g key={`v-${wire.id}`}>
+                <rect
+                  x={mx - text.length * 3.2 - 3}
+                  y={my - 8}
+                  width={text.length * 6.4 + 6}
+                  height={14}
+                  rx={3}
+                  fill="#fff"
+                  stroke={ACTIVE}
+                  strokeWidth={0.6}
+                  opacity={0.95}
+                />
+                <text
+                  x={mx}
+                  y={my + 2}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontFamily="ui-monospace, monospace"
+                  fill={ACTIVE}
+                >
+                  {text}
+                </text>
+              </g>
+            );
+          })}
 
         {/* Components. `expert` also reveals each mux's control-line label (handoff §4). */}
         {Array.from(NODES.values())
@@ -191,7 +198,7 @@ export function Datapath(props: {
               key={node.id}
               node={node}
               active={act.components.has(node.id) && phaseIdx >= PHASES.indexOf(node.stage)}
-              showControl={tier === 'expert'}
+              showControl={showControlLabels(tier)}
             />
           ))}
       </svg>

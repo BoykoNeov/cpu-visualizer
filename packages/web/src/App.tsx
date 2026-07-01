@@ -19,8 +19,9 @@ import { useSimulator } from './useSimulator';
 export function App(): React.JSX.Element {
   const sim = useSimulator();
   // Explanation depth (axis B, handoff §4) — a view/curriculum concern only; the engine is
-  // oblivious (INV-2). Default to `detailed`: the full structural datapath, with `essentials`
-  // simplifying it and `expert` adding the control-line labels.
+  // oblivious (INV-2). On single-cycle the tier changes the datapath's representational detail:
+  // `essentials` shows the bare lit path, `detailed` (default) adds the value on each active wire,
+  // `expert` adds the mux control-line labels.
   const [tier, setTier] = useState<DepthTier>('detailed');
 
   const source = useMemo(

@@ -17,14 +17,26 @@
  * they exist,
  * falling back to `decoded.imm` / the instruction `pc` for segments no event covers.
  *
- * DEPTH TIERS (build-order step 9, handoff §4 "structural detail" layer): each node carries an
- * optional `minTier` (absent ⇒ `essentials`, always drawn); the view draws only elements at or
- * below the selected tier. A wire is drawn iff **both** its endpoint nodes are drawn — so the
- * tiering can hide a box without leaving a wire stabbing into empty space (INV-5 lawful
- * simplification: a lower tier omits detail, it never contradicts a higher tier). Tiering is a
- * pure *render filter* over this geometry; {@link activate} stays completely tier-oblivious
- * (INV-2) — it always reports the full expert path, and the renderer intersects that with the
- * tier's visible geometry.
+ * DEPTH TIERS (build-order step 9, handoff §4). §4 splits explanation depth across three layers;
+ * on the single-cycle datapath we tier the **representational fidelity** (layer 2), NOT the
+ * structural detail (layer 1):
+ *   - `essentials` — the full datapath, but **without wire value labels**: watch the instruction
+ *     flow through the stages (the phase stepper is the story).
+ *   - `detailed`   — the same structure **plus the value on each active wire**.
+ *   - `expert`     — plus each mux's **control-line label** (`ALUSrc`/`MemToReg`).
+ * This is lawful by construction (INV-5): every tier shows the SAME wires, so nothing is ever
+ * omitted that a higher tier contradicts — each tier only *adds* labels. {@link activate} stays
+ * completely tier-oblivious (INV-2); it always emits full state + values, and the renderer merely
+ * chooses which labels to draw.
+ *
+ * Why not tier the *structure* (hide boxes at `essentials`)? On a connected single-cycle datapath
+ * every box is on the active path for some common instruction (`alusrc` for every ALU op,
+ * `immgen` for imm/load/store, `branchadd` for branches, `add4`/`pcsel` for every fetch), so
+ * hiding a box leaves a lit wire dangling into empty space — worse, a *contradiction* ("the ALU
+ * produced 5 from one operand"), which INV-5 forbids. Structural hiding pays off only where units
+ * are NOT on every instruction's path — the pipeline tier's forwarding mux / hazard unit (§4's
+ * worked example). The `minTier` mechanism below is kept and wired through for exactly that; it is
+ * simply unused (no node sets it) on single-cycle.
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
@@ -62,28 +74,28 @@ export interface DatapathNode {
   readonly stage: Phase;
   /** Draw as a trapezoid (a mux/adder) rather than a plain box. */
   readonly shape?: 'box' | 'mux' | 'adder';
-  /** Lowest depth tier at which this component is drawn (handoff §4). Absent ⇒ `essentials`. */
+  /** Lowest depth tier at which this component is drawn (handoff §4). Absent ⇒ `essentials`.
+   *  **Unused on single-cycle** (see the module header): every box is on the active path for
+   *  some common instruction, so hiding one would dangle a lit wire. Reserved for the pipeline
+   *  tier, where forwarding/hazard units genuinely aren't on every instruction's path. */
   readonly minTier?: DepthTier;
   /** The control signal this mux is driven by — shown as an annotation only at `expert` tier. */
   readonly controlLabel?: string;
 }
 
-// Depth-tier assignment (handoff §4 "structural detail"; INV-5 lawful simplification):
-//  - essentials (minTier absent): the register-only spine + closed fetch/writeback loops —
-//    pc, imem, regfile, alu, dmem, wbmux, pcsel, add4. A clean add/lw story.
-//  - detailed: the immediate path (immgen, alusrc) and the branch-target adder (branchadd).
-//  - expert: no new boxes — the muxes gain a `controlLabel` revealing the control line (below).
+// All boxes are drawn at every tier (no `minTier` set): the single-cycle datapath tiers its
+// representation, not its structure (see the module header). `expert` adds each mux's control
+// label — the only per-node tier variation here. `pcsel` already carries its identity label at
+// every tier, so only the two otherwise-blank muxes (alusrc, wbmux) get a control label.
 const NODE_LIST: readonly DatapathNode[] = [
-  // `pcsel` carries its identity label at every tier already, so it needs no separate expert
-  // control-line label; the two otherwise-blank muxes (alusrc, wbmux) get theirs below.
   { id: 'pcsel', label: 'PCsrc', x: 30, y: 150, w: 26, h: 70, stage: 'WB', shape: 'mux' },
   { id: 'pc', label: 'PC', x: 20, y: 258, w: 46, h: 44, stage: 'IF' },
   { id: 'add4', label: '+4', x: 118, y: 48, w: 66, h: 46, stage: 'IF', shape: 'adder' },
   { id: 'imem', label: 'Instr\nMemory', x: 112, y: 256, w: 98, h: 88, stage: 'IF' },
   { id: 'regfile', label: 'Registers', x: 286, y: 214, w: 116, h: 132, stage: 'ID' },
-  { id: 'immgen', label: 'Imm\nGen', x: 286, y: 378, w: 116, h: 48, stage: 'ID', minTier: 'detailed' }, // prettier-ignore
-  { id: 'branchadd', label: '+', x: 452, y: 66, w: 66, h: 52, stage: 'EX', shape: 'adder', minTier: 'detailed' }, // prettier-ignore
-  { id: 'alusrc', label: '', x: 448, y: 256, w: 26, h: 78, stage: 'EX', shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrc' }, // prettier-ignore
+  { id: 'immgen', label: 'Imm\nGen', x: 286, y: 378, w: 116, h: 48, stage: 'ID' },
+  { id: 'branchadd', label: '+', x: 452, y: 66, w: 66, h: 52, stage: 'EX', shape: 'adder' },
+  { id: 'alusrc', label: '', x: 448, y: 256, w: 26, h: 78, stage: 'EX', shape: 'mux', controlLabel: 'ALUSrc' }, // prettier-ignore
   { id: 'alu', label: 'ALU', x: 512, y: 236, w: 88, h: 100, stage: 'EX', shape: 'adder' },
   { id: 'dmem', label: 'Data\nMemory', x: 652, y: 256, w: 98, h: 88, stage: 'MEM' },
   { id: 'wbmux', label: '', x: 812, y: 256, w: 26, h: 78, stage: 'WB', shape: 'mux', controlLabel: 'MemToReg' }, // prettier-ignore
@@ -175,9 +187,25 @@ export function nodeVisibleAt(node: DatapathNode, tier: DepthTier): boolean {
 }
 
 /** Whether a wire is drawn at `tier`: iff BOTH endpoint nodes are drawn (INV-5 — hiding a box
- *  hides the wires into it, so no wire ever dangles into empty space). */
+ *  hides the wires into it, so no wire ever dangles into empty space). On single-cycle no node
+ *  sets `minTier`, so this is always true; it stays wired for the pipeline tier. */
 export function wireVisibleAt(wire: DatapathWire, tier: DepthTier): boolean {
   return wire.ends.every((id) => nodeVisibleAt(NODES.get(id)!, tier));
+}
+
+// The tiered layer on single-cycle is representational fidelity (handoff §4 layer 2), not
+// structure: `essentials` shows the bare lit path, higher tiers add labels. All-or-nothing on the
+// value labels — showing only some (e.g. the writeback value) would reintroduce a value with no
+// visible source, the very "from nowhere" read that structural hiding fails INV-5 on.
+
+/** Whether active wires carry their value labels at `tier` (everything except `essentials`). */
+export function showValueLabels(tier: DepthTier): boolean {
+  return tier !== 'essentials';
+}
+
+/** Whether muxes show their control-line label at `tier` (`expert` only). */
+export function showControlLabels(tier: DepthTier): boolean {
+  return tier === 'expert';
 }
 
 // --- Activation ---------------------------------------------------------------------------

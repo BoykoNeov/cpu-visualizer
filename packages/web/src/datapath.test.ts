@@ -6,6 +6,8 @@ import {
   NODES,
   nodeVisibleAt,
   phaseVisibleAt,
+  showControlLabels,
+  showValueLabels,
   tierVisible,
   WIRES,
   wireVisibleAt,
@@ -50,7 +52,7 @@ describe('datapath geometry', () => {
   });
 });
 
-describe('depth tiers (structural detail; handoff §4, INV-5)', () => {
+describe('depth tiers (representational fidelity; handoff §4, INV-5)', () => {
   const visibleNodes = (t: DepthTier): Set<string> =>
     new Set([...NODES.values()].filter((n) => nodeVisibleAt(n, t)).map((n) => n.id));
   const visibleWires = (t: DepthTier): Set<string> =>
@@ -63,27 +65,21 @@ describe('depth tiers (structural detail; handoff §4, INV-5)', () => {
     expect(tierVisible('detailed', 'expert')).toBe(true); // higher tier keeps lower detail
   });
 
-  it('reveals strictly more detail as the tier climbs (monotone containment)', () => {
-    // essentials ⊆ detailed ⊆ expert, and each transition adds something (lawful simplification:
-    // a higher tier only ever GAINS machinery — INV-5). Expert draws the whole diagram.
-    for (const set of [visibleNodes, visibleWires]) {
-      const [ess, det, exp] = DEPTH_TIERS.map(set) as [Set<string>, Set<string>, Set<string>];
-      expect([...ess].every((id) => det.has(id))).toBe(true);
-      expect([...det].every((id) => exp.has(id))).toBe(true);
-      expect(det.size).toBeGreaterThan(ess.size); // detailed adds the immediate path + branch adder
+  it('draws the SAME structure at every tier (single-cycle tiers representation, not structure)', () => {
+    // Every box is on the active path for some common instruction, so hiding one would dangle a
+    // lit wire (a "value from nowhere" — an INV-5 contradiction). So no node sets `minTier` and
+    // the full geometry is drawn at all three tiers; the tiered detail is labels, not boxes.
+    for (const tier of DEPTH_TIERS) {
+      expect(visibleNodes(tier).size).toBe(NODES.size);
+      expect(visibleWires(tier).size).toBe(WIRES.length);
     }
-    expect(visibleNodes('expert').size).toBe(NODES.size); // expert hides no geometry
-    expect(visibleWires('expert').size).toBe(WIRES.length);
   });
 
-  it('essentials draws the register-only spine and hides the immediate path', () => {
-    const nodes = visibleNodes('essentials');
-    for (const id of ['pc', 'imem', 'regfile', 'alu', 'dmem', 'wbmux', 'pcsel', 'add4']) {
-      expect(nodes.has(id), `essentials should draw ${id}`).toBe(true);
-    }
-    for (const id of ['immgen', 'alusrc', 'branchadd']) {
-      expect(nodes.has(id), `essentials should hide ${id}`).toBe(false);
-    }
+  it('adds representational detail as the tier climbs (labels only add — lawful, INV-5)', () => {
+    // essentials: bare lit path. detailed: + wire value labels. expert: + mux control labels.
+    // Monotone: a higher tier only ever GAINS labels, never contradicts a lower one.
+    expect(DEPTH_TIERS.map(showValueLabels)).toEqual([false, true, true]);
+    expect(DEPTH_TIERS.map(showControlLabels)).toEqual([false, false, true]);
   });
 
   it('never draws a wire whose endpoint node is hidden (no dangling wires — INV-5)', () => {

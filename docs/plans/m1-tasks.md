@@ -154,31 +154,43 @@ Each step should be testable before the next.
       live, no memory/writeback), and **`lui`** (no reg-read/alu-op, imm→writeback) — plus a
       geometry sanity check; the visual half was eyeballed via headless-Chrome screenshots of the
       load/store/branch/pre-run states (as step 7 was). 5 new tests (301 total). `npm run build` + `dev` verified.
-- [x] **9. Depth-tier rendering** — DONE (2026-07-01). The **structural-detail** layer (§4) on
-      the datapath view: three depth tiers (`essentials → detailed → expert`, axis B). Each
-      `DatapathNode` carries an optional `minTier: DepthTier` (imported from `curriculum` — the
-      single source of the tier order; absent ⇒ `essentials`, always drawn) and the view draws
-      only elements at or below the selected tier. `activate` stays **completely tier-oblivious**
-      (INV-2): tiering is a pure *render filter* over the fixed geometry, intersected with the
-      full expert activation. **Wire visibility is endpoint-driven, not id-driven** — each wire
-      gained an explicit `ends: [a, b]` (the two node ids it physically connects; the display
-      `id` does NOT reliably name them — e.g. `regfile-rs2` terminates at `alusrc`), and a wire is
-      drawn iff BOTH ends are drawn, so hiding a box can never leave a wire stabbing into empty
-      space (INV-5 lawful simplification). Assignment: essentials = the register-only spine +
-      closed fetch/writeback loops (pc, imem, regfile, alu, dmem, wbmux, pcsel, add4); detailed
-      adds the immediate path + branch-target adder (immgen, alusrc, branchadd); expert adds no
-      new geometry — the two otherwise-blank muxes gain an italic control-line label
-      (`ALUSrc`/`MemToReg`) via a `controlLabel` field ("expert reveals every control line", §4).
-      A `DepthDial` in the web header (defaulting to `detailed`) drives it; the narration half of
-      the acceptance criterion ships via the already-seeded `resolveNarration` (curriculum) and is
-      exercised when lessons land (step 11). Tests (`datapath.test.ts`, +7 → 12): `tierVisible`
-      semantics, **monotone containment** (essentials ⊆ detailed ⊆ expert, expert = all geometry),
-      the essentials assignment, a **no-dangling-wire** coherence check at every tier, and an
-      **`ends` drift guard** (each wire's first/last point lies on its named node's box). The
-      visual half — the reduced/annotated diagram reads coherently at each tier — was eyeballed via
-      headless-Chrome screenshots across the three tiers (as steps 7–8 were). `web` gained
-      `@cpu-viz/curriculum` as a declared dependency (Vite alias + tsconfig path already existed).
-      308 tests green. `npm run build` verified.
+- [x] **9. Depth-tier rendering** — DONE (2026-07-01). Three depth tiers (`essentials → detailed
+→ expert`, axis B / §4) on the datapath view. **Key finding: on single-cycle we tier the
+      _representational fidelity_ (§4 layer 2), NOT the structural detail (layer 1).** The first
+      cut hid boxes at lower tiers (`immgen`/`alusrc`/`branchadd` promoted to `detailed`), but
+      headless-Chrome screenshots of the _lit path_ exposed an INV-5 **contradiction**: on a
+      connected single-cycle datapath every box is on the active path for some common instruction
+      (`alusrc` for every ALU op, `immgen` for imm/load/store, `add4`/`pcsel` for every fetch), so
+      hiding one leaves a lit wire dangling — `lui` showed a value arriving at the writeback mux
+      from nowhere, `addi` showed "the ALU made 5 from one operand." That is a wrong model a
+      learner must _unlearn_, not a lawful abstraction. So structural box-hiding was abandoned for
+      this datapath and the tiered layer became labels over the (tier-invariant) geometry:
+      **essentials** = the bare lit path (no wire value labels — the phase stepper is the story);
+      **detailed** = + the value on each active wire; **expert** = + each mux's control-line label
+      (`ALUSrc`/`MemToReg`, via a `controlLabel` field). Lawful **by construction**: every tier
+      draws the same wires, each tier only _adds_ labels — nothing is ever omitted that a higher
+      tier contradicts (the INV-5 litmus). `activate` stays completely tier-oblivious (INV-2); it
+      always emits full state + values and the renderer chooses which labels to draw
+      (`showValueLabels`/`showControlLabels`, pure policy helpers). Value labels are all-or-nothing
+      at essentials — showing _some_ would reintroduce a value with no visible source. Kept from
+      the first cut: the `minTier: DepthTier` mechanism (imported from `curriculum`, the single
+      source of tier order) + `tierVisible`/`nodeVisibleAt`/`wireVisibleAt` are wired through but
+      **unused on single-cycle** (no node sets `minTier`) — reserved for the pipeline tier, where
+      §4's own forwarding example (essentials arrow → expert mux + hazard unit) makes structural
+      hiding meaningful because those units _aren't_ on every instruction's path. Also kept: each
+      wire's explicit `ends: [a, b]` (the two node ids it physically connects; the display `id`
+      does NOT reliably name them — `regfile-rs2` terminates at `alusrc`) and the endpoint-driven
+      wire-visibility rule. A `DepthDial` in the web header (defaulting to `detailed`) drives it;
+      the **narration** half of the depth axis ships via the already-seeded `resolveNarration`
+      (curriculum) and is exercised when lessons land (step 11). Tests (`datapath.test.ts`, +7 →
+      12): `tierVisible` + `showValueLabels`/`showControlLabels` semantics, structure is
+      **tier-invariant** (all boxes/wires at every tier), a **no-dangling-wire** coherence check,
+      and an **`ends` drift guard** (each wire's first/last point lies on its named node's box).
+      The visual half — essentials reads as a true-but-spare diagram with no orphaned values,
+      detailed adds numbers, expert adds control lines — was verified via headless-Chrome
+      screenshots across all three tiers on `lui`/`addi`/`lw` (the gap-exposing instructions).
+      `web` gained `@cpu-viz/curriculum` as a declared dependency (Vite alias + tsconfig path
+      already existed). 308 tests green. `npm run build` verified.
 - [ ] **10. `curriculum`** — lesson format + runner + event-anchoring. _Types + narration
       resolver seeded._
 - [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
@@ -198,11 +210,14 @@ Each step should be testable before the next.
       recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
       forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
 - [~] Switching depth tier changes datapath detail and narration without changing engine
-      behavior and without violating lawful simplification (INV-5). _Structural half DONE (step 9):
-      the depth dial changes how much datapath geometry is drawn (essentials ⊆ detailed ⊆ expert,
-      proven monotone + coherent + eyeballed); `activate`/the engine are untouched (INV-2). The
-      narration half awaits the lessons that author variants (step 11) — the `resolveNarration`
-      resolver is already seeded and tested in `curriculum`._
+  behavior and without violating lawful simplification (INV-5). _View half DONE (step 9): the
+  depth dial changes the datapath's representational detail — essentials shows the bare lit path,
+  detailed adds wire value labels, expert adds mux control labels — each tier only ADDS (lawful by
+  construction, screenshot-verified on lui/addi/lw); `activate`/the engine are untouched (INV-2).
+  Structural box-hiding was tried and rejected here: every box is on the active path, so hiding one
+  contradicts (value-from-nowhere) — it's reserved for the pipeline tier. The narration half awaits
+  the lessons that author variants (step 11) — the `resolveNarration` resolver is already seeded and
+  tested in `curriculum`._
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
 - [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
