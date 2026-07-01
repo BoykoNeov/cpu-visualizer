@@ -134,7 +134,26 @@ Each step should be testable before the next.
       itself is already fully proven in `trace`, so no jsdom was added. 3 new tests (296 total).
       Verified end-to-end via `npm run build` (glob inlined) and `npm run dev` (raw `.s` served,
       HTTP 200).
-- [ ] **8. SVG datapath view** — the canonical single-cycle datapath, wired to trace events.
+- [x] **8. SVG datapath view** — DONE (2026-07-01). The canonical single-cycle RV32I datapath,
+      hand-authored in SVG (§14) and wired to the trace. Split into a pure, headlessly-testable
+      model (`packages/web/src/datapath.ts`) — fixed **geometry** (nodes/wires with hand-placed
+      coords) plus `activate(CycleTrace) → { components, wires, writtenReg }` — and the SVG view
+      (`DatapathView.tsx`) that lights the model and labels active wires with the value flowing on
+      them. The activation is **decode-driven for topology, event-driven for values** (INV-3): the
+      active path comes from `InstructionInstance.decoded` (so `lui`/`jal`/`auipc`, which emit no
+      reg-read/alu-op, still light a complete imm→writeback / target-adder path — the trap an
+      event-only mapping falls into), while wire values come from the emitted events
+      (reg-read/alu-op/mem-\*/reg-write) with fallback to `decoded.imm` / instruction `pc` for
+      segments no event covers. **Within-cycle phase sequencing** (Fetch→Decode→Execute→Memory→
+      Writeback) is a view-local stepper that progressively reveals the path — derived from event
+      order, NOT a schema `PhasedEvent` ordinal (the step-5 deferral holds: order already encodes
+      the phases, so no engine/trace change was needed, INV-2). Each node/wire carries an unused
+      `minTier` field reserved for step 9; no tier logic yet (the view stays tier-oblivious). The
+      derivation is unit-tested (`datapath.test.ts`, 5 tests) against the REAL engine on three
+      gap-exposing instructions — a **load** (full IF→WB through memory), a **branch** (PC-select
+      live, no memory/writeback), and **`lui`** (no reg-read/alu-op, imm→writeback) — plus a
+      geometry sanity check; the visual half was eyeballed via headless-Chrome screenshots of the
+      load/store/branch/pre-run states (as step 7 was). 5 new tests (301 total). `npm run build` + `dev` verified.
 - [ ] **9. Depth-tier rendering** — three tiers on the datapath view (`minTier` on elements;
       narration variants resolved highest ≤ current tier — helper seeded in `curriculum`).
 - [ ] **10. `curriculum`** — lesson format + runner + event-anchoring. _Types + narration
@@ -151,10 +170,10 @@ Each step should be testable before the next.
       registers + memory + `pc`/`halted`; new programs dropped into `content/programs/` are
       covered automatically._
 - [x] Load → step forward to completion → step back to start → scrub to any cycle; shown
-  state always matches the recorded trace. _Headlessly proven by `TraceRecorder` (step 5);
-  the visual half is now live in the step-7 web shell — the transport + scrub slider drive the
-  recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
-  forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
+      state always matches the recorded trace. _Headlessly proven by `TraceRecorder` (step 5);
+      the visual half is now live in the step-7 web shell — the transport + scrub slider drive the
+      recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
+      forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
 - [ ] Switching depth tier changes datapath detail and narration without changing engine
       behavior and without violating lawful simplification (INV-5).
 - [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).

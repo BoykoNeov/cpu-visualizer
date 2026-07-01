@@ -1,6 +1,7 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
 import type { InstructionInstance } from '@cpu-viz/trace';
 import { useMemo } from 'react';
+import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -70,6 +71,8 @@ export function App(): React.JSX.Element {
       ) : (
         <>
           <Transport sim={sim} atStart={atStart} lastCycle={lastCycle} inFlight={inFlight} />
+
+          <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} />
 
           {sim.state && sim.program ? (
             <div
