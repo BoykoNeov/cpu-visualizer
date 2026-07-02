@@ -37,15 +37,32 @@ function firstCycle(source: string): CycleTrace {
 }
 
 describe('datapath geometry', () => {
-  it('every wire endpoint prefix names a real node where it is a node id', () => {
-    // Each wire id is `a-b`; when a part matches a node id it must resolve (the activation
-    // relies on this to light the components a wire touches).
-    for (const wire of WIRES) {
-      for (const part of wire.id.split('-')) {
-        if (NODES.has(part)) expect(NODES.get(part)).toBeDefined();
+  it('activation coherence: every lit wire is a real wire with both endpoints lit', () => {
+    // The real guard the old id-prefix check only pretended to be. For a representative spread of
+    // instructions, every wire the activation lights must (a) resolve to a wire in the geometry —
+    // catching a typo'd id in a `w()` call, which would otherwise set a bogus key — and (b) have
+    // BOTH declared `ends` on the lit component set, so no lit wire ever runs into a dim box.
+    const byId = new Map(WIRES.map((wire) => [wire.id, wire]));
+    const programs = [
+      'lw x5, 0(x0)', // load: full IF→WB through data memory
+      'sw x0, 4(x0)', // store: rs2→memory, no writeback
+      'beq x0, x0, ahead\n  nop\nahead:', // branch: PC-select path, no mem/WB
+      'lui x5, 0x12345', // U-type: no reg-read, no alu-op — imm→WB
+      'add x5, x0, x0', // R-type: reg→ALU→WB
+      'jal x1, ahead\n  nop\nahead:', // jump-and-link: target adder + pc+4 writeback
+    ];
+    for (const src of programs) {
+      const a = activate(firstCycle(src));
+      for (const id of a.wires.keys()) {
+        const wire = byId.get(id);
+        expect(wire, `activated unknown wire "${id}" for \`${src}\``).toBeDefined();
+        for (const end of wire!.ends) {
+          const msg = `wire ${id} lit but endpoint ${end} is dim for \`${src}\``;
+          expect(a.components.has(end), msg).toBe(true);
+        }
       }
     }
-    // Sanity: the canonical components are all present.
+    // Sanity: the canonical components are all present in the geometry.
     for (const id of ['pc', 'imem', 'regfile', 'immgen', 'alu', 'dmem', 'wbmux', 'branchadd']) {
       expect(NODES.has(id), `missing node ${id}`).toBe(true);
     }

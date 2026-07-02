@@ -174,6 +174,12 @@ const WIRE_LIST: readonly DatapathWire[] = [
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
 
+/** Wire lookup by id. Activation uses this to light a wire's declared endpoints (`ends`) rather
+ *  than re-deriving them from the id string — the id is a display name and does NOT reliably
+ *  name the endpoints (e.g. `regfile-rs2` actually terminates at `alusrc`; `imm-wb` at immgen and
+ *  wbmux), as {@link DatapathWire.ends} warns. */
+const WIRE_BY_ID: ReadonlyMap<string, DatapathWire> = new Map(WIRE_LIST.map((wire) => [wire.id, wire])); // prettier-ignore
+
 // --- Depth tiers (structural detail; handoff §4) -----------------------------------------
 
 /** True when an element requiring `minTier` (absent ⇒ `essentials`) is drawn at `current`. */
@@ -274,9 +280,13 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   const wires = new Map<string, WireActivation>();
   const c = (id: string): void => void components.add(id);
   const w = (id: string, value: number | undefined, fmt: Fmt): void => {
+    const wire = WIRE_BY_ID.get(id);
+    if (!wire) throw new Error(`activate: unknown wire id "${id}"`);
     wires.set(id, { value, fmt });
-    // Light the components the wire touches (its two logical endpoints, by convention id `a-b`).
-    for (const part of id.split('-')) if (NODES.has(part)) c(part);
+    // Light the two components the wire physically connects (its declared `ends` — NOT the id
+    // string, which does not reliably name them). This keeps activation coherent by construction:
+    // a lit wire never runs into a dim box.
+    for (const end of wire.ends) c(end);
   };
 
   // Fetch is unconditional: PC → I-memory, PC → +4, and the selected next-PC returns to PC.
