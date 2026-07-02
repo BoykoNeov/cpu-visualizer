@@ -223,6 +223,12 @@ Each step should be testable before the next.
       check. A **real-engine integration test lands in `web` at step 11** when actual lessons exist.
       322 tests green.
 - [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
+  - [ ] **Runaway-guard the sandbox path.** `useSimulator.select()` calls `recorder.runToEnd()`
+        unguarded — fine for the terminating corpus, but the sandbox fork feeds user-edited programs
+        into this exact path. Before it lands: pass a teaching-scale `maxCycles` (~50k, not the 1M
+        default — a frozen tab beats a slow throw) to `runToEnd`/`scrubTo`, catch the throw in the
+        React handler (it currently escapes uncaught), and surface a friendly "program ran too long"
+        message. `scrubTo` now carries the same `maxCycles` guard as `runToEnd` (both default 1M).
 
 ## Acceptance criteria (spec §11)
 

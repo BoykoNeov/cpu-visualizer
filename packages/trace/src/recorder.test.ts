@@ -182,6 +182,16 @@ describe('TraceRecorder: forward recording', () => {
     rec.load(EMPTY_IMAGE);
     expect(() => rec.runToEnd(10)).toThrow(/non-terminating/);
   });
+
+  it('scrubTo() throws when scrubbing forward past maxCycles into a non-terminating run', () => {
+    const endless: CycleTrace[] = Array.from({ length: 50 }, (_, i) =>
+      mkTrace(i, mkState({ regs: { 1: i } })),
+    );
+    const proc = new StubProcessor(mkState({}), endless);
+    const rec = new TraceRecorder(proc);
+    rec.load(EMPTY_IMAGE);
+    expect(() => rec.scrubTo(40, 10)).toThrow(/non-terminating/);
+  });
 });
 
 describe('TraceRecorder: time-travel (back / scrub)', () => {

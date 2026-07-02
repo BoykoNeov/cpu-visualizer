@@ -122,11 +122,16 @@ export class TraceRecorder {
   /**
    * Move the cursor to `cycle`, recording forward as needed. Clamped to `[-1, last
    * recordable cycle]`: `-1` returns to the pre-run state; a target past the end of a halted
-   * run stops at the final cycle. Returns the resulting cursor.
+   * run stops at the final cycle. Returns the resulting cursor. Like {@link runToEnd},
+   * `maxCycles` guards against a runaway program when scrubbing forward into unrecorded cycles
+   * (e.g. the step-11 sandbox fork of a user-edited program) — exceeding it throws.
    */
-  scrubTo(cycle: number): number {
+  scrubTo(cycle: number, maxCycles = 1_000_000): number {
     this.requireLoaded();
     while (cycle > this.traces.length - 1 && !this.processor.isHalted()) {
+      if (this.traces.length >= maxCycles) {
+        throw new Error(`scrubTo exceeded ${maxCycles} cycles — non-terminating program?`);
+      }
       this.traces.push(this.processor.step());
     }
     const lastIndex = this.traces.length - 1;
