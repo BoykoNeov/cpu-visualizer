@@ -11,10 +11,11 @@ an expert should both get value from the same tool, traveling along two independ
 - **Microarchitecture tier** — which machine is running (single-cycle → … → out-of-order).
 - **Explanation depth** — how much detail is revealed (`essentials` → `detailed` → `expert`).
 
-> **Status: early scaffold.** The monorepo, toolchain, CI, and a real RV32I decoder seed are
-> in place. Milestone 1 (the first end-to-end vertical slice) is in progress — see
-> [`docs/plans/m1-tasks.md`](docs/plans/m1-tasks.md). The full design is in
-> [`cpu-visualizer-spec.md`](cpu-visualizer-spec.md).
+> **Status: Milestone 1 in progress.** The single-cycle model runs end to end — assemble a
+> program, then step / scrub / run it through a live SVG datapath with switchable explanation
+> depth while registers and memory update. Authored lessons and the sandbox fork are the
+> remaining M1 work — see [`docs/plans/m1-tasks.md`](docs/plans/m1-tasks.md). The full design is
+> in [`cpu-visualizer-spec.md`](cpu-visualizer-spec.md).
 
 ## Repository layout
 
@@ -57,4 +58,4 @@ hold at every milestone.
 
 ## License
 
-[MIT](LICENSE) © 2026 Boyko Neov
+[Boyko Non-Commercial License v1.0 (BNCL-1.0)](LICENSE) © 2026 Boyko Neov
