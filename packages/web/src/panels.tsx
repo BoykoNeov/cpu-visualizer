@@ -125,11 +125,9 @@ export function RegisterPanel(props: {
  * data region (`addr >= DATA_BASE`); the instruction words already appear in the source panel.
  */
 export function MemoryPanel(props: { state: MachineState }): React.JSX.Element {
-  const addrs = props.state.memory
-    .definedAddresses()
-    .filter((a) => a >= DATA_BASE)
-    .slice()
-    .sort((a, b) => a - b);
+  // `definedAddresses()` already returns a sorted array and `.filter` copies it, so the data
+  // window is sorted without a further `.slice().sort()`.
+  const addrs = props.state.memory.definedAddresses().filter((a) => a >= DATA_BASE);
   return (
     <section style={panelStyle}>
       <h2 style={headingStyle}>Data memory</h2>
