@@ -71,6 +71,16 @@ export default tseslint.config(
     ),
   },
   {
+    // The golden reference must stay model-agnostic: it may not depend on a specific engine model.
+    // (The reverse — single-cycle importing the reference for its INV-8 differential test — is
+    // allowed, so this is scoped to `reference/**`, not all of `engine/**`.)
+    files: ['packages/engine/reference/**/*.ts'],
+    rules: deny(
+      ['engine-single-cycle'],
+      'INV-8: the golden reference is model-agnostic; it never depends on a specific engine model.',
+    ),
+  },
+  {
     files: ['packages/curriculum/**/*.ts'],
     rules: deny(
       ['assembler', 'engine-reference', 'engine-single-cycle', 'web'],
