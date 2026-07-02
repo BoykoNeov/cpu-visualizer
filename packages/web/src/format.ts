@@ -44,12 +44,20 @@ export function hex32(value: number): string {
   return `0x${(value >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+/** Loads share the I-format encoding with the ALU-immediates but are conventionally written with
+ *  base+offset addressing (`lw x5, 4(x0)`), not three operands. */
+const LOAD_MNEMONICS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
+/** Operand-less I-encoded ops (`ecall`/`ebreak`/`fence`) render as the bare mnemonic. */
+const NO_OPERAND_MNEMONICS = new Set(['ecall', 'ebreak', 'fence']);
+
 /** Render a decoded instruction as a short, human-readable line for display panels. */
 export function formatInstruction(d: DecodedInstruction): string {
   switch (d.format) {
     case 'R':
       return `${d.mnemonic} x${d.rd}, x${d.rs1}, x${d.rs2}`;
     case 'I':
+      if (NO_OPERAND_MNEMONICS.has(d.mnemonic)) return d.mnemonic;
+      if (LOAD_MNEMONICS.has(d.mnemonic)) return `${d.mnemonic} x${d.rd}, ${d.imm}(x${d.rs1})`;
       return `${d.mnemonic} x${d.rd}, x${d.rs1}, ${d.imm}`;
     case 'S':
       return `${d.mnemonic} x${d.rs2}, ${d.imm}(x${d.rs1})`;

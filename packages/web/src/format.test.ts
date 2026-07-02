@@ -12,6 +12,14 @@ describe('formatInstruction', () => {
     expect(formatInstruction(decode(0x002081b3))).toBe('add x3, x1, x2');
   });
 
+  it('formats a load with base+offset addressing, not three operands', () => {
+    expect(formatInstruction(decode(0x00832283))).toBe('lw x5, 8(x6)');
+  });
+
+  it('formats an operand-less system op as the bare mnemonic', () => {
+    expect(formatInstruction(decode(0x00000073))).toBe('ecall');
+  });
+
   it('formats an unknown encoding with its raw word', () => {
     expect(formatInstruction(decode(0x00000000))).toBe('unknown (0x00000000)');
   });
