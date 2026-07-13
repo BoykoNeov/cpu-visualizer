@@ -79,6 +79,24 @@ describe('authored lessons (INV-6)', () => {
         }
         // (2) Steps anchor in non-decreasing trace order (an authoring check, INV-6).
         expect(anchorOrderViolations(anchored)).toEqual([]);
+        // (2b) No two steps anchor to the SAME cycle. The play-through's Prev/Next and step-rail
+        //      navigate by cursor, and the cursor addresses a whole cycle — it cannot select
+        //      between two events within one cycle. So two steps sharing a cycle are not
+        //      independently reachable: clicking the earlier one's dot lands on the later
+        //      (max-eventIndex) step, and that earlier step's narration can never be shown. This
+        //      only bites if a lesson attaches two narrated steps to two phases of ONE
+        //      instruction (single-cycle ⇒ one cycle); guard against it at authoring time rather
+        //      than shipping an unreachable step.
+        const byCycle = new Map<number, number[]>();
+        for (const step of anchored) {
+          if (step.cycle === null) continue;
+          byCycle.set(step.cycle, [...(byCycle.get(step.cycle) ?? []), step.index]);
+        }
+        const sameCycle = [...byCycle.entries()].filter(([, idxs]) => idxs.length > 1);
+        expect(
+          sameCycle,
+          `steps share a cycle and can't be reached independently by the cursor: ${JSON.stringify(sameCycle)}`,
+        ).toEqual([]);
         // (3) Each step has narration resolvable at the lesson's default tier — catches a
         //     mistyped tier key that would otherwise render blank narration.
         for (const { step } of anchored) {
