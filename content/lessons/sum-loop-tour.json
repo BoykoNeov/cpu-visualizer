@@ -1,0 +1,47 @@
+{
+  "id": "sum-loop-tour",
+  "title": "Anatomy of a loop",
+  "program": "sum-loop",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "instr-fetch", "nth": 1 },
+      "narration": {
+        "essentials": "The processor starts by fetching the first instruction.",
+        "detailed": "Every cycle begins with a fetch: the processor reads the instruction at the program counter from memory, then decodes it.",
+        "expert": "Fetch: the PC (0x00000000) indexes instruction memory; the word is latched into the decoder and the PC is prepared to advance by 4."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 5 } },
+      "narration": {
+        "essentials": "t0 becomes the loop counter, set to 10.",
+        "detailed": "t0 is the loop counter, initialized to 10. The loop will add 10, then 9, and so on down to 1."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 2, "where": { "reg": 10 } },
+      "narration": {
+        "essentials": "The loop body adds the counter into the running total.",
+        "detailed": "The heart of the loop: `add a0, a0, t0` adds the current counter value into a0, the running total. On this first pass a0 becomes 10.",
+        "expert": "The register file reads a0 and t0, the ALU adds them, and the result is written back to a0 in the same cycle."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "nth": 1, "where": { "op": "bne" } },
+      "narration": {
+        "essentials": "The branch checks the counter and loops back if it isn't zero.",
+        "detailed": "`bnez t0, loop` compares the counter against zero. While it is non-zero the branch is taken, so the PC jumps back to the top of the loop and the body runs again.",
+        "expert": "The ALU evaluates the branch condition (t0 != 0 -> 1 = taken); the branch unit selects PC + immediate over PC + 4."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 11, "where": { "reg": 10 } },
+      "narration": {
+        "essentials": "After ten passes the total in a0 is 55.",
+        "detailed": "The counter has reached zero, so the branch falls through and the loop ends. a0 now holds 55 — the sum 10 + 9 + ... + 1."
+      }
+    }
+  ]
+}

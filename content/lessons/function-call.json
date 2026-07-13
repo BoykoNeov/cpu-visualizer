@@ -1,0 +1,39 @@
+{
+  "id": "function-call",
+  "title": "Calling and returning from a function",
+  "program": "call-return",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 10 } },
+      "narration": {
+        "essentials": "We set up the call max(17, 42).",
+        "detailed": "The arguments are placed in the argument registers: the first, 17, goes into a0 (a1 gets 42 next). This is the calling convention the function will read from."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 1 } },
+      "narration": {
+        "essentials": "`jal` jumps into the function and saves where to come back.",
+        "detailed": "`jal ra, max` calls the function: it jumps to `max` and saves the return address (the instruction after the call) into ra, so the function knows where to come back to.",
+        "expert": "jal writes PC + 4 into ra (x1) and sets the PC to PC + immediate; no source register is read."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "nth": 1, "where": { "op": "bge" } },
+      "narration": {
+        "essentials": "Inside the function, the arguments are compared.",
+        "detailed": "`bge a0, a1, done` compares the arguments. 17 is not >= 42, so the branch is not taken and the function falls through to copy a1 into a0 as the larger value.",
+        "expert": "The ALU evaluates the signed comparison a0 >= a1 -> 0 (not taken); the branch unit keeps PC + 4."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 8 } },
+      "narration": {
+        "essentials": "The function returns 42, and the caller saves it.",
+        "detailed": "`ret` jumped back through ra to the caller, which now saves the returned result (42) into s0. The call is complete."
+      }
+    }
+  ]
+}

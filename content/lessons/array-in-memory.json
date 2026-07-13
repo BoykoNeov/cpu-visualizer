@@ -1,0 +1,40 @@
+{
+  "id": "array-in-memory",
+  "title": "Walking an array in memory",
+  "program": "array-sum",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "mem-read", "nth": 1 },
+      "narration": {
+        "essentials": "`lw` loads the first array element from memory.",
+        "detailed": "`lw t2, 0(t0)` reads a word from data memory into a register — here the first array element, 5. Each loop pass loads the next element.",
+        "expert": "The ALU computes the effective address (base t0 + offset 0); data memory is read at that address and the 32-bit word is written into t2."
+      }
+    },
+    {
+      "trigger": { "event": "mem-read", "nth": 1, "where": { "value": -4 } },
+      "narration": {
+        "essentials": "One element is negative — that works fine.",
+        "detailed": "The third element is -4. Registers are 32-bit two's-complement, so the negative word loads directly and the running sum stays correct.",
+        "expert": "The stored word 0xFFFFFFFC is read as the signed value -4; no extension is needed because `lw` transfers a full 32-bit word."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 6, "where": { "reg": 10 } },
+      "narration": {
+        "essentials": "After the loop, a0 holds the total, 120.",
+        "detailed": "The loop has added all five elements (5 + 17 - 4 + 100 + 2). a0 now holds the total, 120, and the loop counter has hit zero."
+      }
+    },
+    {
+      "trigger": { "event": "mem-write", "nth": 1 },
+      "narration": {
+        "essentials": "`sw` writes the total back to memory.",
+        "detailed": "`sw a0, 0(t3)` stores the total (120) back into memory at the address of `total`, so the result outlives the registers.",
+        "expert": "The ALU computes the store address (base t3 + offset 0); the low 32 bits of a0 are written to data memory at that address."
+      }
+    }
+  ]
+}

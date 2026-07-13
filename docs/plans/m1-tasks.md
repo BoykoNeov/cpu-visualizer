@@ -222,11 +222,32 @@ Each step should be testable before the next.
       skip-unanchored, narration tier fallback + undefined-when-nothing-active, and the order-violation
       check. A **real-engine integration test lands in `web` at step 11** when actual lessons exist.
       322 tests green.
-- [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
+- [~] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
+  - [x] **Author 2–3 lessons.** DONE (2026-07-13). Three lessons authored as declarative JSON in
+        `content/lessons/` (`sum-loop-tour`, `array-in-memory`, `function-call` — parallel to
+        `content/programs/*.s`, the platform/content split §13; `program` references a corpus program
+        by base name, INV-7). Each is single-cycle, `depthDefault: detailed`, with 4–5 event-anchored
+        steps carrying per-tier narration (essentials/detailed/expert, INV-5). Anchors are the exact
+        events the engine emits (verified against `processor.ts`): e.g. sum-loop's final total is
+        `reg-write reg:10 nth:11 → 55`, the loop-back is `alu-op op:'bne'`; array-sum's negative element
+        is `mem-read where:{value:-4}` (safe: `readWord` returns signed int32); function-call's linkage
+        is `reg-write reg:1` (ra, written only by `jal`) → 12. Lessons are UNTRUSTED JSON (a mistyped
+        `event`/`where`/tier key fails silently), so the type-safety is bought back by a **real-engine
+        integration test** — the plan's promised step-11 test lands in `web`
+        (`packages/web/src/lessons.test.ts`): it drives the REAL single-cycle engine (the runner's own
+        tests use hand-built fixtures; the DAG forbids importing an engine into `curriculum`), and per
+        lesson asserts (1) every step anchors non-null, (2) `anchorOrderViolations` is empty, (3)
+        narration resolves at `depthDefault`, (4) the program resolves in the corpus, plus per-lesson
+        **payload oracles** (55 / 120 / 42, the −4 load, ra=12) so a right-type/wrong-occurrence anchor
+        can't pass. Web loads them via `lessons.ts` (globs `content/lessons/*.json`, mirrors
+        `programs.ts`). Needed one small `trace` addition: `TraceRecorder.recorded` (a read-only
+        getter for the full `CycleTrace[]`) — the runner anchors against a complete recording but the
+        recorder previously exposed only the cursor's cycle. 13 new tests (338 total). `npm run build` + typecheck + lint verified. STILL OPEN in step 11: the **UI narration panel** (playing the
+        anchored steps back visibly as the user scrubs) and **sandbox-fork on edit**.
   - [x] **Runaway-guard the sandbox path.** DONE (2026-07-13). The recorder side already carried a
         `maxCycles` cap on `runToEnd`/`scrubTo` (both default 1M, tested in `recorder.test.ts`); this
         wired the **web** side. `useSimulator` now threads a teaching-scale `TEACHING_MAX_CYCLES =
-        50_000` through all three engine-advancing call sites (`select`'s up-front `runToEnd`, plus the
+50_000` through all three engine-advancing call sites (`select`'s up-front `runToEnd`, plus the
         exposed `runToEnd`/`scrubTo` — harmless on the replay-only ones today, future-proofs a lazy
         recorder). The live throw site is only `select()` (it records the whole program up front); its
         `runToEnd` is wrapped in try/catch — on overflow it **discards** the non-halted recording
@@ -262,7 +283,12 @@ Each step should be testable before the next.
   contradicts (value-from-nowhere) — it's reserved for the pipeline tier. The narration half awaits
   the lessons that author variants (step 11) — the `resolveNarration` resolver is already seeded and
   tested in `curriculum`._
-- [ ] The 2–3 lessons play through; annotations fire on the correct events (INV-6).
+- [~] The 2–3 lessons play through; annotations fire on the correct events (INV-6). _Anchoring
+  half DONE (step 11): three authored lessons in `content/lessons/`, each anchored against the REAL
+  single-cycle engine by `packages/web/src/lessons.test.ts` — every step fires on the correct event,
+  in order, with tier-resolvable narration, and the headline payloads (55 / 120 / 42, the −4 load,
+  ra) are pinned. The visible "play through" in the UI (a narration panel driven by `narrationFor`
+  as the user scrubs) is the remaining half._
 - [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
 - [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
   type surface (INV-2, INV-3). _Mechanically enforced (ESLint import-boundary rule + tsconfig

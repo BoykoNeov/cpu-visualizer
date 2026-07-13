@@ -69,6 +69,17 @@ export class TraceRecorder {
     return this.traces.length;
   }
 
+  /**
+   * The full ordered recording — every {@link CycleTrace} captured so far. Consumers that need
+   * the WHOLE trace rather than the cursor's cycle read it here: the curriculum runner's
+   * `anchorLesson` (INV-6) anchors lesson steps against a complete recording, so callers
+   * `runToEnd()` first (the recorder records lazily at the high-water mark). Read-only view —
+   * the recorder owns the lifecycle; do not mutate.
+   */
+  get recorded(): readonly CycleTrace[] {
+    return this.traces;
+  }
+
   /** Current timeline position: -1 = the pre-run state, otherwise the recorded cycle index. */
   get cursor(): number {
     return this.cursorIndex;
