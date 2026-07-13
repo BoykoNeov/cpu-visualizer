@@ -9,6 +9,7 @@
     { "path": "packages/engine/conformance" },
     { "path": "packages/engine/reference" },
     { "path": "packages/engine/single-cycle" },
+    { "path": "packages/engine/multi-cycle" },
     { "path": "packages/curriculum" }
   ]
 }

@@ -17,6 +17,7 @@
     "packages/engine/conformance",
     "packages/engine/reference",
     "packages/engine/single-cycle",
+    "packages/engine/multi-cycle",
     "packages/web"
   ],
   "scripts": {

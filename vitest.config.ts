@@ -18,6 +18,7 @@ export const workspaceAliases = {
   '@cpu-viz/engine-conformance': pkg('./packages/engine/conformance/src/index.ts'),
   '@cpu-viz/engine-reference': pkg('./packages/engine/reference/src/index.ts'),
   '@cpu-viz/engine-single-cycle': pkg('./packages/engine/single-cycle/src/index.ts'),
+  '@cpu-viz/engine-multi-cycle': pkg('./packages/engine/multi-cycle/src/index.ts'),
 };
 
 export default defineConfig({
