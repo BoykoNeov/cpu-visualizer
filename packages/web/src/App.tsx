@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { LESSONS } from './lessons';
+import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { useSimulator } from './useSimulator';
@@ -61,6 +62,14 @@ export function App(): React.JSX.Element {
 
   const atStart = sim.cursor < 0;
   const lastCycle = sim.recordedCycles - 1;
+
+  // The lesson play-through view-model (INV-6): which anchored step is active at the cursor and
+  // what narration to show at the current depth tier. Re-resolves on scrub or tier change (the
+  // anchoring itself is memoized upstream in `useSimulator`). `null` in free-play / sandbox.
+  const narration = useMemo(
+    () => (sim.anchoredSteps ? narrationView(sim.anchoredSteps, sim.cursor, tier) : null),
+    [sim.anchoredSteps, sim.cursor, tier],
+  );
 
   return (
     <main
@@ -151,6 +160,15 @@ export function App(): React.JSX.Element {
         <>
           <Transport sim={sim} atStart={atStart} lastCycle={lastCycle} inFlight={inFlight} />
 
+          {sim.activeLesson && narration ? (
+            <NarrationPanel
+              title={sim.activeLesson.title}
+              view={narration}
+              tier={tier}
+              onSeek={sim.scrubTo}
+            />
+          ) : null}
+
           <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
 
           {sim.state && sim.program ? (
@@ -222,6 +240,166 @@ function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.El
       <strong>Free play</strong>
       <span>{sim.programName ?? '—'}</span>
     </div>
+  );
+}
+
+/**
+ * Render authored narration text: the lessons write register/instruction names in `backticks`
+ * (e.g. "`add a0, a0, t0`"), so split on paired backticks and set the odd segments as inline
+ * code. Keeps the narration readable without pulling in a markdown dependency.
+ */
+function renderNarration(text: string): React.ReactNode {
+  return text.split('`').map((seg, i) =>
+    i % 2 === 1 ? (
+      <code
+        key={i}
+        style={{
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          background: '#eef2ff',
+          color: '#1e3a8a',
+          padding: '0.05rem 0.3rem',
+          borderRadius: 4,
+          fontSize: '0.9em',
+        }}
+      >
+        {seg}
+      </code>
+    ) : (
+      <span key={i}>{seg}</span>
+    ),
+  );
+}
+
+/**
+ * The lesson narration panel — the visible "play-through" (spec §11 acceptance). It shows the
+ * step active at the current cursor (INV-6) with its narration resolved at the depth tier
+ * (INV-5), a clickable step rail, and Prev/Next-step controls that scrub the timeline. As the
+ * user scrubs (or the datapath animates), the active step follows the cursor; changing the
+ * depth dial re-resolves the narration in place. Rendered only while a lesson is attached.
+ */
+function NarrationPanel(props: {
+  title: string;
+  view: NarrationView;
+  tier: DepthTier;
+  onSeek: (cycle: number) => void;
+}): React.JSX.Element {
+  const { title, view, onSeek } = props;
+  const total = view.steps.length;
+  const current = view.activeIndex; // -1 before the first step fires
+  const btn: React.CSSProperties = {
+    fontSize: '0.85rem',
+    padding: '0.3rem 0.7rem',
+    borderRadius: 6,
+    border: '1px solid #7aa7e0',
+    background: '#fff',
+    color: '#1e4d8a',
+    cursor: 'pointer',
+  };
+  return (
+    <section
+      aria-label="Lesson narration"
+      style={{
+        marginTop: '1rem',
+        border: '1px solid #7aa7e0',
+        background: '#f3f8ff',
+        borderRadius: 10,
+        padding: '0.9rem 1.1rem',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          marginBottom: '0.6rem',
+        }}
+      >
+        <span
+          style={{
+            fontSize: '0.7rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: '#5a7bb0',
+            fontWeight: 700,
+          }}
+        >
+          Lesson
+        </span>
+        <strong style={{ color: '#1e4d8a', fontSize: '1rem' }}>{title}</strong>
+        <span style={{ marginLeft: 'auto', color: '#5a7bb0', fontSize: '0.85rem' }}>
+          {current >= 0 ? `Step ${current + 1} of ${total}` : `Not started · ${total} steps`}
+        </span>
+      </div>
+
+      {/* Step rail: one clickable dot per anchored step; click scrubs to its cycle. */}
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
+        role="tablist"
+        aria-label="Lesson steps"
+      >
+        {view.steps.map((s, i) => {
+          const state = i === current ? 'active' : i < current ? 'past' : 'future';
+          return (
+            <button
+              key={s.index}
+              role="tab"
+              aria-selected={state === 'active'}
+              onClick={() => onSeek(s.cycle)}
+              title={s.narration ?? `Step ${i + 1}`}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: `2px solid ${state === 'future' ? '#b8c9e6' : '#1e6fe0'}`,
+                background:
+                  state === 'active' ? '#1e6fe0' : state === 'past' ? '#cfe0fb' : '#fff',
+                color: state === 'active' ? '#fff' : '#1e4d8a',
+              }}
+            >
+              {i + 1}
+            </button>
+          );
+        })}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+          <button
+            style={{ ...btn, opacity: view.prevCycle === null ? 0.45 : 1 }}
+            disabled={view.prevCycle === null}
+            onClick={() => view.prevCycle !== null && onSeek(view.prevCycle)}
+            title="Scrub to the previous lesson step"
+          >
+            ◀ Prev step
+          </button>
+          <button
+            style={{ ...btn, opacity: view.nextCycle === null ? 0.45 : 1 }}
+            disabled={view.nextCycle === null}
+            onClick={() => view.nextCycle !== null && onSeek(view.nextCycle)}
+            title="Scrub to the next lesson step"
+          >
+            Next step ▶
+          </button>
+        </div>
+      </div>
+
+      {/* The active step's narration, or a prompt when the lesson hasn't started / has no text
+          at this depth. */}
+      <p style={{ margin: '0.75rem 0 0', lineHeight: 1.55, color: '#243b53' }}>
+        {current < 0 ? (
+          <span style={{ color: '#5a7bb0' }}>
+            Press <strong>Next step ▶</strong> or scrub the timeline to walk through the lesson.
+          </span>
+        ) : view.narration !== undefined ? (
+          renderNarration(view.narration)
+        ) : (
+          <span style={{ color: '#5a7bb0' }}>
+            This step has no narration at the current depth — raise the depth dial for more.
+          </span>
+        )}
+      </p>
+    </section>
   );
 }
 

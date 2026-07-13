@@ -8,9 +8,9 @@
  */
 
 import type { AssembledProgram, AssemblerError } from '@cpu-viz/assembler';
-import type { Lesson } from '@cpu-viz/curriculum';
+import { anchorLesson, type AnchoredStep, type Lesson } from '@cpu-viz/curriculum';
 import type { CycleTrace, MachineState } from '@cpu-viz/trace';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EXAMPLE_PROGRAMS } from './programs';
 import {
   activeLessonOf,
@@ -40,6 +40,13 @@ export interface Simulator {
   programName: string | null;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
+  /**
+   * The active lesson's steps anchored against the current (complete) recording — the input
+   * to the narration panel's play-through (INV-6). `null` in free-play / sandbox (no lesson).
+   * Anchored once per (lesson, recording) and re-queried by cursor/tier in the view, so a
+   * scrub or depth change re-resolves narration without re-anchoring.
+   */
+  anchoredSteps: AnchoredStep[] | null;
   /** True when the running program is user-edited (the spec §13 sandbox fork). */
   sandbox: boolean;
   /**
@@ -216,9 +223,20 @@ export function useSimulator(): Simulator {
   );
 
   const recorder = loaded.current?.recorder ?? null;
+  const activeLesson = activeLessonOf(session);
+  // Anchor the active lesson against the COMPLETE recording (INV-6). `loadInto` runs the
+  // program to end (or discards it on overflow) before `loaded.current` is set, so by the time
+  // a recorder is in hand its `recorded` trace is whole — the runner's precondition. Keyed on
+  // (lesson, recorder): a re-select or sandbox edit makes a fresh recorder, so this recomputes;
+  // a scrub or depth change does not, and re-queries the cached anchors in the view instead.
+  const anchoredSteps = useMemo(
+    () => (activeLesson && recorder ? anchorLesson(activeLesson, recorder.recorded) : null),
+    [activeLesson, recorder],
+  );
   return {
     programName: originNameOf(session),
-    activeLesson: activeLessonOf(session),
+    activeLesson,
+    anchoredSteps,
     sandbox: session?.kind === 'sandbox',
     loadGen,
     program: loaded.current?.program ?? null,

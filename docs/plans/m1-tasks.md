@@ -222,7 +222,7 @@ Each step should be testable before the next.
       skip-unanchored, narration tier fallback + undefined-when-nothing-active, and the order-violation
       check. A **real-engine integration test lands in `web` at step 11** when actual lessons exist.
       322 tests green.
-- [~] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
+- [x] **11. Author 2–3 lessons** + wire sandbox-fork on edit + UI narration panel.
   - [x] **Author 2–3 lessons.** DONE (2026-07-13). Three lessons authored as declarative JSON in
         `content/lessons/` (`sum-loop-tour`, `array-in-memory`, `function-call` — parallel to
         `content/programs/*.s`, the platform/content split §13; `program` references a corpus program
@@ -271,9 +271,33 @@ Each step should be testable before the next.
         interactive browser click-through was NOT captured — headless-Chrome `--screenshot` cannot
         settle against the Vite dev server's HMR socket in this environment (`--virtual-time-budget`
         never idles); it rests on the build + `tsc --noEmit` + the headless engine tests, per the
-        step-7 "no jsdom, eyeball the React layer" precedent. STILL OPEN in step 11: the **UI
-        narration panel** (playing the anchored steps back visibly as the user scrubs) — the last
-        piece before Milestone 1 closes.
+        step-7 "no jsdom, eyeball the React layer" precedent. (Now closed by the **UI narration
+        panel** bullet below — the last piece before Milestone 1 closes.)
+  - [x] **UI narration panel.** DONE (2026-07-13). The visible play-through of an authored lesson
+        (INV-6): a blue lesson card between the transport and the datapath, shown only while a
+        lesson is attached. It surfaces the step active at the cursor with its narration resolved at
+        the current depth tier (INV-5), a clickable numbered step rail (past filled / active bright /
+        future hollow), and Prev/Next-step controls that **scrub the timeline** — so advancing a step
+        animates the datapath, registers, and source in lockstep. Anchoring is done ONCE per
+        `(lesson, recording)` — `useSimulator` exposes `anchoredSteps` (memoized `anchorLesson`
+        against the recorder's COMPLETE `recorded` trace, whole because `loadInto` runs the program
+        to end before `loaded.current` is set) — and a scrub or depth change re-**queries** the cached
+        anchors, never re-anchors. The panel's view-model is a pure, headlessly-tested helper
+        (`packages/web/src/narration.ts` + `narration.test.ts`, 8 tests, hand-built `AnchoredStep`
+        fixtures — mirrors `session.ts`): `narrationView(anchored, cursor, tier)` delegates the
+        active-step/tier logic to the runner (`activeStepAt`/`resolveNarration`) and adds only the
+        panel's timeline ordering (by `(cycle, eventIndex)`, tie-break included) + prev/next scrub
+        targets; a `null`-anchored (never-fired) step drops from the rail. Narration text renders
+        `backtick` register/instruction names as inline `<code>` (no markdown dep). This ALSO closes
+        the narration half of the depth-tier acceptance (§4 axis B): the panel is the visible surface
+        where changing the depth dial re-resolves the lesson narration. **Verified end-to-end in a
+        real headless browser** (unlike the sandbox bullet's dev-server caveat): a CDP driver over a
+        **`vite preview`** static build (no HMR socket, so it settles) selected the lesson, clicked
+        Next step to reach "Step 3 of 5", and screenshotted the panel — the accumulate narration, the
+        lit ALU path at that cycle, `a0`=10 in the registers, and the highlighted source line all
+        coherent — then toggled the dial to Essentials and captured the narration collapse to its
+        one-line variant (proving tier re-resolution in place). 356 tests green; typecheck + lint +
+        build green. **Milestone 1 is complete.**
   - [x] **Runaway-guard the sandbox path.** DONE (2026-07-13). The recorder side already carried a
         `maxCycles` cap on `runToEnd`/`scrubTo` (both default 1M, tested in `recorder.test.ts`); this
         wired the **web** side. `useSimulator` now threads a teaching-scale `TEACHING_MAX_CYCLES =
@@ -304,21 +328,25 @@ Each step should be testable before the next.
       the visual half is now live in the step-7 web shell — the transport + scrub slider drive the
       recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
       forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
-- [~] Switching depth tier changes datapath detail and narration without changing engine
+- [x] Switching depth tier changes datapath detail and narration without changing engine
   behavior and without violating lawful simplification (INV-5). _View half DONE (step 9): the
   depth dial changes the datapath's representational detail — essentials shows the bare lit path,
   detailed adds wire value labels, expert adds mux control labels — each tier only ADDS (lawful by
   construction, screenshot-verified on lui/addi/lw); `activate`/the engine are untouched (INV-2).
   Structural box-hiding was tried and rejected here: every box is on the active path, so hiding one
-  contradicts (value-from-nowhere) — it's reserved for the pipeline tier. The narration half awaits
-  the lessons that author variants (step 11) — the `resolveNarration` resolver is already seeded and
-  tested in `curriculum`._
-- [~] The 2–3 lessons play through; annotations fire on the correct events (INV-6). _Anchoring
-  half DONE (step 11): three authored lessons in `content/lessons/`, each anchored against the REAL
+  contradicts (value-from-nowhere) — it's reserved for the pipeline tier. Narration half DONE (step
+  11): the lesson narration panel resolves each step's text at the current tier via
+  `resolveNarration` (INV-5) — screenshot-verified that toggling the dial from Detailed to Essentials
+  collapses the same active step to its concise variant in place, with no re-anchoring and the engine
+  untouched._
+- [x] The 2–3 lessons play through; annotations fire on the correct events (INV-6). _Anchoring
+  DONE (step 11): three authored lessons in `content/lessons/`, each anchored against the REAL
   single-cycle engine by `packages/web/src/lessons.test.ts` — every step fires on the correct event,
   in order, with tier-resolvable narration, and the headline payloads (55 / 120 / 42, the −4 load,
-  ra) are pinned. The visible "play through" in the UI (a narration panel driven by `narrationFor`
-  as the user scrubs) is the remaining half._
+  ra) are pinned. Visible play-through DONE (step 11): the lesson narration panel drives
+  `activeStepAt`/`narrationView` off the cursor, so scrubbing (or the Prev/Next-step controls) walks
+  the anchored steps with the datapath/registers/source in lockstep — screenshot-verified in a real
+  headless browser at "Step 3 of 5" of the sum-loop tour._
 - [~] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
   _Mechanism DONE (step 11): an editable-source panel forks on **Run edit** into a sandbox —
   `useSimulator.loadEdited` detaches any active lesson (`forkToSandbox`, spec §13) and records the
