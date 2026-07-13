@@ -242,8 +242,38 @@ Each step should be testable before the next.
         can't pass. Web loads them via `lessons.ts` (globs `content/lessons/*.json`, mirrors
         `programs.ts`). Needed one small `trace` addition: `TraceRecorder.recorded` (a read-only
         getter for the full `CycleTrace[]`) — the runner anchors against a complete recording but the
-        recorder previously exposed only the cursor's cycle. 13 new tests (338 total). `npm run build` + typecheck + lint verified. STILL OPEN in step 11: the **UI narration panel** (playing the
-        anchored steps back visibly as the user scrubs) and **sandbox-fork on edit**.
+        recorder previously exposed only the cursor's cycle. 13 new tests (338 total). `npm run build` + typecheck + lint verified.
+  - [x] **Wire sandbox-fork on edit.** DONE (2026-07-13). The spec §13 fork: editing the program
+        mid-lesson detaches the lesson's annotations and drops into free-play on the edited program,
+        while the lesson survives (re-selectable on the original). Modeled as a **pure tagged-union
+        `Session`** (`packages/web/src/session.ts`: `example` | `lesson` | `sandbox`) with the three
+        transitions (`exampleSession` / `lessonSession` / `forkToSandbox`) as pure functions — so the
+        detach is unit-testable off the UI (`session.test.ts`, 5 tests): `forkToSandbox` clears the
+        active lesson (`activeLessonOf → null`) but retains the `origin` program (resume/revert
+        target). `useSimulator` swapped its `programName` state for a `Session`; the old `select`
+        body was extracted to a shared `loadInto(source)` (assemble → record with the teaching cap →
+        park at pre-run), and `select` / `startLesson` / `loadEdited` differ ONLY in the `session`
+        they set first — so **the sandbox drives the exact same recorder path as any corpus program**,
+        which is why "the sandbox run still animates" holds by construction (INV-3; nothing new
+        touches the engine/trace). New exposed surface: `activeLesson`, `sandbox`, `loadedSource` (the
+        source panel now shows the *loaded* program, not the origin — required so a sandbox's
+        source↔machine-code stays consistent), and a `loadGen` token (bumped on `select`/`startLesson`
+        but NOT on edits) so the editor reseeds its draft even on a same-program re-select while
+        preserving an in-progress edit across a re-record. `App` gained an editable-source panel
+        (explicit **Run edit** — never on-keystroke, so a half-typed loop can't trip the runaway
+        guard mid-edit), a **Lesson** picker (starts/stops following a lesson), and a **ModeChip**
+        (Free play / Lesson / Sandbox) — the minimal visible surface that makes mid-lesson → edit →
+        fork legible. The editor stays reachable when an edit fails to assemble (`showEditor =
+        editorOpen || errors`) so the user can fix + re-run. Proven headlessly against the REAL engine
+        (`sandbox.test.ts`, 2 tests: a mid-lesson edit detaches the lesson yet the edited sum-loop
+        records to its OWN result 15 and time-travels; an infinite-loop edit trips the teaching cap).
+        348 tests green; `npm run build` + typecheck + lint green. **Verification caveat:** the
+        interactive browser click-through was NOT captured — headless-Chrome `--screenshot` cannot
+        settle against the Vite dev server's HMR socket in this environment (`--virtual-time-budget`
+        never idles); it rests on the build + `tsc --noEmit` + the headless engine tests, per the
+        step-7 "no jsdom, eyeball the React layer" precedent. STILL OPEN in step 11: the **UI
+        narration panel** (playing the anchored steps back visibly as the user scrubs) — the last
+        piece before Milestone 1 closes.
   - [x] **Runaway-guard the sandbox path.** DONE (2026-07-13). The recorder side already carried a
         `maxCycles` cap on `runToEnd`/`scrubTo` (both default 1M, tested in `recorder.test.ts`); this
         wired the **web** side. `useSimulator` now threads a teaching-scale `TEACHING_MAX_CYCLES =
@@ -289,7 +319,18 @@ Each step should be testable before the next.
   in order, with tier-resolvable narration, and the headline payloads (55 / 120 / 42, the −4 load,
   ra) are pinned. The visible "play through" in the UI (a narration panel driven by `narrationFor`
   as the user scrubs) is the remaining half._
-- [ ] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
+- [~] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
+  _Mechanism DONE (step 11): an editable-source panel forks on **Run edit** into a sandbox —
+  `useSimulator.loadEdited` detaches any active lesson (`forkToSandbox`, spec §13) and records the
+  edited program through the SAME recorder path the corpus programs use, so it animates by
+  construction (the render path is the screenshot-verified step-7–9 datapath/panels). Proven
+  headlessly against the REAL engine (`sandbox.test.ts`: fork detaches the lesson, the edited
+  sum-loop records to its own result 15 and time-travels, an infinite-loop edit trips the teaching
+  cap) and the detach as pure data (`session.test.ts`). NOT browser-verified: the interactive
+  click-through (Run edit → chip flips to "Sandbox" → visible animation) was eyeballed only via the
+  successful `vite build` + `tsc --noEmit` — a headless-Chrome `--screenshot` could not capture the
+  live dev server in this environment (`--virtual-time-budget` never settles against Vite's HMR
+  socket). Consistent with the step-7 "eyeball the React layer, no jsdom" precedent._
 - [~] `engine` has zero imports from `web`/`curriculum`; the trace schema is the only shared
   type surface (INV-2, INV-3). _Mechanically enforced (ESLint import-boundary rule + tsconfig
   references, verified to fire). Re-confirmed against the **real** single-cycle engine (step

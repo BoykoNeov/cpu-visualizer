@@ -20,6 +20,12 @@ export interface LoadedProgram {
   recorder: TraceRecorder;
   /** The assembled program — its `words` + `sourceMap` back the source↔machine-code panel. */
   program: AssembledProgram;
+  /**
+   * The exact source text that produced this program. Retained so the source panel shows the
+   * program actually loaded and running — which, for a sandbox fork, is the user's edited
+   * text, not the pristine corpus source it forked from.
+   */
+  source: string;
 }
 
 /** Either a loaded program or the located assembler errors that blocked it. */
@@ -37,5 +43,5 @@ export function loadSource(source: string): LoadResult {
   if (!program) return { ok: false, errors };
   const recorder = new TraceRecorder(new SingleCycleProcessor());
   recorder.load(toProgramImage(program));
-  return { ok: true, loaded: { recorder, program } };
+  return { ok: true, loaded: { recorder, program, source } };
 }

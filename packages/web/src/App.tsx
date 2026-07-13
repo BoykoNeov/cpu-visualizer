@@ -1,12 +1,16 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import type { InstructionInstance } from '@cpu-viz/trace';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
+import { LESSONS } from './lessons';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { useSimulator } from './useSimulator';
+
+/** Sentinel `<select>` value for the sandbox state — no corpus program is selected. */
+const SANDBOX_OPTION = '__sandbox__';
 
 /**
  * The M1 step-7 web shell: load an example program, drive the single-cycle engine through the
@@ -24,10 +28,24 @@ export function App(): React.JSX.Element {
   // `expert` adds the mux control-line labels.
   const [tier, setTier] = useState<DepthTier>('detailed');
 
-  const source = useMemo(
+  // The pristine corpus source backing the current session — the editor's "revert" baseline and
+  // the seed for the edit draft. In a sandbox this is what the edit forked FROM (not the running
+  // code); the running source is `sim.loadedSource`, shown by the source panel below.
+  const origin = useMemo(
     () => EXAMPLE_PROGRAMS.find((p) => p.name === sim.programName)?.source ?? '',
     [sim.programName],
   );
+
+  // The edit buffer. Seeded from `origin` and re-seeded whenever a fresh corpus program is
+  // loaded — keyed on `sim.loadGen` (not just `origin`) so re-selecting the SAME program from
+  // the picker (leaving a sandbox) reseeds the draft to pristine too. A sandbox fork does not
+  // bump `loadGen`, so applying an edit never clobbers what the user is typing.
+  const [draft, setDraft] = useState(origin);
+  useEffect(() => setDraft(origin), [origin, sim.loadGen]);
+  const [editorOpen, setEditorOpen] = useState(false);
+  // Keep the editor reachable when an edit fails to assemble, so the user can fix and re-run
+  // (unlike the corpus programs, edited source can be syntactically broken).
+  const showEditor = editorOpen || sim.errors !== null;
 
   // The single in-flight instruction this cycle (single-cycle: exactly one, or none pre-run).
   const inFlight = sim.cycleTrace?.instructions[0] ?? null;
@@ -70,10 +88,15 @@ export function App(): React.JSX.Element {
           <label>
             Program:{' '}
             <select
-              value={sim.programName ?? ''}
+              value={sim.sandbox ? SANDBOX_OPTION : (sim.programName ?? '')}
               onChange={(e) => sim.select(e.target.value)}
               style={{ fontSize: '0.95rem', padding: '0.2rem' }}
             >
+              {sim.sandbox ? (
+                <option value={SANDBOX_OPTION} disabled>
+                  — sandbox —
+                </option>
+              ) : null}
               {EXAMPLE_PROGRAMS.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.name}
@@ -81,8 +104,44 @@ export function App(): React.JSX.Element {
               ))}
             </select>
           </label>
+          <label>
+            Lesson:{' '}
+            <select
+              value={sim.activeLesson?.id ?? ''}
+              onChange={(e) => {
+                const lesson = LESSONS.find((l) => l.id === e.target.value);
+                // "— none —" drops back to free-play on the same program.
+                if (lesson) sim.startLesson(lesson);
+                else if (sim.programName) sim.select(sim.programName);
+              }}
+              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
+            >
+              <option value="">— none —</option>
+              {LESSONS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.title}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </header>
+
+      <ModeChip sim={sim} />
+
+      <ProgramEditor
+        open={showEditor}
+        onToggle={() => setEditorOpen((o) => !o)}
+        draft={draft}
+        setDraft={setDraft}
+        onRun={() => sim.loadEdited(draft)}
+        onRevert={() => {
+          setDraft(origin);
+          if (sim.programName) sim.select(sim.programName);
+        }}
+        canRevert={sim.sandbox && sim.programName !== null}
+        originName={sim.programName}
+      />
 
       {sim.errors ? (
         <ErrorBox errors={sim.errors} />
@@ -104,7 +163,11 @@ export function App(): React.JSX.Element {
                 alignItems: 'start',
               }}
             >
-              <SourcePanel program={sim.program} source={source} activeLine={activeLine} />
+              <SourcePanel
+                program={sim.program}
+                source={sim.loadedSource ?? ''}
+                activeLine={activeLine}
+              />
               <RegisterPanel state={sim.state} writtenRegs={writtenRegs} />
               <MemoryPanel state={sim.state} />
             </div>
@@ -114,6 +177,137 @@ export function App(): React.JSX.Element {
         </>
       )}
     </main>
+  );
+}
+
+/**
+ * A one-line badge naming the current session mode (spec §13): free-play on a corpus program,
+ * following a lesson (its annotations attached), or a sandbox (a user-edited program with the
+ * lesson detached). This is the minimal visible surface that makes the mid-lesson → edit →
+ * fork transition legible; full step-by-step narration playback is a later piece.
+ */
+function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.Element | null {
+  const { sim } = props;
+  const base: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: '0.75rem',
+    fontSize: '0.82rem',
+    padding: '0.2rem 0.6rem',
+    borderRadius: 999,
+    border: '1px solid',
+  };
+  if (sim.sandbox) {
+    return (
+      <div style={{ ...base, borderColor: '#d9a441', background: '#fff8e8', color: '#8a5a00' }}>
+        <strong>Sandbox</strong>
+        <span>
+          editing {sim.programName ? `“${sim.programName}”` : 'a program'} — lesson annotations
+          detached. Pick the lesson again to resume it on the original program.
+        </span>
+      </div>
+    );
+  }
+  if (sim.activeLesson) {
+    return (
+      <div style={{ ...base, borderColor: '#7aa7e0', background: '#eef5ff', color: '#1e4d8a' }}>
+        <strong>Lesson</strong>
+        <span>{sim.activeLesson.title}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...base, borderColor: '#cfcfd6', background: '#f6f6f8', color: '#555' }}>
+      <strong>Free play</strong>
+      <span>{sim.programName ?? '—'}</span>
+    </div>
+  );
+}
+
+/**
+ * The program editor. Editing and running forks into a sandbox (§13) — the same driver path
+ * as the corpus programs, so the edited run animates identically. Collapsed by default behind
+ * a toggle to keep the shell uncluttered; forced open by the parent when an edit fails to
+ * assemble so the user can fix it. `onRun` is an explicit action (not on-keystroke) so a
+ * half-typed loop is never assembled and never trips the runaway guard mid-edit.
+ */
+function ProgramEditor(props: {
+  open: boolean;
+  onToggle: () => void;
+  draft: string;
+  setDraft: (s: string) => void;
+  onRun: () => void;
+  onRevert: () => void;
+  canRevert: boolean;
+  originName: string | null;
+}): React.JSX.Element {
+  const { open, onToggle, draft, setDraft, onRun, onRevert, canRevert, originName } = props;
+  const btn: React.CSSProperties = {
+    fontSize: '0.85rem',
+    padding: '0.35rem 0.7rem',
+    borderRadius: 6,
+    border: '1px solid #bbb',
+    background: '#f7f7f9',
+    cursor: 'pointer',
+  };
+  return (
+    <div style={{ marginTop: '0.75rem' }}>
+      <button style={{ ...btn, background: open ? '#eef' : '#f7f7f9' }} onClick={onToggle}>
+        ✎ Edit program {open ? '▲' : '▼'}
+      </button>
+      {open ? (
+        <div
+          style={{
+            marginTop: '0.5rem',
+            border: '1px solid #d0d0d8',
+            borderRadius: 8,
+            padding: '0.75rem 1rem',
+            background: '#fff',
+          }}
+        >
+          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+            Running an edit forks into a <strong>sandbox</strong>: the edited program animates
+            like any other, and any active lesson detaches.
+          </p>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+            aria-label="Program source"
+            style={{
+              width: '100%',
+              minHeight: '11rem',
+              resize: 'vertical',
+              boxSizing: 'border-box',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: '0.85rem',
+              lineHeight: 1.5,
+              padding: '0.5rem',
+              border: '1px solid #ccc',
+              borderRadius: 6,
+            }}
+          />
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              style={{ ...btn, borderColor: '#1e6fe0', background: '#1e6fe0', color: '#fff' }}
+              onClick={onRun}
+              title="Assemble and run the edited program (forks to a sandbox)"
+            >
+              ▶ Run edit
+            </button>
+            <button
+              style={{ ...btn, opacity: canRevert ? 1 : 0.5 }}
+              onClick={onRevert}
+              disabled={!canRevert}
+              title={originName ? `Discard edits and reload ${originName}` : 'Nothing to revert'}
+            >
+              ↩ Revert{originName ? ` to ${originName}` : ''}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
