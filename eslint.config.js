@@ -50,6 +50,7 @@ export default tseslint.config(
         'assembler',
         'curriculum',
         'engine-common',
+        'engine-conformance',
         'engine-reference',
         'engine-single-cycle',
         'web',
@@ -64,6 +65,7 @@ export default tseslint.config(
         'assembler',
         'curriculum',
         'engine-common',
+        'engine-conformance',
         'engine-reference',
         'engine-single-cycle',
         'web',
@@ -74,7 +76,15 @@ export default tseslint.config(
   {
     files: ['packages/assembler/**/*.ts'],
     rules: deny(
-      ['trace', 'curriculum', 'engine-common', 'engine-reference', 'engine-single-cycle', 'web'],
+      [
+        'trace',
+        'curriculum',
+        'engine-common',
+        'engine-conformance',
+        'engine-reference',
+        'engine-single-cycle',
+        'web',
+      ],
       'The assembler depends only on isa.',
     ),
   },
@@ -98,6 +108,17 @@ export default tseslint.config(
     ),
   },
   {
+    // The conformance harness (test-only) is parameterized over a Processor factory precisely so
+    // it never imports an engine-under-test — coupling it to one model would defeat the design.
+    // It MAY import the golden reference + engine-common. Superset of the generic engine rule
+    // (same last-match-wins reason as engine-common), so curriculum/web are repeated here.
+    files: ['packages/engine/conformance/**/*.ts'],
+    rules: deny(
+      ['curriculum', 'web', 'engine-single-cycle'],
+      'engine-conformance is model-agnostic: it drives any model through an injected () => Processor factory, so it imports no engine-under-test.',
+    ),
+  },
+  {
     // The golden reference must stay model-agnostic: it may not depend on a specific engine model.
     // (The reverse — single-cycle importing the reference for its INV-8 differential test — is
     // allowed, so this is scoped to `reference/**`, not all of `engine/**`.) Superset of the
@@ -111,7 +132,14 @@ export default tseslint.config(
   {
     files: ['packages/curriculum/**/*.ts'],
     rules: deny(
-      ['assembler', 'engine-common', 'engine-reference', 'engine-single-cycle', 'web'],
+      [
+        'assembler',
+        'engine-common',
+        'engine-conformance',
+        'engine-reference',
+        'engine-single-cycle',
+        'web',
+      ],
       'INV-3: curriculum reads the trace, never engine internals or the web app.',
     ),
   },

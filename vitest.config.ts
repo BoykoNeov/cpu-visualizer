@@ -15,6 +15,7 @@ export const workspaceAliases = {
   '@cpu-viz/assembler': pkg('./packages/assembler/src/index.ts'),
   '@cpu-viz/curriculum': pkg('./packages/curriculum/src/index.ts'),
   '@cpu-viz/engine-common': pkg('./packages/engine/common/src/index.ts'),
+  '@cpu-viz/engine-conformance': pkg('./packages/engine/conformance/src/index.ts'),
   '@cpu-viz/engine-reference': pkg('./packages/engine/reference/src/index.ts'),
   '@cpu-viz/engine-single-cycle': pkg('./packages/engine/single-cycle/src/index.ts'),
 };

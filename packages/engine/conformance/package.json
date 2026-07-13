@@ -1,0 +1,25 @@
+{
+  "name": "@cpu-viz/engine-conformance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test-only INV-8 conformance harness: drives any Processor against the golden reference over the example corpus. Parameterized over a () => Processor factory so it imports no engine-under-test.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/assembler": "*",
+    "@cpu-viz/trace": "*",
+    "@cpu-viz/engine-common": "*",
+    "@cpu-viz/engine-reference": "*"
+  }
+}

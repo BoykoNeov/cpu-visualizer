@@ -9,10 +9,11 @@
     { "path": "../../isa" },
     { "path": "../../trace" },
     // Test-only edges. `assembler` + `common` (toProgramImage) are used only by this engine's
-    // tests — production code consumes the pure ProgramImage. `reference` runs the golden model
-    // alongside this one in the INV-8 differential suite (hoisted to a shared harness in step 1).
+    // tests — production code consumes the pure ProgramImage. `conformance` is the shared INV-8
+    // differential harness (it pulls in the golden reference itself), so this engine no longer
+    // references `../reference` directly.
     { "path": "../../assembler" },
     { "path": "../common" },
-    { "path": "../reference" }
+    { "path": "../conformance" }
   ]
 }

@@ -14,6 +14,7 @@
     "packages/assembler",
     "packages/curriculum",
     "packages/engine/common",
+    "packages/engine/conformance",
     "packages/engine/reference",
     "packages/engine/single-cycle",
     "packages/web"
