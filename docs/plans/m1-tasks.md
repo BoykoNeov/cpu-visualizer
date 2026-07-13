@@ -256,7 +256,7 @@ Each step should be testable before the next.
         they set first — so **the sandbox drives the exact same recorder path as any corpus program**,
         which is why "the sandbox run still animates" holds by construction (INV-3; nothing new
         touches the engine/trace). New exposed surface: `activeLesson`, `sandbox`, `loadedSource` (the
-        source panel now shows the *loaded* program, not the origin — required so a sandbox's
+        source panel now shows the _loaded_ program, not the origin — required so a sandbox's
         source↔machine-code stays consistent), and a `loadGen` token (bumped on `select`/`startLesson`
         but NOT on edits) so the editor reseeds its draft even on a same-program re-select while
         preserving an in-progress edit across a re-record. `App` gained an editable-source panel
@@ -264,7 +264,7 @@ Each step should be testable before the next.
         guard mid-edit), a **Lesson** picker (starts/stops following a lesson), and a **ModeChip**
         (Free play / Lesson / Sandbox) — the minimal visible surface that makes mid-lesson → edit →
         fork legible. The editor stays reachable when an edit fails to assemble (`showEditor =
-        editorOpen || errors`) so the user can fix + re-run. Proven headlessly against the REAL engine
+editorOpen || errors`) so the user can fix + re-run. Proven headlessly against the REAL engine
         (`sandbox.test.ts`, 2 tests: a mid-lesson edit detaches the lesson yet the edited sum-loop
         records to its OWN result 15 and time-travels; an infinite-loop edit trips the teaching cap).
         348 tests green; `npm run build` + typecheck + lint green. **Verification caveat:** the
@@ -329,24 +329,24 @@ Each step should be testable before the next.
       recorder and all three panels render `recorder.currentState()`/`current()` at the cursor, so
       forward/back/scrub always show the recorded state. (Datapath animation of the scrub is step 8.)_
 - [x] Switching depth tier changes datapath detail and narration without changing engine
-  behavior and without violating lawful simplification (INV-5). _View half DONE (step 9): the
-  depth dial changes the datapath's representational detail — essentials shows the bare lit path,
-  detailed adds wire value labels, expert adds mux control labels — each tier only ADDS (lawful by
-  construction, screenshot-verified on lui/addi/lw); `activate`/the engine are untouched (INV-2).
-  Structural box-hiding was tried and rejected here: every box is on the active path, so hiding one
-  contradicts (value-from-nowhere) — it's reserved for the pipeline tier. Narration half DONE (step
-  11): the lesson narration panel resolves each step's text at the current tier via
-  `resolveNarration` (INV-5) — screenshot-verified that toggling the dial from Detailed to Essentials
-  collapses the same active step to its concise variant in place, with no re-anchoring and the engine
-  untouched._
+      behavior and without violating lawful simplification (INV-5). _View half DONE (step 9): the
+      depth dial changes the datapath's representational detail — essentials shows the bare lit path,
+      detailed adds wire value labels, expert adds mux control labels — each tier only ADDS (lawful by
+      construction, screenshot-verified on lui/addi/lw); `activate`/the engine are untouched (INV-2).
+      Structural box-hiding was tried and rejected here: every box is on the active path, so hiding one
+      contradicts (value-from-nowhere) — it's reserved for the pipeline tier. Narration half DONE (step
+      11): the lesson narration panel resolves each step's text at the current tier via
+      `resolveNarration` (INV-5) — screenshot-verified that toggling the dial from Detailed to Essentials
+      collapses the same active step to its concise variant in place, with no re-anchoring and the engine
+      untouched._
 - [x] The 2–3 lessons play through; annotations fire on the correct events (INV-6). _Anchoring
-  DONE (step 11): three authored lessons in `content/lessons/`, each anchored against the REAL
-  single-cycle engine by `packages/web/src/lessons.test.ts` — every step fires on the correct event,
-  in order, with tier-resolvable narration, and the headline payloads (55 / 120 / 42, the −4 load,
-  ra) are pinned. Visible play-through DONE (step 11): the lesson narration panel drives
-  `activeStepAt`/`narrationView` off the cursor, so scrubbing (or the Prev/Next-step controls) walks
-  the anchored steps with the datapath/registers/source in lockstep — screenshot-verified in a real
-  headless browser at "Step 3 of 5" of the sum-loop tour._
+      DONE (step 11): three authored lessons in `content/lessons/`, each anchored against the REAL
+      single-cycle engine by `packages/web/src/lessons.test.ts` — every step fires on the correct event,
+      in order, with tier-resolvable narration, and the headline payloads (55 / 120 / 42, the −4 load,
+      ra) are pinned. Visible play-through DONE (step 11): the lesson narration panel drives
+      `activeStepAt`/`narrationView` off the cursor, so scrubbing (or the Prev/Next-step controls) walks
+      the anchored steps with the datapath/registers/source in lockstep — screenshot-verified in a real
+      headless browser at "Step 3 of 5" of the sum-loop tour._
 - [~] Editing the program mid-lesson forks into a sandbox; the sandbox run still animates.
   _Mechanism DONE (step 11): an editable-source panel forks on **Run edit** into a sandbox —
   `useSimulator.loadEdited` detaches any active lesson (`forkToSandbox`, spec §13) and records the
