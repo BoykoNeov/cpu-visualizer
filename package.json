@@ -29,13 +29,19 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "npm run dev --workspace @cpu-viz/web",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
     "@types/node": "^22.13.0",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.19.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.22.0",
