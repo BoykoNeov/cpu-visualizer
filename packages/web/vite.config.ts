@@ -17,6 +17,7 @@ export default defineConfig({
       '@cpu-viz/trace': pkg('../trace/src/index.ts'),
       '@cpu-viz/assembler': pkg('../assembler/src/index.ts'),
       '@cpu-viz/curriculum': pkg('../curriculum/src/index.ts'),
+      '@cpu-viz/engine-common': pkg('../engine/common/src/index.ts'),
       '@cpu-viz/engine-reference': pkg('../engine/reference/src/index.ts'),
       '@cpu-viz/engine-single-cycle': pkg('../engine/single-cycle/src/index.ts'),
     },

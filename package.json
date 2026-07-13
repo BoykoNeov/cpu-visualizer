@@ -13,6 +13,7 @@
     "packages/trace",
     "packages/assembler",
     "packages/curriculum",
+    "packages/engine/common",
     "packages/engine/reference",
     "packages/engine/single-cycle",
     "packages/web"

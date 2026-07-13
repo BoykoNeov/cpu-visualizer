@@ -11,7 +11,8 @@
  */
 
 import { assemble, type AssembledProgram, type AssemblerError } from '@cpu-viz/assembler';
-import { SingleCycleProcessor, toProgramImage } from '@cpu-viz/engine-single-cycle';
+import { toProgramImage } from '@cpu-viz/engine-common';
+import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
 import { TraceRecorder } from '@cpu-viz/trace';
 
 /** A successfully assembled program, loaded and ready to drive. */

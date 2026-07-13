@@ -5,6 +5,7 @@
     { "path": "packages/isa" },
     { "path": "packages/trace" },
     { "path": "packages/assembler" },
+    { "path": "packages/engine/common" },
     { "path": "packages/engine/reference" },
     { "path": "packages/engine/single-cycle" },
     { "path": "packages/curriculum" }

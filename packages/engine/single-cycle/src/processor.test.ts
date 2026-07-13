@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { assemble, emptyProgram, type AssembledProgram } from '@cpu-viz/assembler';
 import { defaultConfig, type CycleTrace, type TraceEvent } from '@cpu-viz/trace';
-import { SingleCycleProcessor, SINGLE_CYCLE_CAPABILITIES, toProgramImage } from './index';
+import { toProgramImage } from '@cpu-viz/engine-common';
+import { SingleCycleProcessor, SINGLE_CYCLE_CAPABILITIES } from './index';
 
 /**
  * Single-cycle engine tests. The full differential check against the golden reference

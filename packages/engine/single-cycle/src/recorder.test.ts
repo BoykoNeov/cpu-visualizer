@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { assemble, type AssembledProgram } from '@cpu-viz/assembler';
 import { TraceRecorder } from '@cpu-viz/trace';
-import { SingleCycleProcessor, toProgramImage } from './index';
+import { toProgramImage } from '@cpu-viz/engine-common';
+import { SingleCycleProcessor } from './index';
 
 /**
  * The step-5 acceptance criterion end-to-end: the {@link TraceRecorder} driving the REAL

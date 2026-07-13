@@ -45,21 +45,36 @@ export default tseslint.config(
   {
     files: ['packages/isa/**/*.ts'],
     rules: deny(
-      ['trace', 'assembler', 'curriculum', 'engine-reference', 'engine-single-cycle', 'web'],
+      [
+        'trace',
+        'assembler',
+        'curriculum',
+        'engine-common',
+        'engine-reference',
+        'engine-single-cycle',
+        'web',
+      ],
       'INV-7: isa is the lowest layer and imports no other workspace package.',
     ),
   },
   {
     files: ['packages/trace/**/*.ts'],
     rules: deny(
-      ['assembler', 'curriculum', 'engine-reference', 'engine-single-cycle', 'web'],
+      [
+        'assembler',
+        'curriculum',
+        'engine-common',
+        'engine-reference',
+        'engine-single-cycle',
+        'web',
+      ],
       'INV-3: the trace is the contract; it may depend only on isa, never on engines, curriculum, or web.',
     ),
   },
   {
     files: ['packages/assembler/**/*.ts'],
     rules: deny(
-      ['trace', 'curriculum', 'engine-reference', 'engine-single-cycle', 'web'],
+      ['trace', 'curriculum', 'engine-common', 'engine-reference', 'engine-single-cycle', 'web'],
       'The assembler depends only on isa.',
     ),
   },
@@ -71,19 +86,32 @@ export default tseslint.config(
     ),
   },
   {
+    // engine-common is a leaf shared by every model, so it must not depend on any engine model
+    // (that would be a cycle). This deny list is a SUPERSET of the generic `packages/engine/**`
+    // rule above: flat config is last-match-wins PER RULE ID with no array merge, so this object
+    // fully replaces the generic one for these files — the curriculum/web entries must be repeated
+    // here or engine-common would silently lose that guard.
+    files: ['packages/engine/common/**/*.ts'],
+    rules: deny(
+      ['curriculum', 'web', 'engine-reference', 'engine-single-cycle'],
+      'engine-common is a leaf shared by the engines (engine-common ← isa, assembler, trace); it depends on no engine model, curriculum, or web.',
+    ),
+  },
+  {
     // The golden reference must stay model-agnostic: it may not depend on a specific engine model.
     // (The reverse — single-cycle importing the reference for its INV-8 differential test — is
-    // allowed, so this is scoped to `reference/**`, not all of `engine/**`.)
+    // allowed, so this is scoped to `reference/**`, not all of `engine/**`.) Superset of the
+    // generic engine rule for the same last-match-wins reason as engine-common above.
     files: ['packages/engine/reference/**/*.ts'],
     rules: deny(
-      ['engine-single-cycle'],
-      'INV-8: the golden reference is model-agnostic; it never depends on a specific engine model.',
+      ['curriculum', 'web', 'engine-single-cycle'],
+      'INV-8: the golden reference is model-agnostic; it never depends on a specific engine model (nor on curriculum/web).',
     ),
   },
   {
     files: ['packages/curriculum/**/*.ts'],
     rules: deny(
-      ['assembler', 'engine-reference', 'engine-single-cycle', 'web'],
+      ['assembler', 'engine-common', 'engine-reference', 'engine-single-cycle', 'web'],
       'INV-3: curriculum reads the trace, never engine internals or the web app.',
     ),
   },

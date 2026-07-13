@@ -16,7 +16,6 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { TEXT_BASE, type AssembledProgram } from '@cpu-viz/assembler';
 import {
   defaultConfig,
   makeRegisters,
@@ -40,22 +39,6 @@ export const SINGLE_CYCLE_CAPABILITIES: ProcessorCapabilities = {
   configurableBranchPrediction: false,
   configurableCache: false,
 };
-
-/**
- * Adapt an {@link AssembledProgram} into the pure {@link ProgramImage} the engine consumes.
- * Execution begins at {@link TEXT_BASE} (the §"memory map" entry). This adapter lives in the
- * engine layer because it touches both `assembler` and `trace`; `trace` itself stays pure.
- * Kept a standalone free function so the reference's differential-test path never has to
- * import this engine.
- */
-export function toProgramImage(program: AssembledProgram): ProgramImage {
-  return {
-    words: program.words,
-    data: program.data,
-    entry: TEXT_BASE,
-    sourceMap: program.sourceMap,
-  };
-}
 
 export class SingleCycleProcessor implements Processor {
   readonly capabilities = SINGLE_CYCLE_CAPABILITIES;

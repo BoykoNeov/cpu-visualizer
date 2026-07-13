@@ -7,10 +7,12 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../../isa" },
-    { "path": "../../assembler" },
     { "path": "../../trace" },
-    // Test-only edge: the INV-8 differential suite (differential.test.ts) runs the golden
-    // reference alongside this engine. Hoist to a shared harness when a second model lands.
+    // Test-only edges. `assembler` + `common` (toProgramImage) are used only by this engine's
+    // tests — production code consumes the pure ProgramImage. `reference` runs the golden model
+    // alongside this one in the INV-8 differential suite (hoisted to a shared harness in step 1).
+    { "path": "../../assembler" },
+    { "path": "../common" },
     { "path": "../reference" }
   ]
 }

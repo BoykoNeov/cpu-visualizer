@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { assemble, type AssembledProgram } from '@cpu-viz/assembler';
 import { run, type ReferenceResult } from '@cpu-viz/engine-reference';
 import type { MachineState } from '@cpu-viz/trace';
-import { SingleCycleProcessor, toProgramImage } from './index';
+import { toProgramImage } from '@cpu-viz/engine-common';
+import { SingleCycleProcessor } from './index';
 
 /**
  * Build step 6 — the INV-8 differential net: for EVERY example program, the single-cycle
