@@ -28,6 +28,13 @@ import { loadSource, type LoadedProgram } from './simulator';
  * recorder's 1M default: a user-edited program (the step-11 sandbox fork) can loop forever,
  * and a frozen tab is worse than a friendly "ran too long" message. The shipped corpus all
  * halts in well under this.
+ *
+ * Note (M2 step 5a): the cap counts CYCLES, and multi-cycle spends 3–5× more cycles per
+ * instruction than single-cycle. So a *sandbox* program that halts just under the cap on
+ * single-cycle could exceed it on multi-cycle and surface the "ran too long" notice. The margin
+ * is enormous (the corpus halts in the low hundreds of cycles even multiplied), so this is only a
+ * theoretical edge for a hand-crafted sandbox program near the ceiling — acceptable at this step;
+ * if it ever bites, make the cap per-instruction rather than per-cycle.
  */
 const TEACHING_MAX_CYCLES = 50_000;
 

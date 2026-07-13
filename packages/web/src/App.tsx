@@ -15,12 +15,16 @@ import { useSimulator } from './useSimulator';
 const SANDBOX_OPTION = '__sandbox__';
 
 /**
- * The M1 step-7 web shell: load an example program, drive the single-cycle engine through the
- * {@link useSimulator} recorder, and show the source↔machine-code, register, and memory panels.
- * Everything shown is read from the recorded trace at the current cursor, so stepping forward,
- * stepping back, and scrubbing always display the exact recorded state (acceptance §11). The
- * SVG datapath view (step 8) and its depth-tier dial (step 9, axis B / handoff §4) sit on top;
- * the depth dial is a pure view concern — the engine and trace are oblivious to it (INV-2).
+ * The web shell: load an example program, drive the SELECTED microarchitecture (single-cycle or
+ * multi-cycle, chosen in the Model picker — M2 step 5a) through the {@link useSimulator} recorder,
+ * and show the source↔machine-code, register, and memory panels. Everything shown is read from the
+ * recorded trace at the current cursor, so stepping forward, stepping back, and scrubbing always
+ * display the exact recorded state (acceptance §11) — and because the panels read only the trace
+ * (INV-3), they animate against whichever model is selected unchanged. The SVG datapath view
+ * (step 8) is single-cycle-specific geometry, so it renders only for models that declare a bespoke
+ * view ({@link ModelChoice.hasDatapath}); others show a placeholder (the multi-cycle datapath is
+ * step 5b). Its depth-tier dial (step 9, axis B / handoff §4) is a pure view concern — the engine
+ * and trace are oblivious to it (INV-2).
  */
 export function App(): React.JSX.Element {
   const sim = useSimulator();

@@ -177,6 +177,10 @@ make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes a
         land on a0 = 55, INV-8); `lessons.test.ts` proves **INV-6 cross-model** — every authored
         lesson still anchors, in order, with resolvable narration, against the multi-cycle recording
         (events, not cycles: the lesson swap does not strand a step). Full gate green (413 tests).
+        **Browser-verified** (M1's `vite preview` + raw-CDP ritual): switching Model→multi-cycle grew
+        the `sum-loop` timeline from last-cycle 33 to 123 on the live scrub bar, the datapath gated
+        off to the placeholder and back, and an attached lesson stayed attached + re-anchored across
+        the switch (INV-6 made visible).
   - [ ] **5b. Multi-cycle datapath SVG.** A **separate, larger** hand-authored datapath (the
         canonical multi-cycle datapath: shared ALU, single memory, the IR/A/B/ALUOut/MDR latches
         drawn as boxes) wired to the trace, with the same pure-model/SVG-view split as M1's
@@ -191,21 +195,24 @@ make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes a
 
 ## Acceptance criteria (mirror the spec §11 shape, for multi-cycle)
 
-- [ ] Multi-cycle final register + memory state **equals** the golden reference for **every**
+- [x] Multi-cycle final register + memory state **equals** the golden reference for **every**
       corpus program (INV-8) — proven by the extracted conformance harness (step 3), same 5
       programs, no new fixtures.
-- [ ] Load → step forward to completion → step **backward** to start → **scrub** to any cycle;
+- [x] Load → step forward to completion → step **backward** to start → **scrub** to any cycle;
       shown state always matches the recorded trace (free via the model-agnostic recorder; proven
-      headlessly step 4, and in-browser once step 5a lands).
-- [ ] A single instruction is **followable across its multi-cycle lifetime** (IF→ID→EX→MEM→WB),
+      headlessly step 4, and **in-browser once step 5a landed** — the `vite preview` + raw-CDP drive
+      switched Model→multi-cycle and drove the transport on the live panels).
+- [x] A single instruction is **followable across its multi-cycle lifetime** (IF→ID→EX→MEM→WB),
       its `location` advancing one phase per cycle with a **stable id** (INV-4) — the first real
       "follow this instruction" payoff (step 4).
-- [ ] Instructions of different classes take **different numbers of cycles** (load > R-type >
-      branch), visible in the trace and (step 5) the timeline — the §12.1 headline.
+- [x] Instructions of different classes take **different numbers of cycles** (load > R-type >
+      branch), visible in the trace and (step 5a) the timeline — the §12.1 headline. Browser-verified:
+      `sum-loop` records **34 cycles on single-cycle vs 124 on multi-cycle** (last-cycle 33 → 123),
+      the same swap `simulator.test.ts` proves headlessly, now visible on the scrub bar.
 - [ ] Depth-tier switching changes datapath detail without changing engine behavior and without
       violating lawful simplification (INV-5) — **including** lawful _structural_ hiding on the
-      multi-cycle datapath (step 5b), the first place `minTier` box-hiding is lawful.
-- [ ] `engine/multi-cycle` has **zero imports** from `web`/`curriculum` and from any other engine's
+      multi-cycle datapath (step 5b), the first place `minTier` box-hiding is lawful. _(5b — deferred.)_
+- [x] `engine/multi-cycle` has **zero imports** from `web`/`curriculum` and from any other engine's
       production code; the trace schema is the only shared type surface (INV-2/INV-3, mechanically
       enforced by the eslint boundary rule + tsconfig references).
 
