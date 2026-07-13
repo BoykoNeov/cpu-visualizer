@@ -1,7 +1,11 @@
 # Milestone 2 — the multi-cycle model (second microarchitecture)
 
-**Status: MODEL COMPLETE (steps 0–4) + web model picker (step 5a) built, 2026-07-13. Only step
-5b (bespoke multi-cycle datapath SVG) remains — deferred to its own follow-up.**
+**Status: MODEL COMPLETE (steps 0–4) + web model picker (step 5a) + multi-cycle datapath SVG
+(step 5b) built, 2026-07-13. 5b is IMPLEMENTED + headlessly tested (16 new tests) + build green;
+**browser verification of the layout is still pending** (this project eyeballs web work via
+`npm run dev`, as 5a was). One deliberate simplification is carved out as a possible **step 5c**
+engine follow-up: the datapath does not draw the next-PC redirect (ALUOut→PC) — see the pinned
+decision below.**
 The multi-cycle model is implemented and fully proven headlessly — the INV-8 differential net
 (multi-cycle ≡ golden reference on every corpus program) and the recorder time-travel /
 `follow()` phase-walk both pass, alongside 38 hand-derived unit tests pinning the model's soul
@@ -181,17 +185,32 @@ make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes a
         the `sum-loop` timeline from last-cycle 33 to 123 on the live scrub bar, the datapath gated
         off to the placeholder and back, and an attached lesson stayed attached + re-anchored across
         the switch (INV-6 made visible).
-  - [ ] **5b. Multi-cycle datapath SVG.** A **separate, larger** hand-authored datapath (the
-        canonical multi-cycle datapath: shared ALU, single memory, the IR/A/B/ALUOut/MDR latches
-        drawn as boxes) wired to the trace, with the same pure-model/SVG-view split as M1's
-        `datapath.ts`/`DatapathView.tsx`. **This is where the deferred `minTier` structural-hiding
-        mechanism finally earns its keep** (M1 step 9 kept it wired-but-unused for exactly this):
-        the multi-cycle datapath _does_ have units that aren't on every instruction's path, so
-        lower tiers can lawfully hide them (unlike single-cycle, where hiding any box left a
-        dangling lit wire). The within-cycle phase stepper M1 built is now **within-cycle _and_
-        across-cycles** — one `location` per cycle. Depth tiers (essentials/detailed/expert) apply
-        as in M1. Optionally, this is also where the **full structural-fidelity** layer (shared ALU
-        reuse across cycles) becomes a visible lesson.
+  - [x] **5b. Multi-cycle datapath SVG.** ✅ Built (browser verification of the layout pending).
+        A **separate, larger** hand-authored datapath (`datapath-multi.ts` + `MultiCycleDatapathView.tsx`):
+        the shared ALU, the single shared Memory, and the five inter-cycle latches (IR/A/B/ALUOut/MDR)
+        drawn as boxes, wired to the trace with the same pure-model/SVG-view split as M1's
+        `datapath.ts`/`DatapathView.tsx`. Dispatched by a new `ModelChoice.datapath` discriminator
+        (`'single-cycle' | 'multi-cycle' | 'none'`) replacing the old `hasDatapath` boolean; the
+        placeholder now only backs `'none'`. - **`minTier` structural hiding finally earns its keep** (M1 step 9 kept it wired-but-unused
+        for exactly this). Three genuine selectors — `addrmux` (IorD), `alusrcb` (ALUSrc),
+        `wbmux` (MemtoReg) — are hidden at `essentials`; **contraction wires** (e.g. `pc → mem` in
+        place of `pc → addrmux → mem`) stand in for each hidden mux. A contraction is a lawful
+        collapse of the expert path (same source, same sink) — the INV-5 correctness condition,
+        checked by a test. `wireVisibleAt` generalizes M1's no-dangling litmus **per tier** via
+        wire `minTier`/`maxTier` ranges. The five latches + shared mem/ALU stay drawn at every tier. - **Activation is PHASE-DRIVEN**: each multi-cycle `CycleTrace` is one phase
+        (`instructions[0].location`), so `activate` lights only that cycle's slice (values from the
+        phase's events, latch snapshots from `state.micro`). No view-local phase stepper — scrubbing
+        the transport IS the phase walk. Depth tiers (essentials/detailed/expert) apply as in M1
+        (representation on top of the new structural layer). - **Deliberate simplification (candidate step 5c):** our engine computes PC-relative values
+        (pc+4, targets) directly and emits **no `alu-op`** for them (jal/lui/auipc skip EX), and it
+        commits PC at retire with no event. So the datapath does **not** reuse the ALU for next-PC
+        arithmetic and does **not** draw the ALUOut→PC redirect — drawing a textbook ALU-based PC
+        path would _contradict_ the trace (INV-3/INV-5), which is worse than omitting it. jal/jalr
+        `pc+4` and auipc `pc+imm` writebacks come from a small dedicated `pcarith` unit (as
+        single-cycle sourced them from `add4`/`branchadd`), so no register is written "from
+        nowhere". Making the PC path textbook-canonical is an **engine-level** change (jal/auipc/pc+4
+        would emit alu-ops, adding EX phases and changing the pinned cycle-count table + step-4
+        tests) — hence a 5c follow-up, not view polish.
 
 ## Acceptance criteria (mirror the spec §11 shape, for multi-cycle)
 
@@ -209,19 +228,34 @@ make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes a
       branch), visible in the trace and (step 5a) the timeline — the §12.1 headline. Browser-verified:
       `sum-loop` records **34 cycles on single-cycle vs 124 on multi-cycle** (last-cycle 33 → 123),
       the same swap `simulator.test.ts` proves headlessly, now visible on the scrub bar.
-- [ ] Depth-tier switching changes datapath detail without changing engine behavior and without
+- [x] Depth-tier switching changes datapath detail without changing engine behavior and without
       violating lawful simplification (INV-5) — **including** lawful _structural_ hiding on the
-      multi-cycle datapath (step 5b), the first place `minTier` box-hiding is lawful. _(5b — deferred.)_
+      multi-cycle datapath (step 5b), the first place `minTier` box-hiding is lawful. Proven
+      headlessly by `datapath-multi.test.ts`: per-tier no-dangling, mux-hiding at essentials,
+      contraction↔through-wire swap, and the lawful-contraction (same source/sink) guard. _(Layout
+      legibility still to be browser-verified via `npm run dev`.)_
 - [x] `engine/multi-cycle` has **zero imports** from `web`/`curriculum` and from any other engine's
       production code; the trace schema is the only shared type surface (INV-2/INV-3, mechanically
       enforced by the eslint boundary rule + tsconfig references).
 
 ## Decisions to pin (fill in as steps land — seeded with the recommended answers)
 
-- **Multi-cycle fidelity — DECIDED: MVP built (steps 0–4).** INV-8 is fidelity-agnostic, so this
-  was a pedagogy/view call, not a correctness one. The MVP (varying cycle counts via per-class
-  phase-skipping + `location` + `micro`) is the model core and is done. The shared-ALU/single-port
-  **structural** layer remains a datapath-view concern staged to step 5b (optional).
+- **Multi-cycle fidelity — DECIDED: MVP built (steps 0–4) + datapath structural layer (5b).**
+  INV-8 is fidelity-agnostic, so this was a pedagogy/view call, not a correctness one. The MVP
+  (varying cycle counts via per-class phase-skipping + `location` + `micro`) is the model core.
+  Step 5b then landed the shared-ALU / single-memory / five-latch **structural** datapath as a
+  pure view concern (`datapath-multi.ts`), with `minTier` box-hiding of the three muxes.
+
+- **Multi-cycle next-PC path — DECIDED: omitted from the datapath; textbook version is a possible
+  step 5c (engine-level).** The 5b datapath does not draw the ALUOut→PC redirect / next-PC select.
+  This is forced by INV-3/INV-5, not laziness: the engine emits **no `alu-op`** for PC arithmetic
+  (jal/lui/auipc skip EX; pc+4 is computed directly) and commits PC at retire with **no event**, so
+  a textbook ALU-based PC path would _contradict_ the trace. Visible cost: for `jalr` the ALU target
+  in ALUOut has no drawn consumer (the link comes from the dedicated `pcarith` unit); a taken branch
+  shows the compare but not the redirect. Making it canonical means changing the **engine** (emit
+  alu-ops for jal/auipc/pc+4 → extra EX phases → the pinned cycle-count table and step-4 tests move),
+  so it is a follow-up milestone, not view polish. `pcarith` keeps every writeback sourced today
+  (no register written "from nowhere", INV-5).
 
 - **`micro` / `ModelSpecificState` shape — DECIDED: fuller.** `MultiCycleMicro =
 { phase, ir, a, b, aluOut, mdr }` (exported from `@cpu-viz/engine-multi-cycle`). `ir` latched at

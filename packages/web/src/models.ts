@@ -11,6 +11,15 @@ import { MultiCycleProcessor, MULTI_CYCLE_MODEL_ID } from '@cpu-viz/engine-multi
 import { SingleCycleProcessor, SINGLE_CYCLE_MODEL_ID } from '@cpu-viz/engine-single-cycle';
 import type { Processor } from '@cpu-viz/trace';
 
+/**
+ * Which bespoke SVG datapath view (if any) renders a model's trace. Each model has its OWN
+ * hand-authored geometry — lighting single-cycle's one-tick datapath with a multi-cycle trace
+ * (whose phases spread across cycles) would draw a CONTRADICTORY picture, an INV-5 violation — so
+ * the web shell dispatches on this discriminator rather than a plain has/has-not flag. `'none'`
+ * falls back to a placeholder for models whose datapath isn't built yet.
+ */
+export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'none';
+
 /** A selectable microarchitecture: its id, a display label, and how to make a fresh engine. */
 export interface ModelChoice {
   /** Stable model id (matches the engine's `MODEL_ID` and its `capabilities.model`). */
@@ -21,14 +30,8 @@ export interface ModelChoice {
   description: string;
   /** Construct a fresh, unreset engine for the recorder to drive. */
   make: () => Processor;
-  /**
-   * Whether a bespoke SVG datapath view exists for this model. Only single-cycle has one today
-   * (M1 step 8); the multi-cycle datapath is a deferred follow-up (M2 step 5b). Lighting the
-   * single-cycle geometry with a multi-cycle trace would draw a CONTRADICTORY picture — a
-   * one-cycle datapath under a run whose phases are spread across cycles — which is an INV-5
-   * violation, not merely empty space. So the view is gated hard off until 5b lands.
-   */
-  hasDatapath: boolean;
+  /** Which bespoke SVG datapath view renders this model's trace (or `'none'`). */
+  datapath: DatapathKind;
 }
 
 export const MODELS: readonly ModelChoice[] = [
@@ -37,14 +40,14 @@ export const MODELS: readonly ModelChoice[] = [
     label: 'Single-cycle',
     description: 'single-cycle RV32I — one instruction enters and completes per cycle',
     make: () => new SingleCycleProcessor(),
-    hasDatapath: true,
+    datapath: 'single-cycle',
   },
   {
     id: MULTI_CYCLE_MODEL_ID,
     label: 'Multi-cycle',
     description: 'multi-cycle RV32I — one instruction in flight, its phases spread across cycles',
     make: () => new MultiCycleProcessor(),
-    hasDatapath: false,
+    datapath: 'multi-cycle',
   },
 ];
 

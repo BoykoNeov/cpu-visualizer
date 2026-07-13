@@ -6,6 +6,7 @@ import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { LESSONS } from './lessons';
 import { MODELS, modelById } from './models';
+import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -20,11 +21,11 @@ const SANDBOX_OPTION = '__sandbox__';
  * and show the source↔machine-code, register, and memory panels. Everything shown is read from the
  * recorded trace at the current cursor, so stepping forward, stepping back, and scrubbing always
  * display the exact recorded state (acceptance §11) — and because the panels read only the trace
- * (INV-3), they animate against whichever model is selected unchanged. The SVG datapath view
- * (step 8) is single-cycle-specific geometry, so it renders only for models that declare a bespoke
- * view ({@link ModelChoice.hasDatapath}); others show a placeholder (the multi-cycle datapath is
- * step 5b). Its depth-tier dial (step 9, axis B / handoff §4) is a pure view concern — the engine
- * and trace are oblivious to it (INV-2).
+ * (INV-3), they animate against whichever model is selected unchanged. Each model has its OWN
+ * hand-authored SVG datapath (single-cycle: M1 step 8; multi-cycle: M2 step 5b), dispatched on
+ * {@link ModelChoice.datapath}; a model with no bespoke view falls back to a placeholder. The
+ * depth-tier dial (step 9, axis B / handoff §4) is a pure view concern — the engine and trace are
+ * oblivious to it (INV-2).
  */
 export function App(): React.JSX.Element {
   const sim = useSimulator();
@@ -35,9 +36,9 @@ export function App(): React.JSX.Element {
   const [tier, setTier] = useState<DepthTier>('detailed');
 
   // The microarchitecture currently driving the recording (INV-3: the panels read only the trace,
-  // so they animate against whichever model is selected). Its `hasDatapath` flag gates the SVG
-  // datapath — that view draws the single-cycle geometry, so lighting it with a multi-cycle trace
-  // would paint a contradictory picture (INV-5); the multi-cycle datapath is deferred (M2 step 5b).
+  // so they animate against whichever model is selected). Its `datapath` kind selects which bespoke
+  // SVG datapath renders below — each model has its own geometry (lighting one model's datapath with
+  // another's trace would paint a contradictory picture, an INV-5 violation).
   const activeModel = modelById(sim.model);
 
   // The pristine corpus source backing the current session — the editor's "revert" baseline and
@@ -194,8 +195,10 @@ export function App(): React.JSX.Element {
             />
           ) : null}
 
-          {activeModel.hasDatapath ? (
+          {activeModel.datapath === 'single-cycle' ? (
             <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+          ) : activeModel.datapath === 'multi-cycle' ? (
+            <MultiCycleDatapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
           ) : (
             <DatapathPlaceholder modelLabel={activeModel.label} />
           )}
@@ -625,12 +628,11 @@ function Transport(props: {
 }
 
 /**
- * Stand-in shown in place of the SVG datapath for a model that has no bespoke view yet (the
- * multi-cycle datapath is a deferred follow-up, M2 step 5b). Deliberately NOT the single-cycle
- * datapath: that geometry lit by a multi-cycle trace would contradict the model (INV-5). The
- * transport, register, and memory panels still animate the run cycle-by-cycle — the multi-cycle
- * story ("one instruction takes several cycles") is fully visible there; only the datapath diagram
- * is missing.
+ * Stand-in shown in place of the SVG datapath for a model whose `datapath` kind is `'none'` — a
+ * microarchitecture with no bespoke geometry authored yet (single-cycle and multi-cycle both have
+ * one; a future tier that doesn't would land here). Deliberately NOT another model's datapath: that
+ * geometry lit by this model's trace would contradict it (INV-5). The transport, register, and
+ * memory panels still animate the run cycle-by-cycle.
  */
 function DatapathPlaceholder(props: { modelLabel: string }): React.JSX.Element {
   return (
@@ -650,8 +652,7 @@ function DatapathPlaceholder(props: { modelLabel: string }): React.JSX.Element {
       </div>
       <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.5 }}>
         This model’s datapath diagram is on the way. Meanwhile, step or scrub the timeline below and
-        watch the register and memory panels: a single instruction now takes several cycles (IF → ID
-        → EX → MEM → WB) to complete.
+        watch the register and memory panels.
       </p>
     </div>
   );
