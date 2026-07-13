@@ -11,6 +11,7 @@ import type { AssembledProgram, AssemblerError } from '@cpu-viz/assembler';
 import { anchorLesson, type AnchoredStep, type Lesson } from '@cpu-viz/curriculum';
 import type { CycleTrace, MachineState } from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_MODEL_ID, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import {
   activeLessonOf,
@@ -38,6 +39,12 @@ export interface Simulator {
    * fork origin, not what is running — see {@link loadedSource} for the running source.)
    */
   programName: string | null;
+  /**
+   * The id of the microarchitecture currently driving the recording (e.g. `'single-cycle'`,
+   * `'multi-cycle'`). The picker swaps it; every panel reads only the trace (INV-3), so they all
+   * animate against the selected model unchanged.
+   */
+  model: string;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -80,6 +87,14 @@ export interface Simulator {
   /** The trace at the cursor (events + in-flight instructions), or `null` at pre-run. */
   cycleTrace: CycleTrace | null;
 
+  /**
+   * Switch the driving microarchitecture and re-load the current source under it (same program,
+   * same session; cursor parks at the pre-run state). A no-op if the model is already selected —
+   * so it never needlessly discards the cursor. The recorder has no in-place engine swap, so a
+   * fresh load is the mechanism; the new recorder re-anchors any active lesson against the new
+   * model's trace (INV-6).
+   */
+  setModel: (id: string) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -109,6 +124,12 @@ export function useSimulator(): Simulator {
   const [loadGen, setLoadGen] = useState(0);
   const [errors, setErrors] = useState<AssemblerError[] | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  // The selected model id drives rendering (picker value, header, datapath gating); the factory
+  // that BUILDS the engine lives in a ref so `loadInto` can read it at call time without taking
+  // `model` as a dependency — otherwise `select` (which depends on `loadInto`) would change
+  // identity on a model switch and re-fire the mount effect, clobbering the current program.
+  const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
+  const makeProcessor = useRef(modelById(DEFAULT_MODEL_ID).make);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -119,7 +140,7 @@ export function useSimulator(): Simulator {
   // exclusive: a program either fails to assemble or fails to terminate, never both).
   const loadInto = useCallback(
     (source: string) => {
-      const result = loadSource(source);
+      const result = loadSource(source, makeProcessor.current);
       if (!result.ok) {
         loaded.current = null;
         setErrors(result.errors);
@@ -187,6 +208,23 @@ export function useSimulator(): Simulator {
     [loadInto],
   );
 
+  const setModel = useCallback(
+    (id: string) => {
+      const choice = modelById(id);
+      if (choice.id === model) return; // already selected — keep the cursor where it is
+      makeProcessor.current = choice.make; // read by loadInto below (and every later load)
+      setModelState(choice.id);
+      // Re-drive whatever is currently loaded under the new engine. `loaded.current.source` is
+      // always the exact running source — the corpus program in free-play/lesson mode, or the
+      // user's edited text in a sandbox — so re-loading it keeps the session (and any lesson)
+      // intact while swapping the microarchitecture. Nothing loaded yet ⇒ the mount effect will
+      // load under the new factory anyway.
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [model, loadInto],
+  );
+
   // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
   // counting loop is the clearest first teaching example; `add` (which sorts first) halts
   // by running off text-end, so its final pc is an out-of-range value that reads as odd.
@@ -234,6 +272,7 @@ export function useSimulator(): Simulator {
     [activeLesson, recorder],
   );
   return {
+    model,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -248,6 +287,7 @@ export function useSimulator(): Simulator {
     atEnd: recorder?.atEnd ?? false,
     state: recorder ? recorder.currentState() : null,
     cycleTrace: recorder ? recorder.current() : null,
+    setModel,
     select,
     startLesson,
     loadEdited,

@@ -20,6 +20,7 @@ export default defineConfig({
       '@cpu-viz/engine-common': pkg('../engine/common/src/index.ts'),
       '@cpu-viz/engine-reference': pkg('../engine/reference/src/index.ts'),
       '@cpu-viz/engine-single-cycle': pkg('../engine/single-cycle/src/index.ts'),
+      '@cpu-viz/engine-multi-cycle': pkg('../engine/multi-cycle/src/index.ts'),
     },
   },
 });

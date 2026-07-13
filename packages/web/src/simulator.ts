@@ -13,11 +13,11 @@
 import { assemble, type AssembledProgram, type AssemblerError } from '@cpu-viz/assembler';
 import { toProgramImage } from '@cpu-viz/engine-common';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
-import { TraceRecorder } from '@cpu-viz/trace';
+import { TraceRecorder, type Processor } from '@cpu-viz/trace';
 
 /** A successfully assembled program, loaded and ready to drive. */
 export interface LoadedProgram {
-  /** Time-travel driver over the single-cycle engine, positioned at the pre-run state (-1). */
+  /** Time-travel driver over the chosen engine, positioned at the pre-run state (-1). */
   recorder: TraceRecorder;
   /** The assembled program — its `words` + `sourceMap` back the source↔machine-code panel. */
   program: AssembledProgram;
@@ -35,14 +35,22 @@ export type LoadResult =
   | { ok: false; errors: AssemblerError[] };
 
 /**
- * Assemble `source` and, on success, load it into a fresh recorder (cursor at the pre-run
- * state, nothing executed yet). On failure returns the located assembler diagnostics for
- * display. Does not run the program — the caller decides how far to drive it.
+ * Assemble `source` and, on success, load it into a fresh recorder driving `makeProcessor()`
+ * (cursor at the pre-run state, nothing executed yet). On failure returns the located assembler
+ * diagnostics for display. Does not run the program — the caller decides how far to drive it.
+ *
+ * `makeProcessor` defaults to the single-cycle engine so every existing caller (and the headless
+ * test) keeps its one-argument behaviour; the model picker passes the selected model's factory.
+ * The recorder is model-agnostic (INV-3), so swapping the engine is the ONLY change needed to
+ * drive a different microarchitecture.
  */
-export function loadSource(source: string): LoadResult {
+export function loadSource(
+  source: string,
+  makeProcessor: () => Processor = () => new SingleCycleProcessor(),
+): LoadResult {
   const { program, errors } = assemble(source);
   if (!program) return { ok: false, errors };
-  const recorder = new TraceRecorder(new SingleCycleProcessor());
+  const recorder = new TraceRecorder(makeProcessor());
   recorder.load(toProgramImage(program));
   return { ok: true, loaded: { recorder, program, source } };
 }

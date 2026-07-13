@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { LESSONS } from './lessons';
+import { MODELS, modelById } from './models';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -28,6 +29,12 @@ export function App(): React.JSX.Element {
   // `essentials` shows the bare lit path, `detailed` (default) adds the value on each active wire,
   // `expert` adds the mux control-line labels.
   const [tier, setTier] = useState<DepthTier>('detailed');
+
+  // The microarchitecture currently driving the recording (INV-3: the panels read only the trace,
+  // so they animate against whichever model is selected). Its `hasDatapath` flag gates the SVG
+  // datapath — that view draws the single-cycle geometry, so lighting it with a multi-cycle trace
+  // would paint a contradictory picture (INV-5); the multi-cycle datapath is deferred (M2 step 5b).
+  const activeModel = modelById(sim.model);
 
   // The pristine corpus source backing the current session — the editor's "revert" baseline and
   // the seed for the edit draft. In a sandbox this is what the edit forked FROM (not the running
@@ -83,7 +90,7 @@ export function App(): React.JSX.Element {
     >
       <header style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: '1.4rem', margin: 0 }}>CPU Visualizer</h1>
-        <span style={{ color: '#888' }}>single-cycle RV32I</span>
+        <span style={{ color: '#888' }}>{activeModel.description}</span>
         <div
           style={{
             marginLeft: 'auto',
@@ -94,6 +101,20 @@ export function App(): React.JSX.Element {
           }}
         >
           <DepthDial tier={tier} setTier={setTier} />
+          <label>
+            Model:{' '}
+            <select
+              value={sim.model}
+              onChange={(e) => sim.setModel(e.target.value)}
+              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
+            >
+              {MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Program:{' '}
             <select
@@ -169,7 +190,11 @@ export function App(): React.JSX.Element {
             />
           ) : null}
 
-          <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+          {activeModel.hasDatapath ? (
+            <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+          ) : (
+            <DatapathPlaceholder modelLabel={activeModel.label} />
+          )}
 
           {sim.state && sim.program ? (
             <div
@@ -355,8 +380,7 @@ function NarrationPanel(props: {
                 fontWeight: 700,
                 cursor: 'pointer',
                 border: `2px solid ${state === 'future' ? '#b8c9e6' : '#1e6fe0'}`,
-                background:
-                  state === 'active' ? '#1e6fe0' : state === 'past' ? '#cfe0fb' : '#fff',
+                background: state === 'active' ? '#1e6fe0' : state === 'past' ? '#cfe0fb' : '#fff',
                 color: state === 'active' ? '#fff' : '#1e4d8a',
               }}
             >
@@ -445,8 +469,8 @@ function ProgramEditor(props: {
           }}
         >
           <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
-            Running an edit forks into a <strong>sandbox</strong>: the edited program animates
-            like any other, and any active lesson detaches.
+            Running an edit forks into a <strong>sandbox</strong>: the edited program animates like
+            any other, and any active lesson detaches.
           </p>
           <textarea
             value={draft}
@@ -592,6 +616,39 @@ function Transport(props: {
         style={{ width: '100%', marginTop: '0.6rem' }}
         aria-label="Scrub timeline"
       />
+    </div>
+  );
+}
+
+/**
+ * Stand-in shown in place of the SVG datapath for a model that has no bespoke view yet (the
+ * multi-cycle datapath is a deferred follow-up, M2 step 5b). Deliberately NOT the single-cycle
+ * datapath: that geometry lit by a multi-cycle trace would contradict the model (INV-5). The
+ * transport, register, and memory panels still animate the run cycle-by-cycle — the multi-cycle
+ * story ("one instruction takes several cycles") is fully visible there; only the datapath diagram
+ * is missing.
+ */
+function DatapathPlaceholder(props: { modelLabel: string }): React.JSX.Element {
+  return (
+    <div
+      style={{
+        marginTop: '1rem',
+        border: '1px dashed #c8ccd4',
+        background: '#fafafb',
+        borderRadius: 10,
+        padding: '1.25rem 1.25rem',
+        color: '#667',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontWeight: 700, color: '#556', marginBottom: '0.35rem' }}>
+        {props.modelLabel} datapath — coming soon
+      </div>
+      <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.5 }}>
+        This model’s datapath diagram is on the way. Meanwhile, step or scrub the timeline below and
+        watch the register and memory panels: a single instruction now takes several cycles (IF → ID
+        → EX → MEM → WB) to complete.
+      </p>
     </div>
   );
 }

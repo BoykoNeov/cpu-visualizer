@@ -9,6 +9,7 @@ import {
   type Lesson,
   type LessonStep,
 } from '@cpu-viz/curriculum';
+import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import type { CycleTrace, TraceEvent } from '@cpu-viz/trace';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { LESSONS } from './lessons';
@@ -32,6 +33,17 @@ function recordProgram(programName: string): readonly CycleTrace[] {
   expect(result.ok, `"${programName}" should assemble`).toBe(true);
   if (!result.ok) throw new Error('unreachable: assembly failed');
   result.loaded.recorder.runToEnd(); // anchor against a COMPLETE recording
+  return result.loaded.recorder.recorded;
+}
+
+/** As {@link recordProgram}, but driven by the multi-cycle engine (M2 step 5a). */
+function recordProgramMultiCycle(programName: string): readonly CycleTrace[] {
+  const program = EXAMPLE_PROGRAMS.find((p) => p.name === programName);
+  expect(program, `lesson program "${programName}" is not in the corpus`).toBeDefined();
+  const result = loadSource(program!.source, () => new MultiCycleProcessor());
+  expect(result.ok, `"${programName}" should assemble`).toBe(true);
+  if (!result.ok) throw new Error('unreachable: assembly failed');
+  result.loaded.recorder.runToEnd();
   return result.loaded.recorder.recorded;
 }
 
@@ -187,4 +199,44 @@ describe('authored lessons (INV-6)', () => {
       value: 42,
     });
   });
+});
+
+/**
+ * INV-6 across models (M2 step 5a): "lessons anchor to trace EVENTS, not cycle numbers." The
+ * authored lessons target single-cycle, but the whole point of anchoring to events is that the
+ * SAME lesson plays against a different microarchitecture unchanged — the multi-cycle engine
+ * emits the same events, merely spread across more cycles (a load's `mem-read` and its
+ * `reg-write` now land in different phase-cycles instead of one). So switching the model in the
+ * picker must NOT strand a lesson: every step still anchors, in order, with resolvable narration,
+ * and the play-through query still surfaces it. This is the graceful-degradation guarantee the
+ * picker leans on — proven here directly rather than assumed.
+ */
+describe('authored lessons play against multi-cycle too (INV-6 cross-model)', () => {
+  for (const lesson of LESSONS) {
+    it(`${lesson.id}: every step still anchors under multi-cycle, in order, with narration`, () => {
+      const trace = recordProgramMultiCycle(lesson.program);
+      const anchored = anchorLesson(lesson, trace);
+
+      // No step is stranded by the model swap (the crux: events, not cycles).
+      for (const step of anchored) {
+        expect(
+          step.cycle,
+          `"${stepLabel(step.step)}" never fired under multi-cycle`,
+        ).not.toBeNull();
+      }
+      // Program-order anchoring survives the phase-spread (events still occur in the same order).
+      expect(anchorOrderViolations(anchored)).toEqual([]);
+      // Narration still resolves at the default tier.
+      for (const { step } of anchored) {
+        expect(resolveNarration(step.narration, lesson.depthDefault)).toBeDefined();
+      }
+
+      // The play-through query the UI calls still lands on the final step.
+      const last = anchored[anchored.length - 1]!;
+      expect(activeStepAt(anchored, last.cycle!)?.index).toBe(last.index);
+      expect(narrationFor(anchored, last.cycle!, lesson.depthDefault)).toBe(
+        resolveNarration(last.step.narration, lesson.depthDefault),
+      );
+    });
+  }
 });

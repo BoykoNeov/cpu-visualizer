@@ -1,6 +1,7 @@
 # Milestone 2 — the multi-cycle model (second microarchitecture)
 
-**Status: MODEL COMPLETE (steps 0–4 built, 2026-07-13). Step 5 (web) is the open scope lever.**
+**Status: MODEL COMPLETE (steps 0–4) + web model picker (step 5a) built, 2026-07-13. Only step
+5b (bespoke multi-cycle datapath SVG) remains — deferred to its own follow-up.**
 The multi-cycle model is implemented and fully proven headlessly — the INV-8 differential net
 (multi-cycle ≡ golden reference on every corpus program) and the recorder time-travel /
 `follow()` phase-walk both pass, alongside 38 hand-derived unit tests pinning the model's soul
@@ -159,15 +160,23 @@ explicit scope decision.
   >   explicit scope lever below.
 
 - [ ] **5. Web: model picker + multi-cycle datapath view.** _(Scope decision — see the "Web scope
-      lever" decision. Can ship in two sub-steps or be deferred to its own milestone.)_
-  - [ ] **5a. Model picker.** `useSimulator` today hard-wires `SingleCycleProcessor`. Add a model
-        selector (single-cycle | multi-cycle) that swaps the `Processor` the recorder wraps; the
-        transport, register/memory/source panels, scrub slider, lessons, and sandbox-fork all work
-        **unchanged** because they read the trace, not the engine (INV-3). At this sub-step,
-        multi-cycle is drivable in-browser with the _existing_ panels (registers/memory/source
-        animate per cycle) even before its bespoke datapath exists — proving the model end-to-end
-        in the UI cheaply. The single-cycle datapath view is shown only for the single-cycle model
-        (its geometry is single-cycle-specific).
+      lever" decision. Shipping in two sub-steps: **5a done**, 5b deferred to its own follow-up.)_
+  - [x] **5a. Model picker.** ✅ Done. `models.ts` is the model registry (`{id, label, description,
+make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes an engine
+        factory (default keeps every one-arg caller working); `useSimulator` holds the selected
+        `model` in state and the factory in a **ref** so `loadInto` reads it at call time without
+        `model` entering `select`'s dep chain (which would re-fire the mount effect and clobber the
+        program). `setModel(id)` swaps the ref and re-loads the current source under the new engine,
+        keeping the session/lesson and parking the cursor at pre-run. The header has a **Model**
+        `<select>`; the transport, register/memory/source panels, scrub slider, lessons, and
+        sandbox-fork all work **unchanged** (INV-3). The single-cycle SVG datapath is gated hard off
+        for models without `hasDatapath` — lighting its single-cycle geometry with a multi-cycle
+        trace would draw a **contradictory** picture (INV-5), so multi-cycle shows a placeholder
+        pointing at 5b instead. New non-vacuous tests: `simulator.test.ts` proves the swap is real
+        (multi-cycle records strictly **more** cycles than single-cycle for the same program, both
+        land on a0 = 55, INV-8); `lessons.test.ts` proves **INV-6 cross-model** — every authored
+        lesson still anchors, in order, with resolvable narration, against the multi-cycle recording
+        (events, not cycles: the lesson swap does not strand a step). Full gate green (413 tests).
   - [ ] **5b. Multi-cycle datapath SVG.** A **separate, larger** hand-authored datapath (the
         canonical multi-cycle datapath: shared ALU, single memory, the IR/A/B/ALUOut/MDR latches
         drawn as boxes) wired to the trace, with the same pure-model/SVG-view split as M1's
