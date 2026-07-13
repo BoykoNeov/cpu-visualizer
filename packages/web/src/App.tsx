@@ -86,6 +86,8 @@ export function App(): React.JSX.Element {
 
       {sim.errors ? (
         <ErrorBox errors={sim.errors} />
+      ) : sim.runtimeError ? (
+        <NoticeBox title="Program did not finish" message={sim.runtimeError} />
       ) : (
         <>
           <Transport sim={sim} atStart={atStart} lastCycle={lastCycle} inFlight={inFlight} />
@@ -218,6 +220,24 @@ function Transport(props: {
         style={{ width: '100%', marginTop: '0.6rem' }}
         aria-label="Scrub timeline"
       />
+    </div>
+  );
+}
+
+/** A single-message notice (e.g. a runtime "ran too long" report), styled like {@link ErrorBox}. */
+function NoticeBox(props: { title: string; message: string }): React.JSX.Element {
+  return (
+    <div
+      style={{
+        marginTop: '1rem',
+        border: '1px solid #e0b4b4',
+        background: '#fff6f6',
+        borderRadius: 8,
+        padding: '0.75rem 1rem',
+      }}
+    >
+      <strong style={{ color: '#a33' }}>{props.title}</strong>
+      <p style={{ fontSize: '0.85rem', margin: '0.5rem 0 0' }}>{props.message}</p>
     </div>
   );
 }

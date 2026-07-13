@@ -13,6 +13,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource, type LoadedProgram } from './simulator';
 
+/**
+ * Teaching-scale ceiling on how many cycles we record for one program. Well under the
+ * recorder's 1M default: a user-edited program (the step-11 sandbox fork) can loop forever,
+ * and a frozen tab is worse than a friendly "ran too long" message. The shipped corpus all
+ * halts in well under this.
+ */
+const TEACHING_MAX_CYCLES = 50_000;
+
 /** Everything the UI needs to render and drive the simulation. */
 export interface Simulator {
   /** Name of the selected example program, or `null` before the first load. */
@@ -21,6 +29,12 @@ export interface Simulator {
   program: AssembledProgram | null;
   /** Assembler diagnostics from the last load, or `null` if it assembled cleanly. */
   errors: AssemblerError[] | null;
+  /**
+   * A runtime message when the program was abandoned mid-run (e.g. it exceeded
+   * {@link TEACHING_MAX_CYCLES} without halting), or `null`. Mutually exclusive with
+   * {@link errors} — a program either fails to assemble or fails to terminate, never both.
+   */
+  runtimeError: string | null;
 
   /** Timeline position: -1 = pre-run ("start"), otherwise the recorded cycle index. */
   cursor: number;
@@ -49,6 +63,7 @@ export function useSimulator(): Simulator {
   const [, setTick] = useState(0);
   const [programName, setProgramName] = useState<string | null>(null);
   const [errors, setErrors] = useState<AssemblerError[] | null>(null);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   const select = useCallback(
@@ -58,18 +73,36 @@ export function useSimulator(): Simulator {
       setProgramName(name);
       const result = loadSource(example.source);
       if (!result.ok) {
+        // Assembler failure clears any prior runtime error — the two channels never coexist.
         loaded.current = null;
         setErrors(result.errors);
+        setRuntimeError(null);
         rerender();
         return;
       }
       // Record every cycle up front so the scrub bar is full-length, then park at the
-      // pre-run state so the user starts at the beginning (a fixed-length timeline).
+      // pre-run state so the user starts at the beginning (a fixed-length timeline). A
+      // user-edited program (sandbox fork) may never halt, so cap the up-front recording:
+      // on overflow, discard the (non-halted) recording — keeping it would re-throw on the
+      // next scrub-forward — and surface a friendly message in place of the transport.
       const { recorder } = result.loaded;
-      recorder.runToEnd();
-      recorder.scrubTo(-1);
+      try {
+        recorder.runToEnd(TEACHING_MAX_CYCLES);
+      } catch {
+        loaded.current = null;
+        setErrors(null);
+        setRuntimeError(
+          `This program ran for more than ${TEACHING_MAX_CYCLES.toLocaleString()} cycles ` +
+            `without finishing — it may loop forever. Edit it so it halts (e.g. reach ` +
+            `“li a7, 10; ecall”) and try again.`,
+        );
+        rerender();
+        return;
+      }
+      recorder.scrubTo(-1, TEACHING_MAX_CYCLES);
       loaded.current = result.loaded;
       setErrors(null);
+      setRuntimeError(null);
       rerender();
     },
     [rerender],
@@ -91,17 +124,20 @@ export function useSimulator(): Simulator {
     loaded.current?.recorder.stepBack();
     rerender();
   }, [rerender]);
+  // These only ever replay already-recorded cycles today (`select` records the whole program
+  // up front, so the engine is halted), so their guard loops can't fire — but pass the cap
+  // anyway to stay correct if recording ever becomes lazy.
   const runToEnd = useCallback(() => {
-    loaded.current?.recorder.runToEnd();
+    loaded.current?.recorder.runToEnd(TEACHING_MAX_CYCLES);
     rerender();
   }, [rerender]);
   const reset = useCallback(() => {
-    loaded.current?.recorder.scrubTo(-1);
+    loaded.current?.recorder.scrubTo(-1, TEACHING_MAX_CYCLES);
     rerender();
   }, [rerender]);
   const scrubTo = useCallback(
     (cycle: number) => {
-      loaded.current?.recorder.scrubTo(cycle);
+      loaded.current?.recorder.scrubTo(cycle, TEACHING_MAX_CYCLES);
       rerender();
     },
     [rerender],
@@ -112,6 +148,7 @@ export function useSimulator(): Simulator {
     programName,
     program: loaded.current?.program ?? null,
     errors,
+    runtimeError,
     cursor: recorder?.cursor ?? -1,
     recordedCycles: recorder?.recordedCycles ?? 0,
     atEnd: recorder?.atEnd ?? false,

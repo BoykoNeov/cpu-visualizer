@@ -223,12 +223,21 @@ Each step should be testable before the next.
       check. A **real-engine integration test lands in `web` at step 11** when actual lessons exist.
       322 tests green.
 - [ ] **11. Author 2–3 lessons** + wire sandbox-fork on edit.
-  - [ ] **Runaway-guard the sandbox path.** `useSimulator.select()` calls `recorder.runToEnd()`
-        unguarded — fine for the terminating corpus, but the sandbox fork feeds user-edited programs
-        into this exact path. Before it lands: pass a teaching-scale `maxCycles` (~50k, not the 1M
-        default — a frozen tab beats a slow throw) to `runToEnd`/`scrubTo`, catch the throw in the
-        React handler (it currently escapes uncaught), and surface a friendly "program ran too long"
-        message. `scrubTo` now carries the same `maxCycles` guard as `runToEnd` (both default 1M).
+  - [x] **Runaway-guard the sandbox path.** DONE (2026-07-13). The recorder side already carried a
+        `maxCycles` cap on `runToEnd`/`scrubTo` (both default 1M, tested in `recorder.test.ts`); this
+        wired the **web** side. `useSimulator` now threads a teaching-scale `TEACHING_MAX_CYCLES =
+        50_000` through all three engine-advancing call sites (`select`'s up-front `runToEnd`, plus the
+        exposed `runToEnd`/`scrubTo` — harmless on the replay-only ones today, future-proofs a lazy
+        recorder). The live throw site is only `select()` (it records the whole program up front); its
+        `runToEnd` is wrapped in try/catch — on overflow it **discards** the non-halted recording
+        (`loaded.current = null` — keeping it would re-throw on the next scrub-forward) and sets a new
+        `runtimeError` channel. `runtimeError` and the assembler `errors` are **mutually exclusive**:
+        every one of the four transitions (assemble-fail / overflow / success) clears the other. App
+        renders a `NoticeBox` ("Program did not finish") in place of the transport, mirroring
+        `ErrorBox`. Verified end-to-end with a throwaway probe: an infinite `j loop` assembles then
+        throws `non-terminating` at the cap via the REAL single-cycle engine, while a terminating
+        program doesn't; the React catch is eyeballed (no jsdom, per the step-7 precedent). 325 tests
+        green (no new headless test — the cap throw is already covered in `recorder.test.ts`).
 
 ## Acceptance criteria (spec §11)
 
