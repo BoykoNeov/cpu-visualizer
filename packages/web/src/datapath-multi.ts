@@ -188,7 +188,9 @@ const WIRE_LIST: readonly DatapathWire[] = [
   { id: 'signext-alusrcb', ends: ['signext', 'alusrcb'], points: [at('signext', 'r', -8), [548, at('signext', 'r', -8)[1]], [548, at('alusrcb', 'l', 32)[1]], at('alusrcb', 'l', 32)], minTier: 'detailed' }, // prettier-ignore
   { id: 'alusrcb-alu', ends: ['alusrcb', 'alu'], points: [at('alusrcb', 'r'), [at('alusrcb', 'r')[0], aLo('alu')[1]], aLo('alu')], minTier: 'detailed' }, // prettier-ignore
   { id: 'b-alu', ends: ['b', 'alu'], points: [at('b', 'r'), aLo('alu')], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
-  { id: 'signext-alu', ends: ['signext', 'alu'], points: [at('signext', 'r', 8), [600, at('signext', 'r', 8)[1]], [600, aLo('alu')[1]], aLo('alu')], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
+  // Enters the ALU's lower stub 8px below `b-alu`'s anchor: both are essentials contractions of the
+  // ALUSrc mux and are drawn together (idle), so they must not share the final run into the stub.
+  { id: 'signext-alu', ends: ['signext', 'alu'], points: [at('signext', 'r', 8), [600, at('signext', 'r', 8)[1]], [600, aLo('alu')[1] + 8], [at('alu', 'l')[0], aLo('alu')[1] + 8]], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
   { id: 'alu-aluout', ends: ['alu', 'aluout'], points: [at('alu', 'r'), at('aluout', 'l')] }, // prettier-ignore
   // --- Memory: ALUOut addresses memory (via IorD); a load fills MDR, a store sends B's datum ---
   { id: 'b-mem', ends: ['b', 'mem'], points: [at('b', 'b'), [523, 438], [197, 438], at('mem', 'b')] }, // prettier-ignore

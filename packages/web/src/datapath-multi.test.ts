@@ -38,6 +38,37 @@ function onPerimeter(pt: readonly [number, number], id: string, eps = 0.5): bool
   return false;
 }
 
+type Seg = readonly [number, number, number, number];
+function segmentsOf(points: readonly (readonly [number, number])[]): Seg[] {
+  const segs: Seg[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    segs.push([a[0], a[1], b[0], b[1]]);
+  }
+  return segs;
+}
+/** Length two segments run collinearly on top of each other (0 if they only cross / touch). */
+function collinearOverlap(a: Seg, b: Seg, eps = 0.5): number {
+  const [ax0, ay0, ax1, ay1] = a;
+  const [bx0, by0, bx1, by1] = b;
+  const aH = Math.abs(ay0 - ay1) < eps;
+  const bH = Math.abs(by0 - by1) < eps;
+  const aV = Math.abs(ax0 - ax1) < eps;
+  const bV = Math.abs(bx0 - bx1) < eps;
+  if (aH && bH && Math.abs(ay0 - by0) < eps) {
+    const lo = Math.max(Math.min(ax0, ax1), Math.min(bx0, bx1));
+    const hi = Math.min(Math.max(ax0, ax1), Math.max(bx0, bx1));
+    return Math.max(0, hi - lo);
+  }
+  if (aV && bV && Math.abs(ax0 - bx0) < eps) {
+    const lo = Math.max(Math.min(ay0, ay1), Math.min(by0, by1));
+    const hi = Math.min(Math.max(ay0, ay1), Math.max(by0, by1));
+    return Math.max(0, hi - lo);
+  }
+  return 0;
+}
+
 /**
  * The multi-cycle datapath activation is the headlessly-testable seam of the SVG view (the layout
  * and rendering are checked by eye via `npm run dev`). We drive the REAL {@link MultiCycleProcessor}
@@ -333,6 +364,28 @@ describe('geometry: wires are orthogonal and anchored on real edges (visual acce
       const last = wire.points[wire.points.length - 1]!;
       expect.soft(onPerimeter(first, wire.ends[0]), `${wire.id} start off ${wire.ends[0]}`).toBe(true); // prettier-ignore
       expect.soft(onPerimeter(last, wire.ends[1]), `${wire.id} end off ${wire.ends[1]}`).toBe(true);
+    }
+  });
+
+  it('no two simultaneously-drawn wires run collinearly on top of each other (arrows don’t obscure arrows)', () => {
+    // A collinear overlap is a permanent "two lines as one", invisible to the eye. Bucket by tier:
+    // a contraction wire and its through-mux wire are intentionally collinear but NEVER co-visible,
+    // so only compare wires drawn together (`wireVisibleAt`). Crossings / shared endpoints are fine.
+    for (const tier of DEPTH_TIERS) {
+      const vis = WIRES.filter((w) => wireVisibleAt(w, tier));
+      for (let i = 0; i < vis.length; i++) {
+        for (let j = i + 1; j < vis.length; j++) {
+          const wi = vis[i]!;
+          const wj = vis[j]!;
+          let worst = 0;
+          for (const sa of segmentsOf(wi.points))
+            for (const sb of segmentsOf(wj.points))
+              worst = Math.max(worst, collinearOverlap(sa, sb));
+          expect
+            .soft(worst, `${wi.id} overlaps ${wj.id} at ${tier} for ${worst.toFixed(0)}px`)
+            .toBeLessThan(2);
+        }
+      }
     }
   });
 });
