@@ -1,0 +1,348 @@
+/**
+ * The web shell's design tokens and shared styles — the single source of truth for color.
+ *
+ * Structure (this is the TEMPLATE future views build on — see docs/templates/new-model-datapath.md):
+ *   1. TOKENS — CSS custom properties on :root, with a dark set that applies under BOTH the OS
+ *      preference (prefers-color-scheme) and the explicit toggle (data-theme). The toggle must win
+ *      both ways, hence the :not([data-theme='light']) guard on the media block.
+ *   2. BASE — element defaults (page plane, ink, form controls).
+ *   3. COMPONENTS — .panel / .btn / .chip / .seg segmented controls used across the shell.
+ *   4. DATAPATH — the .dp-* classes the shared DatapathDiagram renderer draws with, including the
+ *      active-wire flow animation (disabled under prefers-reduced-motion).
+ *
+ * Palette provenance: the categorical/phase hues and chrome values are the dataviz reference
+ * palette; the 5-slot phase set was machine-validated for both surfaces (CVD separation, lightness
+ * band, chroma floor, contrast) — light-mode aqua/yellow sit below 3:1 on the surface, which is
+ * lawful ONLY because phase chips always carry a text label (the "relief rule": hue is never the
+ * sole carrier). Don't reorder the phase hues — the ordering is the CVD-safety mechanism.
+ */
+
+/* ---- 1. Tokens ---------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces & ink */
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f3f3f0;
+  --ink: #1a1a18;
+  --ink-2: #52514e;
+  --ink-3: #898781;
+  --line: #e1e0d9;
+  --line-2: #c3c2b7;
+
+  /* Accent (the "active path" blue — categorical slot 1) */
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 11%, var(--surface));
+  --accent-line: color-mix(in srgb, var(--accent) 45%, var(--surface));
+
+  /* Datapath */
+  --wire-idle: #c9c8c0;
+  --node-idle-fill: #fbfbfa;
+
+  /* State washes */
+  --highlight: #fff3d1; /* "touched this cycle" amber wash */
+  --danger: #d03b3b;
+  --danger-bg: #fdf1f1;
+  --warn-border: #d9a441;
+  --warn-bg: #fff8e8;
+  --warn-ink: #8a5a00;
+
+  /* Monospace column accents (machine code words / memory addresses) */
+  --mono-green: #0a8a6b;
+  --mono-amber: #a06400;
+
+  /* Inline code in narration */
+  --code-bg: #edf2fb;
+  --code-ink: #1e478f;
+
+  /* Phase hues (IF ID EX MEM WB) — validated 5-slot categorical set; order is load-bearing. */
+  --phase-if: #2a78d6;
+  --phase-id: #1baf7a;
+  --phase-ex: #eda100;
+  --phase-mem: #008300;
+  --phase-wb: #4a3aa7;
+}
+
+/* Dark tokens, twice: once for the OS preference (unless the toggle pinned light), once for the
+   explicit toggle. Keep the two blocks identical. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232322;
+    --ink: #f2f1ea;
+    --ink-2: #c3c2b7;
+    --ink-3: #898781;
+    --line: #2c2c2a;
+    --line-2: #383835;
+    --accent: #3987e5;
+    --accent-ink: #ffffff;
+    --wire-idle: #3f3f3b;
+    --node-idle-fill: #1f1f1e;
+    --highlight: #3a2f11;
+    --danger: #e35d5d;
+    --danger-bg: #321b1b;
+    --warn-border: #a67c2e;
+    --warn-bg: #332a10;
+    --warn-ink: #e8c26a;
+    --mono-green: #35bf95;
+    --mono-amber: #d9a441;
+    --code-bg: #223250;
+    --code-ink: #9dc1f0;
+    --phase-if: #3987e5;
+    --phase-id: #199e70;
+    --phase-ex: #c98500;
+    --phase-mem: #008300;
+    --phase-wb: #9085e9;
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232322;
+  --ink: #f2f1ea;
+  --ink-2: #c3c2b7;
+  --ink-3: #898781;
+  --line: #2c2c2a;
+  --line-2: #383835;
+  --accent: #3987e5;
+  --accent-ink: #ffffff;
+  --wire-idle: #3f3f3b;
+  --node-idle-fill: #1f1f1e;
+  --highlight: #3a2f11;
+  --danger: #e35d5d;
+  --danger-bg: #321b1b;
+  --warn-border: #a67c2e;
+  --warn-bg: #332a10;
+  --warn-ink: #e8c26a;
+  --mono-green: #35bf95;
+  --mono-amber: #d9a441;
+  --code-bg: #223250;
+  --code-ink: #9dc1f0;
+  --phase-if: #3987e5;
+  --phase-id: #199e70;
+  --phase-ex: #c98500;
+  --phase-mem: #008300;
+  --phase-wb: #9085e9;
+}
+
+/* ---- 2. Base ------------------------------------------------------------------------ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+select,
+textarea {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  font: inherit;
+}
+
+select {
+  font-size: 0.95rem;
+  padding: 0.2rem 0.3rem;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* ---- 3. Components ------------------------------------------------------------------ */
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.panel-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+}
+
+.btn {
+  font-size: 0.9rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  filter: brightness(1.08);
+}
+
+/* Segmented control (depth dial, single-cycle phase stepper, multi-cycle phase track).
+   A segment can carry its own hue via --seg-accent (the phase hues); defaults to the accent. */
+.seg {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.seg-btn {
+  --seg-accent: var(--accent);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.seg-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.seg-btn--on {
+  border-color: var(--seg-accent);
+  background: color-mix(in srgb, var(--seg-accent) 16%, var(--surface));
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--seg-accent);
+}
+
+/* ---- 4. Datapath (drawn by the shared DatapathDiagram renderer) ---------------------- */
+
+.dp-wire {
+  fill: none;
+  stroke: var(--wire-idle);
+  stroke-width: 1.3;
+  transition: stroke 0.15s ease;
+}
+.dp-wire--on {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+}
+
+/* The animated overlay on active wires: a marching dash that shows flow DIRECTION, drawn on top
+   of the solid active stroke so the wire never visually breaks. */
+.dp-flow {
+  fill: none;
+  stroke: var(--accent-ink);
+  stroke-width: 1;
+  stroke-dasharray: 5 11;
+  opacity: 0.9;
+  animation: dp-flow 0.9s linear infinite;
+}
+@keyframes dp-flow {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dp-flow {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+.dp-node-shape {
+  fill: var(--node-idle-fill);
+  stroke: var(--wire-idle);
+  stroke-width: 1.2;
+  transition:
+    fill 0.15s ease,
+    stroke 0.15s ease;
+}
+.dp-node-shape--on {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.dp-node-label {
+  fill: var(--ink-2);
+  font-weight: 600;
+  transition: fill 0.15s ease;
+}
+.dp-node-label--on {
+  fill: var(--ink);
+}
+
+.dp-ctrl-label {
+  fill: var(--ink-3);
+  font-style: italic;
+}
+.dp-ctrl-label--on {
+  fill: var(--accent);
+}
+
+.dp-vlabel-box {
+  fill: var(--surface);
+  stroke: var(--accent-line);
+  stroke-width: 0.6;
+  opacity: 0.96;
+}
+.dp-vlabel-text {
+  fill: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.dp-legend {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  margin-top: 0.15rem;
+}
+.dp-legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 0;
+  border-top: 2.4px solid var(--accent);
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.dp-legend-swatch--idle {
+  border-top-width: 1.3px;
+  border-top-color: var(--wire-idle);
+}
