@@ -41,7 +41,8 @@ describe('single-cycle wrapper × shared renderer', () => {
     expect(html).toContain('dp-wire--on');
     expect(html).toContain('dp-node-shape--on');
     expect(html).toContain('dp-flow');
-    expect(html).toContain('active path this cycle'); // legend
+    expect(html).toContain('dp-legend'); // the phase color key + idle
+    expect(html).toContain('idle');
   });
 
   it('tiers representation: values at detailed+, control labels at expert only', () => {

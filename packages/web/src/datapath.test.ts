@@ -12,7 +12,30 @@ import {
   WIRES,
   wireVisibleAt,
 } from './datapath';
+import { shapePolygon } from './DatapathDiagram';
 import { loadSource } from './simulator';
+
+/** True when `pt` lies (within `eps`) on any edge of node `id`'s drawn outline. Shared by the
+ *  edge-anchor tests: hit-tests against {@link shapePolygon}, the real perimeter, so a point in a
+ *  mux/adder's slanted-corner blank space fails (a bounding-box check would wrongly pass it). */
+function onPerimeter(pt: readonly [number, number], id: string, eps = 0.5): boolean {
+  const n = NODES.get(id)!;
+  const poly = shapePolygon(n);
+  const [px, py] = pt;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i]!;
+    const [bx, by] = poly[(i + 1) % poly.length]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    // Project pt onto the segment, clamp to [0,1], measure the gap.
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+    const gx = ax + t * dx - px;
+    const gy = ay + t * dy - py;
+    if (Math.sqrt(gx * gx + gy * gy) <= eps) return true;
+  }
+  return false;
+}
 
 /**
  * The datapath activation is the one headlessly-testable seam of the SVG view (the geometry
@@ -112,23 +135,46 @@ describe('depth tiers (representational fidelity; handoff §4, INV-5)', () => {
   });
 
   it("each wire's polyline actually runs edge-to-edge between its declared `ends`", () => {
-    // The `ends` are load-bearing (they drive tier visibility); guard them against drifting
-    // away from the geometry by checking the first/last point lies on each named node's box.
-    const eps = 0.5;
-    const onNode = (pt: readonly [number, number], id: string): boolean => {
-      const n = NODES.get(id)!;
-      return (
-        pt[0] >= n.x - eps &&
-        pt[0] <= n.x + n.w + eps &&
-        pt[1] >= n.y - eps &&
-        pt[1] <= n.y + n.h + eps
-      );
-    };
+    // The `ends` are load-bearing (they drive tier visibility); guard them against drifting away
+    // from the geometry by checking the first/last point lies on the named node's DRAWN outline —
+    // not merely inside its bounding box. A mux/adder has slanted edges, so a point at the box's
+    // top-mid can sit in blank space; hit-test against the real perimeter (see {@link shapePolygon}).
     for (const wire of WIRES) {
       const first = wire.points[0]!;
       const last = wire.points[wire.points.length - 1]!;
-      expect(onNode(first, wire.ends[0]), `${wire.id} start not on ${wire.ends[0]}`).toBe(true);
-      expect(onNode(last, wire.ends[1]), `${wire.id} end not on ${wire.ends[1]}`).toBe(true);
+      expect(onPerimeter(first, wire.ends[0]), `${wire.id} start off ${wire.ends[0]}'s edge`).toBe(true); // prettier-ignore
+      expect(onPerimeter(last, wire.ends[1]), `${wire.id} end off ${wire.ends[1]}'s edge`).toBe(
+        true,
+      );
+    }
+  });
+});
+
+describe('geometry: wires are orthogonal and anchored on real edges (visual acceptance)', () => {
+  // The automatable slice of the "clean schematic" requirements: every wire segment runs at a right
+  // angle (0/90/180/270°), and every wire endpoint sits on the drawn outline of the node it claims
+  // to connect (not in blank space). Label de-confliction and crossing aesthetics remain a
+  // `npm run dev` / screenshot eyeball.
+  it('every wire segment is axis-aligned (no diagonals)', () => {
+    const eps = 0.01;
+    for (const wire of WIRES) {
+      for (let i = 1; i < wire.points.length; i++) {
+        const [ax, ay] = wire.points[i - 1]!;
+        const [bx, by] = wire.points[i]!;
+        const axisAligned = Math.abs(ax - bx) < eps || Math.abs(ay - by) < eps;
+        expect
+          .soft(axisAligned, `${wire.id} seg ${i} diagonal (${ax},${ay})→(${bx},${by})`)
+          .toBe(true);
+      }
+    }
+  });
+
+  it('every wire endpoint sits on its node’s drawn edge', () => {
+    for (const wire of WIRES) {
+      const first = wire.points[0]!;
+      const last = wire.points[wire.points.length - 1]!;
+      expect.soft(onPerimeter(first, wire.ends[0]), `${wire.id} start off ${wire.ends[0]}`).toBe(true); // prettier-ignore
+      expect.soft(onPerimeter(last, wire.ends[1]), `${wire.id} end off ${wire.ends[1]}`).toBe(true);
     }
   });
 });

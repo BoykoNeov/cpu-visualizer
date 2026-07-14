@@ -87,47 +87,59 @@ export interface DatapathNode {
 // representation, not its structure (see the module header). `expert` adds each mux's control
 // label — the only per-node tier variation here. `pcsel` already carries its identity label at
 // every tier, so only the two otherwise-blank muxes (alusrc, wbmux) get a control label.
+//
+// LAYOUT CONTRACT (checked by the geometry tests): the main dataflow band is centered on y≈280,
+// left→right PC → IMem → RegFile → ALUSrc/ALU → DMem → WBmux. Shaped nodes (mux/adder) connect
+// ONLY on their vertical edges — muxes take inputs on the left edge and drive their output from the
+// right edge; adders take operands on the two left stubs (above/below the notch) and drive the
+// output from the right edge. Every wire is orthogonal (H/V segments only) and every endpoint sits
+// on a real drawn edge; feedback/select buses ride the clear rails at the very top (y<52) and the
+// bottom (y>440). See {@link shapePolygon} for the exact outlines these anchors must land on.
 const NODE_LIST: readonly DatapathNode[] = [
-  { id: 'pcsel', label: 'PCsrc', x: 30, y: 150, w: 26, h: 70, stage: 'WB', shape: 'mux' },
-  { id: 'pc', label: 'PC', x: 20, y: 258, w: 46, h: 44, stage: 'IF' },
-  { id: 'add4', label: '+4', x: 118, y: 48, w: 66, h: 46, stage: 'IF', shape: 'adder' },
-  { id: 'imem', label: 'Instr\nMemory', x: 112, y: 256, w: 98, h: 88, stage: 'IF' },
-  { id: 'regfile', label: 'Registers', x: 286, y: 214, w: 116, h: 132, stage: 'ID' },
-  { id: 'immgen', label: 'Imm\nGen', x: 286, y: 378, w: 116, h: 48, stage: 'ID' },
-  { id: 'branchadd', label: '+', x: 452, y: 66, w: 66, h: 52, stage: 'EX', shape: 'adder' },
-  { id: 'alusrc', label: '', x: 448, y: 256, w: 26, h: 78, stage: 'EX', shape: 'mux', controlLabel: 'ALUSrc' }, // prettier-ignore
-  { id: 'alu', label: 'ALU', x: 512, y: 236, w: 88, h: 100, stage: 'EX', shape: 'adder' },
-  { id: 'dmem', label: 'Data\nMemory', x: 652, y: 256, w: 98, h: 88, stage: 'MEM' },
-  { id: 'wbmux', label: '', x: 812, y: 256, w: 26, h: 78, stage: 'WB', shape: 'mux', controlLabel: 'MemToReg' }, // prettier-ignore
+  { id: 'pcsel', label: 'PCsrc', x: 24, y: 244, w: 28, h: 72, stage: 'WB', shape: 'mux' },
+  { id: 'pc', label: 'PC', x: 76, y: 258, w: 44, h: 44, stage: 'IF' },
+  { id: 'add4', label: '+4', x: 132, y: 52, w: 62, h: 46, stage: 'IF', shape: 'adder' },
+  { id: 'imem', label: 'Instr\nMemory', x: 150, y: 234, w: 98, h: 92, stage: 'IF' },
+  { id: 'regfile', label: 'Registers', x: 312, y: 205, w: 116, h: 150, stage: 'ID' },
+  { id: 'immgen', label: 'Imm\nGen', x: 312, y: 384, w: 116, h: 44, stage: 'ID' },
+  { id: 'branchadd', label: '+', x: 470, y: 52, w: 62, h: 54, stage: 'EX', shape: 'adder' },
+  { id: 'alusrc', label: '', x: 474, y: 279, w: 26, h: 80, stage: 'EX', shape: 'mux', controlLabel: 'ALUSrc' }, // prettier-ignore
+  { id: 'alu', label: 'ALU', x: 536, y: 235, w: 92, h: 100, stage: 'EX', shape: 'adder' },
+  { id: 'dmem', label: 'Data\nMemory', x: 690, y: 239, w: 98, h: 92, stage: 'MEM' },
+  { id: 'wbmux', label: '', x: 836, y: 232, w: 26, h: 140, stage: 'WB', shape: 'mux', controlLabel: 'MemToReg' }, // prettier-ignore
 ] as const;
 
 export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
 
-/** Anchor a point on a node's edge: l/r/t/b = side midpoints, c = center. */
-type Side = 'l' | 'r' | 't' | 'b' | 'c';
 type Pt = readonly [number, number];
-function at(id: string, side: Side, dy = 0): Pt {
+/** Anchor a point on a node's edge. l/r = side midpoints + `off` along the (vertical) edge; t/b =
+ *  top/bottom edge + `off` along the (horizontal) edge; c = center + vertical `off`. For muxes,
+ *  l/r land on the vertical edges (valid); for adders use {@link aUp}/{@link aLo} for the left
+ *  operand stubs and `r` for the output — never t/b/l (those sit on the slanted outline / notch). */
+function at(id: string, side: 'l' | 'r' | 't' | 'b' | 'c', off = 0): Pt {
   const n = NODES.get(id)!;
   switch (side) {
     case 'l':
-      return [n.x, n.y + n.h / 2 + dy];
+      return [n.x, n.y + n.h / 2 + off];
     case 'r':
-      return [n.x + n.w, n.y + n.h / 2 + dy];
+      return [n.x + n.w, n.y + n.h / 2 + off];
     case 't':
-      return [n.x + n.w / 2, n.y];
+      return [n.x + n.w / 2 + off, n.y];
     case 'b':
-      return [n.x + n.w / 2, n.y + n.h];
+      return [n.x + n.w / 2 + off, n.y + n.h];
     case 'c':
-      return [n.x + n.w / 2, n.y + n.h / 2 + dy];
+      return [n.x + n.w / 2, n.y + n.h / 2 + off];
   }
 }
-/** Route from `a` to `b` with a single vertical segment at x = `midx` (a horizontal-first elbow). */
-function elbowH(a: Pt, b: Pt, midx: number): Pt[] {
-  return [a, [midx, a[1]], [midx, b[1]], b];
+/** An adder's upper / lower left operand stub — the vertical edge segments above / below the notch
+ *  (fractions match {@link shapePolygon}'s notch at 0.18·h, so the stub mid-points are 0.16 / 0.84). */
+function aUp(id: string): Pt {
+  const n = NODES.get(id)!;
+  return [n.x, n.y + n.h * 0.16];
 }
-/** Route from `a` to `b` with a single horizontal segment at y = `midy` (a vertical-first elbow). */
-function elbowV(a: Pt, b: Pt, midy: number): Pt[] {
-  return [a, [a[0], midy], [b[0], midy], b];
+function aLo(id: string): Pt {
+  const n = NODES.get(id)!;
+  return [n.x, n.y + n.h * 0.84];
 }
 
 export interface DatapathWire {
@@ -142,34 +154,34 @@ export interface DatapathWire {
 }
 
 const WIRE_LIST: readonly DatapathWire[] = [
-  // --- IF: PC drives instruction fetch and the +4 adder ---
+  // --- IF: the next-PC mux drives PC; PC fetches the instruction and feeds the +4 adder ---
+  { id: 'pcsel-pc', ends: ['pcsel', 'pc'], points: [at('pcsel', 'r'), at('pc', 'l')], stage: 'WB' },
   { id: 'pc-imem', ends: ['pc', 'imem'], points: [at('pc', 'r'), at('imem', 'l')], stage: 'IF' },
-  { id: 'pc-add4', ends: ['pc', 'add4'], points: elbowH(at('pc', 'r', -12), at('add4', 'l'), 92), stage: 'IF' }, // prettier-ignore
-  { id: 'add4-pcsel', ends: ['add4', 'pcsel'], points: elbowH(at('add4', 'l'), at('pcsel', 't'), 78), stage: 'IF' }, // prettier-ignore
-  { id: 'pcsel-pc', ends: ['pcsel', 'pc'], points: [at('pcsel', 'b'), at('pc', 't')], stage: 'WB' },
-  // --- ID: the fetched word feeds the register file and the immediate generator ---
-  { id: 'imem-regfile', ends: ['imem', 'regfile'], points: elbowH(at('imem', 'r'), at('regfile', 'l', -34), 250), stage: 'ID' }, // prettier-ignore
-  { id: 'imem-immgen', ends: ['imem', 'immgen'], points: elbowH(at('imem', 'r'), at('immgen', 'l'), 250), stage: 'ID' }, // prettier-ignore
-  // --- EX: register values + immediate into the ALU / branch adder ---
-  { id: 'regfile-rs1', ends: ['regfile', 'alu'], points: [at('regfile', 'r', -34), at('alu', 'l', -20)], stage: 'EX' }, // prettier-ignore
-  { id: 'regfile-rs2', ends: ['regfile', 'alusrc'], points: elbowH(at('regfile', 'r', 20), at('alusrc', 't'), 430), stage: 'EX' }, // prettier-ignore
-  { id: 'imm-alusrc', ends: ['immgen', 'alusrc'], points: elbowH(at('immgen', 'r'), at('alusrc', 'b'), 424), stage: 'EX' }, // prettier-ignore
-  { id: 'alusrc-alu', ends: ['alusrc', 'alu'], points: [at('alusrc', 'r'), at('alu', 'l', 20)], stage: 'EX' }, // prettier-ignore
-  { id: 'pc-branchadd', ends: ['pc', 'branchadd'], points: elbowH(at('pc', 'r', -12), at('branchadd', 'l', -12), 92), stage: 'EX' }, // prettier-ignore
-  { id: 'imm-branchadd', ends: ['immgen', 'branchadd'], points: elbowH(at('immgen', 'r'), at('branchadd', 'l', 12), 438), stage: 'EX' }, // prettier-ignore
-  // --- MEM: ALU result addresses data memory; rs2 supplies store data ---
+  { id: 'pc-add4', ends: ['pc', 'add4'], points: [at('pc', 't', -8), [90, aLo('add4')[1]], aLo('add4')], stage: 'IF' }, // prettier-ignore
+  { id: 'add4-pcsel', ends: ['add4', 'pcsel'], points: [at('add4', 'r'), [194, 40], [12, 40], [12, 270], at('pcsel', 'l', -10)], stage: 'IF' }, // prettier-ignore
+  // --- ID: the fetched word feeds the register file (selectors) and the immediate generator ---
+  { id: 'imem-regfile', ends: ['imem', 'regfile'], points: [at('imem', 'r', -30), at('regfile', 'l', -30)], stage: 'ID' }, // prettier-ignore
+  { id: 'imem-immgen', ends: ['imem', 'immgen'], points: [at('imem', 'r', 30), [248, at('immgen', 'l')[1]], at('immgen', 'l')], stage: 'ID' }, // prettier-ignore
+  // --- EX: register values + immediate into the ALU (via ALUSrc) and the branch adder ---
+  { id: 'regfile-rs1', ends: ['regfile', 'alu'], points: [at('regfile', 'r', -29), aUp('alu')], stage: 'EX' }, // prettier-ignore
+  { id: 'regfile-rs2', ends: ['regfile', 'alusrc'], points: [at('regfile', 'r', 20), at('alusrc', 'l', -19)], stage: 'EX' }, // prettier-ignore
+  { id: 'imm-alusrc', ends: ['immgen', 'alusrc'], points: [at('immgen', 'r', -8), [448, at('immgen', 'r', -8)[1]], [448, at('alusrc', 'l', 25)[1]], at('alusrc', 'l', 25)], stage: 'EX' }, // prettier-ignore
+  { id: 'alusrc-alu', ends: ['alusrc', 'alu'], points: [at('alusrc', 'r'), aLo('alu')], stage: 'EX' }, // prettier-ignore
+  { id: 'pc-branchadd', ends: ['pc', 'branchadd'], points: [at('pc', 't', 12), [110, 44], [470, 44], aUp('branchadd')], stage: 'EX' }, // prettier-ignore
+  { id: 'imm-branchadd', ends: ['immgen', 'branchadd'], points: [at('immgen', 'r', -18), [462, at('immgen', 'r', -18)[1]], [462, aLo('branchadd')[1]], aLo('branchadd')], stage: 'EX' }, // prettier-ignore
+  // --- MEM: ALU result addresses data memory; rs2 supplies store data on the bottom rail ---
   { id: 'alu-dmem', ends: ['alu', 'dmem'], points: [at('alu', 'r'), at('dmem', 'l')], stage: 'MEM' }, // prettier-ignore
-  { id: 'rs2-dmem', ends: ['regfile', 'dmem'], points: elbowV(at('regfile', 'r', 34), at('dmem', 'b'), 360), stage: 'MEM' }, // prettier-ignore
-  // --- WB: writeback source into the mux, then back to the register write port ---
-  { id: 'alu-wb', ends: ['alu', 'wbmux'], points: elbowH(at('alu', 'r', 34), at('wbmux', 'b'), 626), stage: 'WB' }, // prettier-ignore
-  { id: 'dmem-wb', ends: ['dmem', 'wbmux'], points: [at('dmem', 'r'), at('wbmux', 't')], stage: 'WB' }, // prettier-ignore
-  { id: 'imm-wb', ends: ['immgen', 'wbmux'], points: elbowV(at('immgen', 'b'), at('wbmux', 'b'), 448), stage: 'WB' }, // prettier-ignore
-  { id: 'pc4-wb', ends: ['add4', 'wbmux'], points: elbowV(at('add4', 'r'), at('wbmux', 't'), 30), stage: 'WB' }, // prettier-ignore
-  { id: 'branchadd-wb', ends: ['branchadd', 'wbmux'], points: elbowV(at('branchadd', 'r'), at('wbmux', 't'), 42), stage: 'WB' }, // prettier-ignore
-  { id: 'wb-regfile', ends: ['wbmux', 'regfile'], points: elbowV(at('wbmux', 'b'), at('regfile', 'b'), 456), stage: 'WB' }, // prettier-ignore
-  // --- PC select: the taken target routes back to the next-PC mux ---
-  { id: 'branchadd-pcsel', ends: ['branchadd', 'pcsel'], points: elbowV(at('branchadd', 't'), at('pcsel', 'l'), 30), stage: 'WB' }, // prettier-ignore
-  { id: 'alu-pcsel', ends: ['alu', 'pcsel'], points: elbowV(at('alu', 't'), at('pcsel', 'l'), 18), stage: 'WB' }, // prettier-ignore
+  { id: 'rs2-dmem', ends: ['regfile', 'dmem'], points: [at('regfile', 'r', 60), [466, at('regfile', 'r', 60)[1]], [466, 452], [739, 452], at('dmem', 'b')], stage: 'MEM' }, // prettier-ignore
+  // --- WB: each writeback source into the mux, then the result back to the register write port ---
+  { id: 'alu-wb', ends: ['alu', 'wbmux'], points: [at('alu', 'r', 18), [650, at('alu', 'r', 18)[1]], [650, 400], [824, 400], [824, at('wbmux', 'l', 68)[1]], at('wbmux', 'l', 68)], stage: 'WB' }, // prettier-ignore
+  { id: 'dmem-wb', ends: ['dmem', 'wbmux'], points: [at('dmem', 'r'), at('wbmux', 'l', -17)], stage: 'WB' }, // prettier-ignore
+  { id: 'imm-wb', ends: ['immgen', 'wbmux'], points: [at('immgen', 'r', 12), [444, at('immgen', 'r', 12)[1]], [444, 446], [828, 446], [828, at('wbmux', 'l', 50)[1]], at('wbmux', 'l', 50)], stage: 'WB' }, // prettier-ignore
+  { id: 'pc4-wb', ends: ['add4', 'wbmux'], points: [at('add4', 'r', 8), [210, at('add4', 'r', 8)[1]], [210, 30], [824, 30], [824, at('wbmux', 'l', -30)[1]], at('wbmux', 'l', -30)], stage: 'WB' }, // prettier-ignore
+  { id: 'branchadd-wb', ends: ['branchadd', 'wbmux'], points: [at('branchadd', 'r', -8), [544, at('branchadd', 'r', -8)[1]], [544, 34], [816, 34], [816, at('wbmux', 'l', -12)[1]], at('wbmux', 'l', -12)], stage: 'WB' }, // prettier-ignore
+  { id: 'wb-regfile', ends: ['wbmux', 'regfile'], points: [at('wbmux', 'r'), [880, at('wbmux', 'r')[1]], [880, 462], [300, 462], [300, at('regfile', 'l', 70)[1]], at('regfile', 'l', 70)], stage: 'WB' }, // prettier-ignore
+  // --- PC select: the taken target routes back to the next-PC mux along the top rails ---
+  { id: 'branchadd-pcsel', ends: ['branchadd', 'pcsel'], points: [at('branchadd', 'r', 8), [532, 48], [8, 48], [8, 310], at('pcsel', 'l', 30)], stage: 'WB' }, // prettier-ignore
+  { id: 'alu-pcsel', ends: ['alu', 'pcsel'], points: [at('alu', 'r', -18), [628, 24], [4, 24], [4, 290], at('pcsel', 'l', 10)], stage: 'WB' }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;

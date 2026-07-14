@@ -34,7 +34,11 @@ import {
   type Phase,
 } from './datapath';
 import { DatapathDiagram, fmtValue, PhaseChips, type NodeVM, type WireVM } from './DatapathDiagram';
-import { PHASE_COLORS } from './theme';
+import { PHASE_COLORS, T } from './theme';
+
+/** Short PC connectors whose value (the current PC) is already labelled on `pc-add4`; labeling them
+ *  too would clip the tight PC cluster. Label policy is a per-model view concern (INV-2/3). */
+const PC_ADDR_REDUNDANT = new Set(['pcsel-pc', 'pc-imem']);
 
 export function Datapath(props: {
   trace: CycleTrace | null;
@@ -59,10 +63,24 @@ export function Datapath(props: {
       id: wire.id,
       points: wire.points,
       active,
+      // Color the wire by the within-cycle phase it belongs to — the same validated hue as the
+      // phase chips — so the five stages read as five distinguishable paths (hue reinforces the
+      // phase; the value label still carries the datum).
+      color: PHASE_COLORS[wire.stage],
       // `essentials` omits ALL value labels (showing only some would imply a value with no source).
-      label: active && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
+      // The two short PC connectors carry the same address already shown on `pc-add4`; labeling them
+      // too would only clip and overlap the tight PC cluster, so they stay unlabeled at every tier.
+      label:
+        active && labels && a.value !== undefined && !PC_ADDR_REDUNDANT.has(wire.id)
+          ? fmtValue(a.value, a.fmt)
+          : undefined,
     };
   });
+
+  const legend = PHASES.map((p) => ({
+    label: PHASE_LABELS[p],
+    color: PHASE_COLORS[p] ?? T.accent,
+  }));
 
   const nodes: NodeVM[] = Array.from(NODES.values())
     .filter((node) => nodeVisibleAt(node, tier))
@@ -81,6 +99,7 @@ export function Datapath(props: {
       wires={wires}
       nodes={nodes}
       markerPrefix="sc"
+      legend={legend}
       headerRight={
         <PhaseChips
           phases={PHASES}

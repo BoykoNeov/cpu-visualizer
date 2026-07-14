@@ -33,7 +33,7 @@ import {
   wireVisibleAt,
 } from './datapath-multi';
 import { DatapathDiagram, fmtValue, PhaseChips, type NodeVM, type WireVM } from './DatapathDiagram';
-import { PHASE_COLORS } from './theme';
+import { PHASE_COLORS, T } from './theme';
 
 export function MultiCycleDatapath(props: {
   trace: CycleTrace | null;
@@ -45,6 +45,10 @@ export function MultiCycleDatapath(props: {
   const labels = showValueLabels(tier);
   const controls = showControlLabels(tier);
 
+  // Each multi-cycle trace is exactly ONE phase, so the whole lit slice shares that phase's hue —
+  // scrubbing the timeline walks the color IF→ID→EX→MEM→WB (the same validated palette as the chips).
+  const phaseColor = act.phase ? PHASE_COLORS[act.phase] : undefined;
+
   const wires: WireVM[] = WIRES.filter((wire) => wireVisibleAt(wire, tier)).map((wire) => {
     const a = act.wires.get(wire.id);
     const active = a !== undefined;
@@ -52,9 +56,15 @@ export function MultiCycleDatapath(props: {
       id: wire.id,
       points: wire.points,
       active,
+      color: phaseColor,
       label: active && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
     };
   });
+
+  const legend = PHASES.map((p) => ({
+    label: PHASE_LABELS[p],
+    color: PHASE_COLORS[p] ?? T.accent,
+  }));
 
   const nodes: NodeVM[] = Array.from(NODES.values())
     .filter((node) => nodeVisibleAt(node, tier))
@@ -72,6 +82,7 @@ export function MultiCycleDatapath(props: {
       wires={wires}
       nodes={nodes}
       markerPrefix="mc"
+      legend={legend}
       headerRight={
         <PhaseChips
           phases={PHASES}

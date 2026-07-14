@@ -28,6 +28,18 @@ export interface WireVM {
   readonly active: boolean;
   /** Pre-formatted label text shown at the wire's midpoint (only drawn when `active`). */
   readonly label?: string;
+  /** CSS color for this wire when active (e.g. `var(--phase-ex)`) — its stroke, arrowhead, and
+   *  value-label ink. Absent ⇒ the default active accent. Idle wires ignore it (always grey). */
+  readonly color?: string;
+  /** Where to nudge the value label off the wire so it clears the line: the label is drawn beside
+   *  its anchor in this direction. Defaults to `up`. */
+  readonly labelSide?: 'up' | 'down' | 'left' | 'right';
+}
+
+/** One legend entry: a colored swatch and its meaning. */
+export interface LegendItem {
+  readonly label: string;
+  readonly color: string;
 }
 
 /** A component box to draw. */
@@ -56,12 +68,134 @@ function toPolyline(points: readonly (readonly [number, number])[]): string {
   return points.map(([x, y]) => `${x},${y}`).join(' ');
 }
 
-/** Midpoint of a polyline (by segment index) for placing a value label. */
-function midOf(points: readonly (readonly [number, number])[]): readonly [number, number] {
-  const i = Math.max(0, Math.floor((points.length - 1) / 2));
-  const a = points[i]!;
-  const b = points[Math.min(points.length - 1, i + 1)]!;
-  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+/**
+ * The drawn perimeter of a component, as a closed list of vertices — the SINGLE source of truth
+ * for a node's outline. {@link NodeShape} renders from it (mux/adder) and the geometry tests hit-test
+ * wire endpoints against it, so "the wire starts on the shape's edge" is checked against what is
+ * actually drawn (a mux/adder has slanted top/bottom edges, so a point at the bounding-box top-mid
+ * can sit in blank space — the bounding box is not the outline). A plain box's perimeter is its
+ * four corners.
+ */
+export function shapePolygon(node: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  shape?: 'box' | 'mux' | 'adder';
+}): readonly (readonly [number, number])[] {
+  const { x, y, w, h } = node;
+  if (node.shape === 'mux') {
+    // A tall trapezoid: vertical left/right edges, slanted top/bottom. Inputs/outputs must land on
+    // the VERTICAL edges (a point on the slanted top/bottom is only reachable by a diagonal wire).
+    return [
+      [x, y],
+      [x + w, y + w],
+      [x + w, y + h - w],
+      [x, y + h],
+    ];
+  }
+  if (node.shape === 'adder') {
+    // A left-pointing ALU/adder silhouette with a P&H notch on the input side. Vertical segments:
+    // the right edge (x+w, between the two slants) and the two left stubs above/below the notch.
+    const notch = h * 0.18;
+    return [
+      [x, y],
+      [x + w, y + h * 0.28],
+      [x + w, y + h * 0.72],
+      [x, y + h],
+      [x, y + h / 2 + notch],
+      [x + w * 0.22, y + h / 2],
+      [x, y + h / 2 - notch],
+    ];
+  }
+  return [
+    [x, y],
+    [x + w, y],
+    [x + w, y + h],
+    [x, y + h],
+  ];
+}
+
+/** Where to anchor a wire's value label: the midpoint of its LONGEST segment (a clear run, not a
+ *  cramped corner), plus that segment's orientation so the label can be nudged off the line. */
+function labelAnchor(points: readonly (readonly [number, number])[]): {
+  x: number;
+  y: number;
+  horizontal: boolean;
+} {
+  let best = 0;
+  let bestLen = -1;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]!;
+    const b = points[i]!;
+    const len = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]);
+    if (len > bestLen) {
+      bestLen = len;
+      best = i;
+    }
+  }
+  const a = points[best - 1] ?? points[0]!;
+  const b = points[best] ?? points[points.length - 1]!;
+  return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2, horizontal: Math.abs(a[1] - b[1]) < 0.01 };
+}
+
+interface PlacedLabel {
+  id: string;
+  text: string;
+  cx: number;
+  cy: number;
+  halfW: number;
+  ink: string;
+}
+
+/** Place each active wire's value label off its clearest segment, then resolve label↔label
+ *  overlaps by nudging the later one vertically until it clears — so no label ever obscures
+ *  another (requirement: labels don't obscure labels). Boxes stay clamped inside the canvas. */
+function layoutLabels(
+  wires: readonly WireVM[],
+  canvas: { readonly width: number; readonly height: number },
+): PlacedLabel[] {
+  const HALF_H = 8;
+  const placed: PlacedLabel[] = [];
+  for (const wire of wires) {
+    if (!wire.active || wire.label === undefined) continue;
+    const anc = labelAnchor(wire.points);
+    const side = wire.labelSide ?? (anc.horizontal ? 'up' : 'right');
+    const halfW = wire.label.length * 3.2 + 3;
+    let cx = anc.x + (side === 'left' ? -(halfW + 3) : side === 'right' ? halfW + 3 : 0);
+    let cy = anc.y + (side === 'up' ? -9 : side === 'down' ? 9 : 0);
+    cx = Math.min(Math.max(cx, halfW + 1), canvas.width - halfW - 1);
+    // Push away from any already-placed label it collides with (try both directions, nearest wins).
+    const hits = (y: number): PlacedLabel | undefined =>
+      placed.find(
+        (p) =>
+          Math.abs(p.cx - cx) < p.halfW + halfW + 2 && Math.abs(p.cy - y) < HALF_H + HALF_H + 2,
+      );
+    if (hits(cy)) {
+      for (let step = 1; step <= 24; step++) {
+        const up = cy - step * 4;
+        const down = cy + step * 4;
+        if (up >= 9 && !hits(up)) {
+          cy = up;
+          break;
+        }
+        if (down <= canvas.height - 9 && !hits(down)) {
+          cy = down;
+          break;
+        }
+      }
+    }
+    cy = Math.min(Math.max(cy, 9), canvas.height - 9);
+    placed.push({
+      id: wire.id,
+      text: wire.label,
+      cx,
+      cy,
+      halfW,
+      ink: wire.color ?? 'var(--accent)',
+    });
+  }
+  return placed;
 }
 
 // --- The renderer ----------------------------------------------------------------------------
@@ -77,10 +211,14 @@ export function DatapathDiagram(props: {
   headerRight?: React.ReactNode;
   /** Marker-id prefix; must be unique per mounted diagram so `url(#…)` refs don't collide. */
   markerPrefix: string;
+  /** Color key for the legend (one swatch per phase). Absent ⇒ the plain active/idle legend. */
+  legend?: readonly LegendItem[];
 }): React.JSX.Element {
-  const { title, ariaLabel, canvas, wires, nodes, headerRight, markerPrefix } = props;
-  const arrowOn = `${markerPrefix}-arrow`;
-  const arrowIdle = `${markerPrefix}-arrow-idle`;
+  const { title, ariaLabel, canvas, wires, nodes, headerRight, markerPrefix, legend } = props;
+  // A single arrowhead whose fill inherits each wire's own stroke (`context-stroke`), so one marker
+  // serves every phase color AND the idle grey — no per-color marker zoo.
+  const arrow = `${markerPrefix}-arrow`;
+  const labels = layoutLabels(wires, canvas);
 
   return (
     <section className="panel" style={{ paddingBottom: '0.5rem', marginTop: '1rem' }}>
@@ -107,7 +245,7 @@ export function DatapathDiagram(props: {
       >
         <defs>
           <marker
-            id={arrowOn}
+            id={arrow}
             markerWidth="8"
             markerHeight="8"
             refX="6"
@@ -115,54 +253,51 @@ export function DatapathDiagram(props: {
             orient="auto"
             markerUnits="userSpaceOnUse"
           >
-            <path d="M0,0 L6,3 L0,6 Z" style={{ fill: 'var(--accent)' }} />
-          </marker>
-          <marker
-            id={arrowIdle}
-            markerWidth="8"
-            markerHeight="8"
-            refX="6"
-            refY="3"
-            orient="auto"
-            markerUnits="userSpaceOnUse"
-          >
-            <path d="M0,0 L6,3 L0,6 Z" style={{ fill: 'var(--wire-idle)' }} />
+            {/* `context-stroke`: the arrowhead takes the referencing wire's stroke color. */}
+            <path d="M0,0 L6,3 L0,6 Z" style={{ fill: 'context-stroke' }} />
           </marker>
         </defs>
 
-        {/* Wires first, so component boxes sit on top of their endpoints. Active wires get the
-            animated dash overlay showing flow direction (suppressed by prefers-reduced-motion). */}
+        {/* Wires first, so component boxes sit on top of their endpoints. An active wire is stroked
+            in its phase color and carries the animated flow dash (suppressed by reduced-motion). */}
         {wires.map((wire) => (
           <g key={wire.id}>
             <polyline
               points={toPolyline(wire.points)}
               className={wire.active ? 'dp-wire dp-wire--on' : 'dp-wire'}
-              markerEnd={`url(#${wire.active ? arrowOn : arrowIdle})`}
+              style={wire.active && wire.color ? { stroke: wire.color } : undefined}
+              markerEnd={`url(#${arrow})`}
             />
             {wire.active ? <polyline points={toPolyline(wire.points)} className="dp-flow" /> : null}
           </g>
         ))}
 
-        {/* Value labels at active wires' midpoints (the wrapper decides which wires carry one). */}
-        {wires.map((wire) => {
-          if (!wire.active || wire.label === undefined) return null;
-          const [mx, my] = midOf(wire.points);
-          return (
-            <g key={`v-${wire.id}`}>
-              <rect
-                className="dp-vlabel-box"
-                x={mx - wire.label.length * 3.2 - 3}
-                y={my - 8}
-                width={wire.label.length * 6.4 + 6}
-                height={14}
-                rx={3}
-              />
-              <text className="dp-vlabel-text" x={mx} y={my + 2} textAnchor="middle" fontSize={9}>
-                {wire.label}
-              </text>
-            </g>
-          );
-        })}
+        {/* Value labels — each nudged off its wire's clearest segment, clamped inside the canvas,
+            and de-collided against earlier labels (see {@link layoutLabels}). Drawn after the wires
+            so their opaque box reads cleanly. */}
+        {labels.map((lbl) => (
+          <g key={`v-${lbl.id}`}>
+            <rect
+              className="dp-vlabel-box"
+              style={{ stroke: lbl.ink }}
+              x={lbl.cx - lbl.halfW}
+              y={lbl.cy - 8}
+              width={lbl.halfW * 2}
+              height={14}
+              rx={3}
+            />
+            <text
+              className="dp-vlabel-text"
+              style={{ fill: lbl.ink }}
+              x={lbl.cx}
+              y={lbl.cy + 2}
+              textAnchor="middle"
+              fontSize={9}
+            >
+              {lbl.text}
+            </text>
+          </g>
+        ))}
 
         {nodes.map((node) => (
           <NodeShape key={node.id} node={node} />
@@ -170,9 +305,18 @@ export function DatapathDiagram(props: {
       </svg>
 
       <div className="dp-legend" aria-hidden="true">
-        <span>
-          <span className="dp-legend-swatch" /> active path this cycle
-        </span>
+        {legend ? (
+          legend.map((item) => (
+            <span key={item.label}>
+              <span className="dp-legend-swatch" style={{ borderTopColor: item.color }} />{' '}
+              {item.label}
+            </span>
+          ))
+        ) : (
+          <span>
+            <span className="dp-legend-swatch" /> active path this cycle
+          </span>
+        )}
         <span>
           <span className="dp-legend-swatch dp-legend-swatch--idle" /> idle
         </span>
@@ -191,25 +335,8 @@ function NodeShape(props: { node: NodeVM }): React.JSX.Element {
   const lines = node.label.split('\n');
 
   let shape: React.JSX.Element;
-  if (node.shape === 'mux') {
-    // A tall, narrow trapezoid (wider at the output side is conventional; a simple taper reads fine).
-    const { x, y, w, h } = node;
-    shape = (
-      <polygon
-        className={shapeClass}
-        points={`${x},${y} ${x + w},${y + w} ${x + w},${y + h - w} ${x},${y + h}`}
-      />
-    );
-  } else if (node.shape === 'adder') {
-    // A left-pointing ALU/adder silhouette (P&H style notch on the input side).
-    const { x, y, w, h } = node;
-    const notch = h * 0.18;
-    shape = (
-      <polygon
-        className={shapeClass}
-        points={`${x},${y} ${x + w},${y + h * 0.28} ${x + w},${y + h * 0.72} ${x},${y + h} ${x},${y + h / 2 + notch} ${x + w * 0.22},${y + h / 2} ${x},${y + h / 2 - notch}`}
-      />
-    );
+  if (node.shape === 'mux' || node.shape === 'adder') {
+    shape = <polygon className={shapeClass} points={toPolyline(shapePolygon(node))} />;
   } else {
     shape = (
       <rect className={shapeClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={5} />
