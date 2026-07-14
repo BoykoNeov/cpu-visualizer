@@ -148,11 +148,12 @@ interface PlacedLabel {
   ink: string;
 }
 
-/** Place each active wire's value label off its clearest segment, then resolve label↔label
- *  overlaps by nudging the later one vertically until it clears — so no label ever obscures
- *  another (requirement: labels don't obscure labels). Boxes stay clamped inside the canvas. */
+/** Place each active wire's value label off its clearest segment, then nudge it vertically until it
+ *  clears both earlier labels AND component boxes — so a label never obscures another label or sits
+ *  on top of a box (requirement: labels don't obscure labels/arrows). Boxes stay inside the canvas. */
 function layoutLabels(
   wires: readonly WireVM[],
+  nodes: readonly NodeVM[],
   canvas: { readonly width: number; readonly height: number },
 ): PlacedLabel[] {
   const HALF_H = 8;
@@ -163,23 +164,33 @@ function layoutLabels(
     const side = wire.labelSide ?? (anc.horizontal ? 'up' : 'right');
     const halfW = wire.label.length * 3.2 + 3;
     let cx = anc.x + (side === 'left' ? -(halfW + 3) : side === 'right' ? halfW + 3 : 0);
-    let cy = anc.y + (side === 'up' ? -9 : side === 'down' ? 9 : 0);
+    const cy0 = anc.y + (side === 'up' ? -9 : side === 'down' ? 9 : 0);
     cx = Math.min(Math.max(cx, halfW + 1), canvas.width - halfW - 1);
-    // Push away from any already-placed label it collides with (try both directions, nearest wins).
-    const hits = (y: number): PlacedLabel | undefined =>
-      placed.find(
-        (p) =>
-          Math.abs(p.cx - cx) < p.halfW + halfW + 2 && Math.abs(p.cy - y) < HALF_H + HALF_H + 2,
-      );
-    if (hits(cy)) {
-      for (let step = 1; step <= 24; step++) {
-        const up = cy - step * 4;
-        const down = cy + step * 4;
-        if (up >= 9 && !hits(up)) {
+    // A candidate y is "clear" iff its box overlaps no already-placed label and no component box.
+    const clear = (y: number): boolean => {
+      const l = cx - halfW;
+      const r = cx + halfW;
+      const t = y - HALF_H;
+      const b = y + HALF_H;
+      for (const p of placed) {
+        if (Math.abs(p.cx - cx) < p.halfW + halfW + 2 && Math.abs(p.cy - y) < HALF_H * 2 + 2)
+          return false;
+      }
+      for (const n of nodes) {
+        if (r > n.x - 2 && l < n.x + n.w + 2 && b > n.y - 2 && t < n.y + n.h + 2) return false;
+      }
+      return true;
+    };
+    let cy = cy0;
+    if (!clear(cy)) {
+      for (let step = 1; step <= 40; step++) {
+        const up = cy0 - step * 4;
+        const down = cy0 + step * 4;
+        if (up >= 9 && clear(up)) {
           cy = up;
           break;
         }
-        if (down <= canvas.height - 9 && !hits(down)) {
+        if (down <= canvas.height - 9 && clear(down)) {
           cy = down;
           break;
         }
@@ -218,7 +229,7 @@ export function DatapathDiagram(props: {
   // A single arrowhead whose fill inherits each wire's own stroke (`context-stroke`), so one marker
   // serves every phase color AND the idle grey — no per-color marker zoo.
   const arrow = `${markerPrefix}-arrow`;
-  const labels = layoutLabels(wires, canvas);
+  const labels = layoutLabels(wires, nodes, canvas);
 
   return (
     <section className="panel" style={{ paddingBottom: '0.5rem', marginTop: '1rem' }}>

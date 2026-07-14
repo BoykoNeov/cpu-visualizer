@@ -90,50 +90,63 @@ export interface DatapathNode {
   readonly controlLabel?: string;
 }
 
+// LAYOUT CONTRACT (checked by the geometry tests): the shared-memory band is centered on y≈252
+// (PC → IorD mux → Memory → IR/MDR), the register/operand band flows left→right into the shared
+// ALU (via ALUSrc), and the ALUOut latch / MemtoReg mux close the loop back to the register write
+// port. Shaped nodes (mux/adder) connect ONLY on their vertical edges (muxes in-left/out-right;
+// adders on the two notch stubs + right output). Every wire is orthogonal and every endpoint sits
+// on a real drawn edge; the IorD/MemtoReg feedback and the writeback fan-in ride the clear top
+// (y<70) and bottom (y>420) rails. See {@link shapePolygon} for the outlines these anchors hit.
 const NODE_LIST: readonly DatapathNode[] = [
   // Left: PC, the shared memory and its address selector, and the dedicated PC-arithmetic unit.
-  { id: 'pc', label: 'PC', x: 24, y: 214, w: 44, h: 48 },
-  { id: 'pcarith', label: 'PC\narith', x: 24, y: 128, w: 58, h: 44, shape: 'adder' },
-  { id: 'addrmux', label: '', x: 100, y: 214, w: 22, h: 76, shape: 'mux', minTier: 'detailed', controlLabel: 'IorD' }, // prettier-ignore
-  { id: 'mem', label: 'Memory', x: 150, y: 210, w: 90, h: 92 },
+  { id: 'pc', label: 'PC', x: 28, y: 230, w: 44, h: 44 },
+  { id: 'pcarith', label: 'PC\narith', x: 100, y: 120, w: 58, h: 46, shape: 'adder' },
+  { id: 'addrmux', label: '', x: 100, y: 215, w: 22, h: 74, shape: 'mux', minTier: 'detailed', controlLabel: 'IorD' }, // prettier-ignore
+  { id: 'mem', label: 'Memory', x: 152, y: 206, w: 90, h: 92 },
   // The five inter-cycle latches (the pedagogical payoff — 1:1 with `MachineState.micro`).
-  { id: 'ir', label: 'IR', x: 274, y: 158, w: 46, h: 52 },
-  { id: 'mdr', label: 'MDR', x: 274, y: 300, w: 46, h: 52 },
+  { id: 'ir', label: 'IR', x: 284, y: 196, w: 46, h: 48 },
+  { id: 'mdr', label: 'MDR', x: 284, y: 288, w: 46, h: 48 },
   // Register file + sign-extend feed the operand latches.
-  { id: 'regfile', label: 'Registers', x: 356, y: 196, w: 106, h: 124 },
-  { id: 'signext', label: 'Sign\nExtend', x: 356, y: 360, w: 106, h: 42 },
-  { id: 'a', label: 'A', x: 492, y: 196, w: 42, h: 48 },
-  { id: 'b', label: 'B', x: 492, y: 272, w: 42, h: 48 },
+  { id: 'regfile', label: 'Registers', x: 362, y: 194, w: 104, h: 132 },
+  { id: 'signext', label: 'Sign\nExtend', x: 362, y: 356, w: 104, h: 44 },
+  { id: 'a', label: 'A', x: 502, y: 222, w: 42, h: 44 },
+  { id: 'b', label: 'B', x: 502, y: 290, w: 42, h: 44 },
   // Shared ALU with its second-operand selector, then the ALUOut latch and writeback selector.
-  { id: 'alusrcb', label: '', x: 560, y: 258, w: 22, h: 92, shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrc' }, // prettier-ignore
-  { id: 'alu', label: 'ALU', x: 616, y: 210, w: 84, h: 104, shape: 'adder' },
-  { id: 'aluout', label: 'ALUOut', x: 736, y: 226, w: 52, h: 54 },
-  { id: 'wbmux', label: '', x: 824, y: 196, w: 22, h: 124, shape: 'mux', minTier: 'detailed', controlLabel: 'MemtoReg' }, // prettier-ignore
+  { id: 'alusrcb', label: '', x: 566, y: 252, w: 22, h: 92, shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrc' }, // prettier-ignore
+  { id: 'alu', label: 'ALU', x: 620, y: 228, w: 84, h: 100, shape: 'adder' },
+  { id: 'aluout', label: 'ALUOut', x: 742, y: 252, w: 54, h: 52 },
+  { id: 'wbmux', label: '', x: 834, y: 216, w: 22, h: 128, shape: 'mux', minTier: 'detailed', controlLabel: 'MemtoReg' }, // prettier-ignore
 ] as const;
 
 export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
 
-/** Anchor a point on a node's edge: l/r/t/b = side midpoints, c = center. */
-type Side = 'l' | 'r' | 't' | 'b' | 'c';
 type Pt = readonly [number, number];
-function at(id: string, side: Side, dy = 0): Pt {
+/** Anchor a point on a node's edge. l/r = side midpoints + `off` (valid for boxes and the mux
+ *  vertical edges); t/b = top/bottom edge + `off` along it; c = center + vertical `off`. For adders
+ *  use {@link aUp}/{@link aLo} (left operand stubs) and `r` (output) — never l/t/b (notch/slants). */
+function at(id: string, side: 'l' | 'r' | 't' | 'b' | 'c', off = 0): Pt {
   const n = NODES.get(id)!;
   switch (side) {
     case 'l':
-      return [n.x, n.y + n.h / 2 + dy];
+      return [n.x, n.y + n.h / 2 + off];
     case 'r':
-      return [n.x + n.w, n.y + n.h / 2 + dy];
+      return [n.x + n.w, n.y + n.h / 2 + off];
     case 't':
-      return [n.x + n.w / 2, n.y];
+      return [n.x + n.w / 2 + off, n.y];
     case 'b':
-      return [n.x + n.w / 2, n.y + n.h];
+      return [n.x + n.w / 2 + off, n.y + n.h];
     case 'c':
-      return [n.x + n.w / 2, n.y + n.h / 2 + dy];
+      return [n.x + n.w / 2, n.y + n.h / 2 + off];
   }
 }
-/** Route from `a` to `b` with a single vertical segment at x = `midx` (a horizontal-first elbow). */
-function elbowH(a: Pt, b: Pt, midx: number): Pt[] {
-  return [a, [midx, a[1]], [midx, b[1]], b];
+/** An adder's upper / lower left operand stub (the vertical edges above / below the notch). */
+function aUp(id: string): Pt {
+  const n = NODES.get(id)!;
+  return [n.x, n.y + n.h * 0.16];
+}
+function aLo(id: string): Pt {
+  const n = NODES.get(id)!;
+  return [n.x, n.y + n.h * 0.84];
 }
 
 export interface DatapathWire {
@@ -158,40 +171,40 @@ export interface DatapathWire {
 const WIRE_LIST: readonly DatapathWire[] = [
   // --- Fetch: PC addresses the shared memory (via the IorD mux); the word latches into IR ---
   { id: 'pc-addrmux', ends: ['pc', 'addrmux'], points: [at('pc', 'r'), at('addrmux', 'l')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'aluout-addrmux', ends: ['aluout', 'addrmux'], points: [at('aluout', 't'), [762, 58], [111, 58], at('addrmux', 't')], minTier: 'detailed' }, // prettier-ignore
+  { id: 'aluout-addrmux', ends: ['aluout', 'addrmux'], points: [at('aluout', 't'), [769, 60], [90, 60], [90, at('addrmux', 'l', -14)[1]], at('addrmux', 'l', -14)], minTier: 'detailed' }, // prettier-ignore
   { id: 'addrmux-mem', ends: ['addrmux', 'mem'], points: [at('addrmux', 'r'), at('mem', 'l')], minTier: 'detailed' }, // prettier-ignore
   { id: 'pc-mem', ends: ['pc', 'mem'], points: [at('pc', 'r'), at('mem', 'l')], maxTier: 'essentials', contracts: 'addrmux' }, // prettier-ignore
-  { id: 'aluout-mem', ends: ['aluout', 'mem'], points: [at('aluout', 't'), [762, 60], [195, 60], at('mem', 't')], maxTier: 'essentials', contracts: 'addrmux' }, // prettier-ignore
-  { id: 'mem-ir', ends: ['mem', 'ir'], points: elbowH(at('mem', 'r', -30), at('ir', 'l'), 257) }, // prettier-ignore
-  { id: 'mem-mdr', ends: ['mem', 'mdr'], points: elbowH(at('mem', 'r', 30), at('mdr', 'l'), 257) }, // prettier-ignore
+  { id: 'aluout-mem', ends: ['aluout', 'mem'], points: [at('aluout', 't'), [769, 58], [197, 58], at('mem', 't')], maxTier: 'essentials', contracts: 'addrmux' }, // prettier-ignore
+  { id: 'mem-ir', ends: ['mem', 'ir'], points: [at('mem', 'r', -32), at('ir', 'l')] }, // prettier-ignore
+  { id: 'mem-mdr', ends: ['mem', 'mdr'], points: [at('mem', 'r', 45), [242, at('mdr', 'l')[1]], at('mdr', 'l')] }, // prettier-ignore
   // --- Decode: IR selects the registers and drives the sign-extender; reads latch into A / B ---
-  { id: 'ir-regfile', ends: ['ir', 'regfile'], points: elbowH(at('ir', 'r'), at('regfile', 'l', -28), 338) }, // prettier-ignore
-  { id: 'ir-signext', ends: ['ir', 'signext'], points: [at('ir', 'b'), [297, 344], [409, 344], at('signext', 't')] }, // prettier-ignore
-  { id: 'regfile-a', ends: ['regfile', 'a'], points: elbowH(at('regfile', 'r', -28), at('a', 'l'), 477) }, // prettier-ignore
-  { id: 'regfile-b', ends: ['regfile', 'b'], points: elbowH(at('regfile', 'r', 28), at('b', 'l'), 477) }, // prettier-ignore
+  { id: 'ir-regfile', ends: ['ir', 'regfile'], points: [at('ir', 'r'), at('regfile', 'l', -40)] }, // prettier-ignore
+  { id: 'ir-signext', ends: ['ir', 'signext'], points: [at('ir', 'r', 20), [348, at('ir', 'r', 20)[1]], [348, 344], [390, 344], at('signext', 't', -24)] }, // prettier-ignore
+  { id: 'regfile-a', ends: ['regfile', 'a'], points: [at('regfile', 'r', -16), at('a', 'l')] }, // prettier-ignore
+  { id: 'regfile-b', ends: ['regfile', 'b'], points: [at('regfile', 'r', 52), at('b', 'l')] }, // prettier-ignore
   // --- Execute: A goes straight to the ALU; B or the immediate is chosen by ALUSrc ---
-  { id: 'a-alu', ends: ['a', 'alu'], points: [at('a', 'r'), at('alu', 'l', -22)] }, // prettier-ignore
-  { id: 'b-alusrcb', ends: ['b', 'alusrcb'], points: [at('b', 'r'), at('alusrcb', 'l')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'signext-alusrcb', ends: ['signext', 'alusrcb'], points: [at('signext', 'r'), [540, 381], [540, 350], at('alusrcb', 'b')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'alusrcb-alu', ends: ['alusrcb', 'alu'], points: [at('alusrcb', 'r'), at('alu', 'l', 22)], minTier: 'detailed' }, // prettier-ignore
-  { id: 'b-alu', ends: ['b', 'alu'], points: [at('b', 'r'), at('alu', 'l', 22)], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
-  { id: 'signext-alu', ends: ['signext', 'alu'], points: [at('signext', 'r'), [600, 381], [600, 292], at('alu', 'l', 22)], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
+  { id: 'a-alu', ends: ['a', 'alu'], points: [at('a', 'r'), aUp('alu')] }, // prettier-ignore
+  { id: 'b-alusrcb', ends: ['b', 'alusrcb'], points: [at('b', 'r'), at('alusrcb', 'l', 14)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'signext-alusrcb', ends: ['signext', 'alusrcb'], points: [at('signext', 'r', -8), [548, at('signext', 'r', -8)[1]], [548, at('alusrcb', 'l', 32)[1]], at('alusrcb', 'l', 32)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'alusrcb-alu', ends: ['alusrcb', 'alu'], points: [at('alusrcb', 'r'), [at('alusrcb', 'r')[0], aLo('alu')[1]], aLo('alu')], minTier: 'detailed' }, // prettier-ignore
+  { id: 'b-alu', ends: ['b', 'alu'], points: [at('b', 'r'), aLo('alu')], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
+  { id: 'signext-alu', ends: ['signext', 'alu'], points: [at('signext', 'r', 8), [600, at('signext', 'r', 8)[1]], [600, aLo('alu')[1]], aLo('alu')], maxTier: 'essentials', contracts: 'alusrcb' }, // prettier-ignore
   { id: 'alu-aluout', ends: ['alu', 'aluout'], points: [at('alu', 'r'), at('aluout', 'l')] }, // prettier-ignore
   // --- Memory: ALUOut addresses memory (via IorD); a load fills MDR, a store sends B's datum ---
-  { id: 'b-mem', ends: ['b', 'mem'], points: [at('b', 'b'), [513, 438], [195, 438], at('mem', 'b')] }, // prettier-ignore
+  { id: 'b-mem', ends: ['b', 'mem'], points: [at('b', 'b'), [523, 438], [197, 438], at('mem', 'b')] }, // prettier-ignore
   // --- Writeback: MemtoReg picks the source (ALUOut / MDR / imm / pcarith) into the write port ---
-  { id: 'aluout-wbmux', ends: ['aluout', 'wbmux'], points: [at('aluout', 'r'), at('wbmux', 'l')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'mdr-wbmux', ends: ['mdr', 'wbmux'], points: [at('mdr', 'r'), [340, 420], [835, 420], at('wbmux', 'b')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'signext-wbmux', ends: ['signext', 'wbmux'], points: [at('signext', 'r'), [810, 381], [810, 318], at('wbmux', 'l', 60)], minTier: 'detailed' }, // prettier-ignore
-  { id: 'pcarith-wbmux', ends: ['pcarith', 'wbmux'], points: [at('pcarith', 'r'), [835, 150], at('wbmux', 't')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'wbmux-regfile', ends: ['wbmux', 'regfile'], points: [at('wbmux', 'b'), [835, 452], [409, 452], at('regfile', 'b')], minTier: 'detailed' }, // prettier-ignore
-  { id: 'aluout-regfile', ends: ['aluout', 'regfile'], points: [at('aluout', 'b'), [762, 452], [409, 452], at('regfile', 'b')], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
-  { id: 'mdr-regfile', ends: ['mdr', 'regfile'], points: [at('mdr', 'b'), [297, 430], [409, 430], at('regfile', 'b')], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
+  { id: 'aluout-wbmux', ends: ['aluout', 'wbmux'], points: [at('aluout', 'r'), at('wbmux', 'l', -2)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'mdr-wbmux', ends: ['mdr', 'wbmux'], points: [at('mdr', 'r', 12), [354, at('mdr', 'r', 12)[1]], [354, 424], [824, 424], [824, at('wbmux', 'l', 46)[1]], at('wbmux', 'l', 46)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'signext-wbmux', ends: ['signext', 'wbmux'], points: [at('signext', 'r', 20), [812, at('signext', 'r', 20)[1]], [812, at('wbmux', 'l', 20)[1]], at('wbmux', 'l', 20)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'pcarith-wbmux', ends: ['pcarith', 'wbmux'], points: [at('pcarith', 'r'), [158, 64], [824, 64], [824, at('wbmux', 'l', -48)[1]], at('wbmux', 'l', -48)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'wbmux-regfile', ends: ['wbmux', 'regfile'], points: [at('wbmux', 'r'), [878, at('wbmux', 'r')[1]], [878, 452], [342, 452], [342, at('regfile', 'l', 48)[1]], at('regfile', 'l', 48)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'aluout-regfile', ends: ['aluout', 'regfile'], points: [at('aluout', 'b'), [769, 446], [346, 446], [346, at('regfile', 'l', 40)[1]], at('regfile', 'l', 40)], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
+  { id: 'mdr-regfile', ends: ['mdr', 'regfile'], points: [at('mdr', 'b'), [307, 430], [350, 430], [350, at('regfile', 'l', 48)[1]], at('regfile', 'l', 48)], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
   { id: 'signext-regfile', ends: ['signext', 'regfile'], points: [at('signext', 't'), at('regfile', 'b')], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
-  { id: 'pcarith-regfile', ends: ['pcarith', 'regfile'], points: [at('pcarith', 'b'), [53, 452], [409, 452], at('regfile', 'b')], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
+  { id: 'pcarith-regfile', ends: ['pcarith', 'regfile'], points: [at('pcarith', 'r'), [340, 143], [340, at('regfile', 'l', 58)[1]], at('regfile', 'l', 58)], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
   // --- PC-arithmetic unit inputs (link = pc+4, jal/auipc target = pc+imm) ---
-  { id: 'pc-pcarith', ends: ['pc', 'pcarith'], points: [at('pc', 't'), at('pcarith', 'b')] }, // prettier-ignore
-  { id: 'signext-pcarith', ends: ['signext', 'pcarith'], points: [at('signext', 'l'), [340, 438], [16, 438], at('pcarith', 'l')] }, // prettier-ignore
+  { id: 'pc-pcarith', ends: ['pc', 'pcarith'], points: [at('pc', 't'), [at('pc', 't')[0], aLo('pcarith')[1]], aLo('pcarith')] }, // prettier-ignore
+  { id: 'signext-pcarith', ends: ['signext', 'pcarith'], points: [at('signext', 'l'), [16, at('signext', 'l')[1]], [16, aUp('pcarith')[1]], aUp('pcarith')] }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
