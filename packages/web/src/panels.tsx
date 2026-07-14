@@ -8,26 +8,11 @@
 import { DATA_BASE, TEXT_BASE, type AssembledProgram } from '@cpu-viz/assembler';
 import type { MachineState } from '@cpu-viz/trace';
 import { ABI_REGISTER_NAMES, hex32 } from './format';
+import { MONO, T } from './theme';
 
-const mono = { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } as const;
+const mono = { fontFamily: MONO } as const;
 
-const panelStyle: React.CSSProperties = {
-  border: '1px solid #d0d0d8',
-  borderRadius: 8,
-  padding: '0.75rem 1rem',
-  background: '#fff',
-};
-
-const headingStyle: React.CSSProperties = {
-  margin: '0 0 0.5rem',
-  fontSize: '0.8rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  color: '#555',
-};
-
-const highlight = '#fff4d6'; // pale amber for "touched this cycle"
+const highlight = T.highlight; // amber wash for "touched this cycle"
 
 /**
  * Source ↔ machine-code panel. Renders the assembly the user wrote, and beside each line the
@@ -55,8 +40,8 @@ export function SourcePanel(props: {
   const lines = source.replace(/\n$/, '').split('\n');
 
   return (
-    <section style={panelStyle}>
-      <h2 style={headingStyle}>Source ↔ machine code</h2>
+    <section className="panel">
+      <h2 className="panel-heading">Source ↔ machine code</h2>
       <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.85rem', width: '100%' }}>
         <tbody>
           {lines.map((text, i) => {
@@ -66,11 +51,11 @@ export function SourcePanel(props: {
             return (
               <tr key={lineNo} style={isActive ? { background: highlight } : undefined}>
                 <td
-                  style={{ color: '#aaa', textAlign: 'right', paddingRight: 8, userSelect: 'none' }}
+                  style={{ color: T.ink3, textAlign: 'right', paddingRight: 8, userSelect: 'none' }}
                 >
                   {lineNo}
                 </td>
-                <td style={{ color: '#0a7', whiteSpace: 'pre', paddingRight: 12 }}>
+                <td style={{ color: T.monoGreen, whiteSpace: 'pre', paddingRight: 12 }}>
                   {words.map((w) => hex32(w.word)).join(' ')}
                 </td>
                 <td style={{ whiteSpace: 'pre' }}>{text || ' '}</td>
@@ -94,9 +79,9 @@ export function RegisterPanel(props: {
 }): React.JSX.Element {
   const { state, writtenRegs } = props;
   return (
-    <section style={panelStyle}>
-      <h2 style={headingStyle}>Registers</h2>
-      <div style={{ ...mono, fontSize: '0.8rem', marginBottom: 6, color: '#333' }}>
+    <section className="panel">
+      <h2 className="panel-heading">Registers</h2>
+      <div style={{ ...mono, fontSize: '0.8rem', marginBottom: 6, color: T.ink }}>
         <strong>pc</strong> {hex32(state.pc)}
       </div>
       <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.78rem', width: '100%' }}>
@@ -105,10 +90,10 @@ export function RegisterPanel(props: {
             const value = state.registers[r]!;
             return (
               <tr key={r} style={writtenRegs.has(r) ? { background: highlight } : undefined}>
-                <td style={{ color: '#333', paddingRight: 6 }}>{ABI_REGISTER_NAMES[r]}</td>
-                <td style={{ color: '#aaa', paddingRight: 10 }}>x{r}</td>
+                <td style={{ color: T.ink, paddingRight: 6 }}>{ABI_REGISTER_NAMES[r]}</td>
+                <td style={{ color: T.ink3, paddingRight: 10 }}>x{r}</td>
                 <td style={{ textAlign: 'right', paddingRight: 10 }}>{hex32(value)}</td>
-                <td style={{ textAlign: 'right', color: '#666' }}>{value}</td>
+                <td style={{ textAlign: 'right', color: T.ink2 }}>{value}</td>
               </tr>
             );
           })}
@@ -129,10 +114,10 @@ export function MemoryPanel(props: { state: MachineState }): React.JSX.Element {
   // window is sorted without a further `.slice().sort()`.
   const addrs = props.state.memory.definedAddresses().filter((a) => a >= DATA_BASE);
   return (
-    <section style={panelStyle}>
-      <h2 style={headingStyle}>Data memory</h2>
+    <section className="panel">
+      <h2 className="panel-heading">Data memory</h2>
       {addrs.length === 0 ? (
-        <p style={{ ...mono, fontSize: '0.8rem', color: '#999', margin: 0 }}>
+        <p style={{ ...mono, fontSize: '0.8rem', color: T.ink3, margin: 0 }}>
           no data memory written
         </p>
       ) : (
@@ -142,9 +127,9 @@ export function MemoryPanel(props: { state: MachineState }): React.JSX.Element {
               const word = props.state.memory.readWord(addr);
               return (
                 <tr key={addr}>
-                  <td style={{ color: '#a60', paddingRight: 12 }}>{hex32(addr)}</td>
+                  <td style={{ color: T.monoAmber, paddingRight: 12 }}>{hex32(addr)}</td>
                   <td style={{ textAlign: 'right', paddingRight: 12 }}>{hex32(word)}</td>
-                  <td style={{ textAlign: 'right', color: '#666' }}>{word | 0}</td>
+                  <td style={{ textAlign: 'right', color: T.ink2 }}>{word | 0}</td>
                 </tr>
               );
             })}

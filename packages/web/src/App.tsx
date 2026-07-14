@@ -10,6 +10,7 @@ import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
+import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
 import { useSimulator } from './useSimulator';
 
 /** Sentinel `<select>` value for the sandbox state — no corpus program is selected. */
@@ -86,16 +87,14 @@ export function App(): React.JSX.Element {
   return (
     <main
       style={{
-        fontFamily: 'system-ui, sans-serif',
         maxWidth: 1200,
         margin: '1.5rem auto',
         padding: '0 1rem',
-        color: '#222',
       }}
     >
       <header style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
         <h1 style={{ fontSize: '1.4rem', margin: 0 }}>CPU Visualizer</h1>
-        <span style={{ color: '#888' }}>{activeModel.description}</span>
+        <span style={{ color: T.ink3 }}>{activeModel.description}</span>
         <div
           style={{
             marginLeft: 'auto',
@@ -108,11 +107,7 @@ export function App(): React.JSX.Element {
           <DepthDial tier={tier} setTier={setTier} />
           <label>
             Model:{' '}
-            <select
-              value={sim.model}
-              onChange={(e) => sim.setModel(e.target.value)}
-              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
-            >
+            <select value={sim.model} onChange={(e) => sim.setModel(e.target.value)}>
               {MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.label}
@@ -125,7 +120,6 @@ export function App(): React.JSX.Element {
             <select
               value={sim.sandbox ? SANDBOX_OPTION : (sim.programName ?? '')}
               onChange={(e) => sim.select(e.target.value)}
-              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
             >
               {sim.sandbox ? (
                 <option value={SANDBOX_OPTION} disabled>
@@ -149,7 +143,6 @@ export function App(): React.JSX.Element {
                 if (lesson) sim.startLesson(lesson);
                 else if (sim.programName) sim.select(sim.programName);
               }}
-              style={{ fontSize: '0.95rem', padding: '0.2rem' }}
             >
               <option value="">— none —</option>
               {LESSONS.map((l) => (
@@ -159,6 +152,7 @@ export function App(): React.JSX.Element {
               ))}
             </select>
           </label>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -222,7 +216,7 @@ export function App(): React.JSX.Element {
               <MemoryPanel state={sim.state} />
             </div>
           ) : (
-            <p style={{ color: '#999' }}>Loading…</p>
+            <p style={{ color: T.ink3 }}>Loading…</p>
           )}
         </>
       )}
@@ -250,7 +244,7 @@ function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.El
   };
   if (sim.sandbox) {
     return (
-      <div style={{ ...base, borderColor: '#d9a441', background: '#fff8e8', color: '#8a5a00' }}>
+      <div style={{ ...base, borderColor: T.warnBorder, background: T.warnBg, color: T.warnInk }}>
         <strong>Sandbox</strong>
         <span>
           editing {sim.programName ? `“${sim.programName}”` : 'a program'} — lesson annotations
@@ -261,14 +255,14 @@ function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.El
   }
   if (sim.activeLesson) {
     return (
-      <div style={{ ...base, borderColor: '#7aa7e0', background: '#eef5ff', color: '#1e4d8a' }}>
-        <strong>Lesson</strong>
+      <div style={{ ...base, borderColor: T.accentLine, background: T.accentSoft, color: T.ink }}>
+        <strong style={{ color: T.accent }}>Lesson</strong>
         <span>{sim.activeLesson.title}</span>
       </div>
     );
   }
   return (
-    <div style={{ ...base, borderColor: '#cfcfd6', background: '#f6f6f8', color: '#555' }}>
+    <div style={{ ...base, borderColor: T.line2, background: T.surface2, color: T.ink2 }}>
       <strong>Free play</strong>
       <span>{sim.programName ?? '—'}</span>
     </div>
@@ -286,9 +280,9 @@ function renderNarration(text: string): React.ReactNode {
       <code
         key={i}
         style={{
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          background: '#eef2ff',
-          color: '#1e3a8a',
+          fontFamily: MONO,
+          background: T.codeBg,
+          color: T.codeInk,
           padding: '0.05rem 0.3rem',
           borderRadius: 4,
           fontSize: '0.9em',
@@ -322,9 +316,9 @@ function NarrationPanel(props: {
     fontSize: '0.85rem',
     padding: '0.3rem 0.7rem',
     borderRadius: 6,
-    border: '1px solid #7aa7e0',
-    background: '#fff',
-    color: '#1e4d8a',
+    border: `1px solid ${T.accentLine}`,
+    background: T.surface,
+    color: T.accent,
     cursor: 'pointer',
   };
   return (
@@ -332,8 +326,8 @@ function NarrationPanel(props: {
       aria-label="Lesson narration"
       style={{
         marginTop: '1rem',
-        border: '1px solid #7aa7e0',
-        background: '#f3f8ff',
+        border: `1px solid ${T.accentLine}`,
+        background: T.accentSoft,
         borderRadius: 10,
         padding: '0.9rem 1.1rem',
       }}
@@ -352,14 +346,14 @@ function NarrationPanel(props: {
             fontSize: '0.7rem',
             textTransform: 'uppercase',
             letterSpacing: '0.06em',
-            color: '#5a7bb0',
+            color: T.accent,
             fontWeight: 700,
           }}
         >
           Lesson
         </span>
-        <strong style={{ color: '#1e4d8a', fontSize: '1rem' }}>{title}</strong>
-        <span style={{ marginLeft: 'auto', color: '#5a7bb0', fontSize: '0.85rem' }}>
+        <strong style={{ color: T.ink, fontSize: '1rem' }}>{title}</strong>
+        <span style={{ marginLeft: 'auto', color: T.ink2, fontSize: '0.85rem' }}>
           {current >= 0 ? `Step ${current + 1} of ${total}` : `Not started · ${total} steps`}
         </span>
       </div>
@@ -386,9 +380,10 @@ function NarrationPanel(props: {
                 fontSize: '0.75rem',
                 fontWeight: 700,
                 cursor: 'pointer',
-                border: `2px solid ${state === 'future' ? '#b8c9e6' : '#1e6fe0'}`,
-                background: state === 'active' ? '#1e6fe0' : state === 'past' ? '#cfe0fb' : '#fff',
-                color: state === 'active' ? '#fff' : '#1e4d8a',
+                border: `2px solid ${state === 'future' ? T.accentLine : T.accent}`,
+                background:
+                  state === 'active' ? T.accent : state === 'past' ? T.accentSoft : T.surface,
+                color: state === 'active' ? T.accentInk : T.accent,
               }}
             >
               {i + 1}
@@ -417,15 +412,15 @@ function NarrationPanel(props: {
 
       {/* The active step's narration, or a prompt when the lesson hasn't started / has no text
           at this depth. */}
-      <p style={{ margin: '0.75rem 0 0', lineHeight: 1.55, color: '#243b53' }}>
+      <p style={{ margin: '0.75rem 0 0', lineHeight: 1.55, color: T.ink }}>
         {current < 0 ? (
-          <span style={{ color: '#5a7bb0' }}>
+          <span style={{ color: T.ink2 }}>
             Press <strong>Next step ▶</strong> or scrub the timeline to walk through the lesson.
           </span>
         ) : view.narration !== undefined ? (
           renderNarration(view.narration)
         ) : (
-          <span style={{ color: '#5a7bb0' }}>
+          <span style={{ color: T.ink2 }}>
             This step has no narration at the current depth — raise the depth dial for more.
           </span>
         )}
@@ -452,30 +447,18 @@ function ProgramEditor(props: {
   originName: string | null;
 }): React.JSX.Element {
   const { open, onToggle, draft, setDraft, onRun, onRevert, canRevert, originName } = props;
-  const btn: React.CSSProperties = {
-    fontSize: '0.85rem',
-    padding: '0.35rem 0.7rem',
-    borderRadius: 6,
-    border: '1px solid #bbb',
-    background: '#f7f7f9',
-    cursor: 'pointer',
-  };
   return (
     <div style={{ marginTop: '0.75rem' }}>
-      <button style={{ ...btn, background: open ? '#eef' : '#f7f7f9' }} onClick={onToggle}>
+      <button
+        className="btn"
+        style={{ fontSize: '0.85rem', background: open ? T.accentSoft : undefined }}
+        onClick={onToggle}
+      >
         ✎ Edit program {open ? '▲' : '▼'}
       </button>
       {open ? (
-        <div
-          style={{
-            marginTop: '0.5rem',
-            border: '1px solid #d0d0d8',
-            borderRadius: 8,
-            padding: '0.75rem 1rem',
-            background: '#fff',
-          }}
-        >
-          <p style={{ fontSize: '0.8rem', color: '#666', margin: '0 0 0.5rem' }}>
+        <div className="panel" style={{ marginTop: '0.5rem' }}>
+          <p style={{ fontSize: '0.8rem', color: T.ink2, margin: '0 0 0.5rem' }}>
             Running an edit forks into a <strong>sandbox</strong>: the edited program animates like
             any other, and any active lesson detaches.
           </p>
@@ -488,25 +471,24 @@ function ProgramEditor(props: {
               width: '100%',
               minHeight: '11rem',
               resize: 'vertical',
-              boxSizing: 'border-box',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: MONO,
               fontSize: '0.85rem',
               lineHeight: 1.5,
               padding: '0.5rem',
-              border: '1px solid #ccc',
-              borderRadius: 6,
             }}
           />
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
             <button
-              style={{ ...btn, borderColor: '#1e6fe0', background: '#1e6fe0', color: '#fff' }}
+              className="btn btn--primary"
+              style={{ fontSize: '0.85rem' }}
               onClick={onRun}
               title="Assemble and run the edited program (forks to a sandbox)"
             >
               ▶ Run edit
             </button>
             <button
-              style={{ ...btn, opacity: canRevert ? 1 : 0.5 }}
+              className="btn"
+              style={{ fontSize: '0.85rem' }}
               onClick={onRevert}
               disabled={!canRevert}
               title={originName ? `Discard edits and reload ${originName}` : 'Nothing to revert'}
@@ -531,36 +513,51 @@ function DepthDial(props: { tier: DepthTier; setTier: (t: DepthTier) => void }):
           fontSize: '0.72rem',
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
-          color: '#888',
+          color: T.ink3,
         }}
       >
         Depth
       </span>
-      <div style={{ display: 'flex', gap: 3 }}>
-        {DEPTH_TIERS.map((t) => {
-          const on = t === tier;
-          return (
-            <button
-              key={t}
-              onClick={() => setTier(t)}
-              title={`${t} depth`}
-              style={{
-                fontSize: '0.72rem',
-                padding: '0.15rem 0.5rem',
-                borderRadius: 5,
-                textTransform: 'capitalize',
-                border: `1px solid ${on ? '#1e6fe0' : '#ccc'}`,
-                background: on ? '#1e6fe0' : '#f7f7f9',
-                color: on ? '#fff' : '#555',
-                cursor: 'pointer',
-              }}
-            >
-              {t}
-            </button>
-          );
-        })}
+      <div className="seg">
+        {DEPTH_TIERS.map((t) => (
+          <button
+            key={t}
+            className={t === tier ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setTier(t)}
+            title={`${t} depth`}
+            style={{ textTransform: 'capitalize' }}
+          >
+            {t}
+          </button>
+        ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Light/dark toggle. Cycles auto (follow the OS) → light → dark; the choice is stamped on <html>
+ * and persisted by {@link setThemeChoice}. Every color in the app is a token from styles.css, so
+ * the whole shell — SVG datapaths included — follows the stamp.
+ */
+function ThemeToggle(): React.JSX.Element {
+  const [choice, setChoice] = useState<ThemeChoice>(() => getThemeChoice());
+  const next: Record<ThemeChoice, ThemeChoice> = { auto: 'light', light: 'dark', dark: 'auto' };
+  const icon = { auto: '◐', light: '☀', dark: '☾' }[choice];
+  return (
+    <button
+      className="btn"
+      style={{ fontSize: '0.85rem' }}
+      onClick={() => {
+        const c = next[choice];
+        setThemeChoice(c);
+        setChoice(c);
+      }}
+      title={`Theme: ${choice} — click to switch to ${next[choice]}`}
+      aria-label={`Theme: ${choice}`}
+    >
+      {icon} {choice}
+    </button>
   );
 }
 
@@ -572,44 +569,42 @@ function Transport(props: {
   inFlight: InstructionInstance | null;
 }): React.JSX.Element {
   const { sim, atStart, lastCycle, inFlight } = props;
-  const btn: React.CSSProperties = {
-    fontSize: '0.9rem',
-    padding: '0.35rem 0.7rem',
-    borderRadius: 6,
-    border: '1px solid #bbb',
-    background: '#f7f7f9',
-    cursor: 'pointer',
-  };
   return (
     <div style={{ marginTop: '1rem' }}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <button style={btn} onClick={sim.reset} disabled={atStart} title="Back to start">
+        <button className="btn" onClick={sim.reset} disabled={atStart} title="Back to start">
           ⏮ reset
         </button>
-        <button style={btn} onClick={sim.stepBack} disabled={atStart} title="Step back one cycle">
+        <button
+          className="btn"
+          onClick={sim.stepBack}
+          disabled={atStart}
+          title="Step back one cycle"
+        >
           ◀ back
         </button>
         <button
-          style={btn}
+          className="btn"
           onClick={sim.stepForward}
           disabled={sim.atEnd}
           title="Step forward one cycle"
         >
           step ▶
         </button>
-        <button style={btn} onClick={sim.runToEnd} disabled={sim.atEnd} title="Run to completion">
+        <button
+          className="btn"
+          onClick={sim.runToEnd}
+          disabled={sim.atEnd}
+          title="Run to completion"
+        >
           run ⏭
         </button>
-        <span
-          style={{ marginLeft: '0.5rem', fontFamily: 'ui-monospace, monospace', color: '#444' }}
-        >
+        <span style={{ marginLeft: '0.5rem', fontFamily: MONO, color: T.ink2 }}>
           {atStart ? 'start (pre-run)' : `cycle ${sim.cursor} / ${lastCycle}`}
           {sim.atEnd ? '  — halted' : ''}
         </span>
         {inFlight ? (
-          <span
-            style={{ color: '#666', fontFamily: 'ui-monospace, monospace', fontSize: '0.85rem' }}
-          >
+          <span style={{ color: T.ink2, fontFamily: MONO, fontSize: '0.85rem' }}>
             {formatInstruction(inFlight.decoded)}
           </span>
         ) : null}
@@ -639,15 +634,15 @@ function DatapathPlaceholder(props: { modelLabel: string }): React.JSX.Element {
     <div
       style={{
         marginTop: '1rem',
-        border: '1px dashed #c8ccd4',
-        background: '#fafafb',
+        border: `1px dashed ${T.line2}`,
+        background: T.surface,
         borderRadius: 10,
         padding: '1.25rem 1.25rem',
-        color: '#667',
+        color: T.ink2,
         textAlign: 'center',
       }}
     >
-      <div style={{ fontWeight: 700, color: '#556', marginBottom: '0.35rem' }}>
+      <div style={{ fontWeight: 700, color: T.ink, marginBottom: '0.35rem' }}>
         {props.modelLabel} datapath — coming soon
       </div>
       <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.5 }}>
@@ -664,13 +659,13 @@ function NoticeBox(props: { title: string; message: string }): React.JSX.Element
     <div
       style={{
         marginTop: '1rem',
-        border: '1px solid #e0b4b4',
-        background: '#fff6f6',
+        border: `1px solid ${T.danger}`,
+        background: T.dangerBg,
         borderRadius: 8,
         padding: '0.75rem 1rem',
       }}
     >
-      <strong style={{ color: '#a33' }}>{props.title}</strong>
+      <strong style={{ color: T.danger }}>{props.title}</strong>
       <p style={{ fontSize: '0.85rem', margin: '0.5rem 0 0' }}>{props.message}</p>
     </div>
   );
@@ -682,16 +677,14 @@ function ErrorBox(props: { errors: AssemblerError[] }): React.JSX.Element {
     <div
       style={{
         marginTop: '1rem',
-        border: '1px solid #e0b4b4',
-        background: '#fff6f6',
+        border: `1px solid ${T.danger}`,
+        background: T.dangerBg,
         borderRadius: 8,
         padding: '0.75rem 1rem',
       }}
     >
-      <strong style={{ color: '#a33' }}>Assembler errors</strong>
-      <ul
-        style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.85rem', margin: '0.5rem 0 0' }}
-      >
+      <strong style={{ color: T.danger }}>Assembler errors</strong>
+      <ul style={{ fontFamily: MONO, fontSize: '0.85rem', margin: '0.5rem 0 0' }}>
         {props.errors.map((err, i) => (
           <li key={i}>
             {err.line}:{err.column} — {err.message}
