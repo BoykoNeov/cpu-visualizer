@@ -247,6 +247,34 @@ export function PipelineMap(props: {
                   ]
                     .filter(Boolean)
                     .join(' ');
+                  // The two speculative ACTIONS, on the row of the instruction that took them —
+                  // the same pair the datapath draws as its two redirects (step 5). The map was
+                  // victim-centric before this: it could only draw prediction's COST, so a penalty
+                  // that killed nobody was invisible (`call-return`'s `ret` — see {@link MapCell}).
+                  //
+                  // Both are drawn when both are set, rather than one taking precedence. In this
+                  // pipeline they cannot collide (the bet is placed in ID and the answer arrives in
+                  // EX, a cycle apart), but a precedence rule would be a silent choice about a case
+                  // its author could not reach — and dropping a mark is exactly the blindness this
+                  // step exists to fix.
+                  const marks = [
+                    cell.bet
+                      ? ({
+                          key: 'bet',
+                          glyph: '?',
+                          title:
+                            'Bet — the predictor redirected fetch to a guessed target, before the answer existed',
+                        } as const)
+                      : null,
+                    cell.mispredicted
+                      ? ({
+                          key: 'wrong',
+                          glyph: '!',
+                          title:
+                            'Mispredicted — it resolved the other way, so EX redirected fetch. Every instruction on the wrong path is thrown away.',
+                        } as const)
+                      : null,
+                  ].filter((m) => m !== null);
                   return (
                     <button
                       key={cell.cycle}
@@ -268,9 +296,17 @@ export function PipelineMap(props: {
                         onSeek(cell.cycle);
                       }}
                       aria-pressed={isFollowed}
-                      title={`${formatInstruction(row.decoded)} — ${cell.location} at cycle ${cell.cycle}`}
+                      title={[
+                        `${formatInstruction(row.decoded)} — ${cell.location} at cycle ${cell.cycle}`,
+                        ...marks.map((m) => m.title),
+                      ].join('\n')}
                     >
                       {cell.location}
+                      {marks.map((m) => (
+                        <span key={m.key} className={`pmap-mark pmap-mark--${m.key}`} aria-hidden>
+                          {m.glyph}
+                        </span>
+                      ))}
                     </button>
                   );
                 })}
@@ -319,8 +355,14 @@ export function PipelineMap(props: {
             {f}
           </span>
         ))}
+        {/* The relief rule reaches the marks: a glyph with no key is a puzzle. `?` and `!` sit on
+            the BRANCH's row (its action); `✕` sits under its victims (the cost) — which is the
+            distinction the whole step is about, so the key states it rather than listing three
+            symbols. */}
         <span style={{ marginLeft: 'auto', color: T.ink3 }}>
-          repeated cell = stall · <span style={{ color: T.danger }}>✕</span> = flushed
+          repeated cell = stall · <span className="pmap-mark pmap-mark--bet">?</span> = bet ·{' '}
+          <span className="pmap-mark pmap-mark--wrong">!</span> = mispredicted ·{' '}
+          <span style={{ color: T.danger }}>✕</span> = flushed
         </span>
       </div>
     </section>

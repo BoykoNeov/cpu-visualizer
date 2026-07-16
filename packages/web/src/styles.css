@@ -418,6 +418,8 @@ input[type='range'] {
 
 .pmap-cell {
   --cell-hue: var(--accent);
+  /* Anchors the speculation marks to the cell's corner (see `.pmap-mark`). */
+  position: relative;
   margin: 1px;
   border: 1px solid var(--cell-hue);
   border-radius: 3px;
@@ -449,6 +451,52 @@ input[type='range'] {
   justify-content: center;
   color: var(--danger);
   font-weight: 700;
+}
+
+/* The speculation marks (M4 step 6): the BET and the MISPREDICTION, on the row of the branch that
+   took the action — as against `.pmap-kill`, which marks its victims. Deliberately NOT a hue: the
+   cell's hue is owned by its stage family and a mark that recolored it would overwrite the one
+   thing every cell already means.
+
+   Unstyled by position here — only a mark INSIDE a cell is a corner badge, so the same class also
+   renders inline in the legend, where the key must be the same glyph the grid draws. */
+.pmap-mark {
+  font-weight: 700;
+}
+/* A bet is ROUTINE — `sum-loop` places ten and only one is wrong — so it is quiet and neutral. It
+   must not borrow a phase hue: `--accent` is `--phase-if`'s blue, so an accent `?` would vanish on
+   the very cells a deeper model might bet from. */
+.pmap-mark--bet {
+  color: var(--ink-2);
+}
+/* Being WRONG is the exception, and it is what the reader is hunting: loud, and the same red as the
+   ✕ it causes — the mark and its casualties are one event. */
+.pmap-mark--wrong {
+  color: var(--danger);
+}
+/* Inside a cell the mark is a superscript in the corner — and the SIZE belongs here, not on
+   `.pmap-mark`, for the same reason `position` does: 0.62rem is the CELL's font size, and a mark
+   that carried it into the legend would render smaller than the key text beside it. In the legend
+   the glyph simply inherits, so the key is drawn at the size of the sentence it sits in. */
+.pmap-cell .pmap-mark {
+  position: absolute;
+  top: -1px;
+  right: 1px;
+  font-size: 0.62rem;
+  line-height: 1;
+  /* A killed cell strikes and fades its text; a mark is an annotation ABOUT the cell rather than
+     part of the discarded work, so it would have to opt out of both. It never has to: no row is
+     ever killed AND marked — a wrong-path branch in ID never bets (the correction wins, pinned in
+     step 1) and a flushed instruction dies before EX, so it never resolves. Measured across the
+     corpus × both schemes × both forwarding positions: 100 killed rows, 66 marked, zero overlap.
+     Stated rather than defended against, because unreachable styling is a claim that the case is
+     handled — and this one cannot be reached to check. */
+  pointer-events: none;
+}
+/* Both at once cannot happen in this pipeline (the bet is placed in ID, the answer arrives in EX),
+   but the fold does not forbid it, so they stack rather than overlap. */
+.pmap-cell .pmap-mark--bet:not(:last-child) {
+  right: 7px;
 }
 
 /* The playhead: where the cursor is. Drawn OVER the cells but with no fill and no pointer events,

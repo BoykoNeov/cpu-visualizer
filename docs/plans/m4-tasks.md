@@ -1,6 +1,17 @@
 # Milestone 4 — branch prediction (the second toggle on the pipeline)
 
-**Status: STEPS 0–5 DONE — the BET IS ON THE CANVAS, 2026-07-16 (685 → 775 tests). Step 5 drew the
+**Status: STEPS 0–6 DONE — THE MISPREDICTION IS LEGIBLE, 2026-07-16 (775 → 788 tests). Step 6 put
+the two speculative ACTIONS on the map — `?` where the branch bets, `!` where it was wrong — beside
+the `✕` that already drew their victims. No schema change, no config, no engine change. It rejected
+the obvious design (colour the `✕` by `flush.reason`) for two measured reasons: **a misprediction can
+kill nobody** (`call-return`'s `ret` pays 2 cycles and the map drew NOTHING for it, under either
+scheme — step 5's "the flush is the COST, the event is the ACTION" one surface up), and **a
+`branch-predicted-taken` casualty is not a misprediction** but the toll of a bet, paid even when the
+bet is right (9 of `sum-loop`'s 10 are). The finding is a measurement of the CORPUS's blindness: the
+rejected design, implemented as a mutation, fails **exactly ONE test** — the hand-built zero-victim
+bet — while all 252 others stay green. **PENDING: step 7 (the lesson).** Previous status follows.**
+
+**STEPS 0–5 — the BET IS ON THE CANVAS (685 → 775 tests). Step 5 drew the
 ID bet and the EX correction, verified live at `sum-loop` 78 → 71 with `a0 = 55` in both positions
 and the bet lighting at cycle 9 carrying `0x8`. It also OVERTURNED the milestone's own seeded
 answer: the bet does NOT surface as a `flush` "in the cycle it happens" — the flush reports
@@ -468,7 +479,69 @@ code moves.
       caught a real defect in **five consecutive view steps** and should be budgeted for, not
       hoped against.
 
-- [ ] **6. The map: mispredictions become legible.** Casualties are already drawn; this step is
+- [x] **6. The map: mispredictions become legible.** ✅ Done (2026-07-16, 775 → **788 tests**). The
+      map marks the two speculative ACTIONS — a `?` on the branch's ID where it BETS, a `!` on its EX
+      where it was WRONG — beside the `✕` that already drew their victims. No schema change, no
+      config, no engine change, and the fold stayed model-agnostic.
+
+      **The step's real question was "is a misprediction distinguishable from a correct-but-costly
+      transfer", and the obvious answer — colour the `✕` by `flush.reason` — is wrong twice over.**
+      Both were measured before a line was written, and either alone decides it:
+
+      1. **A misprediction can kill NOBODY.** `call-return`'s `ret` is a `jalr` at the end of
+         `.text`: it mispredicts, pays its 2 cycles, and the fetch pointer is already out of text, so
+         no casualty exists to colour. **The map drew literally nothing for it, under either scheme**
+         — and it is the load-bearing half of the milestone's thesis (*jalr can never be predicted*).
+         This is **step 5's finding one surface up**: the flush is the COST, the event is the ACTION.
+      2. **A `branch-predicted-taken` casualty is not a misprediction** — it is the toll of a BET,
+         paid even when the bet is RIGHT (**9 of `sum-loop`'s 10 are**). Colouring victims by reason
+         would teach "red = wrong" while the map's own numbers say otherwise, and would put an
+         engine's reason vocabulary in the one module that boasts of carrying no model knowledge.
+
+      So: **mark the branch, leave the `✕` uniform.** Whether a branch was wrong is a fact about the
+      branch, resolved a cycle later — it belongs on the branch's own row. The two marks are exactly
+      the two redirects the datapath draws (step 5), which keeps both surfaces on one vocabulary; and
+      a CORRECT resolution is unmarked for step 1's reason about not-taken — **it is the absence of
+      an action**.
+
+      **The headline finding is a MEASUREMENT of the corpus's blindness, and it is the sharpest one
+      this milestone has.** The rejected design was implemented as a mutation — infer the bet from
+      its casualty's `flush.reason` — and it fails **exactly ONE test in the whole suite**: the
+      hand-built zero-victim bet. **All 252 others, the entire shipped corpus, stay green.** The
+      wrong design is *indistinguishable from the right one on every program we ship*; only a trace
+      literal can tell them apart, because a predictable branch last in `.text` (step 5's "3 bets, 0
+      flushes" shape) is not in the corpus. That is M4 step 0's `>>> 0` lesson repeating — *no corpus
+      sweep can prove this one* — and it is why the M3-step-7 hand-built technique the acceptance
+      line names was load-bearing rather than ceremonial.
+
+      **The acceptance line was thin, for the fourth time in this milestone.** "`call-return`'s
+      casualties visibly rise" is true and nearly invisible: **3 → 4**, one extra `✕` among thirteen
+      rows, and one of the four is an unrelated `halt` casualty. Worse, **casualties are not the
+      penalty here** — step 3's "casualties ARE the penalty" holds for `sum-loop` (18 → 11) but
+      `call-return` pays 4 cycles for 2 casualties, exactly the `ret` gap above. What is actually
+      pinned instead is the picture that teaches *no scheme dominates*: **the LOST BET** — the corpus's
+      only branch that bets and is wrong (`bge`) wears `?` **and** `!` on one row with two rows cut
+      beneath, while `jal` turns from a mispredict into a correct guess. Signed per instruction, never
+      averaged.
+
+      **Not config-gated, deliberately** — the `!` fires under predict-not-taken too, which is
+      `defaultConfig()`, where there are *more* mispredictions (`sum-loop`: 9). A misprediction is a
+      misprediction; the map has no config and must not grow one. So this step **changes a surface M3
+      already shipped**, and the eyeball covered both schemes for that reason.
+
+      **The eyeball did NOT find a product defect — the streak breaks at 7**, and the honest report is
+      that the marks read correctly in both themes at real pixels (quiet grey `?` because a bet is
+      routine; loud red `!` because being wrong is the exception). It found two smaller things
+      instead: `font-size: 0.62rem` was the CELL's size baked into a class deliberately serving two
+      contexts, so the legend's key rendered *smaller than the sentence it sits in* (size moved beside
+      `position`, under `.pmap-cell .pmap-mark`); and a probe killed a piece of **dead defensive CSS**
+      — the mark opted out of a killed cell's strike-through and fade, but **no row is ever killed AND
+      marked** (measured across the corpus × both schemes × both forwarding positions: 100 killed, 66
+      marked, **zero** overlap), and it is structural, not accidental: a wrong-path branch in ID never
+      bets (step 1) and a flushed instruction dies before EX. Unreachable styling is a claim the case
+      is handled, so it was stated rather than defended against.
+
+      _(Original plan text follows.)_ Casualties are already drawn; this step is
       about whether a _misprediction_ is distinguishable from a _correct-but-costly_ transfer.
       Expected to be small or free — M3 step 7 proved the map is stage-and-lane-parametric and the
       row/column model absorbed lanes and depth at the cost of only the hue key.
@@ -495,11 +568,14 @@ code moves.
 - [x] **No scheme dominates**, and it is demonstrable: `sum-loop` is fastest under
       `static-taken`; `call-return` is fastest under `static-not-taken`. Both directions asserted.
       ✅ Step 3, as signed per-program deltas (−7 / −2 / **+1**), never averaged.
-- [ ] A **misprediction** is followable: the bet, the wrong-path instructions fetched, their
-      squash, and the correction — as trace events (INV-3) and on the map. **Half done (step 5):**
-      the TRACE half is now complete and it needed a schema change the plan thought it could avoid
-      — `branch-predicted` (the bet), `flush` (its casualties), `branch-resolved` (the correction).
-      The datapath draws all three. **The map half is step 6.**
+- [x] A **misprediction** is followable: the bet, the wrong-path instructions fetched, their
+      squash, and the correction — as trace events (INV-3) and on the map. ✅ **Done.** The TRACE half
+      landed in step 5 and needed a schema change the plan thought it could avoid — `branch-predicted`
+      (the bet), `flush` (its casualties), `branch-resolved` (the correction); the datapath draws all
+      three. **Step 6 completed the map half**, and a lost bet now reads end to end in one picture:
+      `?` on the branch's ID, the wrong-path instruction fetched in the next column, its `✕`, and `!`
+      on the branch's EX where the correction lands. Its finding was that the map had been drawing the
+      COST and not the ACTION, so a penalty with no casualty (`call-return`'s `ret`) was invisible.
 - [x] `engine/pipeline` still has **zero** imports from `web`/`curriculum`; prediction is honored
       via `ProcessorConfig` only, with no new back door (INV-2/INV-3). ✅ Mechanically enforced by
       `eslint.config.js`; step 5 added a trace EVENT rather than an accessor, which is the invariant

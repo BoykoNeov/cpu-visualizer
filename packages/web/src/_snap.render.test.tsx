@@ -65,10 +65,11 @@ function pipelineAt(
 
 /** The pipeline map's counterpart to {@link pipelineAt}: the map folds the WHOLE recording, not a
  *  cycle, so this hands back every trace rather than the one at the cursor. */
-function pipelineRun(source: string, forwarding: boolean): CycleTrace[] {
+function pipelineRun(source: string, forwarding: boolean, predictTaken = false): CycleTrace[] {
   const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), {
     ...defaultConfig(),
     forwarding,
+    branchPrediction: predictTaken ? 'static-taken' : 'static-not-taken',
   });
   if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
   const { recorder } = result.loaded;
@@ -260,6 +261,24 @@ RUN('emit datapath snapshots', () => {
     // The load-use bubble that survives forwarding — the one stall the toggle cannot remove, as a
     // repeated cell.
     emit('map-loaduse', mapPage('pipeline map · load-use · the bubble forwarding cannot remove', pipelineRun(' lw x1, 64(x0)\n add x2, x1, x1\n addi x3, x0, 3', true), 4)); // prettier-ignore
+
+    // The speculation marks (M4 step 6) — the ACTION, beside the COST the ✕ already drew. Both
+    // schemes, and that is not symmetry for its own sake: the misprediction mark fires under
+    // PREDICT-NOT-TAKEN too, which is `defaultConfig()`, so this step changes a surface M3 already
+    // shipped. The not-taken pages here are the check that it still reads cleanly — the `map-flush`
+    // page above now grows a `!` it did not have, by design.
+    //
+    //   BET WON  — `?` on the branch's ID, ONE cut row, and no `!` (a correct guess is not wrong).
+    //   BET LOST — `?` AND `!` on one instruction, two cut rows. The corpus's `call-return` `bge`,
+    //              which is the whole +1 regression, in a program short enough to screenshot.
+    const won = ' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\n addi x8, x0, 8\ntgt:\n addi x2, x0, 2'; // prettier-ignore
+    const lost = ' addi x1, x0, 1\n bne x0, x0, tgt\n addi x9, x0, 9\n addi x8, x0, 8\ntgt:\n addi x2, x0, 2'; // prettier-ignore
+    emit(
+      'map-predict',
+      mapPage('pipeline map · taken branch · NOT-TAKEN — mispredicts (! on EX), two cut rows', pipelineRun(won, true, false), 4) + // prettier-ignore
+        mapPage('pipeline map · same branch · PREDICT TAKEN — bet WON (? on ID), one cut row, no !', pipelineRun(won, true, true), 4) + // prettier-ignore
+        mapPage('pipeline map · a LOST bet · PREDICT TAKEN — ? and ! on one row, two cut rows', pipelineRun(lost, true, true), 4), // prettier-ignore
+    );
 
     // The follow ring, which must be legible ON TOP of a stage hue (it is hue-free for exactly this
     // reason) and must pick out ONE row from the tangle.

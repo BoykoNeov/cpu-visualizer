@@ -27,7 +27,8 @@ import {
   type TraceEvent,
 } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
-import { buildPipelineMap, firstRowAt, hasOverlap, stageFamily } from './pipeline-map';
+import { buildPipelineMap, firstRowAt, hasOverlap, stageFamily, type PipelineMap } from './pipeline-map'; // prettier-ignore
+import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
 /** Record `source` to completion on the pipeline under a chosen forwarding position, and hand back
@@ -51,6 +52,169 @@ function walkAt(recorded: readonly CycleTrace[], pc: number): string[] {
   if (!row) throw new Error(`no row at pc ${pc}`);
   return row.cells.map((c) => c.location);
 }
+
+/** A corpus program's map under a chosen prediction scheme — M4 step 6's input. Forwarding is left
+ *  at its default: the marks are a claim about SPECULATION, and pinning them under one forwarding
+ *  position would be step 3's `2·T` trap (specific, in a place that reads as general) if the claim
+ *  were forwarding-dependent. `bothSchemes` below proves it is not, by sweeping the cross product. */
+function mapOf(name: string, predictTaken: boolean, forwarding = true): PipelineMap {
+  const program = EXAMPLE_PROGRAMS.find((p) => p.name === name);
+  if (!program) throw new Error(`no corpus program ${name}`);
+  const result = loadSource(program.source, () => new PipelineProcessor(), {
+    ...defaultConfig(),
+    forwarding,
+    branchPrediction: predictTaken ? 'static-taken' : 'static-not-taken',
+  });
+  if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+  result.loaded.recorder.runToEnd();
+  return buildPipelineMap(result.loaded.recorder.recorded);
+}
+
+/** Every speculative ACTION the map marks, as `mnemonic@cycle:location` — stated as the branch that
+ *  took it, which is the whole point of the step: an action belongs to the instruction that took it,
+ *  not to its victims. */
+function actions(map: PipelineMap): { bets: string[]; wrong: string[] } {
+  const bets: string[] = [];
+  const wrong: string[] = [];
+  for (const row of map.rows) {
+    for (const cell of row.cells) {
+      const at = `${row.decoded.mnemonic}@${cell.cycle}:${cell.location}`;
+      if (cell.bet) bets.push(at);
+      if (cell.mispredicted) wrong.push(at);
+    }
+  }
+  return { bets, wrong };
+}
+
+/** The rows a flush cut in `cycle` — a victim is in `instructions[]` for the cycle it dies in, so
+ *  its life ends on that cycle's cell (which is why the view draws the ✕ in the NEXT column). */
+function victimsAt(map: PipelineMap, cycle: number): string[] {
+  return map.rows
+    .filter((r) => r.killedBy !== null && r.cells[r.cells.length - 1]?.cycle === cycle)
+    .map((r) => r.decoded.mnemonic);
+}
+
+/**
+ * M4 STEP 6 — the map marks the two speculative ACTIONS, on the row of the branch that took them.
+ *
+ * **Why this is not "colour the ✕ by `flush.reason`", which is what the step looked like.** Two
+ * independent reasons, and either one alone decides it:
+ *
+ *   1. **A misprediction can kill NOBODY.** Measured, in the shipped corpus: `call-return`'s `ret`
+ *      is a `jalr` at the end of `.text`, so it mispredicts, pays its two cycles, and the fetch
+ *      pointer is already out of text — no casualty exists to colour. A victim-centric map is
+ *      structurally blind to it, and it is the load-bearing half of the milestone's thesis (*jalr
+ *      can never be predicted*). This is step 5's finding one surface up: **the flush is the COST,
+ *      the event is the ACTION.**
+ *   2. **A `branch-predicted-taken` casualty is not a misprediction** — it is the toll of a BET,
+ *      paid even when the bet is RIGHT (9 of `sum-loop`'s 10 are). Colouring victims by reason
+ *      would teach "red = wrong" while the map's own numbers say otherwise, and would put an
+ *      engine's reason vocabulary in the module that carries no model knowledge.
+ */
+describe('the speculation marks — the ACTION, on the branch that took it', () => {
+  // Derived before it was run, from the pinned per-transfer rule (step 3): the scheme's only job is
+  // to decide `predicted`, and a mark is an ACTION. `sum-loop` executes its `bnez` ten times — taken
+  // nine, declining once to exit.
+  it('sum-loop: not-taken never bets and is wrong 9 times; taken bets 10 times and is wrong once', () => {
+    // Predict-not-taken performs no action at ID — it keeps fetching, and the fall-through IS the
+    // not-taken path (step 1). So: no bets, and every one of the nine TAKEN passes mispredicts.
+    const off = actions(mapOf('sum-loop', false));
+    expect(off.bets).toEqual([]);
+    expect(off.wrong).toHaveLength(9);
+    // The exit pass declines, which predict-not-taken gets RIGHT — and a correct resolution is not
+    // an action either, so it is unmarked. Nine wrong out of ten resolutions, and all nine are the
+    // one branch. (`bne`, not `bnez`: the row carries the DECODED instruction, so the map names
+    // what the machine ran and not what the source spelled — the same reason `ret` reads `jalr`.)
+    expect(new Set(off.wrong.map((w) => w.split('@')[0]))).toEqual(new Set(['bne']));
+
+    // Static-taken bets on every pass, including the one it loses.
+    const on = actions(mapOf('sum-loop', true));
+    expect(on.bets).toHaveLength(10);
+    expect(on.wrong).toHaveLength(1);
+
+    // The marks land on the stage that TAKES the action — the bet in ID (the earliest a PC-relative
+    // target is computable, step 0) and the correction in EX. These are the same two redirects the
+    // datapath draws (step 5), which is what keeps the two surfaces on one vocabulary.
+    expect(new Set(on.bets.map((b) => b.split(':')[1]))).toEqual(new Set(['ID']));
+    expect(new Set(on.wrong.map((w) => w.split(':')[1]))).toEqual(new Set(['EX']));
+  });
+
+  // THE FINDING, and the reason the marks exist at all. Asserted under BOTH schemes because it is
+  // not a fact about the knob: `jalr` is unpredictable by anyone, so nobody can ever get it right.
+  it.each([false, true])(
+    'call-return: the `ret` mispredicts and kills NOBODY — a penalty the ✕ cannot show [taken=%s]',
+    (predictTaken) => {
+      const map = mapOf('call-return', predictTaken);
+      const { wrong } = actions(map);
+
+      // `ret` is a `jalr`: never predictable ⇒ predicted false ⇒ always taken ⇒ always mispredicts.
+      const ret = wrong.find((w) => w.startsWith('jalr@'));
+      expect(ret).toBeDefined();
+
+      // ...and its correction cuts nothing, because it is the last word in `.text` and the fetch
+      // pointer has already run off the end. It pays 2 cycles for 0 casualties. Before this step
+      // the map drew NOTHING here — no ✕, no mark, nothing — while the timing suite charged it two.
+      const cycle = Number(ret!.split('@')[1]!.split(':')[0]);
+      expect(victimsAt(map, cycle)).toEqual([]);
+
+      // The mark is therefore the ONLY thing on the map that shows it. Stated as the contrast that
+      // makes it a finding rather than a curiosity: the `jal` in the same program mispredicts too
+      // (under not-taken) and DOES cut rows, so "misprediction ⇒ casualties" is exactly the false
+      // rule a victim-centric map would have taught.
+      const drawn = map.rows.filter((r) => r.cells.some((c) => c.mispredicted || c.bet));
+      expect(drawn.map((r) => r.decoded.mnemonic)).toContain('jalr');
+    },
+  );
+
+  // The regression, made READABLE rather than merely present. "Casualties visibly rise" is the
+  // acceptance line, and it is thin: 3 → 4, one extra ✕ among thirteen rows, one of the four an
+  // unrelated `halt`. The picture that actually teaches "no scheme dominates" is the LOST BET —
+  // `call-return`'s `bge` is the corpus's only branch that bets and is wrong, and it is legible as
+  // exactly that: a `?` on its ID, a `!` on its EX, and two rows cut beneath it.
+  it('call-return: static-taken makes the LOST BET legible — the picture of the +1 regression', () => {
+    const off = actions(mapOf('call-return', false));
+    // Under not-taken the `bge` declines and is predicted right: it costs nothing and does nothing.
+    expect(off.bets).toEqual([]);
+    expect(off.wrong.filter((w) => w.startsWith('bge@'))).toEqual([]);
+
+    const on = actions(mapOf('call-return', true));
+    // Under static-taken it bets — and loses. Both marks, on one instruction: the only shape in the
+    // corpus that says "the machine guessed, and the guess was wrong".
+    expect(on.bets.filter((b) => b.startsWith('bge@'))).toHaveLength(1);
+    expect(on.wrong.filter((w) => w.startsWith('bge@'))).toHaveLength(1);
+
+    // And that bet is what turns the program's `jal` from a mispredict into a correct guess — the
+    // trade that nets +1. Signed per instruction, never averaged (step 3's rule, for step 3's
+    // reason): `jal` improves, `bge` regresses, `jalr` is unmovable.
+    expect(off.wrong.filter((w) => w.startsWith('jal@'))).toHaveLength(1);
+    expect(on.wrong.filter((w) => w.startsWith('jal@'))).toEqual([]);
+    expect(on.bets.filter((b) => b.startsWith('jal@'))).toHaveLength(1);
+  });
+
+  // The marks are a claim about SPECULATION, so they must not move when the OTHER knob does. This
+  // is the cross product step 2 had to add to conformance for the same reason.
+  it.each([false, true])(
+    'the marks are independent of forwarding [forwarding=%s]',
+    (forwarding) => {
+      const on = actions(mapOf('sum-loop', true, forwarding));
+      expect(on.bets).toHaveLength(10);
+      expect(on.wrong).toHaveLength(1);
+    },
+  );
+
+  // Non-vacuity, the M3-step-0 rule: every claim above is a count, and a fold that marked NOTHING
+  // would satisfy `toEqual([])` in half of them. Something must actually be marked.
+  it('marks something in every corpus program that speculates', () => {
+    const speculating = ['sum-loop', 'array-sum', 'call-return'];
+    for (const name of speculating) {
+      const on = actions(mapOf(name, true));
+      expect(on.bets.length, `${name} should bet under static-taken`).toBeGreaterThan(0);
+      const off = actions(mapOf(name, false));
+      expect(off.wrong.length, `${name} should mispredict under not-taken`).toBeGreaterThan(0);
+      expect(off.bets, `${name} must never bet under not-taken`).toEqual([]);
+    }
+  });
+});
 
 describe('stageFamily — the hue key', () => {
   // At five stages family IS stage, which is why this changes nothing about M3 and is still the
@@ -369,6 +533,87 @@ describe('parametric from day one — no engine, just traces', () => {
       ),
     ]);
     expect(map.rows[0]!.killedBy).toBeNull();
+  });
+
+  /**
+   * THE ZERO-VICTIM BET — the case the shipped corpus cannot produce, and the sharpest statement of
+   * why the marks are not `flush.reason` in a costume.
+   *
+   * `schema.ts` pins it in prose: *"a branch sitting at the end of `.text` bets on every pass with
+   * the fetch pointer already out of text, so it kills nobody and emits no flush while still
+   * redirecting the pc"* — step 5 measured exactly that (3 bets, 0 flushes) on a probe program. Our
+   * corpus happens to give every BET a victim (`call-return`'s `ret` is the zero-victim
+   * MISPREDICTION; a zero-victim bet needs a predictable branch last in `.text`, which no example
+   * program has). So a hand-built trace is the only thing that can drive it — the M3 step-7
+   * technique, and the same reason lanes and depth are driven this way.
+   *
+   * A consumer reading the flush as the bet is drawing the COST and calling it the ACTION: right
+   * for the wrong reason, and blind exactly here.
+   */
+  it('marks a bet that killed nobody — the action is not its casualties', () => {
+    const map = buildPipelineMap([
+      // The branch bets in ID. No `flush` accompanies it: IF had nothing to lose, so per the flush
+      // contract no event is emitted at all — and there is no younger row for a ✕ to sit under.
+      cycle(0, [inst('br', 'ID')], [{ type: 'branch-predicted', instr: 'br', target: 0x40 }]),
+      cycle(1, [inst('br', 'EX')]),
+    ]);
+
+    expect(map.rows).toHaveLength(1);
+    const br = map.rows[0]!;
+    // The action is drawn...
+    expect(br.cells.map((c) => c.bet)).toEqual([true, false]);
+    // ...while the cost is genuinely absent. Nobody died, and the map says so.
+    expect(br.killedBy).toBeNull();
+    expect(map.rows.every((r) => r.killedBy === null)).toBe(true);
+  });
+
+  /**
+   * The mirror: a MISPREDICTION that killed nobody. `call-return`'s `ret` is this for real, but it
+   * is worth stating without an engine too, because the fold must not infer the mark from a flush
+   * that is not there.
+   *
+   * And the `predicted !== actual` rule gets its own case here rather than being trusted: `actual`
+   * alone is NOT a stand-in, and the two coincide exactly while nothing predicts taken — the
+   * coincidence that broke the datapath's redirect in step 5 and that no not-taken-only corpus can
+   * tell apart. Below, a CORRECT bet on a TAKEN branch (`predicted: true, actual: true`) must be
+   * unmarked; a LOST bet (`predicted: true, actual: false`) must be marked. A fold keying on
+   * `actual` gets both backwards.
+   */
+  it('marks a misprediction by `predicted !== actual`, never by `actual`', () => {
+    const resolve = (instr: string, predicted: boolean, actual: boolean): TraceEvent => ({
+      type: 'branch-resolved',
+      instr,
+      predicted,
+      actual,
+      target: 0x40,
+    });
+    const map = buildPipelineMap([
+      cycle(
+        0,
+        [inst('correct-taken', 'EX'), inst('lost-bet', 'ID')],
+        // A correct bet on a taken branch: `actual` is TRUE and it is NOT a misprediction.
+        [resolve('correct-taken', true, true)],
+      ),
+      cycle(
+        1,
+        [inst('lost-bet', 'EX'), inst('correct-nt', 'ID')],
+        // A lost bet: `actual` is FALSE and it IS a misprediction.
+        [resolve('lost-bet', true, false)],
+      ),
+      cycle(
+        2,
+        [inst('correct-nt', 'EX')],
+        // Predict-not-taken getting a declining branch right: neither predicted nor taken, and no
+        // action of any kind.
+        [resolve('correct-nt', false, false)],
+      ),
+    ]);
+
+    const marked = (id: string): boolean =>
+      map.rows.find((r) => r.id === id)!.cells.some((c) => c.mispredicted);
+    expect(marked('correct-taken')).toBe(false); // keys on `actual` ⇒ true. It is not.
+    expect(marked('lost-bet')).toBe(true); // keys on `actual` ⇒ false. It is.
+    expect(marked('correct-nt')).toBe(false);
   });
 
   it('finds the oldest row in flight at a cycle, and none outside the run', () => {

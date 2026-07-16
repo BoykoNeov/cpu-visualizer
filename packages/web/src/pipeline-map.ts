@@ -29,7 +29,18 @@
  * a hand-built trace, since no engine we ship emits either yet.
  *
  * Everything the map needs is already in the trace (INV-3) — `instructions[].location` per cycle
- * plus stable ids (INV-4). It never touches an engine, a recorder, or `state.micro`.
+ * plus stable ids (INV-4), and the `flush` / `branch-predicted` / `branch-resolved` events. It never
+ * touches an engine, a recorder, or `state.micro`.
+ *
+ * **It also carries no CONFIG knowledge, which M4 step 6 is the first thing to test.** Prediction is
+ * a knob, but the map never learns its name: it marks the two speculative ACTIONS (a bet, a
+ * misprediction) wherever a trace happens to contain them, so both schemes light the same marks in
+ * different places and a scheme the config does not yet name would too. Notably it does NOT
+ * classify `flush.reason` — that would put an engine's reason vocabulary in the one module that
+ * boasts of having no model knowledge, and it would be a lie besides: a `branch-predicted-taken`
+ * casualty is the toll of a BET, paid even when the bet turns out RIGHT (9 of `sum-loop`'s 10 are),
+ * so coloring victims by reason would teach "red = wrong". Whether a branch was wrong is a fact
+ * about the branch, resolved a cycle later, and it belongs on the branch's own row.
  */
 
 import type { DecodedInstruction } from '@cpu-viz/isa';
@@ -43,6 +54,32 @@ export interface MapCell {
   readonly location: string;
   /** {@link stageFamily} of `location` — the cell's HUE key. At five stages family IS stage. */
   readonly family: string;
+  /**
+   * This instruction placed a speculative BET this cycle (`branch-predicted`) — M4 step 6.
+   *
+   * The map was victim-centric until this field: `killedBy` cuts a row, and a `flush` reports only
+   * REAL CASUALTIES. That makes the map draw prediction's **cost** and never its **action**, and the
+   * two come apart in the shipped corpus — `call-return`'s `ret` is a `jalr` at the end of `.text`,
+   * so it mispredicts, pays its two cycles, and kills nobody. It is the load-bearing half of the
+   * milestone's thesis ("jalr can never be predicted") and the map drew *nothing* for it under
+   * either scheme. This is step 5's finding one surface up: the flush is the COST, the event is the
+   * ACTION.
+   */
+  readonly bet: boolean;
+  /**
+   * This instruction's transfer resolved AGAINST its prediction this cycle (`branch-resolved` with
+   * `predicted !== actual`) — the misprediction, and the only condition under which EX redirects.
+   *
+   * A CORRECT resolution is deliberately not marked, for the reason step 1 pinned about not-taken:
+   * it is the absence of an action. So the two marks are exactly the two redirects the datapath
+   * draws (step 5) — the ID bet and the EX correction — which is what keeps the two surfaces
+   * speaking one vocabulary.
+   *
+   * Note this fires under **predict-not-taken too**, where it is not new information about a knob
+   * but about the machine: every taken branch mispredicts there (`sum-loop`: 9). A misprediction is
+   * a misprediction, so it is not config-gated — the map has no config and must not grow one.
+   */
+  readonly mispredicted: boolean;
 }
 
 /** One instruction's whole life — a single ROW of the grid. */
@@ -142,6 +179,21 @@ export function buildPipelineMap(recorded: readonly CycleTrace[]): PipelineMap {
   for (const trace of recorded) {
     maxInFlight = Math.max(maxInFlight, trace.instructions.length);
 
+    // This cycle's speculative ACTIONS, pre-scanned so the cells below can be built already marked.
+    // Both name an `instr` id directly — the same key the rows are built on (INV-4) — so unlike
+    // `flush` (which reports STAGES and needs cross-referencing against who occupied them) they
+    // need no stage lookup at all, and stay correct when a stage holds two lanes.
+    const bets = new Set<string>();
+    const mispredicts = new Set<string>();
+    for (const event of trace.events) {
+      if (event.type === 'branch-predicted') bets.add(event.instr);
+      // `predicted !== actual` is the misprediction. `actual` alone is NOT a stand-in: the two
+      // coincide exactly while nothing ever predicts taken, which is why they read as
+      // interchangeable and are not — the trap that broke the datapath's redirect in step 5.
+      else if (event.type === 'branch-resolved' && event.predicted !== event.actual)
+        mispredicts.add(event.instr);
+    }
+
     for (const inst of trace.instructions) {
       if (!seenStage.has(inst.location)) {
         seenStage.add(inst.location);
@@ -166,7 +218,13 @@ export function buildPipelineMap(recorded: readonly CycleTrace[]): PipelineMap {
         };
         byId.set(inst.id, row);
       }
-      row.cells.push({ cycle: trace.cycle, location: inst.location, family });
+      row.cells.push({
+        cycle: trace.cycle,
+        location: inst.location,
+        family,
+        bet: bets.has(inst.id),
+        mispredicted: mispredicts.has(inst.id),
+      });
     }
 
     // Who died, and who finished. Both are read from this cycle's events — `flush` names STAGES

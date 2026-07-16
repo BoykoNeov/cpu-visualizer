@@ -57,6 +57,71 @@ function renderMap(
 const FILL =
   ' addi x1, x0, 1\n addi x2, x0, 2\n addi x3, x0, 3\n addi x4, x0, 4\n addi x5, x0, 5\n addi x6, x0, 6';
 
+/**
+ * M4 STEP 6 — the speculation marks reach the DOM, and the legend keys them.
+ *
+ * The fold owns every claim about WHICH cells are marked; this owns only what it cannot see. The
+ * legend case is here for a reason with a name: step 5 shipped a lesson whose narration rendered
+ * `**not**` as literal asterisks because *every test asserted narration RESOLVES, none that it
+ * RENDERS*. A glyph the fold sets and the view drops would fail nothing over there.
+ */
+describe('the speculation marks (M4 step 6)', () => {
+  /** `bge` bets and LOSES under static-taken — both marks on one instruction, the corpus's only
+   *  "the machine guessed, and the guess was wrong". */
+  function callReturn(predictTaken: boolean): readonly CycleTrace[] {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'call-return')!;
+    const result = loadSource(program.source, () => new PipelineProcessor(), {
+      ...defaultConfig(),
+      branchPrediction: predictTaken ? 'static-taken' : 'static-not-taken',
+    });
+    if (!result.ok) throw new Error('assembly failed');
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded;
+  }
+
+  const count = (html: string, needle: string): number => html.split(needle).length - 1;
+
+  it('draws a bet and a misprediction, and no bet under a scheme that makes none', () => {
+    // The legend states each key with the mark's own class, so ONE of each is the key itself and
+    // anything beyond it is a real cell. Counting rather than `toContain` is what makes the
+    // not-taken case below say something: a bare `toContain('pmap-mark--bet')` is satisfied by the
+    // legend alone and would pass against a view that never marked a cell at all.
+    const on = renderMap(callReturn(true));
+    expect(count(on, 'pmap-mark--bet')).toBeGreaterThan(1);
+    expect(count(on, 'pmap-mark--wrong')).toBeGreaterThan(1);
+
+    // Predict-not-taken performs no action at ID, so no cell carries a bet — the key, and only the
+    // key. But there ARE mispredictions (more of them, in fact: every taken transfer mispredicts
+    // there). The marks are not config-gated and the map has no config; it draws what the trace
+    // contains, which is why the same view serves both schemes.
+    const off = renderMap(callReturn(false));
+    expect(count(off, 'pmap-mark--bet')).toBe(1);
+    expect(count(off, 'pmap-mark--wrong')).toBeGreaterThan(1);
+  });
+
+  // The relief rule: a glyph with no key is a puzzle. Both marks are keyed, with the same glyph the
+  // grid draws — which is exactly why the legend reuses the mark's own class rather than restating
+  // its colour, so a key and its cells cannot drift apart.
+  it('keys both marks in the legend, with the glyphs it draws', () => {
+    const html = renderMap(callReturn(true));
+    expect(html).toContain('= bet');
+    expect(html).toContain('= mispredicted');
+    expect(html).toContain('= flushed'); // the shipped key, unmoved: ✕ still means its victims
+  });
+
+  // A mark is an annotation ABOUT a cell, so it must not be read as part of the cell's stage text.
+  // The cell's TEXT is pinned to be the raw `location` verbatim (the relief rule) — appending a
+  // glyph to it would break that contract, so the mark is a separate element the accessible name
+  // excludes and the title carries instead.
+  it('keeps the mark out of the cell’s stage text, and in its title', () => {
+    const html = renderMap(callReturn(true));
+    expect(html).not.toContain('>ID?<');
+    expect(html).not.toContain('>EX!<');
+    expect(html).toContain('Bet — the predictor redirected fetch');
+    expect(html).toContain('Mispredicted — it resolved the other way');
+  });
+});
+
 describe('the map’s render seam', () => {
   /**
    * The surface's whole reason to exist, at the render layer: a cycle where five instructions sit
