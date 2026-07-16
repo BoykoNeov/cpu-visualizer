@@ -10,12 +10,42 @@ import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
+import { hasOverlap } from './pipeline-map';
+import { PipelineMap } from './PipelineMapView';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
 import { useSimulator } from './useSimulator';
 
 /** Sentinel `<select>` value for the sandbox state — no corpus program is selected. */
 const SANDBOX_OPTION = '__sandbox__';
+
+/**
+ * Which single in-flight instruction the transport chip names and the source panel highlights — the
+ * shell's answer to "which one am I looking at" when the machine is running five at once.
+ *
+ * Two rules, and the second is what makes follow mean anything outside the map:
+ *
+ *   - **By default, `instructions[0]`** — pinned as program order, oldest first, so this is the one
+ *     nearest RETIREMENT. On single-cycle and multi-cycle it is the only instruction in flight; on
+ *     the pipeline it is the WB occupant, with up to four younger ones behind it. Lawful
+ *     simplification, not contradiction (INV-5): the line shown IS in flight, it just isn't the
+ *     whole story — which is what the map and the `N in flight` qualifier are for.
+ *   - **Following retargets it.** Pick an instruction on the map and these surfaces track IT
+ *     through the pipe instead of whichever one happens to be retiring. When the followed
+ *     instruction is not in flight this cycle there is nothing to retarget to, so it falls back
+ *     rather than highlighting a line that is not running.
+ *
+ * A pure function, and extracted rather than left inline, because "the shell happens to show the
+ * oldest" is a real user-visible choice that deserves a pin instead of being rediscovered by
+ * whoever wonders why the highlight lags the fetch by four lines.
+ */
+export function shownInstruction(
+  instructions: readonly InstructionInstance[],
+  followed: string | null,
+): InstructionInstance | null {
+  const target = followed === null ? undefined : instructions.find((i) => i.id === followed);
+  return target ?? instructions[0] ?? null;
+}
 
 /**
  * The web shell: load an example program, drive the SELECTED microarchitecture (single-cycle or
@@ -62,14 +92,20 @@ export function App(): React.JSX.Element {
   // (unlike the corpus programs, edited source can be syntactically broken).
   const showEditor = editorOpen || sim.errors !== null;
 
-  // The instruction the transport chip names and the source panel highlights. `instructions[]` is
-  // ordered oldest-first (nearest retirement), so this is the ONLY in-flight instruction on
-  // single-cycle and multi-cycle — but on the pipeline it is the one in WB, with up to four
-  // younger ones behind it. That is lawful simplification, not a contradiction (INV-5): the line
-  // shown is a genuinely in-flight instruction, just not the whole story. Showing all five at once
-  // is the pipeline map's job (M3 step 7); until then the placeholder datapath is what signals the
-  // picture is incomplete. Pinned by a test in `simulator.test.ts`.
-  const inFlight = sim.cycleTrace?.instructions[0] ?? null;
+  // "Follow this instruction" (INV-4, M3 step 7): the stable id the map, the datapath, and the
+  // source panel all key on, or `null`. View state — the engine and trace know nothing of it
+  // (INV-2). Cleared whenever a new recording replaces the old one: ids are minted per FETCH, so
+  // a re-record under a different config genuinely mints different ones (the two forwarding
+  // positions do not even fetch the same number of doomed shadows), and a stale id would leave the
+  // shell claiming to follow something that no longer exists. Keyed on the recording's identity —
+  // a fresh load builds a fresh recorder, and so a fresh array.
+  const [followed, setFollowed] = useState<string | null>(null);
+  useEffect(() => setFollowed(null), [sim.recorded]);
+
+  // The instruction the transport chip names and the source panel highlights (see
+  // {@link shownInstruction} for the rule and why it is one).
+  const inFlight = shownInstruction(sim.cycleTrace?.instructions ?? [], followed);
+  const followingNow = inFlight !== null && inFlight.id === followed;
   const activeLine = inFlight?.sourceLine ?? null;
   const writtenRegs = useMemo(() => {
     const set = new Set<number>();
@@ -190,13 +226,42 @@ export function App(): React.JSX.Element {
         <NoticeBox title="Program did not finish" message={sim.runtimeError} />
       ) : (
         <>
-          <Transport sim={sim} atStart={atStart} lastCycle={lastCycle} inFlight={inFlight} />
+          <Transport
+            sim={sim}
+            atStart={atStart}
+            lastCycle={lastCycle}
+            inFlight={inFlight}
+            following={followingNow}
+          />
 
           {sim.activeLesson && narration ? (
             <NarrationPanel
               title={sim.activeLesson.title}
               view={narration}
               tier={tier}
+              onSeek={sim.scrubTo}
+            />
+          ) : null}
+
+          {/* The pipeline map (M3 step 7), directly under the transport and ABOVE the datapath —
+              placement found by the browser eyeball, not by a test. The map is a TIMELINE surface:
+              its playhead IS the scrub cursor, so its natural neighbour is the scrub bar. Below the
+              datapath it sat ~880px down a 900px viewport, which put the one picture this tier
+              exists for (five instructions overlapping) off-screen behind the 490px diagram, and
+              broke the link between the slider you drag and the playhead that answers it. Costs the
+              other models nothing — they never render it.
+
+              Gated on the TRACE, not the model: the map shows instructions overlapping in time, so
+              it appears exactly when they do. Single-cycle and multi-cycle carry one instruction per
+              cycle by construction, so it never appears for them — without this file naming either
+              of them (INV-3), and a future model gets it for free. The same shape as the transport's
+              `N in flight` qualifier. */}
+          {hasOverlap(sim.recorded) ? (
+            <PipelineMap
+              recorded={sim.recorded}
+              cursor={sim.cursor}
+              followed={followed}
+              onFollow={setFollowed}
               onSeek={sim.scrubTo}
             />
           ) : null}
@@ -214,6 +279,7 @@ export function App(): React.JSX.Element {
               cycleKey={sim.cursor}
               tier={tier}
               forwarding={sim.forwarding}
+              followed={followed}
             />
           ) : (
             <DatapathPlaceholder modelLabel={activeModel.label} />
@@ -635,8 +701,11 @@ function Transport(props: {
   atStart: boolean;
   lastCycle: number;
   inFlight: InstructionInstance | null;
+  /** True when {@link inFlight} is the FOLLOWED instruction rather than the default retiring one —
+   *  the qualifier below must not call it "nearest retirement" when the user picked it. */
+  following: boolean;
 }): React.JSX.Element {
-  const { sim, atStart, lastCycle, inFlight } = props;
+  const { sim, atStart, lastCycle, inFlight, following } = props;
   const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
   return (
     <div style={{ marginTop: '1rem' }}>
@@ -684,13 +753,18 @@ function Transport(props: {
             while the header promises five, and the reader has no way to tell that the line
             highlighted is the one RETIRING rather than the only one running — which reads as "a
             pipeline is just a slow single-cycle", the exact misconception this tier exists to
-            break. The full picture is the step-7 map's job; this is the honest placeholder. */}
+            break. The map below now shows all of them; this stays because the map answers "what is
+            the whole run" and this answers "which one am I looking at". */}
         {inFlightCount > 1 ? (
           <span
-            style={{ color: T.ink3, fontFamily: MONO, fontSize: '0.8rem' }}
-            title={`${inFlightCount} instructions are in flight this cycle; the one named above is in ${inFlight?.location} (nearest retirement). The pipeline map will show all of them.`}
+            style={{ color: following ? T.ink2 : T.ink3, fontFamily: MONO, fontSize: '0.8rem' }}
+            title={
+              following
+                ? `${inFlightCount} instructions are in flight this cycle. You are FOLLOWING the one named above, now in ${inFlight?.location} — the map and datapath ring it too. Clear it on the map to go back to the retiring instruction.`
+                : `${inFlightCount} instructions are in flight this cycle; the one named above is in ${inFlight?.location} (nearest retirement). The map below shows all of them — click a cell to follow one.`
+            }
           >
-            in {inFlight?.location} · {inFlightCount} in flight
+            {following ? 'following' : 'in'} {inFlight?.location} · {inFlightCount} in flight
           </span>
         ) : null}
       </div>

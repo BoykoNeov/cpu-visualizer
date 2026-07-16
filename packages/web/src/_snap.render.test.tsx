@@ -21,6 +21,7 @@ const RUN = process.env.SNAP ? it : it.skip;
 import { Datapath } from './DatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
+import { PipelineMap } from './PipelineMapView';
 import { loadSource } from './simulator';
 import type { DepthTier } from '@cpu-viz/curriculum';
 
@@ -54,6 +55,19 @@ function pipelineAt(source: string, cycles: number, forwarding: boolean): CycleT
   const trace = recorder.current();
   if (!trace) throw new Error(`no trace at cycle ${cycles}`);
   return trace;
+}
+
+/** The pipeline map's counterpart to {@link pipelineAt}: the map folds the WHOLE recording, not a
+ *  cycle, so this hands back every trace rather than the one at the cursor. */
+function pipelineRun(source: string, forwarding: boolean): CycleTrace[] {
+  const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), {
+    ...defaultConfig(),
+    forwarding,
+  });
+  if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+  const { recorder } = result.loaded;
+  recorder.runToEnd();
+  return [...recorder.recorded];
 }
 
 /** One labelled SVG block. */
@@ -163,5 +177,55 @@ RUN('emit datapath snapshots', () => {
     // hazard unit) and a taken branch (the redirect M2's datapath could not honestly draw).
     emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
     emit('pl-focus-branch', block('pipeline · taken branch redirect · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\ntgt:\n addi x2, x0, 2', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
+  }
+
+  // The pipeline map (step 7). Unlike every block above, these render the WHOLE RECORDING rather
+  // than one cycle — the map is a grid of instructions × cycles, so a single trace would say
+  // nothing about it. The programs are deliberately SHORT: the point of these pages is whether the
+  // grid lands its cells in the right columns and whether the hues, the kill marker and the follow
+  // ring read at all, and a 78-cycle corpus program would simply scroll out of a screenshot. The
+  // scroll/sticky behaviour needs the live app, not a static page.
+  {
+    const mapPage = (title: string, recorded: CycleTrace[], cursor: number, followed: string | null = null) =>
+      block(title, renderToStaticMarkup(<PipelineMap recorded={recorded} cursor={cursor} followed={followed} onFollow={() => {}} onSeek={() => {}} />)); // prettier-ignore
+
+    // The staircase: six independent instructions overlapping in time. THE picture this surface
+    // exists for, and the one no other surface in the app can draw.
+    const SIX = ' addi x1, x0, 1\n addi x2, x0, 2\n addi x3, x0, 3\n addi x4, x0, 4\n addi x5, x0, 5\n addi x6, x0, 6'; // prettier-ignore
+    const fill = pipelineRun(SIX, true);
+    emit(
+      'map-fill',
+      mapPage('pipeline map · six independent instructions · the staircase', fill, 4),
+    );
+
+    // The flagship toggle as a SHAPE rather than a cycle count: same program, same page, and the
+    // only difference is how ragged the staircase is. If the two look alike, the surface is failing
+    // at its headline job.
+    const raw = ' addi x1, x0, 7\n add x2, x1, x1\n sub x3, x2, x1\n xor x4, x3, x2';
+    emit(
+      'map-toggle',
+      mapPage('pipeline map · RAW chain · fwd ON (tight staircase)', pipelineRun(raw, true), 5) +
+        mapPage(
+          'pipeline map · RAW chain · fwd OFF (repeated cells = stalls)',
+          pipelineRun(raw, false),
+          5,
+        ),
+    );
+
+    // Cut rows: a taken branch kills the two younger instructions, which must read as thrown-away
+    // work (struck, dashed, ✕) rather than as a row that merely stopped.
+    emit('map-flush', mapPage('pipeline map · taken branch · two cut rows', pipelineRun(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\n addi x8, x0, 8\ntgt:\n addi x2, x0, 2', true), 4)); // prettier-ignore
+
+    // The load-use bubble that survives forwarding — the one stall the toggle cannot remove, as a
+    // repeated cell.
+    emit('map-loaduse', mapPage('pipeline map · load-use · the bubble forwarding cannot remove', pipelineRun(' lw x1, 64(x0)\n add x2, x1, x1\n addi x3, x0, 3', true), 4)); // prettier-ignore
+
+    // The follow ring, which must be legible ON TOP of a stage hue (it is hue-free for exactly this
+    // reason) and must pick out ONE row from the tangle.
+    const followed = fill.find((c) => c.instructions.length === 5)?.instructions.find((i) => i.location === 'EX')?.id ?? null; // prettier-ignore
+    emit(
+      'map-follow',
+      mapPage('pipeline map · following one instruction (dashed --ink ring)', fill, 4, followed),
+    );
   }
 });

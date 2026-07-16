@@ -38,6 +38,11 @@ import { loadSource, type LoadedProgram } from './simulator';
  */
 const TEACHING_MAX_CYCLES = 50_000;
 
+/** The "nothing loaded" recording. A module-level constant rather than a fresh `[]` per render:
+ *  consumers memoize on the recording's identity, and a new empty array each render would defeat
+ *  that (and re-fold the map) for no reason. */
+const EMPTY_RECORDING: readonly CycleTrace[] = [];
+
 /** Everything the UI needs to render and drive the simulation. */
 export interface Simulator {
   /**
@@ -102,6 +107,20 @@ export interface Simulator {
   state: MachineState | null;
   /** The trace at the cursor (events + in-flight instructions), or `null` at pre-run. */
   cycleTrace: CycleTrace | null;
+  /**
+   * The WHOLE recording, every cycle of it — for surfaces that fold the entire timeline rather than
+   * reading the cursor's cycle. The pipeline map (M3 step 7) is the first: it is a grid of
+   * instructions × cycles, so it needs the run, not the instant.
+   *
+   * That makes it the second consumer of a complete recording, after `anchorLesson`, and it holds
+   * the same precondition for the same reason: `loadInto` runs the program to the end before
+   * `loaded.current` is set, so by the time anything can read this it is whole (the recorder records
+   * lazily at its high-water mark). Empty before the first load. A fresh load builds a fresh
+   * recorder, so the array IDENTITY changes per recording — which is what lets a consumer memoize on
+   * it, and what tells the shell a followed instruction's id belongs to a recording that no longer
+   * exists.
+   */
+  recorded: readonly CycleTrace[];
 
   /**
    * Switch the driving microarchitecture and re-load the current source under it (same program,
@@ -337,6 +356,7 @@ export function useSimulator(): Simulator {
     atEnd: recorder?.atEnd ?? false,
     state: recorder ? recorder.currentState() : null,
     cycleTrace: recorder ? recorder.current() : null,
+    recorded: recorder?.recorded ?? EMPTY_RECORDING,
     setModel,
     setForwarding,
     select,

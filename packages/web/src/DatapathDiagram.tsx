@@ -34,6 +34,20 @@ export interface WireVM {
   /** Where to nudge the value label off the wire so it clears the line: the label is drawn beside
    *  its anchor in this direction. Defaults to `up`. */
   readonly labelSide?: 'up' | 'down' | 'left' | 'right';
+  /**
+   * This wire is doing the FOLLOWED instruction's work this cycle — draw the follow ring around it
+   * (M3 step 7). The ring is deliberately hue-FREE (a dashed `--ink` halo, not a color), so it
+   * composes with the stage hue this wire is already stroked in and survives CVD; the identical
+   * token marks the followed row on the pipeline map, which is what makes "this instruction" read
+   * the same on both surfaces.
+   *
+   * There is no counterpart on {@link NodeVM}, and that absence is forced rather than an omission:
+   * step 6 pinned that a component box belongs to no single instruction (the register file is read
+   * by ID and written by WB in the SAME cycle; every latch bar is written on its left while read on
+   * its right). A box cannot be "the followed instruction's" — only a wire can, because each lies
+   * on one side of one bar. It is the same reason boxes carry no hue.
+   */
+  readonly followed?: boolean;
 }
 
 /** One legend entry: a colored swatch and its meaning. */
@@ -273,6 +287,11 @@ export function DatapathDiagram(props: {
             in its phase color and carries the animated flow dash (suppressed by reduced-motion). */}
         {wires.map((wire) => (
           <g key={wire.id}>
+            {/* The follow ring, UNDER the wire so it reads as a halo around it rather than a second
+                wire beside it — a wide dashed `--ink` stroke the colored wire then sits inside. */}
+            {wire.followed ? (
+              <polyline points={toPolyline(wire.points)} className="dp-follow" />
+            ) : null}
             <polyline
               points={toPolyline(wire.points)}
               className={wire.active ? 'dp-wire dp-wire--on' : 'dp-wire'}

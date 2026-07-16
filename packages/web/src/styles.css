@@ -283,6 +283,24 @@ input[type='range'] {
   }
 }
 
+/* The FOLLOW ring (M3 step 7) — "this instruction", drawn identically on both surfaces that can
+   carry it: a halo under a datapath wire, and an outline around a pipeline-map cell. Deliberately
+   HUE-FREE: it must compose with the stage hue the wire/cell already wears (and, later, with a lane
+   tint) and survive CVD, so it is a dashed --ink treatment and never a color. Anything that reads
+   as "this one" must use these two rules, so the idiom stays one thing rather than three. */
+.dp-follow {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 6;
+  stroke-dasharray: 4 3;
+  opacity: 0.55;
+  stroke-linecap: round;
+}
+.follow-ring {
+  outline: 2px dashed var(--ink);
+  outline-offset: 1px;
+}
+
 .dp-node-shape {
   fill: var(--node-idle-fill);
   stroke: var(--wire-idle);
@@ -323,6 +341,123 @@ input[type='range'] {
 .dp-vlabel-text {
   fill: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---- 5. Pipeline map (M3 step 7) — the stage×cycle grid --------------------------------------
+   HTML, not SVG, and the reasons are structural: it is tabular, it must SCROLL (a 34-instruction
+   run is ~40 rows × ~78 columns), and every cell is a click target. A grid of chips gets all three
+   for free from the platform. Cells reuse the .seg-btn--on colour formula (a 16% hue mix on the
+   surface) so a lit map cell and a lit phase chip are visibly the same idiom — and, like the chips,
+   a cell ALWAYS carries its stage text: the hue is reinforcement, never the sole carrier (the
+   relief rule, which the sub-3:1 light-mode phase hues make mandatory rather than optional). */
+
+.pmap-scroll {
+  overflow: auto;
+  max-height: 20rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.pmap-grid {
+  display: grid;
+  position: relative;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+}
+/* The sticky frame: the instruction column stays readable when scrolled right, the cycle ruler when
+   scrolled down, and the corner outranks both where they cross. */
+.pmap-corner,
+.pmap-head,
+.pmap-label {
+  position: sticky;
+  background: var(--surface);
+}
+.pmap-corner {
+  left: 0;
+  top: 0;
+  z-index: 3;
+}
+.pmap-head {
+  top: 0;
+  z-index: 2;
+}
+.pmap-label {
+  left: 0;
+  z-index: 1;
+}
+.pmap-corner,
+.pmap-label {
+  border-right: 1px solid var(--line);
+}
+.pmap-head {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-family: inherit;
+  font-size: 0.62rem;
+  padding: 0;
+  cursor: pointer;
+}
+.pmap-head--now {
+  color: var(--ink);
+  font-weight: 700;
+}
+.pmap-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px 0 6px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pmap-label--follow {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.pmap-cell {
+  --cell-hue: var(--accent);
+  margin: 1px;
+  border: 1px solid var(--cell-hue);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cell-hue) 16%, var(--surface));
+  box-shadow: inset 0 -2px 0 var(--cell-hue);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.62rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+.pmap-cell:hover {
+  filter: brightness(1.12);
+}
+/* A flushed instruction's cells: it really did run those stages (predict-not-taken genuinely
+   fetched it), so they keep their stage hue — it was killed, not imaginary. The dashed border and
+   struck text say the work was thrown away. */
+.pmap-cell--killed {
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.pmap-kill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* The playhead: where the cursor is. Drawn OVER the cells but with no fill and no pointer events,
+   so it brackets the column without tinting a hue it does not own. */
+.pmap-cursor {
+  pointer-events: none;
+  border-left: 2px solid var(--ink-2);
+  border-right: 2px solid var(--ink-2);
+  z-index: 4;
 }
 
 .dp-legend {

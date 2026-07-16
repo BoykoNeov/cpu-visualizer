@@ -1,25 +1,34 @@
 # Milestone 3 — the classic 5-stage pipeline (hazards, forwarding, stalls, flushes)
 
-**Status: STEPS 0–6 DONE, 2026-07-16 (440 → 621 tests). The pipeline model exists, is INV-8-clean
+**Status: STEPS 0–7 DONE, 2026-07-16 (440 → 654 tests). The pipeline model exists, is INV-8-clean
 under both forwarding positions, its soul is pinned by 32 hand-derived unit tests, its TIMING
 is pinned on the whole corpus by a closed-form derivation (step 3) — the net for the one thing
 INV-8 structurally cannot see — it is time-travellable, with five instructions in flight and
 individually followable (step 4), it RUNS IN THE BROWSER with the forwarding toggle shipped
-(step 5): 78 cycles off → 56 on, `a0` = 55 in both, on the live scrub bar — and it now has its own
+(step 5): 78 cycles off → 56 on, `a0` = 55 in both, on the live scrub bar — it has its own
 DATAPATH (step 6), where five instructions light five stages in five hues at once and the forwarding
-network vanishes when the toggle flips.** Steps 7–8 (the map, the lesson) remain.
-Proven so far: that the seams M3 fills already existed (`ProcessorConfig.forwarding`,
-`ProcessorCapabilities.configurableForwarding`, and the `forward`/`stall`/`flush`/
-`branch-resolved` events were all declared in the schema and honored by nobody); that the
-conformance harness can see **both** toggle positions (step 0); and now that a real pipeline runs
-the whole corpus to the reference's exact final state in both — **while taking different numbers
-of cycles**, which is the flagship interaction itself.
-**Step 1's decisions were reviewed and pinned 2026-07-16, before any code** — eleven stood as
-seeded, the halt rule was rewritten (its seed was false about the corpus), and the missing
-intra-cycle ordering decision was added. Building it then forced **twelve more** (the trace
-encodings, the clock-edge model, the shape of a stall); all are pinned in the table below.
-Deliberately deferred: configurable branch prediction and caches (M4 — see the pinned decisions),
-and M2's step 5c next-PC rework, which M3 does NOT depend on (see "What M3 does not inherit").
+network vanishes when the toggle flips — and it now has the PIPELINE MAP (step 7), the textbook
+stage×cycle grid, where the overlap finally stops being a claim about the trace and becomes the
+staircase everyone recognizes.** Only step 8 (the flagship lesson) remains.
+
+> **The map turned step 3's arithmetic into a picture, which nobody planned.** `sum-loop` draws
+> **52 rows in BOTH forwarding positions** (34 retires + 18 flush casualties) while the cell count
+> falls 241 → 197. That is `cycles = N + 4 + S + 2·T` rendered: **N and T belong to the program**
+> (the same rows, either way), **S to the microarchitecture** (fewer cells). And the 18 casualties
+> are legible for the first time — predict-not-taken speculatively fetches `li a7, 10` + `ecall` on
+> every one of the nine loop iterations and throws them away every time.
+> Proven so far: that the seams M3 fills already existed (`ProcessorConfig.forwarding`,
+> `ProcessorCapabilities.configurableForwarding`, and the `forward`/`stall`/`flush`/
+> `branch-resolved` events were all declared in the schema and honored by nobody); that the
+> conformance harness can see **both** toggle positions (step 0); and now that a real pipeline runs
+> the whole corpus to the reference's exact final state in both — **while taking different numbers
+> of cycles**, which is the flagship interaction itself.
+> **Step 1's decisions were reviewed and pinned 2026-07-16, before any code** — eleven stood as
+> seeded, the halt rule was rewritten (its seed was false about the corpus), and the missing
+> intra-cycle ordering decision was added. Building it then forced **twelve more** (the trace
+> encodings, the clock-edge model, the shape of a stall); all are pinned in the table below.
+> Deliberately deferred: configurable branch prediction and caches (M4 — see the pinned decisions),
+> and M2's step 5c next-PC rework, which M3 does NOT depend on (see "What M3 does not inherit").
 
 > **The headline claim is no longer a prediction — it is measured.** Mutating the hazard unit to
 > ignore `forwarding: true` (an over-stalling pipeline: right answers, wrong timing) leaves INV-8
@@ -636,25 +645,99 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
     collinear overlap), per-tier **and per-config** no-dangling, and a browser eyeball in light
     and dark via the `SNAP`-gated harness.
 
-- [ ] **7. The pipeline map (stage × cycle grid).** The new view surface, already designed in
-      `docs/plans/superscalar-visuals.md` §2 and assigned there to this milestone — **build it by
-      reference to that plan, do not re-derive it**. HTML grid (not SVG): rows are instructions,
-      columns are cycles, cells are phase-hued, stalls show as repeated cells and flushes as cut
-      rows. Cells are click targets for follow. This is where "instructions overlap in time" stops
-      being a claim about the trace and becomes the picture everyone recognizes. Renderer deltas
-      1–4 from that plan (hue override, markers, legend, follow) land here, **stage-and-lane-
-      parametric from day one** so later milestones widen them instead of rewriting them: the
-      **stage set and its hue mapping are derived from the trace**, never a hard-coded 5-element
-      list or 5-hue lookup. The map is the one M3 deliverable a future model reuses **as-is** —
-      it is a pure fold over `location` (INV-3), so the row×column model absorbs both future
-      axes without an API change: **lanes** (two rows share a column — superscalar) and **stage
-      count** (a 7- or 12-stage pipeline just has more columns per row). Everything else in M3 is
-      per-model by construction — each microarchitecture is its own package with its own `micro`
-      type and its own bespoke geometry — so this is the only place the generality is worth
-      buying. Acceptance:
-      headless tests that the grid is derived purely from the trace (INV-3), that a stall repeats
-      a cell and a flush cuts a row, and that the follow-highlight selects one id across all three
-      surfaces (map, datapath, source panel).
+- [x] **7. The pipeline map (stage × cycle grid).** ✅ Done (2026-07-16, 621 → 654 tests).
+      `pipeline-map.ts` (the pure fold) + `PipelineMapView.tsx` (the HTML grid), gated on the trace
+      rather than the model. Browser-verified in light and dark via the `SNAP` harness, and — the
+      part that mattered — **live on `sum-loop` at real scale** (78 cycles × 52 rows) through the
+      `vite preview` + raw-CDP ritual, which is where both of this step's real defects were found.
+
+      **The step's one architectural idea: this is the only M3 deliverable a future model reuses
+      as-is, so it carries NO model knowledge — and "parametric" turned out to mean something
+      narrower and sharper than the plan implied.** Three things are derived: the stage SET (distinct
+      `location`s in first-seen order), the ROW order (`instructions[]` is pinned oldest-first, so
+      appending each id on first sight yields fetch order), and the HUE key — which is the stage
+      **family** (`stageFamily`), collapsing exactly the two axes M3 pinned `location` to absorb
+      (`EX.0` → `EX`, `IF2` → `IF`) and nothing else. But **stage ORDER turned out to be needed
+      nowhere**: rows×columns never consults it, only the legend does. The row/column model really
+      does absorb both future axes for free, and the generality that had to be bought was just the
+      hue key.
+
+      **The parametricity is proven by HAND-BUILT traces, not by our engines** — no model we ship
+      emits a lane or a deep stage set, so a test that could only run against our own engine would
+      prove the map parametric exactly where it already is. Those cases construct no engine, no
+      recorder and no program, which makes them also the sharpest available proof of "derived purely
+      from the trace" (INV-3). They drive dual-issue rows sharing a column (six stages, **three**
+      hues), a 7-stage walk (seven stages, **five** hues), and a lane-qualified flush that must kill
+      `EX.1`'s occupant and not `EX.0`'s.
+
+      **The plan was wrong about the renderer deltas, in a good way: 1–3 were already done, and 2 was
+      obsolete.** Delta 1 (hue override) shipped as `WireVM.color` in the datapath overhaul; delta 3
+      (data-driven legend) shipped with step 6. Delta 2 — "one `<marker>` per distinct hue, a marker
+      zoo" — was never needed: the renderer's arrowhead uses `context-stroke`, so ONE marker serves
+      every hue and the idle grey. Only **delta 4 (follow) was real**, and it lands on **wires only**:
+      the superscalar plan seeded `followed?: boolean` on _both_ VMs, but step 6 pinned that a
+      component box belongs to no single instruction (the regfile is read by ID and written by WB in
+      one cycle), so a node counterpart cannot exist — the same reason boxes carry no hue. Step 6's
+      decision to carry `instr` on every lit wire is what pays for follow here: with five
+      instructions lighting the diagram at once, the id is the only thing that can pick one out.
+  - **The seam the plan did not mention (again, one per view step): the RECORDING.** Every panel
+    before this is a pure function of the cursor's CYCLE; the map is a grid of instructions × cycles,
+    so it needs the run. `useSimulator` had no way to hand it over — `recorded` is new, and the map is
+    only the second consumer of a complete recording after `anchorLesson`, holding the same
+    precondition for the same reason. A fresh load builds a fresh recorder, so the array identity
+    changes per recording, which is what lets the map memoize and what tells the shell a followed id
+    belongs to a recording that no longer exists (ids are minted per FETCH, and the two forwarding
+    positions do not even fetch the same shadows).
+  - **The gate is DERIVED, not declared** — `hasOverlap(recorded)`, the same shape as step 5's
+    `instructions.length > 1` rule and with no model knowledge in it. The map exists to show
+    instructions overlapping in time, so it appears exactly when they do; single-cycle and
+    multi-cycle carry one per cycle by construction, so it never appears for them without anything
+    naming them, and a future model gets it free. Verified live: `present: false` on single-cycle.
+  - **Follow RETARGETS the transport chip and the source line** (`shownInstruction`), which is what
+    makes it mean anything off the map — otherwise "follow" would be a map-local decoration. Pinned
+    as a pure function rather than left inline. The acceptance is asserted on ONE cycle with five in
+    flight, because the claim is that the three surfaces agree with EACH OTHER: three separate
+    fixtures would prove each can draw a ring and nothing about whether they ever point at the same
+    instruction. Live: 3 ringed wires of 17 lit, 2 ringed map cells, the source panel on the followed
+    line, chip reading `following MEM · 4 in flight`.
+  - **The map cross-checks step 3's closed form, which nobody planned.** `sum-loop` renders **52 rows
+    in BOTH positions** (34 retires + 18 flush casualties) while the cell count drops 241 → 197. That
+    is `cycles = N + 4 + S + 2·T` as a picture: N and T belong to the PROGRAM (same rows), S to the
+    microarchitecture (fewer cells). And the 18 casualties are legible for the first time —
+    **predict-not-taken speculatively fetches `li a7, 10` + `ecall` on every one of the nine loop
+    iterations and kills them every time.** The exit sequence, fetched and thrown away ten times over.
+    Step 3 could only count that; the map shows it.
+
+    **The BROWSER EYEBALL caught the real defect again — twice, and both only at real scale.** Every
+    headless net was green and every SNAP page (short programs, ~10 cycles) looked right.
+    **(a) The map was below the fold** — top at 884px of a 902px viewport, pushed there by the 490px
+    datapath, so the one picture this tier exists for was off-screen behind the diagram. Moved ABOVE
+    the datapath, and the reason is structural rather than taste: **the map is a TIMELINE surface —
+    its playhead IS the scrub cursor** — so its natural neighbour is the scrub bar, not the memory
+    panel. It costs the other models nothing; they never render it. **(b) "Keep the playhead in view"
+    naively means the MINIMUM scroll, which pins it flush against the trailing edge**: technically
+    visible, with the cycles you are scrubbing _towards_ permanently off-screen. Re-centre on leaving
+    a margin instead. Neither is a thing a test would have asked about.
+
+    _Original plan text:_ The new view surface, already designed in
+    `docs/plans/superscalar-visuals.md` §2 and assigned there to this milestone — **build it by
+    reference to that plan, do not re-derive it**. HTML grid (not SVG): rows are instructions,
+    columns are cycles, cells are phase-hued, stalls show as repeated cells and flushes as cut
+    rows. Cells are click targets for follow. This is where "instructions overlap in time" stops
+    being a claim about the trace and becomes the picture everyone recognizes. Renderer deltas
+    1–4 from that plan (hue override, markers, legend, follow) land here, **stage-and-lane-
+    parametric from day one** so later milestones widen them instead of rewriting them: the
+    **stage set and its hue mapping are derived from the trace**, never a hard-coded 5-element
+    list or 5-hue lookup. The map is the one M3 deliverable a future model reuses **as-is** —
+    it is a pure fold over `location` (INV-3), so the row×column model absorbs both future
+    axes without an API change: **lanes** (two rows share a column — superscalar) and **stage
+    count** (a 7- or 12-stage pipeline just has more columns per row). Everything else in M3 is
+    per-model by construction — each microarchitecture is its own package with its own `micro`
+    type and its own bespoke geometry — so this is the only place the generality is worth
+    buying. Acceptance:
+    headless tests that the grid is derived purely from the trace (INV-3), that a stall repeats
+    a cell and a flush cuts a row, and that the follow-highlight selects one id across all three
+    surfaces (map, datapath, source panel).
 
 - [ ] **8. The flagship lesson — "watch the bubble vanish."** The experiment the spec names, made
       guided: load a program with a real RAW chain, run with forwarding off, stop at the **first
@@ -683,8 +766,11 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
       forwarding-**on** position — the only stall that survives the toggle anywhere in the corpus).
       ✅ **the datapath half** in step 6: the hazard unit lights exactly when the interlock fires —
       asserted in **both** positions, and asserted to light on nothing else (a permanently-lit
-      interlock would say nothing about _when_ the bubble happens). The **pipeline map** half is
-      still owed by step 7.
+      interlock would say nothing about _when_ the bubble happens). ✅ **the pipeline map half** in
+      step 7, which is where the bubble stops being an event and becomes a SHAPE: the load-use pair
+      walks `IF ID ID EX MEM WB` — the repeated cell — in the forwarding-**on** position, with a
+      no-load control walking `IF ID EX MEM WB` beside it so the repeat is attributable to the hazard
+      and not to a map that repeats everything.
 - [x] Load → step forward to completion → step **backward** to start → **scrub** to any cycle;
       shown state always matches the recorded trace. ✅ step 4, headlessly; ✅ step 5 in the
       browser (scrubbed the pipeline's fill cycle-by-cycle over a `vite preview` build).
@@ -694,8 +780,16 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
       trace. ✅ step 4, through the shipped `follow()` API rather than a test-local helper, with the
       "follow one while four others are in flight" assertion explicit — plus the walk nothing pinned
       before it: an instruction **held in IF** across a stall, one id, fetched once.
-- [ ] A taken branch emits `branch-resolved` + `flush`, kills exactly two younger instructions,
-      and the map shows the cut rows.
+- [x] A taken branch emits `branch-resolved` + `flush`, kills exactly two younger instructions,
+      and the map shows the cut rows. ✅ step 7: the two casualties' rows are cut on the diagonal
+      (`['IF','ID']` and `['IF']` — the younger one got one stage less because it was fetched one
+      cycle later), neither retires, and the survivors around them are asserted untouched so
+      "everything is killed" cannot pass. They read as thrown-away work rather than as rows that
+      merely stopped — the cells KEEP their stage hue, because predict-not-taken genuinely did fetch
+      and run them, with a struck/dashed treatment and a ✕ where the instruction vanished. Live on
+      `sum-loop` this is the finding nobody planned: **the exit sequence (`li a7, 10` + `ecall`) is
+      speculatively fetched and killed on every one of the nine loop iterations** — 18 cut rows,
+      which is exactly step 3's `T = 9` made visible.
 - [x] Depth-tier switching changes datapath detail without changing engine behavior and without
       violating lawful simplification (INV-5) — including the forwarding/hazard units'
       `minTier` structural hiding and their **config-driven** absence, each backed by a lawful
@@ -747,8 +841,18 @@ contact (the seeded tiering lever stood), and what building forced was _contract
 axes each unit gates on, and the fact that a hue is a property of a WIRE here rather than of the
 diagram. And once again the **browser eyeball** found what no test did.
 
-Rows still `_(open)_` are the two remaining view-layer ones (map tech, follow-highlight), which
-belong to step 7.
+**Step 7 closed the last two open rows (map tech, follow-highlight) and added two more.** Both
+seeded rows stood — but the pattern finally inverted: what building forced this time was not
+contract but **an audit of the plan's own claims about the work**. The plan asserted four renderer
+deltas; the honest count was **one** (two were already built, and one was obsolete rather than
+pending). It asked for stage-and-lane parametricity; the honest cost was **the hue key alone**, since
+stage ORDER turned out to be needed nowhere. Neither is a decision the seed got wrong — they are
+questions the seed did not know it was asking, and both are the kind that only answer themselves once
+the code exists. And, for the fourth step running, the **browser eyeball** found what no test did —
+twice, and both only at REAL scale, which is the sharper lesson: every SNAP page (short programs) was
+fine, and the defects lived on a 78-cycle corpus program.
+
+**No rows remain `_(open)_`.**
 
 | Decision                                      | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Pinned answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -767,8 +871,10 @@ belong to step 7.
 | Intra-cycle stage & event order               | **Process stages in reverse each cycle** (WB→MEM→EX→ID→IF), so each stage reads the latch its upstream neighbour has not yet overwritten. This fixes the **order of `events[]` within a cycle** — a trace-contract surface (INV-3/INV-6), not an implementation detail.                                                                                                                                                                                                                                                                                                                                                                                                   | **Pinned**, 2026-07-16 — added in review; the table was missing it entirely. M1/M2 never faced it (one instruction, one stage per cycle), so M3 is the first model where intra-cycle ordering exists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Corpus additions                              | **None needed — verified, not assumed.** `array-sum.s` already holds the textbook load-use pair (`lw t2, 0(t0)` then `add a0, a0, t2`); every program has back-to-back RAW chains and taken branches. INV-7 stays intact.                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Pinned as seeded**, 2026-07-16 — and it proved an understatement. The corpus already holds a **double-match** litmus too (`la` expands to two instructions writing one register, immediately consumed by `sw`), and `add.s` alone shows the toggle as 7 cycles vs 9. Zero fixtures added.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Datapath tiering lever                        | **Structure** — `minTier` the forwarding unit, forwarding muxes, and hazard unit to `expert`, with lawful contraction wires below; plus config-driven absence when forwarding is off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **Pinned as seeded**, 2026-07-16 (step 6), with two things the seed could not have known. **(a) The hazard unit is tier-gated but NOT config-gated** — it is live in both positions (load-use survives forwarding; the interlock IS the story without it), so only the forwarding unit + its muxes + the forward paths gate on config. **(b) Contraction visibility is DERIVED from `contracts`, not declared** — a contraction is drawn exactly when its unit is not, so M2's parallel `maxTier` field is dropped: the condition here is 2-D (tier AND config) and no scalar cap can express "hidden at expert-with-forwarding-off". `wbmux` tiers at `detailed` (M2's precedent); `pcmux` is drawn at every tier — the plan's lever never asked for it, and drawing the PC selector always costs no contraction wires.                                                                                                                                                        |
-| Pipeline map tech                             | **HTML grid, not SVG** — scrollable, cells are follow click-targets (seeded and reasoned in `superscalar-visuals.md`; M3 is where it is pinned for real).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Follow-highlight visual                       | **Dashed `--ink` outline ring** — hue-free, so it composes with stage tint and survives CVD (from `superscalar-visuals.md`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Pipeline map tech                             | **HTML grid, not SVG** — scrollable, cells are follow click-targets (seeded and reasoned in `superscalar-visuals.md`; M3 is where it is pinned for real).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Pinned as seeded**, 2026-07-16 (step 7) — a CSS grid of `.seg-btn`-formula chips. All three reasons held: it is tabular, it scrolls (78 columns × 52 rows on `sum-loop`), and cells are click targets. Two things the seed could not know. **(a) The map's GATE is derived, not declared** — `hasOverlap(recorded)`, the same no-model-knowledge shape as step 5's `instructions.length > 1` rule: the map exists to show instructions overlapping in time, so it appears exactly when they do (verified live: absent on single-cycle). **(b) It needs a seam nothing before it did — the whole RECORDING.** Every prior panel is a pure function of the CURSOR's cycle; the map folds the timeline, so `useSimulator.recorded` is new — only the second consumer of a complete recording after `anchorLesson`, with the same precondition for the same reason.                                                                                                               |
+| Follow-highlight visual                       | **Dashed `--ink` outline ring** — hue-free, so it composes with stage tint and survives CVD (from `superscalar-visuals.md`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **Pinned as seeded**, 2026-07-16 (step 7): one idiom, two rules (`.dp-follow`, a halo _under_ a wire; `.follow-ring`, an outline on a map cell). Hue-free is load-bearing — it must compose with the stage hue the wire/cell already wears. **But the seed was wrong about WHERE it lands: wires only, never nodes.** `superscalar-visuals.md` put `followed?: boolean` on BOTH VMs; step 6 pinned that a component box belongs to no single instruction (the regfile is read by ID and written by WB in the same cycle), so a node counterpart cannot exist — the same reason boxes carry no hue. Two more the seed did not reach: **follow RETARGETS the transport chip and source line** (`shownInstruction`), or it would be map-local decoration; and it **clears on a new recording**, since ids are minted per FETCH and the two forwarding positions do not fetch the same shadows.                                                                                     |
+| Which renderer deltas step 7 owed             | _(not in the seed — the plan said "renderer deltas 1–4 land here")_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Pinned**, 2026-07-16 (step 7): **only delta 4.** Delta 1 (hue override) already shipped as `WireVM.color` in the datapath overhaul, and delta 3 (data-driven legend) with step 6 — forward design that actually paid off. **Delta 2 (one `<marker>` per distinct hue) is OBSOLETE rather than done:** the renderer's arrowhead uses `context-stroke`, so ONE marker serves every hue AND the idle grey, and the planned "marker zoo" would have been strictly worse. Recorded because the plan asserted four deltas of work and the honest count was one.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| What "stage-and-lane-parametric" costs        | _(not in the seed — it demanded parametricity without saying which part is not free)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **Pinned**, 2026-07-16 (step 7): **the HUE KEY, and essentially nothing else.** The stage SET and ROW order fall out of the fold anyway, and **stage ORDER is needed nowhere** — rows×columns never consults it; only the legend lists stages, and first-seen order yields IF→WB for free. So the row/column model really does absorb both future axes with no API change, exactly as `superscalar-visuals.md` claimed. The one thing bought is `stageFamily` (`EX.0`→`EX`, `IF2`→`IF`), so a 7- or 12-stage model reuses the five validated hues instead of inventing any. Proven by **hand-built traces**: no engine we ship emits either axis, so a test against our own engine would prove the map parametric exactly where it already is.                                                                                                                                                                                                                                  |
 | M2 step 5c dependency                         | **None — M3 neither needs nor reopens it.** The pipeline's redirect is sourced from `branch-resolved` + `flush`, which are honest trace signals; M2's problem does not recur here.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **Pinned as seeded**, 2026-07-16. Confirmed by construction in step 1: the pipeline's redirect is sourced from `branch-resolved` (now carrying `target`) + `flush`; 5c was never consulted, needed, or reopened.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `forward` from/to encoding                    | _(not in the seed — the schema types both as bare `string`)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **Pinned**, 2026-07-16: `from` names the SOURCE LATCH (`'EX/MEM'` \| `'MEM/WB'`), `to` names the DESTINATION PORT (`'EX.rs1'` \| `'EX.rs2'`), `instr` is the CONSUMER. Per-port, because the two muxes are independent — one instruction can take rs1 from MEM/WB and rs2 from EX/MEM in the same cycle (`add.s` does exactly that). The producer is derivable from `instructions[]`, so naming the latch loses nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `stall` / `flush` reasons                     | _(not in the seed)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Pinned**, 2026-07-16: `stall.reason` is `'load-use'` \| `'raw'`, always with `stage: 'ID'`. `flush.reason` is `'branch-taken'` \| `'halt'`. Note `'load-use'` fires ONLY with forwarding on — with it off the general interlock subsumes it and honestly reports `'raw'`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |

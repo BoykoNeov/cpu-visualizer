@@ -51,8 +51,15 @@ export function PipelineDatapath(props: {
   tier: DepthTier;
   /** The engine config the trace was recorded under — the second visibility axis. */
   forwarding: boolean;
+  /**
+   * The followed instruction's stable id (M3 step 7), or `null`. This is the payoff of step 6's
+   * decision to carry `instr` on every lit wire: with five instructions lighting the diagram at
+   * once, the id is the only thing that can pick one out of the tangle — the hue says which STAGE a
+   * wire is doing, never which instruction.
+   */
+  followed?: string | null;
 }): React.JSX.Element {
-  const { trace, tier, forwarding } = props;
+  const { trace, tier, forwarding, followed = null } = props;
   const act = useMemo(() => activate(trace), [trace]);
   const labels = showValueLabels(tier);
   const controls = showControlLabels(tier);
@@ -67,6 +74,10 @@ export function PipelineDatapath(props: {
         // The hue is the STAGE's, not the diagram's: five instructions, five colors, one cycle.
         color: a ? PHASE_COLORS[a.stage] : undefined,
         label: a && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
+        // Ring the followed instruction's own work. Only WIRES can carry this: a component box is
+        // shared (the register file is read by ID and written by WB in one cycle), which is the
+        // same reason it carries no hue — so there is deliberately no node counterpart.
+        followed: a !== undefined && followed !== null && a.instr === followed,
       };
     },
   );
