@@ -6,7 +6,8 @@ not simulation realism.
 
 **The design contract is `cpu-visualizer-spec.md`.** Read it before non-trivial work. The
 two load-bearing parts are the architectural invariants (§3) and the trace schema (§5).
-Current work plan: `docs/plans/m1-tasks.md` (Milestone 1).
+Current work plan: `docs/plans/m3-tasks.md` (Milestone 3 — the 5-stage pipeline). M1 and M2 are
+complete; their plans double as the milestone log.
 
 ## Hard constraints (from spec §3 — surface conflicts, don't work around them)
 
