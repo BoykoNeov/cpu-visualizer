@@ -22,6 +22,7 @@ import { SourcePanel } from './panels';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { buildPipelineMap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
+import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
 const noop = (): void => {};
@@ -112,6 +113,86 @@ describe('the map’s render seam', () => {
   it('marks the cursor’s column as the playhead, and draws none before the run', () => {
     expect(renderMap(run(FILL).recorder.recorded, { cursor: 3 })).toContain('pmap-cursor');
     expect(renderMap(run(FILL).recorder.recorded, { cursor: -1 })).not.toContain('pmap-cursor');
+  });
+});
+
+/**
+ * Paging — the cap that exists for the same reason `TEACHING_MAX_CYCLES` does, one layer down.
+ *
+ * The engine cap stops a runaway sandbox program from freezing the tab while RECORDING; without a
+ * cap here the map would freeze it while DRAWING a recording the engine cap already judged fine.
+ * That is not hypothetical: the grid declares explicit tracks, so its layout cost is cycles × rows
+ * whether the cells are sparse or not, and a `li t0, 500` countdown — a trivial thing for a user to
+ * type into the sandbox — is 3007 cycles × 2001 rows ≈ 6 MILLION grid areas and 2.2 MB of markup,
+ * with the engine cap permitting 16× more again. Nothing in the corpus can reach this: `sum-loop`,
+ * the longest program we ship, is 78 cycles. So it is the SANDBOX path that needs the net, and only
+ * a program written here can test it.
+ */
+describe('paging — the sandbox net', () => {
+  /** A countdown loop: the cheapest way for a user to record far more cycles than can be drawn. */
+  const countdown = (n: number) =>
+    loadSource(`  li t0, ${n}\nloop:\n  addi t0, t0, -1\n  bnez t0, loop\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), { ...defaultConfig(), forwarding: false }); // prettier-ignore
+
+  function longRun(n: number): readonly CycleTrace[] {
+    const r = countdown(n);
+    if (!r.ok) throw new Error('assembly failed');
+    r.loaded.recorder.runToEnd(50_000);
+    return r.loaded.recorder.recorded;
+  }
+
+  it('draws the whole run when it fits — every corpus program does', () => {
+    const html = renderMap(run(FILL).recorder.recorded, { cursor: 4 });
+    expect(html).not.toContain('scrub to page');
+
+    // The claim that makes the threshold safe rather than lucky: the longest program we SHIP is far
+    // under it, so paging is strictly a sandbox affordance and the teaching path never sees it.
+    const longest = Math.max(
+      ...EXAMPLE_PROGRAMS.map((p) => {
+        const r = loadSource(p.source, () => new PipelineProcessor(), { ...defaultConfig(), forwarding: false }); // prettier-ignore
+        if (!r.ok) throw new Error(`corpus program ${p.name} should assemble`);
+        r.loaded.recorder.runToEnd();
+        return r.loaded.recorder.recordedCycles;
+      }),
+    );
+    expect(longest).toBe(78); // sum-loop, forwarding off — step 3's derived number
+    expect(longest).toBeLessThan(400);
+  });
+
+  it('bounds the DOM on a run that cannot be drawn at once', () => {
+    const recorded = longRun(200);
+    expect(recorded.length).toBeGreaterThan(1000); // the recording itself is fine; drawing it is not
+
+    const html = renderMap(recorded, { cursor: 0 });
+    const cells = (html.match(/pmap-cell/g) ?? []).length;
+    const heads = (html.match(/pmap-head/g) ?? []).length;
+
+    // The whole point: the drawn size is bounded by the PAGE, not by the run.
+    expect(heads).toBeLessThanOrEqual(400 + 1);
+    expect(cells).toBeLessThan(3000);
+    expect(html).toContain(`repeat(400, 30px)`); // explicit tracks are capped too — the real cost
+
+    // Non-vacuity: unpaged, this run would declare a track per cycle. Without the cap the same
+    // recording draws >1000 columns, which is the thing being prevented.
+    expect(recorded.length).toBeGreaterThan(400);
+  });
+
+  it('never truncates silently — it says which window, and of what', () => {
+    const html = renderMap(longRun(200), { cursor: 0 });
+    // A silent cap would read as "this is the run" while showing a slice. The header must carry
+    // both the window and the total, or the map is quietly lying about what it drew.
+    expect(html).toContain('cycles 0–399 of');
+    expect(html).toContain('scrub to page');
+  });
+
+  it('pages to follow the cursor, and the ruler keeps ABSOLUTE cycle numbers', () => {
+    const recorded = longRun(200);
+    const html = renderMap(recorded, { cursor: 500 });
+    expect(html).toContain('cycles 400–799 of');
+    // The column is page-relative but the LABEL is not: a ruler that restarted at 0 on every page
+    // would make the map disagree with the scrub bar and the transport about what cycle it is.
+    expect(html).toContain('>400<');
+    expect(html).toContain('Scrub to cycle 500');
+    expect(html).not.toContain('Scrub to cycle 399');
   });
 });
 

@@ -41,6 +41,23 @@ const LABEL_W = 190;
  *  run does not re-centre on every cycle. */
 const MARGIN = 90;
 
+/**
+ * The most cycles drawn at once. Beyond this the map pages, and says so.
+ *
+ * **This exists for the same reason `TEACHING_MAX_CYCLES` does, one layer down.** The engine cap
+ * stops a runaway sandbox program from freezing the tab while RECORDING; without a cap here the map
+ * would freeze it while DRAWING a recording the engine cap already judged fine. The grid declares
+ * explicit tracks, so its layout cost is cycles × rows whether or not the cells are sparse: a
+ * `li t0, 500` countdown — a trivial thing for a user to type — is already 3007 cycles × 2001 rows
+ * ≈ **6 million grid areas and 2.2 MB of markup**, and the engine cap permits 16× more than that.
+ *
+ * 400 is chosen to be far above the whole corpus (`sum-loop`, the longest, is 78 cycles) so every
+ * program we ship draws WHOLE and nothing about the teaching path changes — the paging is strictly
+ * a sandbox affordance. And it pages rather than truncates: a silent cap would read as "this is the
+ * run" while showing a fraction of it, so the header states the window and the total.
+ */
+const MAX_MAP_CYCLES = 400;
+
 export function PipelineMap(props: {
   /** The WHOLE recording — the map is the first surface that folds the entire timeline rather than
    *  being a pure function of the cursor's cycle. */
@@ -57,6 +74,29 @@ export function PipelineMap(props: {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const followedRow = followed === null ? null : (map.rows.find((r) => r.id === followed) ?? null);
+
+  // The drawn window (see {@link MAX_MAP_CYCLES}). Quantized to PAGES rather than centred on the
+  // cursor: a window that recentred on every scrub would slide the whole grid under the reader on
+  // every step, and a page boundary is a thing you can point at ("cycles 800–1199"). It is a pure
+  // function of the cursor — no state to keep in sync, and the fold stays whole and oblivious
+  // (INV-2, the same split as the datapath: `activate` lights everything, the view decides what to
+  // draw). Below the threshold `lo`/`hi` degenerate to the whole run, so the corpus is untouched.
+  const view = useMemo(() => {
+    const paged = map.cycles > MAX_MAP_CYCLES;
+    const lo = paged ? Math.floor(Math.max(cursor, 0) / MAX_MAP_CYCLES) * MAX_MAP_CYCLES : 0;
+    const hi = paged ? Math.min(lo + MAX_MAP_CYCLES, map.cycles) : map.cycles;
+    // A row belongs to the page if any of its life overlaps it — its cells are contiguous, so that
+    // is just an interval overlap against its first and last.
+    const rows = paged
+      ? map.rows.filter(
+          (r) =>
+            r.cells.length > 0 &&
+            r.cells[0]!.cycle < hi &&
+            r.cells[r.cells.length - 1]!.cycle >= lo,
+        )
+      : map.rows;
+    return { paged, lo, hi, cols: hi - lo, rows };
+  }, [map, cursor]);
 
   // Keep the playhead and the action in view while scrubbing. Two decisions here, both found by the
   // browser eyeball rather than by any test:
@@ -84,17 +124,23 @@ export function PipelineMap(props: {
     const el = scrollRef.current;
     if (!el || cursor < 0) return;
 
-    const x = keepInView(LABEL_W + cursor * CELL_W, el.scrollLeft, el.clientWidth, LABEL_W);
+    const x = keepInView(
+      LABEL_W + (cursor - view.lo) * CELL_W,
+      el.scrollLeft,
+      el.clientWidth,
+      LABEL_W,
+    );
     if (x !== null) el.scrollLeft = x;
 
     // Rows are in fetch order and an instruction's cells are contiguous, so the band in flight at
     // any cycle is contiguous too: centring its oldest row keeps the whole pipe on screen, with the
-    // instructions it is about to reach visible below it.
-    const row = firstRowAt(map, cursor);
+    // instructions it is about to reach visible below it. Indexed against the DRAWN rows, which on a
+    // paged run are only the page's.
+    const row = firstRowAt({ ...map, rows: view.rows }, cursor);
     if (row < 0) return;
     const y = keepInView(HEAD_H + row * ROW_H, el.scrollTop, el.clientHeight, HEAD_H);
     if (y !== null) el.scrollTop = y;
-  }, [cursor, map]);
+  }, [cursor, map, view]);
 
   return (
     <section className="panel" style={{ marginTop: '1rem' }}>
@@ -113,6 +159,16 @@ export function PipelineMap(props: {
         <span style={{ fontSize: '0.75rem', color: T.ink3 }}>
           rows are instructions · columns are cycles · click a cell to follow one
         </span>
+        {/* Never a silent cap: a truncated map would read as "this is the run" while showing a
+            slice of it. Say which slice, and say what the whole is. */}
+        {view.paged ? (
+          <span
+            style={{ fontSize: '0.75rem', color: T.ink2, fontFamily: MONO }}
+            title={`This run is too long to draw at once (${map.cycles} cycles, ${map.rows.length} instructions). Showing one page; scrub the timeline to move it.`}
+          >
+            cycles {view.lo}–{view.hi - 1} of {map.cycles} · scrub to page
+          </span>
+        ) : null}
         {followedRow ? (
           <div
             style={{
@@ -142,18 +198,19 @@ export function PipelineMap(props: {
           role="grid"
           aria-label="Pipeline map: instructions by cycle"
           style={{
-            gridTemplateColumns: `${LABEL_W}px repeat(${map.cycles}, ${CELL_W}px)`,
-            gridTemplateRows: `${HEAD_H}px repeat(${map.rows.length}, ${ROW_H}px)`,
+            gridTemplateColumns: `${LABEL_W}px repeat(${view.cols}, ${CELL_W}px)`,
+            gridTemplateRows: `${HEAD_H}px repeat(${view.rows.length}, ${ROW_H}px)`,
           }}
         >
           <div className="pmap-corner" style={{ gridColumn: 1, gridRow: 1 }} />
 
-          {/* The cycle ruler — also the coarse scrub: clicking a column number seeks to it. */}
-          {Array.from({ length: map.cycles }, (_, c) => (
+          {/* The cycle ruler — also the coarse scrub: clicking a column number seeks to it. Numbers
+              are absolute cycles; only the COLUMN is page-relative. */}
+          {Array.from({ length: view.cols }, (_, i) => view.lo + i).map((c) => (
             <button
               key={`h${c}`}
               className={c === cursor ? 'pmap-head pmap-head--now' : 'pmap-head'}
-              style={{ gridColumn: c + 2, gridRow: 1 }}
+              style={{ gridColumn: c - view.lo + 2, gridRow: 1 }}
               onClick={() => onSeek(c)}
               title={`Scrub to cycle ${c}`}
             >
@@ -161,7 +218,7 @@ export function PipelineMap(props: {
             </button>
           ))}
 
-          {map.rows.map((row, i) => {
+          {view.rows.map((row, i) => {
             const isFollowed = row.id === followed;
             const last = row.cells[row.cells.length - 1];
             return (
@@ -177,7 +234,11 @@ export function PipelineMap(props: {
                   </span>
                 </div>
 
+                {/* Only the page's cells reach the DOM — a row that straddles a page boundary is
+                    drawn for the part of its life on this page, which is what bounds the node count
+                    as well as the track count. */}
                 {row.cells.map((cell) => {
+                  if (cell.cycle < view.lo || cell.cycle >= view.hi) return null;
                   const hue = PHASE_COLORS[cell.family] ?? T.accent;
                   const cls = [
                     'pmap-cell',
@@ -194,7 +255,7 @@ export function PipelineMap(props: {
                       // property so the cell's border/fill/underline all derive from one value.
                       style={
                         {
-                          gridColumn: cell.cycle + 2,
+                          gridColumn: cell.cycle - view.lo + 2,
                           gridRow: i + 2,
                           '--cell-hue': hue,
                         } as React.CSSProperties
@@ -217,10 +278,10 @@ export function PipelineMap(props: {
                 {/* The kill marker, in the column AFTER the last cell it reached: the instruction is
                     not there any more, and that absence is the point. Omitted if it died on the
                     final recorded cycle (there is no next column to put it in). */}
-                {row.killedBy && last && last.cycle + 1 < map.cycles ? (
+                {row.killedBy && last && last.cycle + 1 < view.hi ? (
                   <span
                     className="pmap-kill"
-                    style={{ gridColumn: last.cycle + 3, gridRow: i + 2 }}
+                    style={{ gridColumn: last.cycle - view.lo + 3, gridRow: i + 2 }}
                     title={`Flushed (${row.killedBy}) — the pipeline fetched it, then threw it away`}
                   >
                     ✕
@@ -230,8 +291,11 @@ export function PipelineMap(props: {
             );
           })}
 
-          {cursor >= 0 ? (
-            <div className="pmap-cursor" style={{ gridColumn: cursor + 2, gridRow: '1 / -1' }} />
+          {cursor >= view.lo && cursor < view.hi ? (
+            <div
+              className="pmap-cursor"
+              style={{ gridColumn: cursor - view.lo + 2, gridRow: '1 / -1' }}
+            />
           ) : null}
         </div>
       </div>
