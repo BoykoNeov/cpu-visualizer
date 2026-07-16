@@ -1,8 +1,9 @@
 # Milestone 3 — the classic 5-stage pipeline (hazards, forwarding, stalls, flushes)
 
-**Status: STEPS 0, 1 and 2 DONE, 2026-07-16 (440 → 501 tests). The pipeline model exists, is
-INV-8-clean under both forwarding positions, and its soul is pinned by 32 hand-derived unit
-tests.** Proven so far: that the seams M3 fills already existed (`ProcessorConfig.forwarding`,
+**Status: STEPS 0–3 DONE, 2026-07-16 (440 → 542 tests). The pipeline model exists, is INV-8-clean
+under both forwarding positions, its soul is pinned by 32 hand-derived unit tests, and its TIMING
+is pinned on the whole corpus by a closed-form derivation (step 3) — the net for the one thing
+INV-8 structurally cannot see.** Proven so far: that the seams M3 fills already existed (`ProcessorConfig.forwarding`,
 `ProcessorCapabilities.configurableForwarding`, and the `forward`/`stall`/`flush`/
 `branch-resolved` events were all declared in the schema and honored by nobody); that the
 conformance harness can see **both** toggle positions (step 0); and now that a real pipeline runs
@@ -17,8 +18,16 @@ and M2's step 5c next-PC rework, which M3 does NOT depend on (see "What M3 does 
 
 > **The headline claim is no longer a prediction — it is measured.** Mutating the hazard unit to
 > ignore `forwarding: true` (an over-stalling pipeline: right answers, wrong timing) leaves INV-8
-> conformance **12/12 green** while failing **10 unit tests**. That is the blind spot demonstrated
-> rather than argued, and it is why step 3 exists.
+> conformance **12/12 green** while failing **10 unit tests** — and now, with step 3 landed,
+> **14 timing tests on the real corpus**, every one of them an `[forwarding on]` case and not a
+> single `[forwarding off]` one. That is the blind spot demonstrated rather than argued, and it is
+> why step 3 existed.
+
+> **Step 3's correction to this milestone's own rhetoric.** Forwarding is _not_ always faster:
+> `call-return.s` takes **17 cycles in both positions**, because every RAW in it is already
+> separated by a flush gap. The crown jewel is a claim about programs with real RAW chains (four of
+> the five), not about the corpus — and `call-return.s [forwarding on]` passing under the
+> over-stalling mutation is the proof that the distinction is load-bearing rather than pedantic.
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap). The load-bearing constraints
 are the architectural invariants (§3) and the trace schema (§5). The repeatable per-step recipe
@@ -311,9 +320,79 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
       positions. Acceptance: the full corpus passes twice, once per config; no new fixtures
       (INV-7 — one example library across all models).
 
-- [ ] **3. Pinned timing tests — the net for INV-8's blind spot.** The headline decision explains
-      why this is a step and not a footnote: conformance cannot see over-stalling. Author, by
-      hand, the same way M2 pinned its per-class cycle-count table:
+- [x] **3. Pinned timing tests — the net for INV-8's blind spot.** ✅ Done (2026-07-16, 501 → 542
+      tests). `packages/engine/pipeline/src/timing.test.ts` — 41 tests, no new fixtures (INV-7), no
+      engine change.
+      **The step's one real idea: the table is a DERIVATION, not a list of numbers.** "Hand-derived"
+      was the acceptance bar, and for a 10-iteration loop with stalls and flushes, deriving by
+      cycle-counting is both unreliable and unreviewable. So the timing was derived in closed form
+      from the pinned rules first, and the corpus numbers fall out of it. Let `d_i` be the cycle
+      instruction `i` leaves ID (EX at `d_i+1`, WB at `d_i+3`; the machine halts at the last retire,
+      so `cycles = d_last + 4`). The pinned rules ARE the recurrence: `d_i ≥ d_(i-1)+1`; forwarding
+      off, `d_i ≥ d_p+3` per producer (+3 not +4 — that is the same-cycle WB→ID rule paying for
+      itself); forwarding on, `d_i ≥ d_L+2` for a LOAD producer only; a taken transfer gives
+      `d_target ≥ d_b+3`. Summed over a run it collapses to:
+
+      > **cycles = N + 4 + S + 2·T** — N retires, S stall cycles, T taken transfers.
+
+      **The thesis, stated as arithmetic rather than anecdote: N and T belong to the PROGRAM, S to
+      the MICROARCHITECTURE.** Forwarding cannot change which instructions run or which branches are
+      taken, so `cycles_off − cycles_on = S_off − S_on`, exactly. Each term is asserted separately
+      against the events that define it (a lone total lets a compensating over-S/under-T pair
+      through and localizes nothing), and the crown jewel is asserted **standing alone**, not
+      resting on the formula.
+
+      | program       |  N |  T | S_off | S_on | cycles_off | cycles_on |
+      | ------------- | -: | -: | ----: | ---: | ---------: | --------: |
+      | add.s         |  3 |  0 |     2 |    0 |          9 |         7 |
+      | array-sum.s   | 34 |  4 |    26 |    5 |         72 |        51 |
+      | byte-loads.s  |  6 |  0 |     4 |    0 |         14 |        10 |
+      | call-return.s |  9 |  2 |     0 |    0 |         17 |        17 |
+      | sum-loop.s    | 34 |  9 |    22 |    0 |         78 |        56 |
+
+      Every entry was derived before the file was written and **all 41 passed on the first run** —
+      the engine and the closed form agree exactly, including the subtle parts below.
+      **Four things the derivation forced, none of which a cycle-count would have surfaced:**
+  - **`call-return.s` is the honest counterexample: S = 0 in BOTH positions — forwarding buys it
+    nothing, 17 cycles either way.** Every RAW in it is already separated by a flush gap (`bge`
+    reads across the `jal`; `mv s0, a0` reads across the `ret`), and the gap charges the +2 the
+    interlock would have. So the crown jewel is claimed for the four RAW-chained programs, not for
+    the corpus: a suite asserting "on is always faster" would be **overclaiming**, and weakening it
+    to `≤` would then pass for a pipeline where forwarding did nothing at all. The mutation run
+    below proves the point empirically — `call-return.s [forwarding on]` is one of the two ON cases
+    that **passes** under the over-stalling mutation, because it has no stalls to over-count.
+  - **The +2 is per taken TRANSFER, not per `flush` EVENT — they come apart in the corpus.**
+    `call-return.s`'s `ret` is the last word of `.text`, so nothing is behind it to kill: it emits
+    **no flush at all** (step 2's "real casualties" rule) and still costs its two cycles, since the
+    target cannot be fetched until the redirect lands. T = 2 but branch-taken flushes = 1; keying
+    the penalty off flushes would under-count by 2. A penalty is not a casualty.
+  - **Stall counts are not uniform per iteration, so a per-iteration cost cannot be assumed.** In
+    `sum-loop.s` off, iteration 1's `add` stalls 2 but **no later iteration's does** — the taken
+    branch's 2-cycle gap has already retired its producers. Only the `bne` stalls every time (the
+    distance-1 branch-operand RAW, 10×). Hence S_off = 2 + 2×10, not 4×10.
+  - **Placement is pinned as a pc→cycles histogram, not a count** (`{ 8: 2, 16: 20 }`), so count and
+    placement share one source of truth and S is summed from it rather than stated twice. Keyed by
+    pc rather than cycle: a loop's stalls recur at the same static pc, so the entry stays
+    hand-checkable where twenty cycle numbers would not be. Mutation-checked: moving a stall from
+    pc 8 to pc 12 **with the total unchanged at 22** fails, so "right number, wrong place" is caught.
+
+    **The blind spot, now measured on the corpus rather than argued.** Re-running step 1's mutation
+    (the hazard unit ignores `forwarding: true` — an over-stalling pipeline: right answers, wrong
+    timing) against both nets: conformance **12/12 green**, timing **14 failures**, and the failures
+    are exactly attributable — every `[forwarding on]` case fails, **no** `[forwarding off]` case
+    does. That is INV-8's blind spot and this step's reason to exist, in one command.
+
+    A guard `it()` asserts the table covers every `.s` on disk: conformance enumerates the corpus so
+    a new program is differentially tested automatically, but it would **not** get a timing entry
+    automatically — the table must fail loudly rather than silently stop covering the corpus.
+    Deliberately NOT re-derived here (step 1 already pins them on minimal programs): forward
+    from/to/value, the priority rule, the load-use bubble. The tedious per-forward derivation across
+    10 loop iterations buys nothing.
+
+    _Original plan text:_ The headline decision explains
+    why this is a step and not a footnote: conformance cannot see over-stalling. Author, by
+    hand, the same way M2 pinned its per-class cycle-count table:
+
   - **A pinned cycle-count table** per corpus program × config. The load-bearing assertion is
     not the absolute numbers — it is that **forwarding on is strictly fewer cycles than
     forwarding off**, on a program with real RAW chains, with **identical final state**. That
@@ -424,16 +503,20 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
 
 ## Acceptance criteria (mirror the spec §11 shape, for the pipeline)
 
-- [ ] Pipeline final register + memory state **equals** the golden reference for **every** corpus
+- [x] Pipeline final register + memory state **equals** the golden reference for **every** corpus
       program, under **both** `forwarding: false` and `forwarding: true` (INV-8) — the same 5
-      programs, no new fixtures (INV-7).
-- [ ] **The crown jewel:** the _same program_ under forwarding off vs on produces **identical
-      final architectural state** and **strictly different cycle counts**, visible on the live
-      scrub bar — the spec's flagship interaction (§12), and the one thing conformance
-      structurally cannot prove on its own.
-- [ ] **The bubble that cannot be forwarded away:** the load-use hazard still stalls one cycle
-      with forwarding **on**, and that stall is visible in the trace, the pipeline map, and the
-      datapath.
+      programs, no new fixtures (INV-7). ✅ step 2.
+- [x] **The crown jewel:** the _same program_ under forwarding off vs on produces **identical
+      final architectural state** and **strictly different cycle counts** — the spec's flagship
+      interaction (§12), and the one thing conformance structurally cannot prove on its own.
+      ✅ **headlessly** in step 3, on the four RAW-chained corpus programs (add.s 9→7,
+      byte-loads.s 14→10, array-sum.s 72→51, sum-loop.s 78→56), each with identical final
+      registers/memory/pc. Step 5 still owes the **live scrub bar** half of this.
+- [x] **The bubble that cannot be forwarded away:** the load-use hazard still stalls one cycle
+      with forwarding **on**, and that stall is visible in the trace. ✅ step 1 (minimal program)
+      and step 3 (`array-sum.s`: exactly one `load-use` stall per iteration, at pc 20, in the
+      forwarding-**on** position — the only stall that survives the toggle anywhere in the corpus).
+      The **pipeline map and datapath** halves are still owed by steps 6–7.
 - [ ] Load → step forward to completion → step **backward** to start → **scrub** to any cycle;
       shown state always matches the recorded trace.
 - [ ] **Five instructions are in flight and individually followable** in a single cycle: five ids,
@@ -503,4 +586,6 @@ which belong to steps 6–7.
 | `rd = 0` means two things          | _(not in the seed)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Pinned**, 2026-07-16: the latched `rd` is `0` for BOTH "writes no register" and "writes x0", deliberately — a write to x0 is discarded, so one value says both and every `rd !== 0` test gets "never forward from x0" for free. It is computed from an enumerated `WRITES_RD` set, **never** from `decoded.rd`, whose bits are part of the immediate on an S/B word.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `jal` resolution                   | **Extends the branch row.** Resolve `jal` in EX too, uniform with `jalr`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Pinned**, 2026-07-16 — the gap the seeded table left. "Resolve all control in EX, no ID comparator" already answers it: `jal` emits `branch-resolved` (`actual: true`) + a 2-instruction flush like any taken transfer. There is deliberately no BRANCHES set in the code — "is this a transfer" is just whatever EX resolved a `taken` answer for, which is what makes jal/jalr fall out as ordinary rather than special.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `branch-resolved` on NOT-taken     | _(not in the seed)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Pinned**, 2026-07-16: it fires for **every conditional branch**, taken or not (`target` = the fall-through `pc + 4` when not taken); only a taken one also emits `flush`. More honest about what the branch unit did, and it gives step 3's timing tests and step 8's lesson a resolution event to anchor to on both paths.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Timing pins are a DERIVATION       | _(not in the seed — it asked only for "a pinned cycle-count table")_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | **Pinned**, 2026-07-16 (step 3): the table states **N, T and a pc→cycles stall histogram** per (program, config), and cycles are asserted as **`N + 4 + S + 2·T`** — a closed form summed from the pinned rules, not a number read off a run. Each term is asserted separately against the events that define it: a lone total lets a compensating over-S/under-T pair pass and localizes nothing. `N` and `T` are config-invariant ⇒ `cycles_off − cycles_on = S_off − S_on` is the whole thesis as arithmetic. Placement lives in the histogram (not a second count) so the two cannot drift; keyed by **pc, not cycle**, so a loop's recurring stall stays one hand-checkable entry.                                                                                                                                                                                                                                                                 |
+| Forwarding is not always faster    | _(not in the seed — which implied the crown jewel held generally)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **Pinned**, 2026-07-16 (step 3): `call-return.s` is **17 cycles in BOTH positions** (S = 0 either way — every RAW is separated by a flush gap, which charges the +2 the interlock would have). The crown jewel is asserted on the **four RAW-chained programs**, and call-return's equality is asserted as its own `it()`. Weakening the claim to `≤` across the corpus instead would pass for a pipeline where forwarding did nothing — and the mutation run proves it matters: call-return is one of the two ON cases that **passes** under the over-stalling mutation.                                                                                                                                                                                                                                                                                                                                                                               |
 | `ebreak` / unknown words           | _(not in the seed; the halt row says only `ecall`)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | **Pinned**, 2026-07-16: identical to `ecall` — one `isArchHalt()` predicate, used by BOTH ID (to stop fetching) and EX (to latch `halt`), so the two can never disagree. Mirrors the reference's `default:` arm: `decode` never throws, so an unknown word must halt loudly rather than silently advance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
