@@ -1,9 +1,11 @@
 # Milestone 3 — the classic 5-stage pipeline (hazards, forwarding, stalls, flushes)
 
-**Status: NOT STARTED, 2026-07-16. Nothing built yet; this is the pre-flight plan. Proven so
-far: only that the seams M3 fills already exist (`ProcessorConfig.forwarding`,
+**Status: STEP 0 DONE, 2026-07-16 (440 → 452 tests); the pipeline model itself is not started.
+Proven so far: that the seams M3 fills already exist (`ProcessorConfig.forwarding`,
 `ProcessorCapabilities.configurableForwarding`, and the `forward`/`stall`/`flush`/
-`branch-resolved` events are all declared in the schema today and honored by nobody).
+`branch-resolved` events are all declared in the schema today and honored by nobody), and — as of
+step 0 — that the conformance harness can now see **both** toggle positions, its non-vacuity
+mutation-checked rather than assumed.
 **Step 1's decisions were reviewed and pinned 2026-07-16, before any code** — eleven stood as
 seeded, the halt rule was rewritten (its seed was false about the corpus), and the missing
 intra-cycle ordering decision was added; see the table. Deliberately deferred: configurable
@@ -115,8 +117,44 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. Extend the conformance harness to a config matrix.** `runConformance(modelName,
-makeProcessor)` today calls `runToHalt`, which hardcodes `defaultConfig()` and documents
+- [x] **0. Extend the conformance harness to a config matrix.** ✅ Done (2026-07-16, 440 → 452
+      tests). `runConformance` grew an optional third parameter — a readonly `ProcessorConfig`
+      list defaulting to `[defaultConfig()]` — and runs the corpus once per config. Both
+      `differential.test.ts` files are byte-for-byte untouched (the default parameter is what buys
+      that) and their suites read exactly as before: the config is named in the `it()` title **only
+      when there is more than one**, since labelling a lone neutral config would imply a
+      config-blind model cared about it. The per-(config, program) check was extracted out of the
+      `it()` body into a throwing `checkProgram(makeProcessor, config, file)` — exported from the
+      module but **not** from the package `index.ts`, so models still see only `runConformance` —
+      and `runToHalt` now takes the config as a parameter instead of hardcoding `defaultConfig()`.
+      Non-vacuity is proven in a new `conformance.test.ts` by a **reference-backed stub**: it
+      delegates to the golden reference for its answer (so it is correct by construction) and then
+      corrupts one register in a chosen `forwarding` position. Two claims needed proving, by
+      different means, because neither implies the other. **First, the check is config-sensitive:**
+      `checkProgram` on one stub `not.toThrow()`s under forwarding off and throws an
+      `AssertionError` under forwarding on. The passing half is load-bearing, not decoration — it
+      is what makes the failing half attributable to the perturbation rather than to an incidental
+      error, since a bare `.toThrow()` is satisfied by any crash. That stub is also exactly what
+      the pre-matrix harness was **structurally blind** to: it ran only `defaultConfig()`, whose
+      `forwarding` is `false` — the position the stub is correct in — so it would have gone green.
+      An `it()` pins that rather than leaving it as a comment's claim. **Second, `runConformance`
+      hands each config in its list to the model:** proven through the public entry point by an
+      **inverted** stub (correct only with forwarding _on_) driven over the whole corpus with
+      `[FORWARDING_ON]`. The first claim alone would not catch a loop that iterated configs while
+      passing `defaultConfig()` to every check — a matrix running the corpus N times in the same
+      position, which is the exact vacuity this step exists to remove and which step 2's
+      two-position suite would then pass silently.
+
+      Both guards were **mutation-checked**, not merely observed green: deleting the perturbation
+      fails the first claim's test, and reintroducing the pre-step-0 `defaultConfig()` hardcode
+      fails all five corpus programs under the second. One more `it()` guards an empty `configs`
+      list from skipping the corpus vacuously, mirroring the existing empty-fixture guard. The stub
+      is program-agnostic — it rebuilds its input from the `ProgramImage` handed to `reset`, which
+      is sound because the reference reads only `words`/`data` and never `symbols` — and that is
+      what lets one stub serve both the single-program checks and the whole-corpus suite.
+
+      _Original plan text:_ `runConformance(modelName, makeProcessor)` today calls `runToHalt`,
+      which hardcodes `defaultConfig()` and documents
       itself as "config-agnostic on purpose: passes `defaultConfig` so any `Processor` — whatever
       knobs it honors — runs in its neutral mode." That was right for two config-blind models and
       is wrong the moment a model's behavior depends on config: it would prove the pipeline

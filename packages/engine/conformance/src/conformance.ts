@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { assemble, type AssembledProgram } from '@cpu-viz/assembler';
 import { run, type ReferenceResult } from '@cpu-viz/engine-reference';
 import { toProgramImage } from '@cpu-viz/engine-common';
-import { defaultConfig, type MachineState, type Processor } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type MachineState,
+  type Processor,
+  type ProcessorConfig,
+} from '@cpu-viz/trace';
 
 /**
  * The INV-8 differential net, extracted from `engine/single-cycle` when the second model landed
@@ -18,6 +23,12 @@ import { defaultConfig, type MachineState, type Processor } from '@cpu-viz/trace
  * model's `differential.test.ts` shrinks to a single {@link runConformance} call. Everything in
  * this file is a **model-independent corpus fact** (the corpus, the equality contract, the
  * hand-computed headline oracles), which is why it lives here rather than in any one model's test.
+ *
+ * It is also **parameterized over a list of configs** (m3 step 0), defaulting to the single
+ * neutral {@link defaultConfig}. That default was adequate while every model ignored its config;
+ * it stops being adequate for the first model whose behavior *depends* on config (the pipeline's
+ * forwarding toggle), where running only the neutral config would prove the model correct in one
+ * toggle position and say nothing at all about the other.
  *
  * The example corpus IS the fixture set (spec §9: "one corpus, three jobs"): every `.s` under
  * `content/programs/` is enumerated from disk, so a program added later is covered automatically.
@@ -39,13 +50,17 @@ function asm(source: string): AssembledProgram {
 }
 
 /**
- * Drive a freshly-built processor to a halt, capped so a runaway program throws (not hangs).
- * Config-agnostic on purpose: passes {@link defaultConfig} so any {@link Processor} — whatever
- * knobs it honors — runs in its neutral mode.
+ * Drive a freshly-built processor to a halt under `config`, capped so a runaway program throws
+ * (not hangs). Whether a model honors any of `config` is its own business — a config-blind model
+ * behaves identically whatever it is handed.
  */
-function runToHalt(makeProcessor: () => Processor, program: AssembledProgram): MachineState {
+function runToHalt(
+  makeProcessor: () => Processor,
+  program: AssembledProgram,
+  config: ProcessorConfig,
+): MachineState {
   const cpu = makeProcessor();
-  cpu.reset(toProgramImage(program), defaultConfig());
+  cpu.reset(toProgramImage(program), config);
   let steps = 0;
   while (!cpu.isHalted()) {
     if (steps >= MAX_STEPS) {
@@ -110,43 +125,90 @@ const PROGRAMS = readdirSync(PROGRAMS_DIR)
   .sort();
 
 /**
- * Register the full INV-8 conformance suite for one model. `modelName` labels the `describe`
- * block; `makeProcessor` builds a fresh instance per program. Call this at the top level of a
- * model's `differential.test.ts` — that file then carries no corpus, oracle, or equality logic.
+ * The whole INV-8 check for ONE (config, program) pair: assemble, run the reference, run the
+ * model under `config`, and assert equivalence. **Throws** (a vitest assertion error) on any
+ * mismatch — it makes no `it()` registration of its own.
+ *
+ * Extracted from the `it()` body so the harness is testable by the same means it tests models
+ * with: `conformance.test.ts` calls this directly with a stub and asserts it throws under one
+ * config and not the other. Deliberately NOT re-exported from the package `index.ts` — models
+ * see only {@link runConformance}.
  */
-export function runConformance(modelName: string, makeProcessor: () => Processor): void {
+export function checkProgram(
+  makeProcessor: () => Processor,
+  config: ProcessorConfig,
+  file: string,
+): void {
+  const program = asm(readFileSync(PROGRAMS_DIR + file, 'utf8'));
+
+  const reference: ReferenceResult = run(program, { maxSteps: MAX_STEPS });
+  const model = runToHalt(makeProcessor, program, config);
+
+  // Both must genuinely halt — a max-steps stop would compare two truncated runs.
+  expect(reference.haltReason, `reference halt reason for ${file}`).not.toBe('max-steps');
+  expect(model.halted).toBe(true);
+
+  expectEquivalent(reference.state, model);
+
+  // Headline-result oracle (correctness, not just agreement) against the reference.
+  const oracle = RESULT_ORACLES[file];
+  if (oracle) {
+    for (const [reg, value] of Object.entries(oracle.regs ?? {})) {
+      expect(reference.state.registers[Number(reg)], `x${reg} in ${file}`).toBe(value);
+    }
+    for (const [label, value] of Object.entries(oracle.mem ?? {})) {
+      const addr = program.symbols.get(label);
+      expect(addr, `label '${label}' in ${file}`).toBeDefined();
+      expect(reference.state.memory.readWord(addr!), `${label} in ${file}`).toBe(value);
+    }
+  }
+}
+
+/**
+ * Name a config for an `it()` title, so a failure says which position broke. Only the knobs a
+ * model can actually honor today are worth naming; `branchPrediction` and `cache` join this when
+ * a model honors them (M4).
+ */
+function configLabel(config: ProcessorConfig): string {
+  return `forwarding ${config.forwarding ? 'on' : 'off'}`;
+}
+
+/**
+ * Register the full INV-8 conformance suite for one model, once per config in `configs`.
+ * `modelName` labels the `describe` block; `makeProcessor` builds a fresh instance per (config,
+ * program) pair. Call this at the top level of a model's `differential.test.ts` — that file then
+ * carries no corpus, oracle, or equality logic.
+ *
+ * `configs` defaults to the single neutral {@link defaultConfig}, which is why the config-blind
+ * models' suites read and behave exactly as they did before the matrix existed. A model whose
+ * behavior depends on config passes every position it claims to honor, e.g.
+ * `runConformance('pipeline', () => new PipelineProcessor(), [forwardingOff, forwardingOn])`.
+ */
+export function runConformance(
+  modelName: string,
+  makeProcessor: () => Processor,
+  configs: readonly ProcessorConfig[] = [defaultConfig()],
+): void {
   describe(`INV-8: ${modelName} ≡ golden reference on every example program`, () => {
     // Guard against a silently empty fixture set (e.g. a path regression) passing vacuously.
     it('discovers the example corpus on disk', () => {
       expect(PROGRAMS.length).toBeGreaterThan(0);
     });
 
-    for (const file of PROGRAMS) {
-      it(`${file}: final reg + mem state matches the reference`, () => {
-        const program = asm(readFileSync(PROGRAMS_DIR + file, 'utf8'));
+    // ...and against an empty matrix doing the same, which would skip the corpus entirely.
+    it('runs the corpus under at least one config', () => {
+      expect(configs.length).toBeGreaterThan(0);
+    });
 
-        const reference: ReferenceResult = run(program, { maxSteps: MAX_STEPS });
-        const model = runToHalt(makeProcessor, program);
-
-        // Both must genuinely halt — a max-steps stop would compare two truncated runs.
-        expect(reference.haltReason, `reference halt reason for ${file}`).not.toBe('max-steps');
-        expect(model.halted).toBe(true);
-
-        expectEquivalent(reference.state, model);
-
-        // Headline-result oracle (correctness, not just agreement) against the reference.
-        const oracle = RESULT_ORACLES[file];
-        if (oracle) {
-          for (const [reg, value] of Object.entries(oracle.regs ?? {})) {
-            expect(reference.state.registers[Number(reg)], `x${reg} in ${file}`).toBe(value);
-          }
-          for (const [label, value] of Object.entries(oracle.mem ?? {})) {
-            const addr = program.symbols.get(label);
-            expect(addr, `label '${label}' in ${file}`).toBeDefined();
-            expect(reference.state.memory.readWord(addr!), `${label} in ${file}`).toBe(value);
-          }
-        }
-      });
+    for (const config of configs) {
+      // A label only distinguishes when there is something to distinguish; naming a lone neutral
+      // config would suggest a config-blind model cared about it.
+      const suffix = configs.length > 1 ? ` [${configLabel(config)}]` : '';
+      for (const file of PROGRAMS) {
+        it(`${file}${suffix}: final reg + mem state matches the reference`, () => {
+          checkProgram(makeProcessor, config, file);
+        });
+      }
     }
   });
 }
