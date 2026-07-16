@@ -362,14 +362,49 @@ describe('the BET and the CORRECTION — two redirects, two stages (M4 step 5)',
       t.events.some((e) => e.type === 'branch-resolved' && e.predicted && !e.actual),
     );
     expect(cycle, 'no lost bet — the program does not test what it claims').toBeDefined();
-    const resolved = cycle!.events.find((e) => e.type === 'branch-resolved')!;
     const act = activate(cycle!);
     expect(act.wires.has('pcarith-pcmux'), 'a lost bet corrects, and it must be drawn').toBe(true);
-    expect(act.wires.get('pcarith-pcmux')?.value).toBe(
-      resolved.type === 'branch-resolved' ? resolved.target : -1,
+    expect(act.wires.get('pcarith-pcmux')?.stage).toBe('EX');
+  });
+
+  /**
+   * **The value on that wire is a SECOND question, and the first draft of this suite got it wrong
+   * in the most instructive way available: it pinned the contradiction as intended.**
+   *
+   * `branch-resolved.target` is the resolved next pc "whichever way it went" — which reads like a
+   * licence to label the redirect with it, and is the opposite. The wire is drawn out of `pcarith`,
+   * whose two operands are drawn and labelled `pc` and `imm`. A TAKEN correction carries `pc + imm`,
+   * so the label is explained by the picture. A LOST BET's correction carries `pc + 4`, and pasting
+   * that on pcarith's output draws **an adder fed `0` and `8` emitting `4`** — measured, not feared.
+   *
+   * So `actual` returns as the LABEL condition while `predicted !== actual` stays the REDIRECT
+   * condition: M3's single `if` was doing two jobs that only looked like one because they agreed.
+   *
+   * Mutation: label it `resolved.target` unconditionally and this fails with `0 + 8 = 4` drawn.
+   */
+  it('...but the fall-through is NOT labelled: pcarith did not compute `pc + 4` from `pc` and `imm`', () => {
+    const lost = record(NEVER_BRANCH, BET).find((t) =>
+      t.events.some((e) => e.type === 'branch-resolved' && e.predicted && !e.actual),
+    )!;
+    const a = activate(lost);
+    // The operands the diagram commits to, and the reason the output cannot say 4.
+    expect(a.wires.get('idex-pcarith-pc')?.value, 'the branch is at pc 0').toBe(0);
+    expect(a.wires.get('idex-pcarith-imm')?.value, 'and its immediate is 8').toBe(8);
+    expect(a.wires.get('pcarith-pcmux')?.value, '0 + 8 = 4 would be drawn').toBeUndefined();
+
+    // The TAKEN correction is labelled, because there `target` IS `pc + imm` — the contrast is the
+    // whole point, and without it "never label the redirect" would pass this file just as well.
+    const won = record(TAKEN_BRANCH, FWD).find((t) =>
+      t.events.some((e) => e.type === 'branch-resolved' && !e.predicted && e.actual),
+    )!;
+    const b = activate(won);
+    const target = won.events.find((e) => e.type === 'branch-resolved')!;
+    expect(b.wires.get('pcarith-pcmux')?.value).toBe(
+      target.type === 'branch-resolved' ? target.target : -1,
     );
-    // ...and the correction really is the fall-through, not the target: the branch is at pc 0.
-    expect(act.wires.get('pcarith-pcmux')?.value).toBe(4);
+    expect(b.wires.get('idex-pcarith-pc')!.value! + b.wires.get('idex-pcarith-imm')!.value!).toBe(
+      b.wires.get('pcarith-pcmux')!.value,
+    );
   });
 
   /**

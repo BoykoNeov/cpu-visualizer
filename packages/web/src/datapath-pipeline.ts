@@ -623,12 +623,27 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
     //   - a bet that loses (`predicted && !actual`) redirects back to the FALL-THROUGH and would
     //     draw nothing at all, which is `call-return.s`'s `bge` and the whole regression.
     // This is step 3's `2·T` trap one layer up: a rule that was specific in a place that read as
-    // general. `target` is the resolved next pc "whichever way it went", so it labels both.
-    const mispredicted =
-      resolved && resolved.type === 'branch-resolved' && resolved.predicted !== resolved.actual;
-    if (resolved && resolved.type === 'branch-resolved' && mispredicted) {
+    // general.
+    //
+    // **And `actual` comes back — as the LABEL condition, which is a DIFFERENT question.** M3 had
+    // one `if` doing two jobs, and they only looked like one job because they coincided:
+    //
+    //   - WHETHER to redirect  → `predicted !== actual` (was the guess wrong?)
+    //   - WHETHER to label it  → `actual` (is the answer the thing `pcarith` computed?)
+    //
+    // `target` is documented as the resolved next pc "whichever way it went", and that is exactly
+    // why it cannot be pasted onto this wire unconditionally. A TAKEN correction carries `pc + imm`
+    // — precisely the two operands drawn into `pcarith`, so the label is explained by the picture.
+    // A LOST BET's correction carries the FALL-THROUGH, `pc + 4`, and labelling that as pcarith's
+    // output draws an adder fed `0` and `8` emitting `4`: `0 + 8 → 4`, on the canvas. So the value
+    // is omitted there and the wire lights bare — the redirect HAPPENED, which is the load-bearing
+    // fact, and no number is invented that the drawn operands contradict (INV-5: omit, never
+    // contradict). It is the same call this file already makes for `pcarith-exmem`, whose output
+    // is likewise never labelled; the redirect was simply the one place pcarith's output carried a
+    // number, and it got away with it while `target` could only ever mean `pc + imm`.
+    if (resolved && resolved.type === 'branch-resolved' && resolved.predicted !== resolved.actual) {
       const redirect = d.mnemonic === 'jalr' ? 'alu-pcmux' : 'pcarith-pcmux';
-      w(redirect, 'EX', exInst, resolved.target, 'hex');
+      w(redirect, 'EX', exInst, resolved.actual ? resolved.target : undefined, 'hex');
     }
     c('idex');
     c('exmem');

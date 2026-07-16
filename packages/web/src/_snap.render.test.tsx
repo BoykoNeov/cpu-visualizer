@@ -184,7 +184,11 @@ RUN('emit datapath snapshots', () => {
 
     // Focused expert pages: the load-use bubble (the stall that survives forwarding, lighting the
     // hazard unit) and a taken branch (the redirect M2's datapath could not honestly draw).
-    emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 4, true)} cycleKey={3} tier="expert" config={ON} />))); // prettier-ignore
+    // Cycle 2, not 3: the stall fires at 2, and this page rendered 3 — so the one page titled
+    // "load-use stall" had never actually shown the hazard unit fire. Caught while checking that
+    // moving the hazard unit up 20px (to open the ID band for the bet adder) had not crowded its
+    // labels — which needed a page where it is LIT, and there wasn't one.
+    emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 3, true)} cycleKey={2} tier="expert" config={ON} />))); // prettier-ignore
     emit('pl-focus-branch', block('pipeline · taken branch redirect · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\ntgt:\n addi x2, x0, 2', 4, true)} cycleKey={3} tier="expert" config={BET} />))); // prettier-ignore
 
     // --- The PREDICTION axis (M4 step 5): the bet, and what it costs when it is wrong ----------
