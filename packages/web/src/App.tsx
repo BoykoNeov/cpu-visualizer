@@ -61,7 +61,13 @@ export function App(): React.JSX.Element {
   // (unlike the corpus programs, edited source can be syntactically broken).
   const showEditor = editorOpen || sim.errors !== null;
 
-  // The single in-flight instruction this cycle (single-cycle: exactly one, or none pre-run).
+  // The instruction the transport chip names and the source panel highlights. `instructions[]` is
+  // ordered oldest-first (nearest retirement), so this is the ONLY in-flight instruction on
+  // single-cycle and multi-cycle — but on the pipeline it is the one in WB, with up to four
+  // younger ones behind it. That is lawful simplification, not a contradiction (INV-5): the line
+  // shown is a genuinely in-flight instruction, just not the whole story. Showing all five at once
+  // is the pipeline map's job (M3 step 7); until then the placeholder datapath is what signals the
+  // picture is incomplete. Pinned by a test in `simulator.test.ts`.
   const inFlight = sim.cycleTrace?.instructions[0] ?? null;
   const activeLine = inFlight?.sourceLine ?? null;
   const writtenRegs = useMemo(() => {
@@ -115,6 +121,11 @@ export function App(): React.JSX.Element {
               ))}
             </select>
           </label>
+          {/* Only for a model that actually honors the config — absent, not disabled, elsewhere:
+              a control that cannot move anything is worse than no control. */}
+          {activeModel.capabilities.configurableForwarding ? (
+            <ForwardingToggle on={sim.forwarding} setOn={sim.setForwarding} />
+          ) : null}
           <label>
             Program:{' '}
             <select
@@ -528,6 +539,52 @@ function DepthDial(props: { tier: DepthTier; setTier: (t: DepthTier) => void }):
             style={{ textTransform: 'capitalize' }}
           >
             {t}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The forwarding toggle (M3 step 5) — the spec's flagship experiment (§12.2): "watch a RAW hazard
+ * stall without forwarding; turn forwarding on and watch the bubble vanish." Unlike the depth dial
+ * next to it, this is NOT a view concern: it changes `ProcessorConfig.forwarding`, so the engine
+ * re-records the program and the trace genuinely differs (the first model whose trace depends on
+ * its config). That is why flipping it parks the cursor back at pre-run — there is a new timeline
+ * to walk, not a redrawn picture of the old one.
+ *
+ * Rendered only where `capabilities.configurableForwarding` is true, so it does not exist for
+ * single-cycle or multi-cycle.
+ */
+function ForwardingToggle(props: { on: boolean; setOn: (on: boolean) => void }): React.JSX.Element {
+  const { on, setOn } = props;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        Forwarding
+      </span>
+      <div className="seg">
+        {([false, true] as const).map((position) => (
+          <button
+            key={String(position)}
+            className={position === on ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setOn(position)}
+            aria-pressed={position === on}
+            title={
+              position
+                ? 'Forwarding ON — results are routed straight to the next instruction; most RAW stalls vanish (the load-use bubble does not)'
+                : 'Forwarding OFF — a RAW hazard interlocks in ID until the producer writes back'
+            }
+          >
+            {position ? 'on' : 'off'}
           </button>
         ))}
       </div>

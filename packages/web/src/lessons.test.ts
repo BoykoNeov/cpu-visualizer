@@ -10,7 +10,8 @@ import {
   type LessonStep,
 } from '@cpu-viz/curriculum';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
-import type { CycleTrace, TraceEvent } from '@cpu-viz/trace';
+import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { defaultConfig, type CycleTrace, type TraceEvent } from '@cpu-viz/trace';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { LESSONS } from './lessons';
 import { loadSource } from './simulator';
@@ -41,6 +42,24 @@ function recordProgramMultiCycle(programName: string): readonly CycleTrace[] {
   const program = EXAMPLE_PROGRAMS.find((p) => p.name === programName);
   expect(program, `lesson program "${programName}" is not in the corpus`).toBeDefined();
   const result = loadSource(program!.source, () => new MultiCycleProcessor());
+  expect(result.ok, `"${programName}" should assemble`).toBe(true);
+  if (!result.ok) throw new Error('unreachable: assembly failed');
+  result.loaded.recorder.runToEnd();
+  return result.loaded.recorder.recorded;
+}
+
+/**
+ * As {@link recordProgram}, but driven by the 5-stage pipeline under a chosen `forwarding`
+ * position (M3 step 5) — the first model whose TRACE depends on its CONFIG, and so the first
+ * time a lesson has to survive a config swap rather than only a model swap.
+ */
+function recordProgramPipeline(programName: string, forwarding: boolean): readonly CycleTrace[] {
+  const program = EXAMPLE_PROGRAMS.find((p) => p.name === programName);
+  expect(program, `lesson program "${programName}" is not in the corpus`).toBeDefined();
+  const result = loadSource(program!.source, () => new PipelineProcessor(), {
+    ...defaultConfig(),
+    forwarding,
+  });
   expect(result.ok, `"${programName}" should assemble`).toBe(true);
   if (!result.ok) throw new Error('unreachable: assembly failed');
   result.loaded.recorder.runToEnd();
@@ -239,4 +258,114 @@ describe('authored lessons play against multi-cycle too (INV-6 cross-model)', ()
       );
     });
   }
+});
+
+/**
+ * INV-6 across CONFIGS (M3 step 5) — the acceptance line "lessons still anchor in order across a
+ * config swap". The multi-cycle suite above proved a lesson survives a MODEL swap; the pipeline is
+ * the first model whose trace depends on its CONFIG, so the forwarding toggle is the first thing
+ * that can move a lesson's anchors WITHOUT changing the model. That is the exact scenario INV-6
+ * exists for — anchor to events, not cycle numbers — and the toggle is a control the user can flip
+ * mid-lesson, so a stranded step here would be a shipped bug, not a hypothetical.
+ *
+ * Note the pipeline emits event types nothing before it did (`forward`/`stall`/`flush`/
+ * `branch-resolved`) and fetches instructions that are later squashed. Neither perturbs these
+ * lessons' `nth` counts: the anchored events are architectural (`reg-write`/`mem-*` fire only from
+ * a non-squashed WB/MEM, and a flush kills its casualties before EX, so no squashed instruction
+ * ever emits an `alu-op`), and the one `instr-fetch` anchor is `nth: 1` — instruction #0, which is
+ * fetched before anything can flush it.
+ */
+describe('authored lessons play against the pipeline, in BOTH forwarding positions (INV-6)', () => {
+  const POSITIONS = [
+    { label: 'forwarding off', forwarding: false },
+    { label: 'forwarding on', forwarding: true },
+  ] as const;
+
+  for (const lesson of LESSONS) {
+    for (const { label, forwarding } of POSITIONS) {
+      it(`${lesson.id}: every step anchors under the pipeline [${label}], in order, with narration`, () => {
+        const trace = recordProgramPipeline(lesson.program, forwarding);
+        const anchored = anchorLesson(lesson, trace);
+
+        for (const step of anchored) {
+          expect(
+            step.cycle,
+            `"${stepLabel(step.step)}" never fired under the pipeline [${label}]`,
+          ).not.toBeNull();
+        }
+        expect(anchorOrderViolations(anchored)).toEqual([]);
+        for (const { step } of anchored) {
+          expect(resolveNarration(step.narration, lesson.depthDefault)).toBeDefined();
+        }
+
+        const last = anchored[anchored.length - 1]!;
+        expect(activeStepAt(anchored, last.cycle!)?.index).toBe(last.index);
+        expect(narrationFor(anchored, last.cycle!, lesson.depthDefault)).toBe(
+          resolveNarration(last.step.narration, lesson.depthDefault),
+        );
+      });
+    }
+
+    /**
+     * The invariant stated precisely: flipping the toggle changes WHEN a step fires, never WHAT it
+     * fires on. Compares the anchored event payload itself rather than merely "it anchored" — a
+     * step that silently slid onto a different occurrence of the same event type (right type, wrong
+     * event) still anchors non-null and would pass the tests above.
+     *
+     * `instr` is stripped: ids are minted per fetch, and the two positions fetch a different number
+     * of doomed shadow instructions, so the ids legitimately differ. The id is the one field of an
+     * event that is about the RUN rather than about what the machine did.
+     */
+    it(`${lesson.id}: the toggle changes when a step fires, never what it fires on`, () => {
+      const off = recordProgramPipeline(lesson.program, false);
+      const on = recordProgramPipeline(lesson.program, true);
+      // Not a destructure: `instr` is not on every arm of the union (a `flush` names its casualties
+      // in `stages` and carries no single instruction), so it is deleted where present instead.
+      const withoutId = (e: TraceEvent): Record<string, unknown> => {
+        const rest: Record<string, unknown> = { ...e };
+        delete rest['instr'];
+        return rest;
+      };
+
+      const payloads = (trace: readonly CycleTrace[]): Record<string, unknown>[] =>
+        anchorLesson(lesson, trace).map((a) => withoutId(anchoredEvent(trace, a)));
+
+      expect(payloads(on)).toEqual(payloads(off));
+    });
+  }
+
+  /**
+   * Non-vacuity, and the crown jewel at the lesson layer. Everything above would pass trivially if
+   * the config were ignored and both positions recorded the identical trace — so pin that the
+   * anchors genuinely MOVE: `sum-loop-tour`'s final step (a0 = 55) lands on a strictly earlier
+   * cycle with forwarding on, because the interlocks it waited on are gone. Same lesson, same
+   * event, different cycle: INV-6's whole reason to exist, and the reason a lesson can be authored
+   * once and survive a control the user flips underneath it.
+   *
+   * Deliberately asserted on `sum-loop` and NOT across the corpus: step 3 measured that
+   * `call-return` (which backs the `function-call` lesson) takes 17 cycles in BOTH positions —
+   * every RAW in it already sits behind a flush gap — so its anchors do not move at all, and a
+   * blanket "every lesson shifts" claim would be false about the corpus we ship.
+   */
+  it('a lesson step anchors to an EARLIER cycle with forwarding on (and the same event)', () => {
+    const lesson = byId('sum-loop-tour');
+    const off = recordProgramPipeline(lesson.program, false);
+    const on = recordProgramPipeline(lesson.program, true);
+
+    const lastOff = anchorLesson(lesson, off).at(-1)!;
+    const lastOn = anchorLesson(lesson, on).at(-1)!;
+
+    expect(lastOn.cycle).toBeLessThan(lastOff.cycle!);
+    // ...and it is still the same event: a0 reaching the total, 55.
+    for (const [trace, anchored] of [
+      [off, lastOff],
+      [on, lastOn],
+    ] as const) {
+      expect(anchoredEvent(trace, anchored)).toMatchObject({
+        type: 'reg-write',
+        reg: 10,
+        value: 55,
+      });
+    }
+  });
 });

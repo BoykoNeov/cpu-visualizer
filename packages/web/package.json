@@ -15,6 +15,7 @@
     "@cpu-viz/curriculum": "*",
     "@cpu-viz/engine-common": "*",
     "@cpu-viz/engine-multi-cycle": "*",
+    "@cpu-viz/engine-pipeline": "*",
     "@cpu-viz/engine-single-cycle": "*",
     "@cpu-viz/isa": "*",
     "@cpu-viz/trace": "*",

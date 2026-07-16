@@ -9,7 +9,7 @@
 
 import type { AssembledProgram, AssemblerError } from '@cpu-viz/assembler';
 import { anchorLesson, type AnchoredStep, type Lesson } from '@cpu-viz/curriculum';
-import type { CycleTrace, MachineState } from '@cpu-viz/trace';
+import { defaultConfig, type CycleTrace, type MachineState } from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_MODEL_ID, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -52,6 +52,15 @@ export interface Simulator {
    * animate against the selected model unchanged.
    */
   model: string;
+  /**
+   * Whether the driving engine is configured to forward (`ProcessorConfig.forwarding`) — the
+   * spec's flagship experiment (§12): flip it and watch the same program's bubbles vanish. Held
+   * at SESSION level and handed to every model, not just the pipeline: a config-blind engine is
+   * simply unmoved by it (pinned in `simulator.test.ts`), so the value survives a trip through
+   * single-cycle and is still set when the user comes back. Only models whose
+   * `capabilities.configurableForwarding` is true have a control for it (M3 step 5).
+   */
+  forwarding: boolean;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -102,6 +111,14 @@ export interface Simulator {
    * model's trace (INV-6).
    */
   setModel: (id: string) => void;
+  /**
+   * Flip `ProcessorConfig.forwarding` and re-record the current source under it (same program,
+   * same session, same model; the cursor parks at pre-run). The flagship interaction: the trace
+   * genuinely changes, so there is nothing to update in place — a fresh recording IS the
+   * mechanism, exactly as {@link setModel} does for the engine. A no-op if already in that
+   * position, so it never needlessly discards the cursor.
+   */
+  setForwarding: (on: boolean) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -137,6 +154,12 @@ export function useSimulator(): Simulator {
   // identity on a model switch and re-fire the mount effect, clobbering the current program.
   const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
   const makeProcessor = useRef(modelById(DEFAULT_MODEL_ID).make);
+  // The forwarding position, mirroring `model`/`makeProcessor` exactly: the state drives
+  // rendering (the toggle's position), the ref is what `loadInto` reads at call time so the load
+  // path takes no dependency on it. Starts OFF — the pedagogically right opening move is to watch
+  // a RAW hazard stall first, THEN flip it on and watch the bubble vanish (§12.2).
+  const [forwarding, setForwardingState] = useState(false);
+  const forwardingRef = useRef(forwarding);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -147,7 +170,10 @@ export function useSimulator(): Simulator {
   // exclusive: a program either fails to assemble or fails to terminate, never both).
   const loadInto = useCallback(
     (source: string) => {
-      const result = loadSource(source, makeProcessor.current);
+      const result = loadSource(source, makeProcessor.current, {
+        ...defaultConfig(),
+        forwarding: forwardingRef.current,
+      });
       if (!result.ok) {
         loaded.current = null;
         setErrors(result.errors);
@@ -232,6 +258,22 @@ export function useSimulator(): Simulator {
     [model, loadInto],
   );
 
+  const setForwarding = useCallback(
+    (on: boolean) => {
+      if (on === forwardingRef.current) return; // already there — keep the cursor where it is
+      forwardingRef.current = on; // read by loadInto below (and every later load)
+      setForwardingState(on);
+      // Re-record whatever is loaded under the new config. Same shape as `setModel`: the source
+      // is the exact running text (corpus program or sandbox edit), so re-loading keeps the
+      // session and any active lesson intact while changing only the microarchitecture's config.
+      // The lesson re-anchors against the new recording — its steps anchor to EVENTS, so they
+      // survive the cycle numbers moving underneath them (INV-6).
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
   // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
   // counting loop is the clearest first teaching example; `add` (which sorts first) halts
   // by running off text-end, so its final pc is an out-of-range value that reads as odd.
@@ -280,6 +322,7 @@ export function useSimulator(): Simulator {
   );
   return {
     model,
+    forwarding,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -295,6 +338,7 @@ export function useSimulator(): Simulator {
     state: recorder ? recorder.currentState() : null,
     cycleTrace: recorder ? recorder.current() : null,
     setModel,
+    setForwarding,
     select,
     startLesson,
     loadEdited,

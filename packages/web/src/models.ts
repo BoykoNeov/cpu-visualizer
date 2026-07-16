@@ -7,9 +7,22 @@
  * work against any model unchanged.
  */
 
-import { MultiCycleProcessor, MULTI_CYCLE_MODEL_ID } from '@cpu-viz/engine-multi-cycle';
-import { SingleCycleProcessor, SINGLE_CYCLE_MODEL_ID } from '@cpu-viz/engine-single-cycle';
-import type { Processor } from '@cpu-viz/trace';
+import {
+  MultiCycleProcessor,
+  MULTI_CYCLE_CAPABILITIES,
+  MULTI_CYCLE_MODEL_ID,
+} from '@cpu-viz/engine-multi-cycle';
+import {
+  PipelineProcessor,
+  PIPELINE_CAPABILITIES,
+  PIPELINE_MODEL_ID,
+} from '@cpu-viz/engine-pipeline';
+import {
+  SingleCycleProcessor,
+  SINGLE_CYCLE_CAPABILITIES,
+  SINGLE_CYCLE_MODEL_ID,
+} from '@cpu-viz/engine-single-cycle';
+import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
 
 /**
  * Which bespoke SVG datapath view (if any) renders a model's trace. Each model has its OWN
@@ -32,6 +45,15 @@ export interface ModelChoice {
   make: () => Processor;
   /** Which bespoke SVG datapath view renders this model's trace (or `'none'`). */
   datapath: DatapathKind;
+  /**
+   * What the model honors (handoff §6) — the engine's OWN exported constant, which is the very
+   * object its instances return from `.capabilities` (pinned by a test in `models.test.ts`, since
+   * a copy-pasted row could otherwise pair one model's flags with another's engine). Held here so
+   * the shell can gate config controls WITHOUT instantiating an engine: the forwarding toggle
+   * renders only where `configurableForwarding` is true, so it is simply absent for single-cycle
+   * and multi-cycle rather than present-and-lying.
+   */
+  capabilities: ProcessorCapabilities;
 }
 
 export const MODELS: readonly ModelChoice[] = [
@@ -41,6 +63,7 @@ export const MODELS: readonly ModelChoice[] = [
     description: 'single-cycle RV32I — one instruction enters and completes per cycle',
     make: () => new SingleCycleProcessor(),
     datapath: 'single-cycle',
+    capabilities: SINGLE_CYCLE_CAPABILITIES,
   },
   {
     id: MULTI_CYCLE_MODEL_ID,
@@ -48,6 +71,19 @@ export const MODELS: readonly ModelChoice[] = [
     description: 'multi-cycle RV32I — one instruction in flight, its phases spread across cycles',
     make: () => new MultiCycleProcessor(),
     datapath: 'multi-cycle',
+    capabilities: MULTI_CYCLE_CAPABILITIES,
+  },
+  {
+    id: PIPELINE_MODEL_ID,
+    label: 'Pipeline',
+    description:
+      '5-stage pipeline — five instructions in flight at once, with forwarding, stalls, and flushes',
+    make: () => new PipelineProcessor(),
+    // No bespoke geometry yet (M3 step 6 authors it). Deliberately NOT reusing multi-cycle's
+    // diagram: it draws a single shared memory and one instruction in flight, so a pipeline trace
+    // would light it into a contradictory picture (INV-5). The placeholder is the honest stand-in.
+    datapath: 'none',
+    capabilities: PIPELINE_CAPABILITIES,
   },
 ];
 
