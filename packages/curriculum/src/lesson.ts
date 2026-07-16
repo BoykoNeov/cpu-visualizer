@@ -49,11 +49,27 @@ export interface Lesson {
   /** Which microarchitecture (model family id, handoff §2). */
   model: string;
   /**
-   * Feature toggles the lesson runs under (forwarding, prediction, cache, …). Optional
-   * because the single-cycle model ignores config; a consumer falls back to
-   * `defaultConfig()` when absent.
+   * The feature toggles the lesson has an OPINION about (forwarding, prediction, cache, …). Every
+   * knob is optional, and absent means "leave it as the user set it" — not "use the default".
+   *
+   * **`Partial`, and that is load-bearing (M4 step 4).** This was a full `ProcessorConfig` while
+   * `forwarding` was the only knob any model honored, and the two readings were indistinguishable:
+   * a lesson that declared a config declared *the* knob, so "declared a config" and "has an opinion
+   * about forwarding" were the same statement. The rule `lessonOpening` pins — *config is honored
+   * only when DECLARED, because a lesson with no opinion must not silently reset a position the
+   * user chose* — was therefore always per-KNOB in its prose and per-CONFIG in its type, and
+   * nothing could tell.
+   *
+   * A second honored knob separates them. `forwarding-bubble` is about stalls and has no opinion
+   * whatsoever about branch prediction, but a required field forced it to state one anyway
+   * (`"branchPrediction": "none"` — boilerplate, never a decision). That leaves only two behaviors,
+   * and the pinned rule calls both bugs: honor it and starting a forwarding lesson silently resets
+   * a prediction the user picked; ignore it and the field is declared-and-honored-by-nobody, the
+   * exact M1-era defect step 8 fixed. `Partial` makes "declared" mean per-knob, which is what the
+   * rule always said — so the fix is a type weakening plus a subtraction from the JSON, not a new
+   * field.
    */
-  config?: ProcessorConfig;
+  config?: Partial<ProcessorConfig>;
   depthDefault: DepthTier;
   steps: LessonStep[];
 }

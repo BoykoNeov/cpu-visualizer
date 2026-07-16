@@ -12,6 +12,7 @@
  */
 
 import type { Lesson } from '@cpu-viz/curriculum';
+import type { ProcessorConfig } from '@cpu-viz/trace';
 
 export type Session =
   | { kind: 'example'; programName: string }
@@ -61,6 +62,38 @@ export interface LessonOpening {
   modelId: string;
   /** The forwarding position to record in. */
   forwarding: boolean;
+  /** The branch-prediction scheme to record in (M4 step 4). */
+  branchPrediction: BranchPrediction;
+}
+
+/**
+ * The branch-prediction scheme, named off the config rather than re-declared — one union, in the
+ * schema that owns it. Three names; the pipeline gives them **two behaviors** (`'none'` and
+ * `'static-not-taken'` are one machine, M4 step 1), which is why {@link predictsTaken} exists and
+ * why the shell's control has two positions rather than three.
+ */
+export type BranchPrediction = ProcessorConfig['branchPrediction'];
+
+/**
+ * Does this scheme bet that a branch is TAKEN? The shell's whole reading of the knob, in one
+ * place, because it decides two things that must agree: which position of the control is lit, and
+ * whether {@link Simulator.setBranchPrediction} has anything to re-record.
+ *
+ * **Why a predicate and not value-equality.** `'none'` and `'static-not-taken'` are the same
+ * machine, so a control whose "not taken" position is lit for BOTH is telling the truth — but a
+ * no-op guard written as `next === current` would not know that, and clicking the already-lit "not
+ * taken" button while the config still reads `'none'` (which is what `defaultConfig()` opens on)
+ * would re-record a byte-identical trace and dump the cursor back to pre-run. A visible cursor
+ * loss from clicking a lit button. The guard is on the BEHAVIOR; so is the highlight.
+ *
+ * This is a view-local rule about the shell's control, not a re-statement of engine internals
+ * (INV-3) — its justification is a measured engine fact, pinned in `simulator.test.ts`: the three
+ * schemes produce exactly TWO distinct recordings, so two positions cover the machine. If a
+ * dynamic scheme ever joins the union, that test fails and forces the control to grow a position
+ * rather than silently classifying the newcomer as "not taken".
+ */
+export function predictsTaken(scheme: BranchPrediction): boolean {
+  return scheme === 'static-taken';
 }
 
 /**
@@ -82,18 +115,31 @@ export interface LessonOpening {
  *    cycle" — true on single-cycle, false on multi-cycle and false on the pipeline. A lesson's
  *    ANCHORS survive a model swap (INV-6, and `lessons.test.ts` proves it); its WORDS do not.
  *    Anchoring is not truth, so a lesson opens on the model it was written for.
- *  - **`config` is honored only when DECLARED.** The forwarding position is session-level and
- *    persists across model switches (M3 step 5). A lesson with no opinion about forwarding —
- *    single-cycle ignores the knob entirely — must not silently reset a position the user chose,
- *    so `undefined` means "leave it alone", not "fall back to the default".
+ *  - **`config` is honored only when DECLARED, per KNOB.** The config position is session-level and
+ *    persists across model switches (M3 step 5). A lesson with no opinion about a knob — single-
+ *    cycle ignores them entirely — must not silently reset a position the user chose, so
+ *    `undefined` means "leave it alone", not "fall back to the default".
  *
- * This is the OPENING position only. The picker and the toggle stay live afterwards, so the
+ * **The per-KNOB reading is M4 step 4's, and the type could not express it before** (see
+ * `Lesson.config`). While `forwarding` was the only honored knob, "declared a config" and "has an
+ * opinion about forwarding" were the same statement, so this function could not tell which rule it
+ * was implementing. A second knob separates them: `forwarding-bubble` declares `forwarding: false`
+ * as a real decision and has no opinion at all about prediction, so starting it must leave a
+ * prediction the user chose exactly where it is. `Partial<ProcessorConfig>` is what lets `??` mean
+ * what it reads like — before it, a lesson that declared any config declared every knob, and the
+ * fallback below was dead code wearing the look of a rule.
+ *
+ * This is the OPENING position only. The picker and both toggles stay live afterwards, so the
  * cross-model degradation stays reachable, and flipping forwarding mid-lesson — the whole point of
  * `forwarding-bubble` — re-records and re-anchors underneath the lesson (INV-6).
  */
-export function lessonOpening(lesson: Lesson, current: { forwarding: boolean }): LessonOpening {
+export function lessonOpening(
+  lesson: Lesson,
+  current: { forwarding: boolean; branchPrediction: BranchPrediction },
+): LessonOpening {
   return {
     modelId: lesson.model,
     forwarding: lesson.config?.forwarding ?? current.forwarding,
+    branchPrediction: lesson.config?.branchPrediction ?? current.branchPrediction,
   };
 }

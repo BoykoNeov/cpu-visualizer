@@ -13,6 +13,7 @@ import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { EXAMPLE_PROGRAMS } from './programs';
+import { predictsTaken, type BranchPrediction } from './session';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
 import { useSimulator } from './useSimulator';
 
@@ -162,6 +163,9 @@ export function App(): React.JSX.Element {
               a control that cannot move anything is worse than no control. */}
           {activeModel.capabilities.configurableForwarding ? (
             <ForwardingToggle on={sim.forwarding} setOn={sim.setForwarding} />
+          ) : null}
+          {activeModel.capabilities.configurableBranchPrediction ? (
+            <PredictionToggle scheme={sim.branchPrediction} setScheme={sim.setBranchPrediction} />
           ) : null}
           <label>
             Program:{' '}
@@ -662,6 +666,68 @@ function ForwardingToggle(props: { on: boolean; setOn: (on: boolean) => void }):
             }
           >
             {position ? 'on' : 'off'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The branch-prediction toggle (M4 step 4) — the milestone's flagship experiment (§12.3), and the
+ * second control to change the MACHINE rather than the picture. Same shape as the forwarding toggle
+ * beside it, and that is the finding: prediction rides M3's config seam without widening it.
+ *
+ * **Two positions for three scheme names, and the arithmetic is the honest part.** The config type
+ * offers `'none' | 'static-not-taken' | 'static-taken'`; the pipeline gives them TWO behaviors,
+ * because a machine with no predictor does not stop and wait — it keeps fetching, and the
+ * fall-through IS the not-taken path (M4 step 1). A three-position control would assert three
+ * machines exist. That is not extra detail, it is a contradiction of the tier below it (INV-5), and
+ * it fails the rule the forwarding toggle already lives by: *a control that cannot move anything is
+ * worse than no control* — two of the three positions could not move anything. So the positions are
+ * the BEHAVIORS. `'none'` is unreachable from here (it is only ever the opening value, straight out
+ * of `defaultConfig()`), and nothing is lost, because there is no third machine to reach.
+ *
+ * The completeness of that claim is pinned in `simulator.test.ts` against the engine — the three
+ * schemes record exactly TWO distinct traces — so a dynamic scheme joining the union fails a test
+ * rather than being silently drawn as "not taken".
+ *
+ * The `title`s carry M4's two findings, which is where the honesty budget goes: that "no predictor"
+ * and "predict not-taken" are one machine, and that a correct bet costs 1 rather than 0 (getting to
+ * 0 needs a BTB, deliberately a fancier tier — a true fact about THIS machine, not a bug).
+ */
+export function PredictionToggle(props: {
+  scheme: BranchPrediction;
+  setScheme: (scheme: BranchPrediction) => void;
+}): React.JSX.Element {
+  const { scheme, setScheme } = props;
+  const taken = predictsTaken(scheme);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        Predict
+      </span>
+      <div className="seg">
+        {([false, true] as const).map((position) => (
+          <button
+            key={String(position)}
+            className={position === taken ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setScheme(position ? 'static-taken' : 'static-not-taken')}
+            aria-pressed={position === taken}
+            title={
+              position
+                ? 'Predict TAKEN — the machine bets in ID and redirects fetch to the branch target. A correct bet costs 1 cycle (not 0 — that needs a branch-target buffer); a wrong one costs 2. jalr can never be predicted: its target is in a register.'
+                : 'Predict NOT TAKEN — the machine keeps fetching the next instruction and pays 2 cycles whenever a branch turns out to be taken. This is also what a machine with NO predictor does: the fall-through IS the not-taken path.'
+            }
+          >
+            {position ? 'taken' : 'not taken'}
           </button>
         ))}
       </div>

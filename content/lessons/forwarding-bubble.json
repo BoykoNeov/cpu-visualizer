@@ -4,9 +4,7 @@
   "program": "array-sum",
   "model": "pipeline",
   "config": {
-    "forwarding": false,
-    "branchPrediction": "none",
-    "cache": null
+    "forwarding": false
   },
   "depthDefault": "detailed",
   "steps": [

@@ -15,6 +15,7 @@ import {
   defaultConfig,
   type CycleTrace,
   type Processor,
+  type ProcessorCapabilities,
   type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
@@ -87,22 +88,70 @@ interface Position {
 }
 
 /**
+ * One config knob a model may honor: the capability that gates it, and the positions it can be in.
+ * Data rather than an `if`, because {@link positionsFor} takes the CROSS PRODUCT over the honored
+ * ones — adding a knob is a row here, not a rewrite.
+ */
+interface ConfigAxis {
+  honored: (caps: ProcessorCapabilities) => boolean;
+  positions: readonly { label: string; set: (c: ProcessorConfig) => ProcessorConfig }[];
+}
+
+/**
+ * Every knob a model can honor, each with its behaviors. Note `branchPrediction` contributes TWO
+ * positions for THREE names: `'none'` and `'static-not-taken'` are the same machine (M4 step 1 —
+ * a processor with no predictor does not wait, it keeps fetching, and the fall-through IS the
+ * not-taken path), so sweeping `'none'` as a third position would re-run an identical recording
+ * and call the duplicate coverage. The positions are the BEHAVIORS, not the names.
+ */
+const CONFIG_AXES: readonly ConfigAxis[] = [
+  {
+    honored: (caps) => caps.configurableForwarding,
+    positions: [
+      { label: 'forwarding off', set: (c) => ({ ...c, forwarding: false }) },
+      { label: 'forwarding on', set: (c) => ({ ...c, forwarding: true }) },
+    ],
+  },
+  {
+    honored: (caps) => caps.configurableBranchPrediction,
+    positions: [
+      { label: 'predict not-taken', set: (c) => ({ ...c, branchPrediction: 'static-not-taken' }) },
+      { label: 'predict taken', set: (c) => ({ ...c, branchPrediction: 'static-taken' }) },
+    ],
+  },
+];
+
+/**
  * The config positions a model actually HONORS — derived from its own capabilities, never from a
  * list of model ids here. A config-blind model has exactly one neutral position, so the sweep over
- * it is the pre-step-8 single-position check; only a model that honors `forwarding` is swept twice.
- * This is the same `configurableForwarding` gate the shell uses to decide whether to render the
- * toggle at all (M3 step 5), so the suite and the UI can never disagree about which models have
- * two positions to be right in.
+ * it is the pre-step-8 single-position check; the pipeline honors two knobs and is swept over all
+ * four combinations. These are the same capability gates the shell uses to decide which controls to
+ * render (M3 step 5, M4 step 4), so the suite and the UI can never disagree about which positions a
+ * lesson has to be right in.
+ *
+ * **Why the cross product, and why it grew (M4 step 4).** This read `configurableForwarding` alone
+ * while its docblock claimed to derive from capabilities — true while forwarding was the only
+ * honored knob, and quietly false the moment step 1 flipped `configurableBranchPrediction` to
+ * `true`. That is step 2's `configLabel` defect one layer down: *a guard whose case list cannot
+ * reach the collision is not a guard.* The rule that decides ownership is reachability — step 4 is
+ * what puts the prediction control in the browser, so step 4 is what makes a lesson-under-
+ * `static-taken` a state a user can reach, and an unswept reachable state is the defect this
+ * project keeps finding.
  */
 function positionsFor(modelId: string): Position[] {
-  const forwardingOf = (on: boolean): ProcessorConfig => ({ ...defaultConfig(), forwarding: on });
-  if (!modelById(modelId).capabilities.configurableForwarding) {
-    return [{ label: 'neutral config', config: defaultConfig() }];
+  const caps = modelById(modelId).capabilities;
+  let positions: Position[] = [{ label: '', config: defaultConfig() }];
+  for (const axis of CONFIG_AXES) {
+    if (!axis.honored(caps)) continue;
+    positions = positions.flatMap((p) =>
+      axis.positions.map((v) => ({
+        label: p.label === '' ? v.label : `${p.label}, ${v.label}`,
+        config: v.set(p.config),
+      })),
+    );
   }
-  return [
-    { label: 'forwarding off', config: forwardingOf(false) },
-    { label: 'forwarding on', config: forwardingOf(true) },
-  ];
+  // A model honoring nothing never entered the loop and keeps the seed's empty label.
+  return positions.map((p) => (p.label === '' ? { ...p, label: 'neutral config' } : p));
 }
 
 /** Record a lesson's program under the model the LESSON declares, in one config position. */
@@ -206,6 +255,40 @@ describe('authored narration stays inside the vocabulary the renderer can show',
   });
 });
 
+/**
+ * The sweep's own guard (M4 step 4). `positionsFor` decides how many machines every lesson below is
+ * checked against, so a mistake in it does not fail — it silently shrinks the coverage and leaves
+ * every test green. That is precisely the defect step 2 found one layer up (`configLabel` collapsed
+ * six configs to two labels while the harness's distinctness guard, parameterized by a two-config
+ * list, could not see it), so the helper gets a case list that can reach its own collisions.
+ */
+describe('positionsFor — the sweep covers every machine a lesson can be opened on', () => {
+  it('gives a config-blind model exactly one position', () => {
+    expect(positionsFor('single-cycle').map((p) => p.label)).toEqual(['neutral config']);
+    expect(positionsFor('multi-cycle').map((p) => p.label)).toEqual(['neutral config']);
+  });
+
+  it('gives the pipeline the CROSS PRODUCT of both knobs it honors, not one knob', () => {
+    // The claim in one line: two honored knobs ⇒ four machines. This is what went stale when step 1
+    // flipped `configurableBranchPrediction` to true and this function still read one capability —
+    // the sweep would have kept passing at half coverage.
+    expect(positionsFor('pipeline').map((p) => p.label)).toEqual([
+      'forwarding off, predict not-taken',
+      'forwarding off, predict taken',
+      'forwarding on, predict not-taken',
+      'forwarding on, predict taken',
+    ]);
+  });
+
+  it('the positions are DISTINCT configs, not four labels on one machine', () => {
+    // The non-vacuity, and the thing a label can lie about: four names over four identical configs
+    // would run the sweep four times and prove one position. Compared as configs rather than
+    // labels, because the labels are what would agree while the configs collapsed.
+    const configs = positionsFor('pipeline').map((p) => JSON.stringify(p.config));
+    expect(new Set(configs).size).toBe(4);
+  });
+});
+
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
     // Three single-cycle tours (M1's "2–3 lessons" target) plus M3's flagship pipeline lesson.
@@ -239,14 +322,25 @@ describe('authored lessons (INV-6)', () => {
       it('a declared config only names knobs the declared model honors', () => {
         // A lesson that opened in a position its model ignores would be quietly inert: the shell
         // applies the config, the engine shrugs, and the narration describes a machine the user is
-        // not looking at. Only `forwarding` is honored by anything today, so that is the only knob
-        // a lesson may lean on (M4 adds prediction + caches, per the plan).
+        // not looking at.
+        //
+        // Rewritten in M4 step 4, and the old shape was vacuous in a way worth naming. It read
+        // `if (lesson.config.forwarding) expect(...configurableForwarding).toBe(true)` — a guard on
+        // the knob's VALUE being truthy rather than on the knob being DECLARED. The one lesson that
+        // declares a config declares `forwarding: false`, so the check never ran on the shipped
+        // corpus. Under `Partial<ProcessorConfig>` the honest test is `!== undefined`: "declared" is
+        // now a question the type can answer, and asking it correctly makes the check live.
         if (lesson.config === undefined) return;
-        if (lesson.config.forwarding) {
-          expect(modelById(lesson.model).capabilities.configurableForwarding).toBe(true);
+        const caps = modelById(lesson.model).capabilities;
+        if (lesson.config.forwarding !== undefined) {
+          expect(caps.configurableForwarding, `${lesson.model} honors forwarding`).toBe(true);
         }
-        expect(lesson.config.branchPrediction).toBe('none');
-        expect(lesson.config.cache).toBeNull();
+        if (lesson.config.branchPrediction !== undefined) {
+          expect(caps.configurableBranchPrediction, `${lesson.model} honors prediction`).toBe(true);
+        }
+        if (lesson.config.cache != null) {
+          expect(caps.configurableCache, `${lesson.model} honors caches`).toBe(true);
+        }
       });
 
       // The sweep: the lesson's own model, in every position that model honors. For a config-blind

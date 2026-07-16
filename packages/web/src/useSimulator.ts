@@ -20,6 +20,8 @@ import {
   lessonOpening,
   lessonSession,
   originNameOf,
+  predictsTaken,
+  type BranchPrediction,
   type Session,
 } from './session';
 import { loadSource, type LoadedProgram } from './simulator';
@@ -67,6 +69,18 @@ export interface Simulator {
    * `capabilities.configurableForwarding` is true have a control for it (M3 step 5).
    */
   forwarding: boolean;
+  /**
+   * The branch-prediction scheme the driving engine is configured with
+   * (`ProcessorConfig.branchPrediction`) — M4's toggle, riding the very seam M3 step 5 cut for
+   * forwarding: session level, handed to every model, gated only as a CONTROL on
+   * `capabilities.configurableBranchPrediction`. The seam paid off; it needed no widening.
+   *
+   * Three names, **two behaviors** — `'none'` and `'static-not-taken'` are one machine (M4 step 1),
+   * so read it through {@link predictsTaken} rather than comparing values. It starts at
+   * `defaultConfig()`'s `'none'`, which is the one moment that value is live in the shell: the
+   * control only ever writes the two behaviors by their explicit names.
+   */
+  branchPrediction: BranchPrediction;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -139,6 +153,18 @@ export interface Simulator {
    * position, so it never needlessly discards the cursor.
    */
   setForwarding: (on: boolean) => void;
+  /**
+   * Set `ProcessorConfig.branchPrediction` and re-record the current source under it — the same
+   * shape as {@link setForwarding}, for the same reason: the trace genuinely changes, so a fresh
+   * recording IS the mechanism.
+   *
+   * The no-op guard is on the BEHAVIOR, not the value: `'none'` and `'static-not-taken'` are one
+   * machine, so asking for the scheme the machine is already running re-records nothing even when
+   * the string differs. Without that, clicking the already-lit "not taken" button at startup (where
+   * the config still reads `'none'`) would throw away the cursor to rebuild a byte-identical
+   * timeline.
+   */
+  setBranchPrediction: (scheme: BranchPrediction) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -180,6 +206,15 @@ export function useSimulator(): Simulator {
   // a RAW hazard stall first, THEN flip it on and watch the bubble vanish (§12.2).
   const [forwarding, setForwardingState] = useState(false);
   const forwardingRef = useRef(forwarding);
+  // Prediction, mirroring forwarding exactly (M4 step 4). Opens on `defaultConfig()`'s value rather
+  // than a scheme named here: the shell's job is to hold the config, not to re-decide its default.
+  // That value is `'none'`, whose behavior is not-taken — the pedagogically right opening move for
+  // the same reason forwarding starts off: watch the machine pay for every taken branch FIRST, then
+  // bet and watch the penalty fall (and, on `call-return`, RISE).
+  const [branchPrediction, setBranchPredictionState] = useState<BranchPrediction>(
+    defaultConfig().branchPrediction,
+  );
+  const branchPredictionRef = useRef(branchPrediction);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -193,6 +228,7 @@ export function useSimulator(): Simulator {
       const result = loadSource(source, makeProcessor.current, {
         ...defaultConfig(),
         forwarding: forwardingRef.current,
+        branchPrediction: branchPredictionRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -250,12 +286,17 @@ export function useSimulator(): Simulator {
       // they must be set BEFORE it runs; the states drive the picker + toggle. Deliberately not
       // routed through `setModel`/`setForwarding`: each of those re-loads on its own, so a lesson
       // that changed both would record the program three times over.
-      const opening = lessonOpening(lesson, { forwarding: forwardingRef.current });
+      const opening = lessonOpening(lesson, {
+        forwarding: forwardingRef.current,
+        branchPrediction: branchPredictionRef.current,
+      });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
       setModelState(choice.id);
       forwardingRef.current = opening.forwarding;
       setForwardingState(opening.forwarding);
+      branchPredictionRef.current = opening.branchPrediction;
+      setBranchPredictionState(opening.branchPrediction);
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -300,6 +341,21 @@ export function useSimulator(): Simulator {
       // session and any active lesson intact while changing only the microarchitecture's config.
       // The lesson re-anchors against the new recording — its steps anchor to EVENTS, so they
       // survive the cycle numbers moving underneath them (INV-6).
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
+  const setBranchPrediction = useCallback(
+    (scheme: BranchPrediction) => {
+      // Guarded on BEHAVIOR, not on the string — see `setBranchPrediction` in the interface. The
+      // state still moves to the requested name so the config reads as what the user asked for; it
+      // is only the RE-RECORD that is skipped, because there is no different timeline to build.
+      const same = predictsTaken(scheme) === predictsTaken(branchPredictionRef.current);
+      branchPredictionRef.current = scheme; // read by loadInto below (and every later load)
+      setBranchPredictionState(scheme);
+      if (same) return; // same machine — keep the cursor where it is
       const source = loaded.current?.source;
       if (source != null) loadInto(source);
     },
@@ -355,6 +411,7 @@ export function useSimulator(): Simulator {
   return {
     model,
     forwarding,
+    branchPrediction,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -372,6 +429,7 @@ export function useSimulator(): Simulator {
     recorded: recorder?.recorded ?? EMPTY_RECORDING,
     setModel,
     setForwarding,
+    setBranchPrediction,
     select,
     startLesson,
     loadEdited,

@@ -1,9 +1,15 @@
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
-import { defaultConfig, type Processor, type ProcessorConfig } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type CycleTrace,
+  type Processor,
+  type ProcessorConfig,
+} from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLE_PROGRAMS } from './programs';
+import { predictsTaken, type BranchPrediction } from './session';
 import { loadSource } from './simulator';
 
 /**
@@ -271,5 +277,122 @@ describe('loadSource forwarding config — the crown jewel on the live timeline 
       return result.loaded.recorder.recordedCycles;
     };
     expect(cycles(true)).toBe(cycles(false));
+  });
+});
+
+/**
+ * The claim the prediction control's SHAPE rests on (M4 step 4). The config type offers three
+ * scheme names; the shell renders a two-position control, so it owes an account of the third.
+ *
+ * That account is `'none'` and `'static-not-taken'` are the same machine — M4 step 1's finding,
+ * pinned in the engine's own suite. What is pinned HERE is the consequence the view depends on and
+ * the engine has no opinion about: **two positions are COMPLETE.** Every scheme the union can hold
+ * records as one of the two the control can reach, so nothing is hidden by omitting `'none'` from
+ * the UI — there is no third machine to hide (INV-5: a view may omit detail, never contradict).
+ *
+ * The reverse claim is the one that makes it worth testing: a three-position control would assert
+ * three machines exist, which is false, and would break the rule the forwarding toggle already
+ * lives by — *a control that cannot move anything is worse than no control.*
+ */
+describe('the prediction control has two positions because the machine has two behaviors', () => {
+  /**
+   * Every scheme name in the union, mapped to the control position that claims it. A
+   * `Record` over the union rather than an array, so a scheme added to `ProcessorConfig` (a
+   * dynamic 2-bit predictor is the named candidate — M4 defers it) is a COMPILE error right here
+   * and must be classified deliberately. An array would typecheck while leaving the newcomer
+   * unswept, which is the M3 step-0 vacuity shape: a case list that cannot reach the collision.
+   */
+  const SCHEME_POSITION: Record<BranchPrediction, 'taken' | 'not taken'> = {
+    none: 'not taken',
+    'static-not-taken': 'not taken',
+    'static-taken': 'taken',
+  };
+
+  /** `sum-loop` on the pipeline under one scheme — the whole recording, not its length. */
+  const record = (scheme: BranchPrediction): readonly CycleTrace[] => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const result = loadSource(program.source, () => new PipelineProcessor(), {
+      ...defaultConfig(),
+      branchPrediction: scheme,
+    });
+    if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded;
+  };
+
+  it('every scheme the config can hold records as one of the two reachable positions', () => {
+    const taken = record('static-taken');
+    const notTaken = record('static-not-taken');
+
+    // Non-vacuity FIRST: the two positions are genuinely different machines. Without this the
+    // whole test passes trivially on an engine that ignores the knob — which is exactly the
+    // blind spot M4 step 3 measured (a pipeline ignoring `branchPrediction` leaves conformance
+    // 32/32 green), reappearing in the view's own suite.
+    expect(taken).not.toEqual(notTaken);
+
+    // ...and every name in the union IS one of them. Whole traces, never cycle counts: two
+    // machines agreeing on timing could still differ in events (M4 step 1's rule, and it is why
+    // `'none' ≡ 'static-not-taken'` was pinned by `toEqual` rather than by a number).
+    for (const scheme of Object.keys(SCHEME_POSITION) as BranchPrediction[]) {
+      expect(record(scheme), `${scheme} should record as its control position`).toEqual(
+        predictsTaken(scheme) ? taken : notTaken,
+      );
+    }
+  });
+
+  it('is inert for a model that does not honor it (single-cycle ignores the scheme)', () => {
+    // The same argument the forwarding toggle rests on, and the reason prediction could ride M3's
+    // config seam without widening it: the scheme is held at SESSION level and handed to every
+    // model, so it survives a trip through single-cycle and is still set when the user comes back.
+    // A config-blind engine is simply unmoved by it, so gating the CONTROL on
+    // `capabilities.configurableBranchPrediction` is a pure view concern — the engine needs no
+    // defending.
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const cycles = (scheme: BranchPrediction): number => {
+      const result = loadSource(program.source, () => new SingleCycleProcessor(), {
+        ...defaultConfig(),
+        branchPrediction: scheme,
+      });
+      if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+      result.loaded.recorder.runToEnd();
+      return result.loaded.recorder.recordedCycles;
+    };
+    expect(cycles('static-taken')).toBe(cycles('static-not-taken'));
+  });
+
+  /**
+   * The step-3 pinned figures, reachable through the SHELL's own load path rather than the
+   * engine's — the headless half of this step's acceptance ("cycle counts that move on the live
+   * scrub bar and match step 3's pinned figures"). `recordedCycles` is literally what the scrub
+   * bar's upper bound is read from, so this is the number the user will see.
+   *
+   * Both directions, because **no scheme dominates** and that is the milestone's thesis rather
+   * than a caveat: `sum-loop` is a backward branch taken 9 times of 10 and gets FASTER; while
+   * `call-return`'s `bge` is never taken, so betting on it makes the program **slower**. A
+   * milestone that only measured the program its toggle helps would be repeating the rhetoric M3
+   * step 3 had to correct. Asserted as signed per-program deltas, never an average — the average
+   * is exactly the claim that would let the loss hide.
+   */
+  it('the scrub bar’s own numbers move, and NOT all in the same direction', () => {
+    const cyclesOf = (name: string, scheme: BranchPrediction): number => {
+      const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
+      const result = loadSource(program.source, () => new PipelineProcessor(), {
+        ...defaultConfig(),
+        branchPrediction: scheme,
+      });
+      if (!result.ok) throw new Error(`unreachable: ${name} should assemble`);
+      result.loaded.recorder.runToEnd();
+      return result.loaded.recorder.recordedCycles;
+    };
+
+    // The crowd-pleaser: 9 taken backward branches, each paying 2 instead of 1.
+    expect(cyclesOf('sum-loop', 'static-not-taken')).toBe(78);
+    expect(cyclesOf('sum-loop', 'static-taken')).toBe(71);
+
+    // The proof. `call-return` holds one transfer of each kind, which makes it the corpus's whole
+    // argument in one program: `jal` improves (2→1), the never-taken `bge` regresses (0→2), and
+    // `ret` (a `jalr`) cannot be predicted by anyone and stays at 2. Net: +1, and a user can see it.
+    expect(cyclesOf('call-return', 'static-not-taken')).toBe(17);
+    expect(cyclesOf('call-return', 'static-taken')).toBe(18);
   });
 });
