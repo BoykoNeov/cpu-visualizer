@@ -54,6 +54,16 @@ never-fired steps, so the rail simply re-forms when the user flips the toggle. T
 is therefore "every step fires in **at least one** position the declared model honors" — which for a
 config-blind model is exactly "every step fires".
 
+**Known limitation — degradation is graceful in one direction only.** The model picker stays live
+during a lesson, deliberately: switching models mid-lesson is worth being able to do, and for the
+three single-cycle lessons it works (they anchor to architectural events every model emits). It does
+**not** hold in reverse. Switching `forwarding-bubble` down to single-cycle leaves only its first and
+last steps alive — that machine emits no `stall` and no `forward` — and the surviving intro narration
+("Five instructions share the pipeline…") is then plainly false about what is on screen. This is not
+gated: it takes a deliberate downgrade to reach, and a picker that locked itself during a lesson
+would be a worse trade than a lesson that reads oddly if you insist. Noted because "the lesson still
+anchors" is exactly the reassurance that hides it — see `lessonOpening`: anchoring is not truth.
+
 ## Authored lessons
 
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
