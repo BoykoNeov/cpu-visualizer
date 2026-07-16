@@ -55,7 +55,18 @@ export type TraceEvent =
   // --- pedagogically important; mostly fire from the pipeline tier onward ---
   | { type: 'forward'; from: string; to: string; value: number; instr: string }
   | { type: 'stall'; reason: string; stage: string; instr: string }
-  | { type: 'flush'; reason: string; stages: string[] }
+  | {
+      type: 'flush';
+      reason: string;
+      /**
+       * The stages whose in-flight instructions were KILLED — real casualties, in program order
+       * (oldest first). A flush is only reported when it actually kills something: a model must
+       * not emit one for a flush signal that found the stages empty. Consumers depend on this —
+       * a lesson may trigger on a bare `flush`, and it must never announce a bubble that did not
+       * happen. Cross-reference `CycleTrace.instructions` for WHO died.
+       */
+      stages: string[];
+    }
   | {
       type: 'branch-resolved';
       instr: string;

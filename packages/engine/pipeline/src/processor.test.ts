@@ -446,7 +446,7 @@ describe('control hazards', () => {
       },
     ]);
     expect(ts[resolveCycle]!.events.filter((e) => e.type === 'flush')).toEqual([
-      { type: 'flush', reason: 'branch-taken', stages: ['IF', 'ID'] },
+      { type: 'flush', reason: 'branch-taken', stages: ['ID', 'IF'] },
     ]);
 
     // Exactly two younger instructions were in flight, and both die here — one in ID, one in IF.
@@ -540,6 +540,8 @@ describe('halt with drain', () => {
     expect(ts[decodeCycle]!.events.filter((e) => e.type === 'flush')).toEqual([
       { type: 'flush', reason: 'halt', stages: ['IF'] },
     ]);
+    // ...and it names a real casualty: the instruction the trace says died in IF is the shadow.
+    expect(ts[decodeCycle]!.instructions.some((i) => i.location === 'IF')).toBe(true);
 
     // The shadow was fetched (it is real code) and died in IF; the store behind it was never
     // fetched at all, because fetching stops here.
@@ -549,6 +551,16 @@ describe('halt with drain', () => {
 
     expect(reg(last(ts), 2)).toBe(0); // the shadow never committed
     expect(last(ts).state.memory.readWord(SCRATCH)).toBe(0); // nor did anything behind it
+  });
+
+  it('emits no flush for an ecall that kills nothing', () => {
+    // The contract `flush` makes is "an instruction DIED", not "a wire went high" — so a flush
+    // signal that finds the stages empty is not an event. This is the common case, not a corner:
+    // three of the five corpus programs end with `ecall` as their last instruction, so there is
+    // nothing behind it to squash. The curriculum can trigger on a bare `{ event: 'flush' }`, and
+    // it must never announce a bubble that did not happen.
+    const ts = run(['.text', 'addi x1, x0, 1', 'ecall'].join('\n'), ON);
+    expect(eventsOf(ts, 'flush')).toEqual([]);
   });
 
   it('halts at the ecall with pc on the ecall itself, not on the fetch pointer', () => {

@@ -410,6 +410,31 @@ export class PipelineProcessor implements Processor {
     if (ctx.redirect !== null) this.fetchPc = ctx.redirect;
     if (ctx.stopFetch) this.haltFetch = true;
 
+    // The `flush` event belongs here, at the edge, for two reasons that happen to agree. It is
+    // when the kill actually lands (the stages did their work; the flush discards the result);
+    // and IF, which runs last, is the only stage that knows whether it had anything to lose.
+    //
+    // `stages` therefore names REAL CASUALTIES, and a flush that kills nobody emits no event at
+    // all. That is a contract choice, not an implementation detail: `flush` is a shared surface
+    // with three readers (the datapath, the pipeline map's cut rows, and the curriculum, which
+    // triggers on a bare `{ event: 'flush' }`). Under the alternative reading — "stages names the
+    // latches the signal is asserted on, occupied or not" — an `ecall` at the end of text would
+    // emit a flush that killed nothing, and a lesson anchored to it would announce a bubble that
+    // does not exist. Every consumer wants "something died"; none wants "a wire went high".
+    if (ctx.squash !== null) {
+      // Program order, oldest first — the same rule `instructions[]` uses.
+      const stages: string[] = [];
+      if (ctx.squash === 'branch' && inId !== null) stages.push('ID');
+      if (inIf !== null) stages.push('IF');
+      if (stages.length > 0) {
+        ctx.events.push({
+          type: 'flush',
+          reason: ctx.squash === 'branch' ? 'branch-taken' : 'halt',
+          stages,
+        });
+      }
+    }
+
     // Halt-with-drain, asserted rather than assumed. `halted` may only be raised once the pipe is
     // empty; raising it early would strand in-flight instructions and silently truncate the run.
     if (this.halted && (this.ifSlot !== null || this.occupied(this.latches))) {
@@ -756,11 +781,7 @@ export class PipelineProcessor implements Processor {
         target: nextPc,
       });
       if (taken) {
-        // `stages` names the latches the flush SIGNAL is asserted on, not an inventory of who
-        // happened to be standing there — the hardware asserts it either way. Cross-reference
-        // `instructions[]` for the casualties.
-        ctx.events.push({ type: 'flush', reason: 'branch-taken', stages: ['IF', 'ID'] });
-        ctx.squash = 'branch';
+        ctx.squash = 'branch'; // the `flush` event itself is emitted at the edge — see step()
         ctx.redirect = nextPc; // applied at the clock edge, AFTER IF has fetched the fall-through
       }
     }
@@ -864,8 +885,7 @@ export class PipelineProcessor implements Processor {
     // sits in WB, making architectural memory depend on intra-cycle stage order. Squash instead.
     if (isArchHalt(d)) {
       ctx.stopFetch = true; // applied at the clock edge, so IF still fetches the shadow to kill
-      ctx.squash = 'halt';
-      ctx.events.push({ type: 'flush', reason: 'halt', stages: ['IF'] });
+      ctx.squash = 'halt'; // the `flush` event itself is emitted at the edge — see step()
     }
 
     ctx.next.idEx = {
