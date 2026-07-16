@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../isa" },
+    { "path": "../../trace" },
+    // Test-only edges, exactly as multi-cycle declares them. `assembler` + `common`
+    // (toProgramImage) drive the unit tests; `conformance` is the shared INV-8 differential
+    // harness (it pulls in the golden reference). Production code depends only on isa + trace
+    // and never imports the reference (INV-8: copy the idioms, don't import them).
+    { "path": "../../assembler" },
+    { "path": "../common" },
+    { "path": "../conformance" }
+  ]
+}

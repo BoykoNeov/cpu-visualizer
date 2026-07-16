@@ -1,0 +1,23 @@
+{
+  "name": "@cpu-viz/engine-pipeline",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Classic 5-stage pipeline: the third microarchitecture. Up to five instructions in flight, with hazard detection, a configurable forwarding network, stalls, and control-flow flushes. Roadmap §12.2.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*",
+    "@cpu-viz/trace": "*"
+  }
+}

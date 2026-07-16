@@ -18,6 +18,7 @@
     "packages/engine/reference",
     "packages/engine/single-cycle",
     "packages/engine/multi-cycle",
+    "packages/engine/pipeline",
     "packages/web"
   ],
   "scripts": {

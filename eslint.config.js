@@ -54,6 +54,7 @@ export default tseslint.config(
         'engine-reference',
         'engine-single-cycle',
         'engine-multi-cycle',
+        'engine-pipeline',
         'web',
       ],
       'INV-7: isa is the lowest layer and imports no other workspace package.',
@@ -70,6 +71,7 @@ export default tseslint.config(
         'engine-reference',
         'engine-single-cycle',
         'engine-multi-cycle',
+        'engine-pipeline',
         'web',
       ],
       'INV-3: the trace is the contract; it may depend only on isa, never on engines, curriculum, or web.',
@@ -86,6 +88,7 @@ export default tseslint.config(
         'engine-reference',
         'engine-single-cycle',
         'engine-multi-cycle',
+        'engine-pipeline',
         'web',
       ],
       'The assembler depends only on isa.',
@@ -106,7 +109,14 @@ export default tseslint.config(
     // here or engine-common would silently lose that guard.
     files: ['packages/engine/common/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-reference', 'engine-single-cycle', 'engine-multi-cycle'],
+      [
+        'curriculum',
+        'web',
+        'engine-reference',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-pipeline',
+      ],
       'engine-common is a leaf shared by the engines (engine-common ← isa, assembler, trace); it depends on no engine model, curriculum, or web.',
     ),
   },
@@ -117,7 +127,7 @@ export default tseslint.config(
     // (same last-match-wins reason as engine-common), so curriculum/web are repeated here.
     files: ['packages/engine/conformance/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle'],
+      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-pipeline'],
       'engine-conformance is model-agnostic: it drives any model through an injected () => Processor factory, so it imports no engine-under-test.',
     ),
   },
@@ -128,7 +138,7 @@ export default tseslint.config(
     // generic engine rule for the same last-match-wins reason as engine-common above.
     files: ['packages/engine/reference/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle'],
+      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-pipeline'],
       'INV-8: the golden reference is model-agnostic; it never depends on a specific engine model (nor on curriculum/web).',
     ),
   },
@@ -141,15 +151,22 @@ export default tseslint.config(
     // transitively through the model-agnostic conformance harness.
     files: ['packages/engine/single-cycle/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-multi-cycle'],
+      ['curriculum', 'web', 'engine-multi-cycle', 'engine-pipeline'],
       'A concrete model never imports another model’s production code; the trace schema is the only shared surface.',
     ),
   },
   {
     files: ['packages/engine/multi-cycle/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-reference'],
+      ['curriculum', 'web', 'engine-single-cycle', 'engine-pipeline', 'engine-reference'],
       'A concrete model never imports another model’s production code, and multi-cycle copies the ISA idioms rather than importing the reference (INV-8).',
+    ),
+  },
+  {
+    files: ['packages/engine/pipeline/**/*.ts'],
+    rules: deny(
+      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-reference'],
+      'A concrete model never imports another model’s production code, and the pipeline copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {
@@ -162,6 +179,7 @@ export default tseslint.config(
         'engine-reference',
         'engine-single-cycle',
         'engine-multi-cycle',
+        'engine-pipeline',
         'web',
       ],
       'INV-3: curriculum reads the trace, never engine internals or the web app.',
