@@ -68,9 +68,44 @@ export type TraceEvent =
       stages: string[];
     }
   | {
+      /**
+       * The BET (M4): a predictor redirected fetch to a target it guessed at, BEFORE the answer
+       * existed. Fires in the stage that places the bet (the pipeline's is ID) — a different fact,
+       * at a different stage, from the `branch-resolved` CORRECTION below.
+       *
+       * **The event IS the redirect**, which is what fixes the two ways a consumer could otherwise
+       * get this wrong:
+       *
+       *  - **There is no not-taken bet.** A machine predicting not-taken performs no action: it
+       *    keeps fetching, and the fall-through IS the not-taken path. So this event carries no
+       *    `taken` field and never fires for such a scheme — emitting `{ taken: false }` would
+       *    assert an action the machine did not take. (`branch-resolved.predicted` still reports
+       *    `false` there, because that is a REPORT at resolution, not an action at the bet.)
+       *  - **A bet is not its casualties.** The bet also raises a `flush` naming the fall-through
+       *    instruction it killed — but ONLY when the fetch stage had something to lose, per the
+       *    flush contract above. A branch sitting at the end of `.text` bets on every pass with the
+       *    fetch pointer already out of text, so it kills nobody and emits no flush while still
+       *    redirecting the pc. A consumer reading the flush as the bet is therefore drawing the
+       *    COST and calling it the ACTION: right for the wrong reason, and blind exactly there.
+       */
+      type: 'branch-predicted';
+      instr: string;
+      /**
+       * The address bet on. Carried for the same reason `branch-resolved.target` is: the datapath
+       * labels the redirect it draws from this event, and re-deriving `pc + imm` in a view would
+       * duplicate ISA arithmetic the engine owns (INV-3/INV-7).
+       */
+      target: number;
+    }
+  | {
       type: 'branch-resolved';
       instr: string;
-      /** Was the transfer PREDICTED taken? A fixed predict-not-taken machine always says `false`. */
+      /**
+       * Was the transfer PREDICTED taken? A fixed predict-not-taken machine always says `false`.
+       * `predicted !== actual` is the misprediction — and the ONLY condition under which this
+       * event's stage redirects. Beware `actual` as a stand-in: they coincide exactly while
+       * nothing ever predicts taken, which is why they read as interchangeable and are not.
+       */
       predicted: boolean;
       /** Was it ACTUALLY taken? Unconditional jumps (`jal`/`jalr`) always say `true`. */
       actual: boolean;

@@ -19,9 +19,11 @@
  *     skeleton with contraction wires standing in for the hidden muxes and no value labels;
  *     `detailed` reveals the writeback mux and adds values; `expert` adds the forwarding unit, both
  *     forwarding muxes, the hazard unit, and the control-line labels.
- *   - `forwarding` — the user's engine config — decides whether the forwarding network EXISTS at
- *     all. With it off the unit and its muxes are absent (not dimmed), because the trace genuinely
+ *   - `config` — the user's engine settings, as BEHAVIORS — decides what EXISTS at all. With
+ *     forwarding off the unit and its muxes are absent (not dimmed), because the trace genuinely
  *     has no `forward` events in that position and an idle forwarding network would contradict it.
+ *     With prediction on (M4 step 5) the branch-target adder and its redirect appear, for the mirror
+ *     reason: a machine that predicts not-taken takes no action to draw.
  *
  * {@link activate} is oblivious to both (INV-2): it always lights the full expert path and its
  * contractions, in either config. This wrapper chooses what to hand the renderer.
@@ -41,6 +43,7 @@ import {
   STAGES,
   WIRES,
   wireVisibleAt,
+  type DatapathConfig,
 } from './datapath-pipeline';
 import { DatapathDiagram, fmtValue, type NodeVM, type WireVM } from './DatapathDiagram';
 import { PHASE_COLORS, T } from './theme';
@@ -49,8 +52,12 @@ export function PipelineDatapath(props: {
   trace: CycleTrace | null;
   cycleKey: number;
   tier: DepthTier;
-  /** The engine config the trace was recorded under — the second visibility axis. */
-  forwarding: boolean;
+  /**
+   * The engine BEHAVIORS the trace was recorded under — the second visibility axis. Behaviors
+   * rather than config values: `branchPrediction` has three names and two machines, and the
+   * diagram can only draw a machine (see {@link DatapathConfig}).
+   */
+  config: DatapathConfig;
   /**
    * The followed instruction's stable id (M3 step 7), or `null`. This is the payoff of step 6's
    * decision to carry `instr` on every lit wire: with five instructions lighting the diagram at
@@ -59,31 +66,29 @@ export function PipelineDatapath(props: {
    */
   followed?: string | null;
 }): React.JSX.Element {
-  const { trace, tier, forwarding, followed = null } = props;
+  const { trace, tier, config, followed = null } = props;
   const act = useMemo(() => activate(trace), [trace]);
   const labels = showValueLabels(tier);
   const controls = showControlLabels(tier);
 
-  const wires: WireVM[] = WIRES.filter((wire) => wireVisibleAt(wire, tier, forwarding)).map(
-    (wire) => {
-      const a = act.wires.get(wire.id);
-      return {
-        id: wire.id,
-        points: wire.points,
-        active: a !== undefined,
-        // The hue is the STAGE's, not the diagram's: five instructions, five colors, one cycle.
-        color: a ? PHASE_COLORS[a.stage] : undefined,
-        label: a && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
-        // Ring the followed instruction's own work. Only WIRES can carry this: a component box is
-        // shared (the register file is read by ID and written by WB in one cycle), which is the
-        // same reason it carries no hue — so there is deliberately no node counterpart.
-        followed: a !== undefined && followed !== null && a.instr === followed,
-      };
-    },
-  );
+  const wires: WireVM[] = WIRES.filter((wire) => wireVisibleAt(wire, tier, config)).map((wire) => {
+    const a = act.wires.get(wire.id);
+    return {
+      id: wire.id,
+      points: wire.points,
+      active: a !== undefined,
+      // The hue is the STAGE's, not the diagram's: five instructions, five colors, one cycle.
+      color: a ? PHASE_COLORS[a.stage] : undefined,
+      label: a && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
+      // Ring the followed instruction's own work. Only WIRES can carry this: a component box is
+      // shared (the register file is read by ID and written by WB in one cycle), which is the
+      // same reason it carries no hue — so there is deliberately no node counterpart.
+      followed: a !== undefined && followed !== null && a.instr === followed,
+    };
+  });
 
   const nodes: NodeVM[] = Array.from(NODES.values())
-    .filter((node) => nodeVisibleAt(node, tier, forwarding))
+    .filter((node) => nodeVisibleAt(node, tier, config))
     .map((node) => ({
       ...node,
       active: act.components.has(node.id),

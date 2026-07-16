@@ -235,7 +235,7 @@ describe('follow — one id, three surfaces', () => {
         trace={trace}
         cycleKey={trace.cycle}
         tier="expert"
-        forwarding
+        config={{ forwarding: true, predictTaken: false }}
         followed={target.id}
       />,
     );
@@ -251,7 +251,12 @@ describe('follow — one id, three surfaces', () => {
 
     expect(
       renderToStaticMarkup(
-        <PipelineDatapath trace={trace} cycleKey={trace.cycle} tier="expert" forwarding />,
+        <PipelineDatapath
+          trace={trace}
+          cycleKey={trace.cycle}
+          tier="expert"
+          config={{ forwarding: true, predictTaken: false }}
+        />,
       ),
     ).not.toContain('dp-follow');
   });

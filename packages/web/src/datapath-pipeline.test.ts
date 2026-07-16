@@ -13,6 +13,7 @@ import {
   tierVisible,
   WIRES,
   wireVisibleAt,
+  type DatapathConfig,
   type Stage,
 } from './datapath-pipeline';
 import { shapePolygon } from './DatapathDiagram';
@@ -70,17 +71,36 @@ function collinearOverlap(a: Seg, b: Seg, eps = 0.5): number {
   return 0;
 }
 
-const CONFIGS = [false, true] as const;
-const label = (fwd: boolean): string => `forwarding ${fwd ? 'on' : 'off'}`;
+/**
+ * The four MACHINES this diagram can be asked to draw — the cross product of the two honored knobs,
+ * not of the config's values. M4 step 5 doubled this list: it was the two forwarding positions, and
+ * prediction is the second axis. `predictTaken` is a behavior rather than a scheme name because
+ * `'none'` and `'static-not-taken'` are one machine, so a third entry would test nothing new (M4
+ * step 1) — the same reason the shell's control has two positions for three names.
+ */
+const CONFIGS: readonly DatapathConfig[] = [
+  { forwarding: false, predictTaken: false },
+  { forwarding: true, predictTaken: false },
+  { forwarding: false, predictTaken: true },
+  { forwarding: true, predictTaken: true },
+];
+const label = (c: DatapathConfig): string =>
+  `forwarding ${c.forwarding ? 'on' : 'off'} / predict ${c.predictTaken ? 'taken' : 'not-taken'}`;
 
-/** Record a whole run under one forwarding position and return every cycle's trace. Appends a
+/** The three the older tests name directly: this file's subject is usually ONE axis at a time. */
+const FWD: DatapathConfig = { forwarding: true, predictTaken: false };
+const NOFWD: DatapathConfig = { forwarding: false, predictTaken: false };
+const BET: DatapathConfig = { forwarding: true, predictTaken: true };
+
+/** Record a whole run under one machine and return every cycle's trace. Appends a
  *  clean exit so assembly always succeeds. No new fixtures — these are litmus programs for the
  *  VIEW, the same way `datapath-multi.test.ts` writes its own (INV-7 governs the example library
  *  the user runs, not a test's two-line probe). */
-function record(source: string, forwarding: boolean): CycleTrace[] {
+function record(source: string, cfg: DatapathConfig): CycleTrace[] {
   const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), {
     ...defaultConfig(),
-    forwarding,
+    forwarding: cfg.forwarding,
+    branchPrediction: cfg.predictTaken ? 'static-taken' : 'static-not-taken',
   });
   if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
   const { recorder } = result.loaded;
@@ -109,7 +129,7 @@ describe('activation is MULTI-INSTRUCTION (the break from every earlier model)',
   const FILL = '  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4\n  addi x5, x0, 5\n  addi x6, x0, 6'; // prettier-ignore
 
   it('lights five stages for five DIFFERENT instructions in one cycle', () => {
-    const traces = record(FILL, true);
+    const traces = record(FILL, FWD);
     const full = traces.find((t) => t.instructions.length === 5);
     expect(full, 'no cycle with five instructions in flight').toBeDefined();
 
@@ -133,7 +153,7 @@ describe('activation is MULTI-INSTRUCTION (the break from every earlier model)',
   it('the register file is lit for TWO instructions at once (ID reads while WB writes)', () => {
     // The same-cycle WB→ID rule, seen from the view: one box, two instructions, two stages — which
     // is exactly why component boxes are hue-neutral and only wires carry the stage color.
-    const traces = record(FILL, true);
+    const traces = record(FILL, FWD);
     const full = traces.find((t) => t.instructions.length === 5)!;
     const act = activate(full);
     expect(act.components.has('regfile')).toBe(true);
@@ -147,11 +167,11 @@ describe('activation is MULTI-INSTRUCTION (the break from every earlier model)',
     // latches as of the CLOCK EDGE — what the stages read at cycle i+1. A datapath sourced from it
     // draws the pipe one cycle ahead of itself, and every other test here would still pass. So this
     // asserts the whole timeline against `location`, the only field that describes THIS cycle.
-    for (const fwd of CONFIGS) {
-      const traces = record(FILL, fwd);
+    for (const cfg of CONFIGS) {
+      const traces = record(FILL, cfg);
       for (const t of traces) {
         const act = activate(t);
-        expect(Object.fromEntries(act.occupancy), `${label(fwd)} @ cycle ${t.cycle}`).toEqual(
+        expect(Object.fromEntries(act.occupancy), `${label(cfg)} @ cycle ${t.cycle}`).toEqual(
           Object.fromEntries(locationsOf(t)),
         );
       }
@@ -172,7 +192,7 @@ describe('forwarding is a change of PATH, not an extra wire', () => {
   const RAW = '  addi x1, x0, 7\n  add x2, x1, x1';
 
   it('a forward lights the EX/MEM path and DARKENS the register-file path into the same mux', () => {
-    const traces = record(RAW, true);
+    const traces = record(RAW, FWD);
     const cycle = traces.find((t) => t.events.some((e) => e.type === 'forward'));
     expect(cycle, 'no forward fired').toBeDefined();
     const act = activate(cycle!);
@@ -193,7 +213,7 @@ describe('forwarding is a change of PATH, not an extra wire', () => {
   it('with no forward, the register-file path IS the lit one', () => {
     // Same program, forwarding off: the ID interlock has already made the latched value current,
     // so the operand genuinely arrives from the register file — and no forward path exists at all.
-    const traces = record(RAW, false);
+    const traces = record(RAW, NOFWD);
     const cycle = traces.find((t) =>
       t.events.some((e) => e.type === 'alu-op' && e.op === 'add' && e.a === 7),
     );
@@ -206,20 +226,20 @@ describe('forwarding is a change of PATH, not an extra wire', () => {
   });
 
   it('the hazard unit lights when — and only when — the interlock actually fires', () => {
-    for (const fwd of CONFIGS) {
-      const traces = record(RAW, fwd);
+    for (const cfg of CONFIGS) {
+      const traces = record(RAW, cfg);
       for (const t of traces) {
         const stalled = t.events.some((e) => e.type === 'stall');
-        expect(activate(t).components.has('hazard'), `${label(fwd)} @ ${t.cycle}`).toBe(stalled);
+        expect(activate(t).components.has('hazard'), `${label(cfg)} @ ${t.cycle}`).toBe(stalled);
       }
     }
   });
 
   it('the load-use stall — the bubble forwarding cannot remove — lights it in BOTH positions', () => {
-    for (const fwd of CONFIGS) {
-      const traces = record('  lw x1, 64(x0)\n  add x2, x1, x1', fwd);
+    for (const cfg of CONFIGS) {
+      const traces = record('  lw x1, 64(x0)\n  add x2, x1, x1', cfg);
       const stalled = traces.filter((t) => t.events.some((e) => e.type === 'stall'));
-      expect(stalled.length, `${label(fwd)}: load-use never stalled`).toBeGreaterThan(0);
+      expect(stalled.length, `${label(cfg)}: load-use never stalled`).toBeGreaterThan(0);
       for (const t of stalled) {
         const act = activate(t);
         expect(act.components.has('hazard')).toBe(true);
@@ -233,7 +253,7 @@ describe('forwarding is a change of PATH, not an extra wire', () => {
 
 describe('the branch redirect (drawn from `branch-resolved` — the signal M2 never had)', () => {
   it('a TAKEN pc-relative transfer redirects the pc from the pc adder, labelled with its target', () => {
-    const traces = record('  beq x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2', true);
+    const traces = record('  beq x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2', FWD);
     const cycle = traces.find((t) =>
       t.events.some((e) => e.type === 'branch-resolved' && e.actual),
     );
@@ -249,7 +269,7 @@ describe('the branch redirect (drawn from `branch-resolved` — the signal M2 ne
   });
 
   it('a NOT-taken branch resolves but redirects nothing (the +4 already fetched is the answer)', () => {
-    const traces = record('  bne x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2', true);
+    const traces = record('  bne x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2', FWD);
     const cycle = traces.find((t) =>
       t.events.some((e) => e.type === 'branch-resolved' && !e.actual),
     );
@@ -260,7 +280,7 @@ describe('the branch redirect (drawn from `branch-resolved` — the signal M2 ne
   });
 
   it('`jalr` alone redirects from the ALU — a REGISTER supplies its target', () => {
-    const traces = record('  jal x1, fn\nfn:\n  jalr x0, 0(x1)', true);
+    const traces = record('  jal x1, fn\nfn:\n  jalr x0, 0(x1)', FWD);
     const cycle = traces.find((t) =>
       t.events.some(
         (e) =>
@@ -273,6 +293,128 @@ describe('the branch redirect (drawn from `branch-resolved` — the signal M2 ne
     const act = activate(cycle!);
     expect(act.wires.has('alu-pcmux')).toBe(true);
     expect(act.wires.has('pcarith-pcmux')).toBe(false);
+  });
+});
+
+describe('the BET and the CORRECTION — two redirects, two stages (M4 step 5)', () => {
+  const TAKEN_BRANCH = '  beq x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2';
+  const NEVER_BRANCH = '  bne x0, x0, ahead\n  addi x1, x0, 1\nahead:\n  addi x2, x0, 2';
+
+  const betCycle = (traces: CycleTrace[]): CycleTrace | undefined =>
+    traces.find((t) => t.events.some((e) => e.type === 'branch-predicted'));
+
+  it('the bet lights the ID adder and redirects the pc, labelled with the address bet on', () => {
+    const traces = record(TAKEN_BRANCH, BET);
+    const cycle = betCycle(traces);
+    expect(cycle, 'no bet fired').toBeDefined();
+    const ev = cycle!.events.find((e) => e.type === 'branch-predicted')!;
+    const act = activate(cycle!);
+
+    expect(act.components.has('btarget')).toBe(true);
+    expect(act.wires.has('ifid-btarget')).toBe(true);
+    expect(act.wires.has('signext-btarget')).toBe(true);
+    // The redirect carries the ENGINE's number — the view never re-derives `pc + imm` (INV-3).
+    expect(act.wires.get('btarget-pcmux')?.value).toBe(
+      ev.type === 'branch-predicted' ? ev.target : -1,
+    );
+    // Hued as ID's work: the bet is placed by the instruction in DECODE, a stage before the answer
+    // exists. That is the whole reason a correct bet costs 1 rather than 2.
+    expect(act.wires.get('btarget-pcmux')?.stage).toBe('ID');
+    expect(act.wires.get('btarget-pcmux')?.instr).toBe(
+      ev.type === 'branch-predicted' ? ev.instr : '',
+    );
+  });
+
+  /**
+   * **The step's headline correctness fix, and it is in code M3 shipped.** `activate` drew the EX
+   * redirect on `resolved.actual`, which was RIGHT under predict-not-taken and is a coincidence:
+   * a machine that never bets taken can only ever be wrong about a branch that WAS taken. Turn the
+   * bet on and the two come apart in both directions. This is the taken half — the bet already
+   * steered fetch in ID, so EX has nothing to correct and must draw nothing.
+   *
+   * Mutation: restore `if (resolved.actual)` and this fails — EX draws a redirect the machine
+   * never performed, beside the ID bet that actually did the work. Two redirects for one transfer.
+   */
+  it('a CORRECT bet leaves EX with nothing to correct — only ID redirects', () => {
+    const traces = record(TAKEN_BRANCH, BET);
+    const cycle = traces.find((t) =>
+      t.events.some((e) => e.type === 'branch-resolved' && e.predicted && e.actual),
+    );
+    expect(cycle, 'no correctly-predicted taken branch').toBeDefined();
+    const act = activate(cycle!);
+    expect(act.wires.has('pcarith-pcmux'), 'EX redirected a pc the bet had already steered').toBe(
+      false,
+    );
+    expect(act.wires.has('alu-pcmux')).toBe(false);
+  });
+
+  /**
+   * The other half, and the one `actual` is silently blind to: a bet on a branch that DECLINES.
+   * The machine really does redirect — back to the fall-through it wrongly discarded — so drawing
+   * nothing would be the diagram claiming a free branch. This is `call-return.s`'s `bge`, the
+   * transfer that makes `static-taken` LOSE, so it is the milestone's thesis on the canvas.
+   *
+   * Mutation: restore `if (resolved.actual)` and this fails with the redirect simply absent.
+   */
+  it('a LOST bet redirects from EX to the FALL-THROUGH — the correction `actual` cannot see', () => {
+    const traces = record(NEVER_BRANCH, BET);
+    const cycle = traces.find((t) =>
+      t.events.some((e) => e.type === 'branch-resolved' && e.predicted && !e.actual),
+    );
+    expect(cycle, 'no lost bet — the program does not test what it claims').toBeDefined();
+    const resolved = cycle!.events.find((e) => e.type === 'branch-resolved')!;
+    const act = activate(cycle!);
+    expect(act.wires.has('pcarith-pcmux'), 'a lost bet corrects, and it must be drawn').toBe(true);
+    expect(act.wires.get('pcarith-pcmux')?.value).toBe(
+      resolved.type === 'branch-resolved' ? resolved.target : -1,
+    );
+    // ...and the correction really is the fall-through, not the target: the branch is at pc 0.
+    expect(act.wires.get('pcarith-pcmux')?.value).toBe(4);
+  });
+
+  /**
+   * The reason this needed a trace EVENT rather than the `flush` the milestone expected to reuse.
+   * The flush reports CASUALTIES, so a branch with nothing behind it in IF bets — redirecting the
+   * pc — and raises none. Drawn from the flush, this diagram would be dark in exactly the cycles
+   * the machine was betting, and the pc would jump with no wire to explain it.
+   */
+  it('draws a bet that killed NOBODY — the flush is the cost, not the action', () => {
+    // The `bnez` is the last word in `.text` (this program appends no `ecall`), so the
+    // fall-through fetch is out of text on every pass and IF never has anything to lose.
+    const result = loadSource(
+      'addi x1, x0, 3\nloop:\naddi x1, x1, -1\nbnez x1, loop\n',
+      () => new PipelineProcessor(),
+      { ...defaultConfig(), branchPrediction: 'static-taken' },
+    );
+    if (!result.ok) throw new Error('assembly failed');
+    const traces: CycleTrace[] = [];
+    for (;;) {
+      result.loaded.recorder.stepForward();
+      const t = result.loaded.recorder.current()!;
+      traces.push(t);
+      if (t.state.halted || traces.length > 200) break;
+    }
+    const bets = traces.filter((t) => t.events.some((e) => e.type === 'branch-predicted'));
+    expect(bets.length, 'the loop must bet — otherwise this tests nothing').toBe(3);
+    for (const t of bets) {
+      expect(
+        t.events.some((e) => e.type === 'flush'),
+        `cycle ${t.cycle}: this bet raised a flush, so it is not the blind case`,
+      ).toBe(false);
+      // The bet is drawn anyway. This is the assertion the flush could not support.
+      expect(activate(t).wires.has('btarget-pcmux'), `cycle ${t.cycle}`).toBe(true);
+    }
+  });
+
+  it('a machine that predicts NOT-taken never lights the bet path — it takes no action', () => {
+    for (const src of [TAKEN_BRANCH, NEVER_BRANCH]) {
+      const traces = record(src, FWD); // predictTaken: false
+      for (const t of traces) {
+        const act = activate(t);
+        expect(act.components.has('btarget'), `@${t.cycle}`).toBe(false);
+        expect(act.wires.has('btarget-pcmux'), `@${t.cycle}`).toBe(false);
+      }
+    }
   });
 });
 
@@ -290,15 +432,15 @@ describe('activation coherence: every lit wire is a real wire with both endpoint
       'jal x1, fn\nfn:\n  jalr x0, 0(x1)',
       'addi x1, x0, 3\nloop:\n  addi x1, x1, -1\n  bnez x1, loop',
     ];
-    for (const fwd of CONFIGS) {
+    for (const cfg of CONFIGS) {
       for (const src of programs) {
-        for (const trace of record(src, fwd)) {
+        for (const trace of record(src, cfg)) {
           const a = activate(trace);
           for (const id of a.wires.keys()) {
             const wire = byId.get(id);
             expect(wire, `activated unknown wire "${id}" for \`${src}\``).toBeDefined();
             for (const end of wire!.ends) {
-              const msg = `wire ${id} lit but endpoint ${end} is dim for \`${src}\` ${label(fwd)}`;
+              const msg = `wire ${id} lit but endpoint ${end} is dim for \`${src}\` ${label(cfg)}`;
               expect(a.components.has(end), msg).toBe(true);
             }
           }
@@ -312,7 +454,7 @@ describe('activation coherence: every lit wire is a real wire with both endpoint
     // config-OBLIVIOUS (INV-2), so with forwarding off it must simply never produce a forward
     // path — rather than produce one the view then has to filter away. If it did, the two would
     // disagree about what happened, and only the view's silence would hide it.
-    for (const trace of record('  addi x1, x0, 7\n  add x2, x1, x1', false)) {
+    for (const trace of record('  addi x1, x0, 7\n  add x2, x1, x1', NOFWD)) {
       for (const id of activate(trace).wires.keys()) {
         const wire = WIRES.find((w) => w.id === id)!;
         expect(wire.forwardingOnly ?? false, `${id} lit with forwarding off`).toBe(false);
@@ -323,9 +465,9 @@ describe('activation coherence: every lit wire is a real wire with both endpoint
 
 describe('depth tiers × config — two visibility axes (handoff §4, INV-5)', () => {
   const FWD_STRUCTURE = ['fwdunit', 'fwdmuxa', 'fwdmuxb'];
-  const visibleNodes = (t: DepthTier, f: boolean): Set<string> =>
+  const visibleNodes = (t: DepthTier, f: DatapathConfig): Set<string> =>
     new Set([...NODES.values()].filter((n) => nodeVisibleAt(n, t, f)).map((n) => n.id));
-  const visibleWires = (t: DepthTier, f: boolean): Set<string> =>
+  const visibleWires = (t: DepthTier, f: DatapathConfig): Set<string> =>
     new Set(WIRES.filter((w) => wireVisibleAt(w, t, f)).map((w) => w.id));
 
   it('tierVisible: an element shows once the selected tier reaches its minTier', () => {
@@ -335,17 +477,17 @@ describe('depth tiers × config — two visibility axes (handoff §4, INV-5)', (
   });
 
   it('hides the forwarding + hazard structure below expert, and reveals it there', () => {
-    for (const fwd of CONFIGS) {
+    for (const cfg of CONFIGS) {
       for (const t of ['essentials', 'detailed'] as const) {
         for (const n of [...FWD_STRUCTURE, 'hazard'])
-          expect(visibleNodes(t, fwd).has(n), `${n}@${t} ${label(fwd)}`).toBe(false);
+          expect(visibleNodes(t, cfg).has(n), `${n}@${t} ${label(cfg)}`).toBe(false);
       }
     }
     // The five-stage skeleton is drawn at EVERY tier, in EVERY config — it is the story.
     for (const core of ['pc', 'imem', 'ifid', 'idex', 'exmem', 'memwb', 'regfile', 'alu', 'dmem']) {
       for (const t of DEPTH_TIERS)
-        for (const fwd of CONFIGS)
-          expect(visibleNodes(t, fwd).has(core), `${core}@${t} ${label(fwd)}`).toBe(true);
+        for (const cfg of CONFIGS)
+          expect(visibleNodes(t, cfg).has(core), `${core}@${t} ${label(cfg)}`).toBe(true);
     }
   });
 
@@ -353,16 +495,54 @@ describe('depth tiers × config — two visibility axes (handoff §4, INV-5)', (
     // The milestone's config-driven structure, and the reason it is lawful: the trace has no
     // `forward` events in that position, so an idle forwarding network would CONTRADICT it.
     for (const n of FWD_STRUCTURE) {
-      expect(visibleNodes('expert', true).has(n), `${n} shown at expert+on`).toBe(true);
-      expect(visibleNodes('expert', false).has(n), `${n} absent at expert+off`).toBe(false);
+      expect(visibleNodes('expert', FWD).has(n), `${n} shown at expert+on`).toBe(true);
+      expect(visibleNodes('expert', NOFWD).has(n), `${n} absent at expert+off`).toBe(false);
     }
+  });
+
+  /**
+   * The bet's structure is gated on the PREDICTION axis — the mirror of the forwarding network's
+   * rule, and lawful for the mirror reason: a machine predicting not-taken emits no
+   * `branch-predicted` events because it performs no action, so an idle bet adder would draw a
+   * decision that is never made.
+   */
+  it('the branch-target adder is ABSENT unless the machine bets — the second config axis', () => {
+    for (const cfg of CONFIGS) {
+      for (const tier of DEPTH_TIERS) {
+        const drawn = visibleNodes(tier, cfg).has('btarget');
+        expect(drawn, `btarget @ ${tier} ${label(cfg)}`).toBe(cfg.predictTaken);
+        // ...and its wires go with it, so the redirect never dangles out of a hidden adder.
+        for (const id of ['ifid-btarget', 'signext-btarget', 'btarget-pcmux'])
+          expect(visibleWires(tier, cfg).has(id), `${id} @ ${tier} ${label(cfg)}`).toBe(
+            cfg.predictTaken,
+          );
+      }
+    }
+  });
+
+  /**
+   * ...and it is drawn at EVERY tier once it exists, unlike the forwarding unit. The bet is not an
+   * optimization detail the skeleton may omit: with the toggle on it is where the machine's next pc
+   * comes from, so hiding it at `essentials` would leave the redirect arriving from nowhere — and
+   * there is no mux here to stand a contraction in for.
+   */
+  it('the bet adder is tier-INDEPENDENT — it is the machine, not a detail', () => {
+    for (const tier of DEPTH_TIERS)
+      expect(visibleNodes(tier, BET).has('btarget'), `btarget@${tier}`).toBe(true);
+    // The two axes really are independent: forwarding off does not hide the bet, and vice versa.
+    expect(visibleNodes('expert', { forwarding: false, predictTaken: true }).has('btarget')).toBe(
+      true,
+    );
+    expect(visibleNodes('expert', { forwarding: true, predictTaken: false }).has('fwdunit')).toBe(
+      true,
+    );
   });
 
   it('the HAZARD unit is not config-gated — it is live in both positions', () => {
     // Deliberately unlike the forwarding unit: the load-use stall survives forwarding, and the RAW
     // interlock is the whole story without it. Gating it on config would erase the interlock from
     // the exact diagram meant to explain it.
-    for (const fwd of CONFIGS) expect(visibleNodes('expert', fwd).has('hazard')).toBe(true);
+    for (const cfg of CONFIGS) expect(visibleNodes('expert', cfg).has('hazard')).toBe(true);
   });
 
   it('swaps contraction wires for through-mux wires, on BOTH axes', () => {
@@ -370,13 +550,15 @@ describe('depth tiers × config — two visibility axes (handoff §4, INV-5)', (
     expect(contractions.length).toBeGreaterThan(0);
     for (const w of contractions) {
       for (const tier of DEPTH_TIERS) {
-        for (const fwd of CONFIGS) {
-          const unitDrawn = nodeVisibleAt(NODES.get(w.contracts!)!, tier, fwd);
-          const gated = (w.forwardingOnly ?? false) && !fwd;
+        for (const cfg of CONFIGS) {
+          const unitDrawn = nodeVisibleAt(NODES.get(w.contracts!)!, tier, cfg);
+          const gated =
+            ((w.forwardingOnly ?? false) && !cfg.forwarding) ||
+            ((w.predictTakenOnly ?? false) && !cfg.predictTaken);
           // A contraction is drawn exactly when its unit is not (and its own config gate allows).
           expect(
-            visibleWires(tier, fwd).has(w.id),
-            `${w.id} @ ${tier} ${label(fwd)} (unit ${w.contracts} drawn=${unitDrawn})`,
+            visibleWires(tier, cfg).has(w.id),
+            `${w.id} @ ${tier} ${label(cfg)} (unit ${w.contracts} drawn=${unitDrawn})`,
           ).toBe(!unitDrawn && !gated);
         }
       }
@@ -385,12 +567,12 @@ describe('depth tiers × config — two visibility axes (handoff §4, INV-5)', (
 
   it('never draws a wire whose endpoint node is hidden (no dangling — PER TIER × PER CONFIG)', () => {
     for (const tier of DEPTH_TIERS) {
-      for (const fwd of CONFIGS) {
-        const nodes = visibleNodes(tier, fwd);
+      for (const cfg of CONFIGS) {
+        const nodes = visibleNodes(tier, cfg);
         for (const wire of WIRES) {
-          if (!wireVisibleAt(wire, tier, fwd)) continue;
+          if (!wireVisibleAt(wire, tier, cfg)) continue;
           for (const end of wire.ends) {
-            const msg = `wire ${wire.id} shown at ${tier} ${label(fwd)} but ${end} hidden`;
+            const msg = `wire ${wire.id} shown at ${tier} ${label(cfg)} but ${end} hidden`;
             expect(nodes.has(end), msg).toBe(true);
           }
         }
@@ -496,8 +678,8 @@ describe('geometry: wires are orthogonal and anchored on real edges (visual acce
     // axes: a contraction and its through-mux wire are intentionally collinear but never co-visible,
     // and neither are the forward paths across the two configs. Crossings / shared endpoints are fine.
     for (const tier of DEPTH_TIERS) {
-      for (const fwd of CONFIGS) {
-        const vis = WIRES.filter((w) => wireVisibleAt(w, tier, fwd));
+      for (const cfg of CONFIGS) {
+        const vis = WIRES.filter((w) => wireVisibleAt(w, tier, cfg));
         for (let i = 0; i < vis.length; i++) {
           for (let j = i + 1; j < vis.length; j++) {
             const wi = vis[i]!;
@@ -509,7 +691,7 @@ describe('geometry: wires are orthogonal and anchored on real edges (visual acce
             expect
               .soft(
                 worst,
-                `${wi.id} overlaps ${wj.id} at ${tier} ${label(fwd)} for ${worst.toFixed(0)}px`,
+                `${wi.id} overlaps ${wj.id} at ${tier} ${label(cfg)} for ${worst.toFixed(0)}px`,
               )
               .toBeLessThan(2);
           }

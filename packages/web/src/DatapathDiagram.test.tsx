@@ -132,7 +132,12 @@ describe('pipeline wrapper × shared renderer', () => {
   const forwarded = pipelineAt('  addi x1, x0, 7\n  add x2, x1, x1', 4, true);
   const render = (trace: CycleTrace, tier: 'essentials' | 'detailed' | 'expert', fwd: boolean) =>
     renderToStaticMarkup(
-      <PipelineDatapath trace={trace} cycleKey={0} tier={tier} forwarding={fwd} />,
+      <PipelineDatapath
+        trace={trace}
+        cycleKey={0}
+        tier={tier}
+        config={{ forwarding: fwd, predictTaken: false }}
+      />,
     );
 
   it('strokes one cycle in MANY stage hues at once — the thing no earlier model could', () => {
@@ -198,7 +203,12 @@ describe('pipeline wrapper × shared renderer', () => {
 
   it('renders the idle diagram (no active classes) pre-run', () => {
     const html = renderToStaticMarkup(
-      <PipelineDatapath trace={null} cycleKey={-1} tier="detailed" forwarding />,
+      <PipelineDatapath
+        trace={null}
+        cycleKey={-1}
+        tier="detailed"
+        config={{ forwarding: true, predictTaken: false }}
+      />,
     );
     expect(html).toContain('dp-wire');
     expect(html).not.toContain('dp-wire--on');

@@ -277,12 +277,19 @@ export function App(): React.JSX.Element {
           ) : activeModel.datapath === 'pipeline' ? (
             // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
             // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
-            // events to draw). The view already holds the position; the user set it.
+            // events to draw), and with prediction on the bet's adder and redirect appear. The view
+            // already holds both positions; the user set them.
+            //
+            // `predictsTaken` collapses the knob HERE, at the shell's edge, exactly once: three
+            // scheme names, two machines, and a diagram can only draw a machine.
             <PipelineDatapath
               trace={sim.cycleTrace}
               cycleKey={sim.cursor}
               tier={tier}
-              forwarding={sim.forwarding}
+              config={{
+                forwarding: sim.forwarding,
+                predictTaken: predictsTaken(sim.branchPrediction),
+              }}
               followed={followed}
             />
           ) : (

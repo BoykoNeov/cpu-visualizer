@@ -43,11 +43,17 @@ function traceAt(source: string, cycles: number, multi: boolean): CycleTrace {
 }
 
 /** The pipeline's counterpart — the only model whose trace depends on the CONFIG, which is the
- *  whole reason its snapshots come in pairs. */
-function pipelineAt(source: string, cycles: number, forwarding: boolean): CycleTrace {
+ *  whole reason its snapshots come in pairs. Two knobs since M4, so the pairs are per-axis. */
+function pipelineAt(
+  source: string,
+  cycles: number,
+  forwarding: boolean,
+  predictTaken = false,
+): CycleTrace {
   const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), {
     ...defaultConfig(),
     forwarding,
+    branchPrediction: predictTaken ? 'static-taken' : 'static-not-taken',
   });
   if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
   const { recorder } = result.loaded;
@@ -156,10 +162,13 @@ RUN('emit datapath snapshots', () => {
     // Six independent addis fill the pipe by cycle 4 — no hazards, so all five stages are occupied.
     const FILL = ' addi x1, x0, 1\n addi x2, x0, 2\n addi x3, x0, 3\n addi x4, x0, 4\n addi x5, x0, 5\n addi x6, x0, 6'; // prettier-ignore
     const full = pipelineAt(FILL, 5, true);
+    const ON = { forwarding: true, predictTaken: false };
+    const OFF = { forwarding: false, predictTaken: false };
+    const BET = { forwarding: true, predictTaken: true };
     const blocks = tiers
       .map(
         (tier) =>
-        block(`pipeline · full pipe · ${tier} · fwd on`, renderToStaticMarkup(<PipelineDatapath trace={full} cycleKey={4} tier={tier} forwarding />)), // prettier-ignore
+        block(`pipeline · full pipe · ${tier} · fwd on`, renderToStaticMarkup(<PipelineDatapath trace={full} cycleKey={4} tier={tier} config={ON} />)), // prettier-ignore
       )
       .join('');
     emit('pl-fill', blocks);
@@ -169,14 +178,42 @@ RUN('emit datapath snapshots', () => {
     const raw = ' addi x1, x0, 7\n add x2, x1, x1\n sub x3, x2, x1';
     emit(
       'pl-toggle',
-      block('pipeline · RAW · expert · fwd ON (network present)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, true)} cycleKey={3} tier="expert" forwarding />)) + // prettier-ignore
-        block('pipeline · RAW · expert · fwd OFF (network absent)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, false)} cycleKey={3} tier="expert" forwarding={false} />)), // prettier-ignore
+      block('pipeline · RAW · expert · fwd ON (network present)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, true)} cycleKey={3} tier="expert" config={ON} />)) + // prettier-ignore
+        block('pipeline · RAW · expert · fwd OFF (network absent)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, false)} cycleKey={3} tier="expert" config={OFF} />)), // prettier-ignore
     );
 
     // Focused expert pages: the load-use bubble (the stall that survives forwarding, lighting the
     // hazard unit) and a taken branch (the redirect M2's datapath could not honestly draw).
-    emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
-    emit('pl-focus-branch', block('pipeline · taken branch redirect · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\ntgt:\n addi x2, x0, 2', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
+    emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 4, true)} cycleKey={3} tier="expert" config={ON} />))); // prettier-ignore
+    emit('pl-focus-branch', block('pipeline · taken branch redirect · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\ntgt:\n addi x2, x0, 2', 4, true)} cycleKey={3} tier="expert" config={BET} />))); // prettier-ignore
+
+    // --- The PREDICTION axis (M4 step 5): the bet, and what it costs when it is wrong ----------
+    // The second config axis, and the pages the milestone's own acceptance rests on. The bet's
+    // adder and its top-rail redirect must be visibly ABSENT under not-taken (same rule as the
+    // forwarding network), and the three cycles below are the whole story of a predictor:
+    //   BET      — ID redirects fetch on a guess, one stage before the answer exists;
+    //   CORRECT  — the guess was right, so EX draws NOTHING (the bet already steered);
+    //   LOST     — the guess was wrong, so EX corrects back to the FALL-THROUGH.
+    // The last two are the pair that `if (resolved.actual)` drew backwards for the whole of M3.
+    // Two dead instructions after the branch, not one — so the bet's target (0x14) differs from the
+    // `+4` of whatever IF is fetching (0xc). The first draft branched to 0xc and IF's adder also
+    // read 0xc, printing one string on two unrelated wires: an accident of the demo program that
+    // read as the diagram claiming they were the same fact.
+    const bet = ' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\n addi x8, x0, 8\ntgt:\n addi x2, x0, 2'; // prettier-ignore
+    const lost = ' addi x1, x0, 1\n bne x0, x0, tgt\n addi x9, x0, 9\n addi x8, x0, 8\ntgt:\n addi x2, x0, 2'; // prettier-ignore
+    emit(
+      'pl-predict-axis',
+      block('pipeline · branch in ID · expert · PREDICT TAKEN (bet adder + top rail present)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(bet, 3, true, true)} cycleKey={2} tier="expert" config={BET} />)) + // prettier-ignore
+        block('pipeline · branch in ID · expert · PREDICT NOT-TAKEN (bet adder absent)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(bet, 3, true, false)} cycleKey={2} tier="expert" config={ON} />)), // prettier-ignore
+    );
+    emit(
+      'pl-predict-outcome',
+      block('pipeline · a WINNING bet resolves in EX · expert · predict taken (EX must draw NO redirect)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(bet, 4, true, true)} cycleKey={3} tier="expert" config={BET} />)) + // prettier-ignore
+        block('pipeline · a LOST bet corrects in EX · expert · predict taken (redirect = the FALL-THROUGH)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(lost, 4, true, true)} cycleKey={3} tier="expert" config={BET} />)), // prettier-ignore
+    );
+    // The bet at `essentials`: it is NOT tier-gated, unlike the forwarding unit — with the toggle
+    // on it is where the next pc comes from, so the skeleton must show it too.
+    emit('pl-predict-essentials', block('pipeline · the bet · ESSENTIALS · predict taken', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(bet, 3, true, true)} cycleKey={2} tier="essentials" config={BET} />))); // prettier-ignore
   }
 
   // The pipeline map (step 7). Unlike every block above, these render the WHOLE RECORDING rather

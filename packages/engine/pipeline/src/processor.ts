@@ -995,6 +995,14 @@ export class PipelineProcessor implements Processor {
     if (target !== null) {
       ctx.bet = true;
       ctx.redirect = target; // applied at the clock edge, AFTER IF has fetched the fall-through
+      // The bet's own event, emitted HERE rather than left to be inferred from the `flush` it
+      // usually causes. The two are different facts and they come apart: the flush reports
+      // CASUALTIES, so a branch at the end of `.text` bets — redirecting the pc — while IF has
+      // nothing to kill, and emits none. That is not a corner: such a branch bets on every pass.
+      // Without this event the bet is unobservable in the cycle it happens, and a consumer would
+      // have to read the correction (`branch-resolved`, one stage and at least one cycle later) or
+      // re-derive `pc + imm` for itself (INV-3/INV-7).
+      ctx.events.push({ type: 'branch-predicted', instr: fd.instr, target });
     }
 
     ctx.next.idEx = {

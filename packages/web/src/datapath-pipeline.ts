@@ -120,6 +120,11 @@ export interface DatapathNode {
    *  `forward` events in the other position, so drawing an idle forwarding network there would
    *  contradict it (INV-5). The hazard unit deliberately does NOT set this — it is live in both. */
   readonly forwardingOnly?: boolean;
+  /** Drawn ONLY when the machine bets taken: the branch-target adder and its redirect. Same rule
+   *  as {@link forwardingOnly}, on the second config axis — a machine predicting not-taken emits no
+   *  `branch-predicted` events because it takes no action (the fall-through IS the not-taken path),
+   *  so an idle bet path would draw a decision that is never made. */
+  readonly predictTakenOnly?: boolean;
   /** The control signal this unit drives — shown only at `expert` tier. */
   readonly controlLabel?: string;
 }
@@ -140,8 +145,24 @@ const NODE_LIST: readonly DatapathNode[] = [
   { id: 'imem', label: 'Instr\nMem', x: 146, y: 238, w: 72, h: 76 },
   // --- The four latch bars: the columns that divide the five stages ---
   { id: 'ifid', label: 'IF\n/\nID', x: 298, y: 70, w: 16, h: 360 },
-  // --- ID: register file, sign-extend, and the hazard-detection unit ---
-  { id: 'hazard', label: 'Hazard\ndetect', x: 354, y: 104, w: 100, h: 44, minTier: 'expert', controlLabel: 'PCWrite / IF-ID-Write' }, // prettier-ignore
+  // --- ID: register file, sign-extend, the hazard unit, and the branch-target adder ---
+  { id: 'hazard', label: 'Hazard\ndetect', x: 354, y: 84, w: 100, h: 44, minTier: 'expert', controlLabel: 'PCWrite / IF-ID-Write' }, // prettier-ignore
+  // The BET's adder (M4 step 5), and the first structure whose existence depends on the PREDICTION
+  // config. It computes `pc + imm` one stage EARLIER than `pcarith` does — which is the whole
+  // reason a bet is possible at all, and also why a correct one still costs 1 rather than 0: ID is
+  // the earliest a PC-relative target can be known, and by then IF has already fetched the
+  // fall-through. No `minTier`: unlike the forwarding unit, this is not an optimization detail the
+  // skeleton can omit — with the toggle on it is where the machine's next pc comes from, so hiding
+  // it at `essentials` would leave the redirect arriving from nowhere.
+  //
+  // Proportioned like `pcarith`, and that is a browser-eyeball finding rather than symmetry for its
+  // own sake: an `adder` is drawn as a tapering silhouette with a notch `0.22 · w` deep, so it only
+  // READS as an adder near square. The first draft was 100 wide against the same 44 tall and
+  // rendered as a flat banner beside two unmistakable adders — the notch a glitch-sized nick. The
+  // ID band has the width to spare; it does not have the aspect ratio to spare. Slightly larger
+  // than `pcarith` because the notch eats the middle of the label's own rows, and this one's words
+  // are six characters where `PC arith`'s are two and five.
+  { id: 'btarget', label: 'Branch\ntarget', x: 354, y: 143, w: 76, h: 52, shape: 'adder', predictTakenOnly: true }, // prettier-ignore
   { id: 'regfile', label: 'Registers', x: 354, y: 214, w: 100, h: 120 },
   { id: 'signext', label: 'Sign\nExtend', x: 354, y: 364, w: 100, h: 40 },
   { id: 'idex', label: 'ID\n/\nEX', x: 494, y: 70, w: 16, h: 360 },
@@ -211,6 +232,10 @@ export interface DatapathWire {
    *  endpoints alone would not say so — the forward CONTRACTIONS run latch→ALU, and both of those
    *  are drawn in every config. */
   readonly forwardingOnly?: boolean;
+  /** Part of the bet path, so drawn only when the machine predicts taken. Unlike
+   *  {@link forwardingOnly} these are all gated by their `btarget` endpoint anyway; the field is
+   *  set for the reader's sake and costs nothing, since the two rules agree. */
+  readonly predictTakenOnly?: boolean;
   /** For a CONTRACTION wire: the unit id it collapses. The `S → T` contraction must equal the
    *  expert path `S → unit → T` (same source, same sink) — the INV-5 lawfulness condition, checked
    *  by test. It is drawn exactly when that unit is NOT (see {@link wireVisibleAt}), so its
@@ -235,10 +260,22 @@ const WIRE_LIST: readonly DatapathWire[] = [
   // The hazard unit: reads the decoding instruction's sources and the executing one's destination,
   // and answers by HOLDING the PC and the IF/ID latch (the repeated `IF IF` of every textbook
   // diagram). Its two outputs ride the top rail (y=56), clear of the latch bars.
-  { id: 'ifid-hazard', ends: ['ifid', 'hazard'], points: [bar('ifid', 'r', 126), at('hazard', 'l')] }, // prettier-ignore
-  { id: 'idex-hazard', ends: ['idex', 'hazard'], points: [bar('idex', 'l', 110), at('hazard', 'r', -16)] }, // prettier-ignore
-  { id: 'hazard-ifid', ends: ['hazard', 'ifid'], points: [at('hazard', 'l', 14), bar('ifid', 'r', 140)] }, // prettier-ignore
+  { id: 'ifid-hazard', ends: ['ifid', 'hazard'], points: [bar('ifid', 'r', 106), at('hazard', 'l')] }, // prettier-ignore
+  { id: 'idex-hazard', ends: ['idex', 'hazard'], points: [bar('idex', 'l', 90), at('hazard', 'r', -16)] }, // prettier-ignore
+  { id: 'hazard-ifid', ends: ['hazard', 'ifid'], points: [at('hazard', 'l', 14), bar('ifid', 'r', 120)] }, // prettier-ignore
   { id: 'hazard-pc', ends: ['hazard', 'pc'], points: [at('hazard', 't'), [404, 56], [106, 56], at('pc', 't', 10)] }, // prettier-ignore
+  // --- ID: the BET (M4 step 5) — the second redirect, and the EARLY one -----------------------
+  // `pc + imm`, computed in ID from the IF/ID latch and the sign-extender, and fed back to the
+  // same selector the EX corrections use. That makes `pcmux` a four-source mux, which is the
+  // honest count: the sequential +4, the ID bet, the EX pc-relative correction, and `jalr`'s.
+  // The immediate detours up the clear x≈474 channel rather than the IF/ID one, which below y≈310
+  // belongs to the writeback bus; routing it there would run three verticals within 8px.
+  { id: 'ifid-btarget', ends: ['ifid', 'btarget'], points: [bar('ifid', 'r', aUp('btarget')[1]), aUp('btarget')], predictTakenOnly: true }, // prettier-ignore
+  { id: 'signext-btarget', ends: ['signext', 'btarget'], points: [at('signext', 'r', -12), [474, 372], [474, 202], [340, 202], [340, aLo('btarget')[1]], aLo('btarget')], predictTakenOnly: true }, // prettier-ignore
+  // The bet rides the TOP rail home, where the EX corrections ride the bottom ones — and the
+  // split is the picture, not a routing convenience: the top rail is where next-pc candidates
+  // computed EARLY live (the +4 is already there), the bottom is where late corrections come back.
+  { id: 'btarget-pcmux', ends: ['btarget', 'pcmux'], points: [at('btarget', 'r'), [478, 169], [478, 24], [34, 24], [34, 248], at('pcmux', 'l', -28)], predictTakenOnly: true }, // prettier-ignore
   // --- EX: the forwarding muxes pick each operand's source, then the ALU ---
   { id: 'idex-fwdmuxa', ends: ['idex', 'fwdmuxa'], points: [bar('idex', 'r', 228), at('fwdmuxa', 'l')] }, // prettier-ignore
   { id: 'idex-fwdmuxb', ends: ['idex', 'fwdmuxb'], points: [bar('idex', 'r', 318), at('fwdmuxb', 'l')] }, // prettier-ignore
@@ -298,10 +335,28 @@ export function tierVisible(minTier: DepthTier | undefined, current: DepthTier):
   return DEPTH_TIERS.indexOf(minTier ?? 'essentials') <= DEPTH_TIERS.indexOf(current);
 }
 
-/** Whether a node is drawn, on BOTH axes: deep enough a tier, and — for the forwarding unit and
- *  its muxes only — the forwarding position that makes it real. */
-export function nodeVisibleAt(node: DatapathNode, tier: DepthTier, forwarding: boolean): boolean {
-  return tierVisible(node.minTier, tier) && (!node.forwardingOnly || forwarding);
+/**
+ * The engine BEHAVIORS the diagram's structure depends on — deliberately not the config's values.
+ *
+ * `forwarding` is already a behavior, so it passes through. `predictTaken` is where the difference
+ * bites: `ProcessorConfig.branchPrediction` has three NAMES and the machine has two BEHAVIORS
+ * (`'none'` and `'static-not-taken'` are one machine — a processor with no predictor does not wait,
+ * it keeps fetching, and the fall-through IS the not-taken path). Geometry cannot be drawn from a
+ * name that does not decide anything, so the shell collapses the knob once, at its edge, and hands
+ * the diagram the fact: does this machine bet?
+ */
+export interface DatapathConfig {
+  readonly forwarding: boolean;
+  readonly predictTaken: boolean;
+}
+
+/** Whether a node is drawn, on BOTH axes: deep enough a tier, and on the right side of whichever
+ *  config gate it sets — the forwarding network's, or the bet adder's. */
+export function nodeVisibleAt(node: DatapathNode, tier: DepthTier, cfg: DatapathConfig): boolean {
+  if (!tierVisible(node.minTier, tier)) return false;
+  if (node.forwardingOnly && !cfg.forwarding) return false;
+  if (node.predictTakenOnly && !cfg.predictTaken) return false;
+  return true;
 }
 
 /**
@@ -314,11 +369,12 @@ export function nodeVisibleAt(node: DatapathNode, tier: DepthTier, forwarding: b
  * once — the forwarding muxes vanish below `expert` AND when forwarding is off, and the contraction
  * appears in both cases without a second field having to agree with this one.
  */
-export function wireVisibleAt(wire: DatapathWire, tier: DepthTier, forwarding: boolean): boolean {
+export function wireVisibleAt(wire: DatapathWire, tier: DepthTier, cfg: DatapathConfig): boolean {
   if (!tierVisible(wire.minTier, tier)) return false;
-  if (wire.forwardingOnly && !forwarding) return false;
-  if (wire.contracts && nodeVisibleAt(NODES.get(wire.contracts)!, tier, forwarding)) return false;
-  return wire.ends.every((id) => nodeVisibleAt(NODES.get(id)!, tier, forwarding));
+  if (wire.forwardingOnly && !cfg.forwarding) return false;
+  if (wire.predictTakenOnly && !cfg.predictTaken) return false;
+  if (wire.contracts && nodeVisibleAt(NODES.get(wire.contracts)!, tier, cfg)) return false;
+  return wire.ends.every((id) => nodeVisibleAt(NODES.get(id)!, tier, cfg));
 }
 
 /** Whether active wires carry their value labels at `tier` (everything except `essentials`). */
@@ -475,6 +531,25 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
       w('hazard-ifid', 'ID', idInst, undefined, 'dec');
       w('hazard-pc', 'ID', idInst, undefined, 'dec');
     }
+    // The BET (M4 step 5) — drawn from `branch-predicted`, the event that IS the redirect, and
+    // never from the `flush` it usually raises alongside. The flush reports CASUALTIES: a branch at
+    // the end of `.text` bets on every pass with the fetch pointer already out of text, killing
+    // nobody and emitting no flush while still steering the pc. Reading the flush would draw the
+    // bet's COST and call it the ACTION — the same mistake `if (resolved.actual)` was making in EX.
+    //
+    // Only the REDIRECT is labelled, and it is the one value here the trace can honestly supply.
+    // The immediate is already printed on `signext-idex` for this very instruction, so labelling it
+    // again would stack two identical boxes in one band; the pc's label would have 40px of wire
+    // beside the IF/ID bar to live on, which is the documented no-clear-y zone. The target is the
+    // question the wire answers — "where did the machine bet?" — and `branch-predicted` carries it,
+    // so the view never re-derives `pc + imm` (INV-3/INV-7).
+    const bet = events.find((e) => e.type === 'branch-predicted');
+    if (bet?.type === 'branch-predicted') {
+      c('btarget');
+      w('ifid-btarget', 'ID', idInst, undefined, 'hex');
+      w('signext-btarget', 'ID', idInst, undefined, 'dec');
+      w('btarget-pcmux', 'ID', idInst, bet.target, 'hex');
+    }
   }
 
   // --- EX: forward, compute, resolve control flow --------------------------------------------
@@ -538,10 +613,20 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
       w('idex-pcarith-imm', 'EX', exInst, d.imm, 'dec');
       if (PCARITH_PRODUCERS.has(d.mnemonic)) w('pcarith-exmem', 'EX', exInst, undefined, 'hex');
     }
-    // The BRANCH REDIRECT — the picture M2's datapath could not honestly draw. Only a TAKEN
-    // transfer redirects; a not-taken branch still resolves (and still emits `branch-resolved`),
-    // but the sequential +4 the pipe already fetched is the answer, so nothing is redirected.
-    if (resolved && resolved.type === 'branch-resolved' && resolved.actual) {
+    // The EX CORRECTION — the picture M2's datapath could not honestly draw. EX redirects exactly
+    // when the prediction was WRONG, which is not the same as "the branch was taken" and only
+    // looked like it: M3 wrote `if (resolved.actual)` and it was correct there, because a machine
+    // that never predicts taken can only ever be wrong about a branch that WAS taken. `static-taken`
+    // breaks the coincidence in BOTH directions, so keeping `actual` would have drawn two lies:
+    //   - a correctly predicted taken branch (`predicted && actual`) would draw an EX redirect the
+    //     machine never made — ID's bet already steered fetch a cycle earlier;
+    //   - a bet that loses (`predicted && !actual`) redirects back to the FALL-THROUGH and would
+    //     draw nothing at all, which is `call-return.s`'s `bge` and the whole regression.
+    // This is step 3's `2·T` trap one layer up: a rule that was specific in a place that read as
+    // general. `target` is the resolved next pc "whichever way it went", so it labels both.
+    const mispredicted =
+      resolved && resolved.type === 'branch-resolved' && resolved.predicted !== resolved.actual;
+    if (resolved && resolved.type === 'branch-resolved' && mispredicted) {
       const redirect = d.mnemonic === 'jalr' ? 'alu-pcmux' : 'pcarith-pcmux';
       w(redirect, 'EX', exInst, resolved.target, 'hex');
     }

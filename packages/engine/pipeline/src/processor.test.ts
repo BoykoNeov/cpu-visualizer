@@ -738,6 +738,126 @@ describe('branch prediction — the second toggle', () => {
     expect(resolved[0]!.predicted, 'we bet taken').toBe(true);
     expect(resolved[0]!.actual, 'it declined').toBe(false);
   });
+
+  /**
+   * **The bet is an ACTION; the flush is its COST. They are different facts, and they come apart.**
+   *
+   * The milestone seeded the opposite — "the bet already surfaces as a `flush` with
+   * `reason: 'branch-predicted-taken'`, in the cycle it happens", which is why it thought the
+   * pressure was off for a bet event. That claim is false, and this is the program that shows it:
+   * with the `bne` the LAST word in `.text`, the fall-through fetch pointer is out of text on every
+   * pass, so IF has nothing to lose. The flush contract forbids reporting a kill that did not
+   * happen, so no flush is emitted — while the bet still redirects the pc, every single iteration.
+   *
+   * That makes it structural rather than a corner: a consumer reading the flush as the bet draws
+   * the cost and calls it the action, and is blind exactly where the loop lives. It is also the
+   * same mistake, one layer up, that `if (resolved.actual)` was in the datapath — right for the
+   * wrong reason, until a config moved and the coincidence broke.
+   *
+   * Mutation: drop the `ctx.events.push` in `stageId` and this fails while the whole rest of the
+   * suite stays green — which is exactly how the gap survived until step 5 measured it.
+   */
+  it('a bet with nothing in IF emits its event and NO flush — the flush is not the bet', () => {
+    // No trailing `ecall`: the pipe drains off the end of `.text`, which is what empties IF.
+    const src = 'addi x1, x0, 3\nloop:\naddi x1, x1, -1\nbnez x1, loop\n';
+    const ts = run(src, TAKEN);
+
+    const bets = eventsOf(ts, 'branch-predicted');
+    expect(bets, 'the `bnez` bets on every pass it survives to decode').toHaveLength(3);
+    // Every bet names the loop head — the engine's own number, never re-derived by a consumer.
+    for (const b of bets) expect(b.target).toBe(4);
+
+    // ...and not one of them killed anybody, so not one raised a flush. The bet is unobservable
+    // here through any other surface: `branch-resolved` is a different stage, a cycle later.
+    expect(eventsOf(ts, 'flush').filter((e) => e.reason === 'branch-predicted-taken')).toEqual([]);
+
+    // The bets and the resolutions are the same three transfers seen twice — at ID, then at EX.
+    const resolved = eventsOf(ts, 'branch-resolved').filter((e) => e.predicted);
+    expect(resolved.map((e) => e.instr)).toEqual(bets.map((b) => b.instr));
+  });
+
+  /**
+   * The bet's target is the address fetch actually goes to — step 0's safety property, now asserted
+   * on the EVENT a view will label rather than on the internal function. It reads like a tautology
+   * (both spell `pc + imm`) and is not: two units computing one address from different inputs at
+   * different times is the shape of the classic BTB bug. Checked against the engine's own
+   * `branch-resolved`, never against a re-derivation here, which would agree with a broken
+   * predictor for the reason it was broken.
+   */
+  it("a winning bet's target IS the resolved next pc — ID and EX agree on the address", () => {
+    const ts = run(ALWAYS, TAKEN);
+    const bet = eventsOf(ts, 'branch-predicted');
+    const resolved = eventsOf(ts, 'branch-resolved');
+    expect(bet).toHaveLength(1);
+    expect(bet[0]!.instr, 'the bettor is the branch itself, not its casualty').toBe(
+      resolved[0]!.instr,
+    );
+    expect(resolved[0]!.actual, 'the bet won').toBe(true);
+    expect(bet[0]!.target, "ID's guess = EX's answer").toBe(resolved[0]!.target);
+  });
+
+  /**
+   * **There is no not-taken bet**, and that is the schema's half of step 1's finding. A machine
+   * predicting not-taken performs no action — it keeps fetching, and the fall-through IS the
+   * not-taken path — so an event there would assert something the machine did not do. The report
+   * at resolution (`branch-resolved.predicted: false`) is a different thing, and it still fires.
+   */
+  it('never fires under a scheme that does not bet — not-taken is the absence of an action', () => {
+    for (const scheme of ['none', 'static-not-taken'] as const) {
+      for (const src of [ALWAYS, NEVER]) {
+        const ts = run(src, { ...defaultConfig(), branchPrediction: scheme });
+        expect(eventsOf(ts, 'branch-predicted'), `${scheme}`).toEqual([]);
+        // ...while the RESOLUTION still reports the standing prediction. Absence of the action,
+        // not absence of the answer.
+        expect(
+          eventsOf(ts, 'branch-resolved').every((e) => !e.predicted),
+          `${scheme}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  /**
+   * A wrong-path branch never bets (`stageId` returns early on `ctx.squash`), so it must not emit
+   * the event either — the sibling of the pinned "an EX correction beats a younger ID bet". The
+   * event and the redirect are the same fact, so a bet event with no redirect behind it would be a
+   * consumer-visible lie about where fetch went.
+   */
+  it('a squashed wrong-path branch emits no bet — the event and the redirect are one fact', () => {
+    const src = [
+      'la x5, done',
+      'jalr x0, 0(x5)', // unpredictable ⇒ corrects at EX, leaving ID occupied
+      'beq x0, x0, bad', // wrong-path, and would love to bet
+      'bad:',
+      'addi x4, x0, 99',
+      'done:',
+      'addi x3, x0, 7',
+      'ecall',
+    ].join('\n');
+    const ts = run(src, TAKEN);
+    expect(reg(last(ts), 4), 'the wrong-path code must never run').toBe(0);
+    // The `beq` sits in ID during the correction. It emits no bet, because it placed none.
+    const bettors = new Set(eventsOf(ts, 'branch-predicted').map((e) => e.instr));
+    const wrongPath = eventsOf(ts, 'instr-fetch').filter((e) => e.pc === 12); // the `beq`
+    // Non-vacuity FIRST: a `for` over an empty array asserts nothing, and "the wrong-path branch
+    // was never fetched at all" would pass the loop below while testing none of this.
+    expect(
+      wrongPath.length,
+      'the wrong-path `beq` was never fetched — the test tests nothing',
+    ).toBeGreaterThan(0);
+    for (const f of wrongPath) expect(bettors.has(f.instr), 'wrong-path branch bet').toBe(false);
+
+    // The other half of non-vacuity, and the first draft got it wrong in a way worth keeping: the
+    // guard to write is NOT "some bet fired in this run" — nothing in this program CAN bet (the
+    // `jalr` is unpredictable and the `beq` is condemned), so that guard fails on a correct engine.
+    // The claim that makes the silence meaningful is that this very instruction WOULD bet if it
+    // were real. A `beq x0, x0` on the live path does; so the wrong-path one is declining, not
+    // unable, and its silence is a decision rather than the scheme being off.
+    expect(
+      eventsOf(run(ALWAYS, TAKEN), 'branch-predicted'),
+      'a live `beq` does not bet either — the scheme is not under test here',
+    ).not.toEqual([]);
+  });
 });
 
 describe('halt with drain', () => {
