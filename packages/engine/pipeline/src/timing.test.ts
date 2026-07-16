@@ -420,8 +420,17 @@ describe('the crown jewel — the same program, the same answer, fewer cycles', 
       expect([...finalOn.registers]).toEqual([...finalOff.registers]);
       expect(finalOn.pc).toBe(finalOff.pc);
       expect(finalOn.halted).toBe(finalOff.halted);
-      for (const addr of finalOff.memory.definedAddresses()) {
-        expect(finalOn.memory.readWord(addr)).toBe(finalOff.memory.readWord(addr));
+      // The UNION of both runs' touched addresses, not just one side's: a word that only ONE
+      // position wrote is precisely the asymmetry worth catching, and iterating a single side's
+      // addresses would look right while missing it entirely. Conformance checks both against the
+      // reference, but this test is the crown jewel and is meant to stand on its own.
+      for (const addr of new Set([
+        ...finalOff.memory.definedAddresses(),
+        ...finalOn.memory.definedAddresses(),
+      ])) {
+        expect(finalOn.memory.readWord(addr), `memory word at 0x${addr.toString(16)}`).toBe(
+          finalOff.memory.readWord(addr),
+        );
       }
     },
   );
