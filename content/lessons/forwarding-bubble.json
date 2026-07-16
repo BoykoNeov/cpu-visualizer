@@ -45,7 +45,7 @@
       },
       "narration": {
         "essentials": "The branch stalls too — it is reading a register the instruction before it just wrote.",
-        "detailed": "The same hazard again, in the hottest part of the loop: `addi t1, t1, -1` decrements the counter and `bnez t1, loop` immediately reads it. A branch is a reader like any other, so it waits the same two cycles — every single time around the loop.\n\nNow turn **forwarding** on with the toggle and watch what happens to these two waits. They do not both survive.",
+        "detailed": "The same hazard again, in the hottest part of the loop: `addi t1, t1, -1` decrements the counter and `bnez t1, loop` immediately reads it. A branch is a reader like any other, so it waits the same two cycles — every single time around the loop. Now turn forwarding on with the toggle and watch what happens to these two waits: they do not both survive.",
         "expert": "Branches are RAW consumers: they read rs1/rs2 to compare, and resolve in EX. So the same interlock covers them and the same forwarding paths will fix them — a branch is not a special case."
       }
     },
@@ -59,7 +59,7 @@
       },
       "narration": {
         "essentials": "Forwarding is on — and this one still stalls. A load's value simply is not ready any earlier.",
-        "detailed": "This is the bubble that does **not** vanish, and it is the one worth understanding. Forwarding hands a result straight from where it is computed to where it is needed, skipping the register file. But `lw` does not compute its value in the ALU — it reads it from memory, one stage later. There is nothing to forward yet when the add needs it, so the add still waits.\n\nIt waits less, though: the stall is one cycle now instead of two, and the trace names it `load-use` rather than a plain interlock. Compare it with the branch below, which lost its stall entirely.",
+        "detailed": "Here is the stall that survives forwarding, and it is the one worth understanding. Forwarding hands a result straight from where it is computed to where it is needed, skipping the register file. But `lw` does not compute its value in the ALU — it reads it from memory, one stage later. There is nothing to forward yet when the add needs it, so the add still waits. It waits less, though: one cycle now instead of two, and the trace names it `load-use` rather than a plain interlock. Compare it with the branch, which lost its stall entirely.",
         "expert": "The load-use hazard is the one case forwarding cannot close: the MEM/WB→EX path exists, but the loaded word is not available until the end of MEM, one cycle after the consumer wants it in EX. The hazard unit still interlocks for exactly one cycle, then the MEM/WB forward supplies the value. This is why the hazard-detection unit stays live in both toggle positions."
       }
     },
@@ -70,7 +70,7 @@
       },
       "narration": {
         "essentials": "The branch's bubble is gone — its operand is handed over directly.",
-        "detailed": "The bubble that vanished. `bnez t1, loop` no longer waits for `addi t1, t1, -1` to reach the register file: the counter is handed straight from the ALU's output to the branch's input. Two cycles of waiting, every loop iteration, replaced by a wire.\n\nOn the datapath the register path into the ALU goes dark and the forwarding path lights instead — forwarding is a change of route, not an extra one. The old value is still in the register file; it is simply the wrong one.",
+        "detailed": "The bubble that vanished. `bnez t1, loop` no longer waits for `addi t1, t1, -1` to reach the register file: the counter is handed straight from the ALU's output to the branch's input. Two cycles of waiting, every loop iteration, replaced by a wire. On the datapath the register path into the ALU goes dark and the forwarding path lights instead — forwarding is a change of route, not an extra one. The old value is still in the register file; it is simply the wrong one.",
         "expert": "The EX/MEM→EX.rs1 path: the producer's ALU result is captured in the EX/MEM latch at the end of its EX cycle, and the forwarding mux selects it over the stale register read in the very next cycle. Where two producers match, EX/MEM wins — the younger result is the correct one."
       }
     },
@@ -81,7 +81,7 @@
       },
       "narration": {
         "essentials": "Same answer either way — 120 — just sooner.",
-        "detailed": "The program stores the same total, 120, in both positions: forwarding changes *when* work happens, never *what* the machine computes. What it changed is the clock: 72 cycles with the toggle off, 51 with it on. Flip back and forth and watch the total stay put while the cycle count moves.",
+        "detailed": "The program stores the same total, 120, in both positions: forwarding changes when work happens, never what the machine computes. What it changed is the clock: 72 cycles with the toggle off, 51 with it on. Flip back and forth and watch the total stay put while the cycle count moves.",
         "expert": "Forwarding cannot change which instructions retire or which branches are taken — only how long each waits. Cycles = N + 4 + S + 2·T: the retires (N) and taken branches (T) belong to the program, and only the stall cycles (S) belong to the microarchitecture. Here S falls from 26 to 5, and the 5 that remain are the load-use bubbles."
       }
     }

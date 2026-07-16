@@ -156,6 +156,56 @@ const byId = (id: string): Lesson => {
 const stepLabel = (step: LessonStep): string =>
   `${step.trigger.event}${step.trigger.nth ? ` #${step.trigger.nth}` : ''}`;
 
+/**
+ * Narration is authored as PLAIN TEXT with one markup construct: a backtick-delimited code span,
+ * which `renderNarration` (App.tsx) splits out and renders as `<code>`. That is the whole
+ * vocabulary. It is not Markdown, and nothing about a JSON string says so — the format is defined
+ * entirely by what the renderer happens to split on.
+ *
+ * Which is how `forwarding-bubble` shipped `**not**` to the browser as four literal asterisks, and
+ * why this guard exists (M3 step 8, found by the browser eyeball — every headless test was green).
+ * The gap is structural rather than careless: every other check in this file asserts narration
+ * RESOLVES — that `resolveNarration` returns a string at the tier. None asserted it RENDERS. A
+ * defined string and a readable one are different claims, and only the first was ever tested, so an
+ * author reaching for ordinary Markdown reflexes got no signal at all until someone looked.
+ *
+ * The check is deliberately narrow: strip the one construct that IS supported, then assert no `*`
+ * survives. Asterisks are the hard failure — bold, italic and bullets all render as punctuation on
+ * screen. Newlines are NOT flagged: HTML collapses them to a space, so a `\n\n` reads as dense
+ * prose rather than as corruption, and forbidding them would be a style rule wearing a test's
+ * clothes. Pin what breaks, not what one author would have done differently.
+ */
+describe('authored narration stays inside the vocabulary the renderer can show', () => {
+  /** `renderNarration` splits on backticks; everything between a pair becomes a `<code>` span. */
+  const withoutCodeSpans = (text: string): string =>
+    text
+      .split('`')
+      .filter((_, i) => i % 2 === 0)
+      .join('');
+
+  for (const lesson of LESSONS) {
+    it(`${lesson.id}: no step leans on markup the renderer does not implement`, () => {
+      for (const [index, step] of lesson.steps.entries()) {
+        for (const [tier, text] of Object.entries(step.narration)) {
+          expect(
+            withoutCodeSpans(text),
+            `${lesson.id} step ${index} [${tier}] uses "*" — the renderer has no bold/italic, so ` +
+              `it reaches the reader as a literal asterisk. Carry the emphasis in the sentence.`,
+          ).not.toMatch(/\*/);
+        }
+      }
+    });
+  }
+
+  it('the guard reads the real renderer’s rule: backtick spans are the one exemption', () => {
+    // Non-vacuity, and the reason the strip step exists at all: a lesson may legitimately mention
+    // an asterisk INSIDE a code span (`mul a0, a0, a1` is fine; so would be `a * b`), and the guard
+    // must not fire on it. Without the strip this would be indistinguishable from bold.
+    expect(withoutCodeSpans('the ALU computes `a * b` here')).toBe('the ALU computes  here');
+    expect(withoutCodeSpans('an **emphasis** attempt')).toBe('an **emphasis** attempt');
+  });
+});
+
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
     // Three single-cycle tours (M1's "2–3 lessons" target) plus M3's flagship pipeline lesson.
