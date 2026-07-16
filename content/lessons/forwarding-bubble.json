@@ -82,7 +82,7 @@
       "narration": {
         "essentials": "Same answer either way — 120 — just sooner.",
         "detailed": "The program stores the same total, 120, in both positions: forwarding changes when work happens, never what the machine computes. What it changed is the clock: 72 cycles with forwarding off, 51 with it on. Flip the Forwarding toggle back and forth and watch the total stay put while the cycle count moves.",
-        "expert": "Forwarding cannot change which instructions retire or which branches are taken — only how long each waits. Cycles = N + 4 + S + 2·T: the retires (N) and taken branches (T) belong to the program, and only the stall cycles (S) belong to the microarchitecture. Here S falls from 26 to 5, and the 5 that remain are the load-use bubbles."
+        "expert": "Forwarding cannot change which instructions retire or which branches are taken — only how long each waits. Cycles = N + 4 + S + 2·T: the retires (N) and taken branches (T) belong to the program, and forwarding moves only the stall cycles (S). Here S falls from 26 to 5, and the 5 that remain are the load-use bubbles."
       }
     }
   ]
