@@ -543,8 +543,11 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
     `vite preview` + raw-CDP ritual.
 
 - [x] **6. The pipeline datapath SVG.** ✅ Done (2026-07-16, 587 → 621 tests). `datapath-pipeline.ts` + `PipelineDatapathView.tsx`, dispatched by a new `'pipeline'` arm; browser-verified in light
-      and dark via the `SNAP` harness + headless Chrome. Every geometry invariant passed **first
-      run**, and all three nets below were **mutation-checked** rather than observed green.
+      and dark via the `SNAP` harness + headless Chrome — the pipe filling across all three tiers,
+      the toggle in **both** positions, and the branch redirect **lit** (which needed its own page:
+      the RAW and fill programs that verified everything else contain no taken branch, so the
+      redirect was idle grey in every other view). Every geometry invariant passed **first run**,
+      and all three nets below were **mutation-checked** rather than observed green.
 
       **The step's one architectural shift: activation stopped being single-phase.** M1 lit one
       instruction's whole path; M2 lit its one in-flight instruction's one phase — both could paint
@@ -616,7 +619,16 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
     drawing an idle forwarding network would be the contradiction. (The view already holds the
     config — the user set it — so this is not an engine back door.)
   - **The branch redirect is drawn**, sourced from `branch-resolved` + `flush`. See the pinned
-    decision on carrying `target` on that event.
+    decision on carrying `target` on that event. ✅ **Eyeballed lit, not just asserted present** —
+    the deliverable unique to this step, and the RAW/fill pages that verified everything else have
+    no taken branch in them, so the redirect was idle grey in all of them. On its own page it reads
+    as intended: `beq` in EX drives `PC arith` from its two labelled inputs (the pc and the imm),
+    and the target runs the full width back along the bottom rail into `PCSrc`, labelled with the
+    `branch-resolved.target` itself. The doomed younger instructions light their paths **normally**
+    alongside it — deliberate: predict-not-taken genuinely did fetch them, and they die at the clock
+    edge. That reads as "the pipe kept fetching and the branch redirected it", not as a
+    contradiction; narrating the kill is the step-7 map's job (cut rows), not the datapath's.
+    `jalr` redirects from the **ALU** instead, since a register supplies its target.
 
     Acceptance: the two standing litmuses ported — **coherence** (every lit wire resolves to real
     geometry with both endpoints lit; no lit wire into a dim box) and **contraction lawfulness**
