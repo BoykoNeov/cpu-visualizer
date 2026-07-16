@@ -11,30 +11,103 @@ import {
 } from '@cpu-viz/curriculum';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
-import { defaultConfig, type CycleTrace, type TraceEvent } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type CycleTrace,
+  type Processor,
+  type ProcessorConfig,
+  type TraceEvent,
+} from '@cpu-viz/trace';
+import { MODELS, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { LESSONS } from './lessons';
 import { loadSource } from './simulator';
 
 /**
- * The step-11 acceptance for lessons (INV-6): "the 2–3 lessons play through; annotations fire
- * on the correct events." Because authored lessons are UNTRUSTED JSON (`lessons.ts`), this
- * suite doubles as their validator — it drives the REAL single-cycle engine (the runner's own
- * tests use hand-built fixtures; the DAG forbids importing an engine into `curriculum`) and
- * proves every step anchors, in order, with resolvable narration. It then pins the headline
- * event PAYLOAD of each lesson against the hand-computed oracle, so a silently-wrong anchor
- * (right event type, wrong occurrence) is caught, not just a dead one.
+ * The step-11 acceptance for lessons (INV-6): "the lessons play through; annotations fire on the
+ * correct events." Because authored lessons are UNTRUSTED JSON (`lessons.ts`), this suite doubles
+ * as their validator — it drives the REAL engines (the runner's own tests use hand-built fixtures;
+ * the DAG forbids importing an engine into `curriculum`) and proves every step anchors, in order,
+ * with resolvable narration. It then pins the headline event PAYLOAD of each lesson against a
+ * hand-computed oracle, so a silently-wrong anchor (right event type, wrong occurrence) is caught,
+ * not just a dead one.
+ *
+ * ## What M3 step 8 changed here, and why the old shape could not hold
+ *
+ * Until step 8 every lesson targeted single-cycle, so this file could hardcode that engine and
+ * assert the strongest possible rule: NO step is ever dead. `forwarding-bubble` breaks both
+ * assumptions at once, and not by accident — a lesson whose subject is *a stall that disappears
+ * when you flip a toggle* is a lesson some of whose steps MUST be dead in one position. The
+ * pinned event vocabulary says so outright: `stall.reason: 'raw'` fires only with forwarding OFF
+ * (with it on, the interlock is gone), while `'load-use'` and `forward` fire only with it ON.
+ * There is no honest authoring of the flagship experiment in which every step fires in both.
+ *
+ * So the rule is scoped rather than weakened, and DERIVED rather than declared — no new lesson-
+ * format field (cf. step 6, which derived contraction visibility instead of declaring it):
+ *
+ *   Drive each lesson under the model it DECLARES, across every config position that model
+ *   HONORS (`capabilities.configurableForwarding`). Every step must anchor in AT LEAST ONE
+ *   position; within each position, the survivors anchor in order, with resolvable narration,
+ *   and no two share a cycle.
+ *
+ * That one rule degenerates correctly at both ends, which is why it needs no per-lesson special
+ * case. A single-cycle lesson honors no config, so its position list has length 1 and "at least
+ * one" IS "every step anchors" — the old strict rule, unchanged in force. The pipeline lesson gets
+ * two positions, so a config-exclusive step is lawful — while a MISTYPED one (an unsatisfiable
+ * `where`, a bad event name) is still caught, because it is dead in BOTH. Order and the shared-
+ * cycle guard are checked per RECORDING, never on a merged anchoring: a step that is null in one
+ * position must be skipped there, which the runner already does correctly per-recording.
+ *
+ * What that generic rule deliberately CANNOT see is the pedagogy — a step that fires in both
+ * positions when it was meant to fire in one would pass it. That claim is the lesson's whole
+ * point, so it is asserted positively and by name, in `forwarding-bubble`'s own oracle below:
+ * the interlock is alive-off and dead-on ("the bubble vanishes") and the load-use stall is alive
+ * in both... on different terms. Those are the assertions, not this sweep.
  */
 
 /** Assemble a corpus program and record it to completion — the runner's precondition. */
-function recordProgram(programName: string): readonly CycleTrace[] {
+function recordProgram(
+  programName: string,
+  make?: () => Processor,
+  config?: ProcessorConfig,
+): readonly CycleTrace[] {
   const program = EXAMPLE_PROGRAMS.find((p) => p.name === programName);
   expect(program, `lesson program "${programName}" is not in the corpus`).toBeDefined();
-  const result = loadSource(program!.source);
+  const result = loadSource(program!.source, make, config);
   expect(result.ok, `"${programName}" should assemble`).toBe(true);
   if (!result.ok) throw new Error('unreachable: assembly failed');
   result.loaded.recorder.runToEnd(); // anchor against a COMPLETE recording
   return result.loaded.recorder.recorded;
+}
+
+/** A named config position to drive a lesson's declared model under. */
+interface Position {
+  label: string;
+  config: ProcessorConfig;
+}
+
+/**
+ * The config positions a model actually HONORS — derived from its own capabilities, never from a
+ * list of model ids here. A config-blind model has exactly one neutral position, so the sweep over
+ * it is the pre-step-8 single-position check; only a model that honors `forwarding` is swept twice.
+ * This is the same `configurableForwarding` gate the shell uses to decide whether to render the
+ * toggle at all (M3 step 5), so the suite and the UI can never disagree about which models have
+ * two positions to be right in.
+ */
+function positionsFor(modelId: string): Position[] {
+  const forwardingOf = (on: boolean): ProcessorConfig => ({ ...defaultConfig(), forwarding: on });
+  if (!modelById(modelId).capabilities.configurableForwarding) {
+    return [{ label: 'neutral config', config: defaultConfig() }];
+  }
+  return [
+    { label: 'forwarding off', config: forwardingOf(false) },
+    { label: 'forwarding on', config: forwardingOf(true) },
+  ];
+}
+
+/** Record a lesson's program under the model the LESSON declares, in one config position. */
+function recordLesson(lesson: Lesson, config: ProcessorConfig): readonly CycleTrace[] {
+  return recordProgram(lesson.program, modelById(lesson.model).make, config);
 }
 
 /** As {@link recordProgram}, but driven by the multi-cycle engine (M2 step 5a). */
@@ -84,78 +157,134 @@ const stepLabel = (step: LessonStep): string =>
   `${step.trigger.event}${step.trigger.nth ? ` #${step.trigger.nth}` : ''}`;
 
 describe('authored lessons (INV-6)', () => {
-  it('ships the M1 target of 2–3 lessons', () => {
-    expect(LESSONS.length).toBeGreaterThanOrEqual(2);
-    expect(LESSONS.length).toBeLessThanOrEqual(3);
+  it('ships one lesson per shipped microarchitecture that has something to teach', () => {
+    // Three single-cycle tours (M1's "2–3 lessons" target) plus M3's flagship pipeline lesson.
+    // Multi-cycle deliberately has none: its story is "one instruction, phases spread over
+    // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
+    // under them (pinned by the cross-model suite below). The pipeline is the first model whose
+    // lesson could NOT be borrowed that way — nothing else stalls.
+    expect(LESSONS.length).toBe(4);
+    expect(LESSONS.filter((l) => l.model === 'pipeline').map((l) => l.id)).toEqual([
+      'forwarding-bubble',
+    ]);
   });
 
-  // The validator: every lesson, every step, against the real engine.
+  // The validator: every lesson, every step, against the real engine it declares.
   for (const lesson of LESSONS) {
     describe(`${lesson.id} — "${lesson.title}"`, () => {
       it('references a program that exists in the corpus', () => {
         expect(EXAMPLE_PROGRAMS.map((p) => p.name)).toContain(lesson.program);
       });
 
-      it('single-cycle is the only model targeted in M1', () => {
-        expect(lesson.model).toBe('single-cycle');
+      it('targets a model the shell can actually select', () => {
+        // Was "single-cycle is the only model targeted in M1" — true then, and a check that would
+        // now have to be deleted rather than generalized. The durable claim is the one the shell
+        // depends on: `startLesson` resolves `lesson.model` through `modelById`, which falls back
+        // to the DEFAULT model for an unknown id. So a typo'd model would silently open the lesson
+        // on single-cycle rather than fail — for `forwarding-bubble` that means a lesson about
+        // stalls, on a machine that has none.
+        expect(MODELS.map((m) => m.id)).toContain(lesson.model);
       });
 
-      it('every step anchors to a real event, in order, with narration at the default tier', () => {
-        const trace = recordProgram(lesson.program);
-        const anchored = anchorLesson(lesson, trace);
+      it('a declared config only names knobs the declared model honors', () => {
+        // A lesson that opened in a position its model ignores would be quietly inert: the shell
+        // applies the config, the engine shrugs, and the narration describes a machine the user is
+        // not looking at. Only `forwarding` is honored by anything today, so that is the only knob
+        // a lesson may lean on (M4 adds prediction + caches, per the plan).
+        if (lesson.config === undefined) return;
+        if (lesson.config.forwarding) {
+          expect(modelById(lesson.model).capabilities.configurableForwarding).toBe(true);
+        }
+        expect(lesson.config.branchPrediction).toBe('none');
+        expect(lesson.config.cache).toBeNull();
+      });
 
-        // (1) No dead steps: a mistyped `event` or unsatisfiable `where` would anchor null.
-        for (const step of anchored) {
-          expect(step.cycle, `"${stepLabel(step.step)}" never fired`).not.toBeNull();
-        }
-        // (2) Steps anchor in non-decreasing trace order (an authoring check, INV-6).
-        expect(anchorOrderViolations(anchored)).toEqual([]);
-        // (2b) No two steps anchor to the SAME cycle. The play-through's Prev/Next and step-rail
-        //      navigate by cursor, and the cursor addresses a whole cycle — it cannot select
-        //      between two events within one cycle. So two steps sharing a cycle are not
-        //      independently reachable: clicking the earlier one's dot lands on the later
-        //      (max-eventIndex) step, and that earlier step's narration can never be shown. This
-        //      only bites if a lesson attaches two narrated steps to two phases of ONE
-        //      instruction (single-cycle ⇒ one cycle); guard against it at authoring time rather
-        //      than shipping an unreachable step.
-        const byCycle = new Map<number, number[]>();
-        for (const step of anchored) {
-          if (step.cycle === null) continue;
-          byCycle.set(step.cycle, [...(byCycle.get(step.cycle) ?? []), step.index]);
-        }
-        const sameCycle = [...byCycle.entries()].filter(([, idxs]) => idxs.length > 1);
-        expect(
-          sameCycle,
-          `steps share a cycle and can't be reached independently by the cursor: ${JSON.stringify(sameCycle)}`,
-        ).toEqual([]);
-        // (3) Each step has narration resolvable at the lesson's default tier — catches a
-        //     mistyped tier key that would otherwise render blank narration.
-        for (const { step } of anchored) {
+      // The sweep: the lesson's own model, in every position that model honors. For a config-blind
+      // model this is one position and the rule is the old strict "no dead steps"; for the pipeline
+      // it is two, and a config-exclusive step is lawful while a typo (dead in BOTH) still fails.
+      const positions = positionsFor(lesson.model);
+      for (const { label, config } of positions) {
+        it(`[${label}] the steps that fire anchor in order, with narration at the default tier`, () => {
+          const trace = recordLesson(lesson, config);
+          const anchored = anchorLesson(lesson, trace);
+
+          // (1) Steps anchor in non-decreasing trace order (an authoring check, INV-6). Run on
+          //     THIS recording: `anchorOrderViolations` skips null anchors, so a step that is
+          //     lawfully absent in this position is correctly ignored rather than counted as a
+          //     jump backwards.
+          expect(anchorOrderViolations(anchored)).toEqual([]);
+          // (2) No two steps anchor to the SAME cycle. The play-through's Prev/Next and step-rail
+          //     navigate by cursor, and the cursor addresses a whole cycle — it cannot select
+          //     between two events within one cycle. So two steps sharing a cycle are not
+          //     independently reachable: clicking the earlier one's dot lands on the later
+          //     (max-eventIndex) step, and that earlier step's narration can never be shown.
+          //     Per-position, for the same reason as (1) — and it genuinely differs per position:
+          //     two steps that anchor to distinct cycles with forwarding off can collide with it
+          //     on, since removing the interlocks pulls the whole trace tighter.
+          const byCycle = new Map<number, number[]>();
+          for (const step of anchored) {
+            if (step.cycle === null) continue;
+            byCycle.set(step.cycle, [...(byCycle.get(step.cycle) ?? []), step.index]);
+          }
+          const sameCycle = [...byCycle.entries()].filter(([, idxs]) => idxs.length > 1);
           expect(
-            resolveNarration(step.narration, lesson.depthDefault),
-            `"${stepLabel(step)}" has no narration at "${lesson.depthDefault}"`,
-          ).toBeDefined();
+            sameCycle,
+            `steps share a cycle and can't be reached independently by the cursor: ${JSON.stringify(sameCycle)}`,
+          ).toEqual([]);
+          // (3) Each step has narration resolvable at the lesson's default tier — catches a
+          //     mistyped tier key that would otherwise render blank narration. Asserted for EVERY
+          //     step, live or not: narration is authored text, not a property of this recording,
+          //     so a step that is dead here must still read correctly where it does fire.
+          for (const { step } of anchored) {
+            expect(
+              resolveNarration(step.narration, lesson.depthDefault),
+              `"${stepLabel(step)}" has no narration at "${lesson.depthDefault}"`,
+            ).toBeDefined();
+          }
+        });
+      }
+
+      it('every step fires in at least one of its model’s config positions', () => {
+        // The net for the thing a typo'd trigger and a lawfully-config-exclusive step have in
+        // common — both anchor null — and the only place they can be told apart: an unsatisfiable
+        // `where` or a misspelled event name is dead EVERYWHERE, while "the bubble vanished" is
+        // dead in exactly one position. Single-cycle lessons have one position, so this IS the
+        // strict pre-step-8 rule for them.
+        const live = new Set<number>();
+        for (const { config } of positions) {
+          for (const step of anchorLesson(lesson, recordLesson(lesson, config))) {
+            if (step.cycle !== null) live.add(step.index);
+          }
         }
+        const dead = lesson.steps
+          .map((step, index) => ({ step, index }))
+          .filter(({ index }) => !live.has(index))
+          .map(({ step }) => stepLabel(step));
+        expect(dead, `never fired in ANY config position: ${dead.join(', ')}`).toEqual([]);
       });
 
-      it('the play-through query surfaces the right narration as the cursor moves', () => {
-        // Close the loop between "steps anchor" and "the runner shows them": exercise
-        // activeStepAt / narrationFor (the glue the UI will call) on the real recording.
-        const trace = recordProgram(lesson.program);
-        const anchored = anchorLesson(lesson, trace);
+      for (const { label, config } of positions) {
+        it(`[${label}] the play-through query surfaces the right narration as the cursor moves`, () => {
+          // Close the loop between "steps anchor" and "the runner shows them": exercise
+          // activeStepAt / narrationFor (the glue the UI will call) on the real recording.
+          const trace = recordLesson(lesson, config);
+          const anchored = anchorLesson(lesson, trace);
 
-        // Pre-run (cursor -1): nothing has fired, so no step is active.
-        expect(activeStepAt(anchored, -1)).toBeNull();
-        expect(narrationFor(anchored, -1, lesson.depthDefault)).toBeUndefined();
+          // Pre-run (cursor -1): nothing has fired, so no step is active.
+          expect(activeStepAt(anchored, -1)).toBeNull();
+          expect(narrationFor(anchored, -1, lesson.depthDefault)).toBeUndefined();
 
-        // At the final step's cycle (the greatest anchor — it owns its cycle), the runner
-        // surfaces that step's narration at the default tier.
-        const last = anchored[anchored.length - 1]!;
-        expect(activeStepAt(anchored, last.cycle!)?.index).toBe(last.index);
-        expect(narrationFor(anchored, last.cycle!, lesson.depthDefault)).toBe(
-          resolveNarration(last.step.narration, lesson.depthDefault),
-        );
-      });
+          // At the LAST LIVE step's cycle (the greatest anchor — it owns its cycle), the runner
+          // surfaces that step's narration. Not `anchored.at(-1)`, which the pre-step-8 version
+          // could assume was live: a lesson's final authored step may be dead in this position.
+          const last = anchored.filter((a) => a.cycle !== null).at(-1);
+          expect(last, `no step fires at all under [${label}]`).toBeDefined();
+          expect(activeStepAt(anchored, last!.cycle!)?.index).toBe(last!.index);
+          expect(narrationFor(anchored, last!.cycle!, lesson.depthDefault)).toBe(
+            resolveNarration(last!.step.narration, lesson.depthDefault),
+          );
+        });
+      }
     });
   }
 
@@ -221,17 +350,40 @@ describe('authored lessons (INV-6)', () => {
 });
 
 /**
+ * The lessons whose steps anchor to purely ARCHITECTURAL events (`instr-fetch`, `reg-write`,
+ * `mem-read`, `alu-op`) — i.e. things every model in the family does. Those, and only those, can be
+ * carried across microarchitectures unchanged, which is what the two cross-model suites below
+ * assert. Keyed off the declared model rather than a hand-kept id list: a single-cycle lesson
+ * CANNOT anchor to a hazard event, because single-cycle emits none, so "authored against
+ * single-cycle" and "anchors only to architectural events" are the same set by construction.
+ *
+ * `forwarding-bubble` is deliberately outside it. It is not that the suites below would be nice to
+ * have for it and are merely skipped — they are false about it: its subject is `stall`/`forward`,
+ * which single-cycle and multi-cycle never emit, so "every step still anchors" is precisely the
+ * claim that does not hold, and should not. That is what makes it a PIPELINE lesson rather than a
+ * lesson that happens to be read on the pipeline.
+ */
+const PORTABLE_LESSONS = LESSONS.filter((l) => l.model === 'single-cycle');
+
+/**
  * INV-6 across models (M2 step 5a): "lessons anchor to trace EVENTS, not cycle numbers." The
- * authored lessons target single-cycle, but the whole point of anchoring to events is that the
+ * portable lessons target single-cycle, but the whole point of anchoring to events is that the
  * SAME lesson plays against a different microarchitecture unchanged — the multi-cycle engine
  * emits the same events, merely spread across more cycles (a load's `mem-read` and its
  * `reg-write` now land in different phase-cycles instead of one). So switching the model in the
  * picker must NOT strand a lesson: every step still anchors, in order, with resolvable narration,
  * and the play-through query still surfaces it. This is the graceful-degradation guarantee the
  * picker leans on — proven here directly rather than assumed.
+ *
+ * Note what this does and does not buy, which M3 step 8 had to get precise about: it proves the
+ * ANCHORS survive a model swap, not that the NARRATION stays true. `sum-loop-tour` tells the user
+ * its add is "written back to a0 in the same cycle" — true on single-cycle, false on both other
+ * models, and no anchoring test can see that. Anchoring is not truth. That is why `startLesson`
+ * opens a lesson on the model it was authored against (M3 step 8) rather than leaving it wherever
+ * the picker happened to be.
  */
 describe('authored lessons play against multi-cycle too (INV-6 cross-model)', () => {
-  for (const lesson of LESSONS) {
+  for (const lesson of PORTABLE_LESSONS) {
     it(`${lesson.id}: every step still anchors under multi-cycle, in order, with narration`, () => {
       const trace = recordProgramMultiCycle(lesson.program);
       const anchored = anchorLesson(lesson, trace);
@@ -281,7 +433,7 @@ describe('authored lessons play against the pipeline, in BOTH forwarding positio
     { label: 'forwarding on', forwarding: true },
   ] as const;
 
-  for (const lesson of LESSONS) {
+  for (const lesson of PORTABLE_LESSONS) {
     for (const { label, forwarding } of POSITIONS) {
       it(`${lesson.id}: every step anchors under the pipeline [${label}], in order, with narration`, () => {
         const trace = recordProgramPipeline(lesson.program, forwarding);
@@ -367,5 +519,147 @@ describe('authored lessons play against the pipeline, in BOTH forwarding positio
         value: 55,
       });
     }
+  });
+});
+
+/**
+ * `forwarding-bubble`'s own oracle — the M3 flagship (step 8), and the assertions the generic sweep
+ * above structurally cannot make.
+ *
+ * That sweep proves each step fires SOMEWHERE and that the survivors read in order. It cannot prove
+ * the lesson points at the RIGHT hazard, because every trigger below is satisfiable by more than one
+ * of them — `array-sum` stalls at three distinct pcs. So the pedagogy is asserted positively, by
+ * name, and in both directions: what fires here, and what must NOT.
+ *
+ * The gap is not hypothetical; it was measured by mutation, and the specific one is worth recording
+ * because it is the trigger a reasonable author would reach for FIRST. Weaken the load-use step from
+ * `nth: 3` to `nth: 1` and it slides off `add a0, a0, t2` onto the `la` pseudo-op's hidden internal
+ * RAW two stalls earlier. Every generic check stays green — it is a real `raw` stall, alive off,
+ * dead on, in order, narrated — and the lesson now tells the user that `lw`/`add` is the hazard
+ * while pointing the cursor at an `la`. Exactly one assertion fails, here, with `expected 4 to be
+ * 20`: the pc. (A too-LOOSE trigger, by contrast, is caught twice over — dropping a `where` slides
+ * a step onto the other config's stalls, which land out of order and trip the sweep as well.)
+ *
+ * The claims, which are the spec's flagship experiment (§12.2) restated as tests:
+ *
+ *  1. The bubble VANISHES. `bnez t1, loop` interlocks with forwarding off and does not with it on —
+ *     the same source line, its stall replaced by a forward.
+ *  2. The bubble that CANNOT vanish. `add a0, a0, t2` stalls in BOTH positions — but on different
+ *     terms: two cycles as a plain interlock, one as a `load-use`. This is the beat most courses
+ *     fumble, and the reason `array-sum` is the only corpus program that can carry this lesson.
+ *  3. Same answer, fewer cycles — the crown jewel, at the lesson layer.
+ *
+ * Both hazards are pinned by the PC they stall at, resolved through the recording's own
+ * `instr-fetch` events. A stall names its instruction by id and ids are minted per fetch, so they
+ * are meaningless across two recordings; the pc is what identifies a hazard as "that source line",
+ * and it is the difference between pinning the lesson's subject and pinning its arithmetic. This
+ * is what makes the `nth` counts reviewable: `nth: 3` is a claim about which hazard, not a number
+ * read off a run — and if the `la` pseudo-op ahead of them ever stops emitting the first two
+ * stalls, these fail loudly instead of sliding onto a different instruction.
+ */
+describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
+  const LOAD_USE_PC = 20; // `add a0, a0, t2` — reads the t2 that `lw t2, 0(t0)` is still fetching
+  const BRANCH_RAW_PC = 32; // `bnez t1, loop` — reads the t1 that `addi t1, t1, -1` just wrote
+
+  /** Map instruction id → the pc it was fetched from, for THIS recording. */
+  function pcById(trace: readonly CycleTrace[]): Map<string, number> {
+    const pcs = new Map<string, number>();
+    for (const cycle of trace) {
+      for (const event of cycle.events) {
+        if (event.type === 'instr-fetch') pcs.set(event.instr, event.pc);
+      }
+    }
+    return pcs;
+  }
+
+  /** The pc of the instruction a step's anchored event names, or `null` if the step is dead. */
+  function anchoredPc(trace: readonly CycleTrace[], anchored: AnchoredStep): number | null {
+    if (anchored.cycle === null) return null;
+    const event = anchoredEvent(trace, anchored) as TraceEvent & { instr?: string };
+    expect(event.instr, `${event.type} carries no instr id`).toBeDefined();
+    const pc = pcById(trace).get(event.instr!);
+    expect(pc, `no instr-fetch for ${event.instr}`).toBeDefined();
+    return pc!;
+  }
+
+  const lesson = (): Lesson => byId('forwarding-bubble');
+  const record = (forwarding: boolean): readonly CycleTrace[] =>
+    recordProgramPipeline('array-sum', forwarding);
+
+  it('opens on the pipeline, with forwarding OFF — stall first, then flip', () => {
+    // The lesson's declared opening position, which `startLesson` applies (M3 step 8). Off is not
+    // an arbitrary default: the experiment only reads as an experiment if the user sees the machine
+    // wait BEFORE they are shown the fix (§12.2), and the lesson's first two beats are the stalls.
+    expect(lesson().model).toBe('pipeline');
+    expect(lesson().config?.forwarding).toBe(false);
+  });
+
+  it('THE BUBBLE VANISHES: the branch interlocks with forwarding off, and forwards with it on', () => {
+    const [off, on] = [record(false), record(true)];
+    const [anchoredOff, anchoredOn] = [anchorLesson(lesson(), off), anchorLesson(lesson(), on)];
+
+    // Step 2 is the branch interlock. Alive with forwarding off, and on the branch — not on the
+    // `la` two stalls earlier, which is what a slipped `nth` would silently give us.
+    const interlock = anchoredOff[2]!;
+    expect(anchoredEvent(off, interlock)).toMatchObject({ type: 'stall', reason: 'raw' });
+    expect(anchoredPc(off, interlock)).toBe(BRANCH_RAW_PC);
+
+    // ...and DEAD with forwarding on. This is the vanishing, asserted: there is no `raw` interlock
+    // left in the entire recording for the lesson's trigger to find.
+    expect(anchoredOn[2]!.cycle, 'the branch still interlocks with forwarding on').toBeNull();
+
+    // What replaced it, on the same source line: step 4, the forward. Dead off (no forwarding
+    // network exists), alive on, and naming the branch.
+    expect(anchoredOff[4]!.cycle, 'a forward fired with forwarding OFF').toBeNull();
+    const forwarded = anchoredOn[4]!;
+    expect(anchoredEvent(on, forwarded)).toMatchObject({ type: 'forward', to: 'EX.rs1' });
+    expect(anchoredPc(on, forwarded)).toBe(BRANCH_RAW_PC);
+  });
+
+  it('THE BUBBLE THAT CANNOT: the load-use add stalls in BOTH positions, on different terms', () => {
+    const [off, on] = [record(false), record(true)];
+    const [anchoredOff, anchoredOn] = [anchorLesson(lesson(), off), anchorLesson(lesson(), on)];
+
+    // Off: step 1 finds it as a plain interlock — indistinguishable, at this point, from the
+    // branch's. That is the lesson's setup: both look like the same bubble.
+    const interlocked = anchoredOff[1]!;
+    expect(anchoredEvent(off, interlocked)).toMatchObject({ type: 'stall', reason: 'raw' });
+    expect(anchoredPc(off, interlocked)).toBe(LOAD_USE_PC);
+
+    // On: step 3 finds the SAME source line still stalling, now named for its real cause. The two
+    // steps are different triggers precisely because the event is different — which is the pinned
+    // vocabulary (`'load-use'` fires only with forwarding on; with it off the general interlock
+    // subsumes it and honestly reports `'raw'`), and is why one step could not serve both.
+    const survivor = anchoredOn[3]!;
+    expect(anchoredEvent(on, survivor)).toMatchObject({ type: 'stall', reason: 'load-use' });
+    expect(anchoredPc(on, survivor)).toBe(LOAD_USE_PC);
+
+    // The payoff, and the reason this beat exists: the bubble did not vanish, it SHRANK. Counting
+    // the stall events on that pc per loop iteration: two cycles of interlock become one.
+    const stallsAt = (trace: readonly CycleTrace[], pc: number): number => {
+      const pcs = pcById(trace);
+      return trace
+        .flatMap((c) => c.events)
+        .filter((e) => e.type === 'stall' && pcs.get(e.instr) === pc).length;
+    };
+    // 5 array elements: 2 cycles each off (10), 1 each on (5).
+    expect(stallsAt(off, LOAD_USE_PC)).toBe(10);
+    expect(stallsAt(on, LOAD_USE_PC)).toBe(5);
+    // The branch, beside it, goes to zero — the contrast the lesson is built on, in one comparison.
+    expect(stallsAt(off, BRANCH_RAW_PC)).toBe(10);
+    expect(stallsAt(on, BRANCH_RAW_PC)).toBe(0);
+  });
+
+  it('same answer, fewer cycles: the total is 120 either way (72 → 51)', () => {
+    const [off, on] = [record(false), record(true)];
+    // The lesson's last step, alive in both — it is what the program computed, not how it ran.
+    for (const trace of [off, on]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'mem-write', value: 120 });
+    }
+    // ...and step 3's pinned corpus timing, which the lesson's closing narration quotes. Asserted
+    // here rather than trusted: the narration states these numbers to the user as fact.
+    expect(off.length).toBe(72);
+    expect(on.length).toBe(51);
   });
 });

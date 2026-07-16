@@ -17,6 +17,7 @@ import {
   activeLessonOf,
   exampleSession,
   forkToSandbox,
+  lessonOpening,
   lessonSession,
   originNameOf,
   type Session,
@@ -243,9 +244,21 @@ export function useSimulator(): Simulator {
     (lesson: Lesson) => {
       const example = EXAMPLE_PROGRAMS.find((p) => p.name === lesson.program);
       if (!example) return; // a lesson referencing a program not in the corpus — ignore (INV-7)
+      // Open the lesson on the model it was AUTHORED against, in the config it declares — see
+      // `lessonOpening`, which owns that decision and its reasoning. Both fields were
+      // declared-and-ignored until M3 step 8. The refs are what `loadInto` reads at call time, so
+      // they must be set BEFORE it runs; the states drive the picker + toggle. Deliberately not
+      // routed through `setModel`/`setForwarding`: each of those re-loads on its own, so a lesson
+      // that changed both would record the program three times over.
+      const opening = lessonOpening(lesson, { forwarding: forwardingRef.current });
+      const choice = modelById(opening.modelId);
+      makeProcessor.current = choice.make;
+      setModelState(choice.id);
+      forwardingRef.current = opening.forwarding;
+      setForwardingState(opening.forwarding);
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
-      loadInto(example.source);
+      loadInto(example.source); // once — the refs above are already the new model/config
     },
     [loadInto],
   );
