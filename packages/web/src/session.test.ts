@@ -99,7 +99,10 @@ describe('a lesson opens on the model + config it declares', () => {
     // Even though the user arrived with forwarding ON: the experiment only reads as an experiment
     // if the machine is seen to stall BEFORE the fix is shown (§12.2), so a lesson that declares
     // its opening position wins over the session's.
-    const opening = lessonOpening(pipelineLesson({ forwarding: false }), arrivingWith(true));
+    const opening = lessonOpening(
+      pipelineLesson({ ...defaultConfig(), forwarding: false }),
+      arrivingWith(true),
+    );
     expect(opening).toEqual({
       modelId: 'pipeline',
       forwarding: false,
@@ -120,36 +123,41 @@ describe('a lesson opens on the model + config it declares', () => {
   });
 
   /**
-   * The rule is PER-KNOB, and this is the test that could not be written before M4 step 4 — the
-   * one a second honored knob makes expressible.
+   * A DECLARED config is honored WHOLE — every knob, including the ones the lesson is not about.
+   * The test M4 step 4 wrote the inverse of first, and the inverse shipped a real defect to the
+   * browser before being reverted.
    *
-   * "Honored only when declared" read as a rule about knobs and was implemented as a rule about
-   * the config OBJECT, and while `forwarding` was the only knob anything honored, no test could
-   * tell: a lesson that declared a config declared *the* knob. `Lesson.config` being a full
-   * `ProcessorConfig` is what hid it — `forwarding-bubble` had to name a `branchPrediction` it has
-   * no opinion about, so honoring the declaration would silently reset a scheme the user picked,
-   * on a lesson that is not about prediction at all. `Partial` is the fix, and this is its pin:
-   * declaring ONE knob must move ONE knob.
+   * The seductive reading was per-knob: `forwarding-bubble` is a lesson about forwarding, so it
+   * should pin forwarding and leave prediction to the user. What that misses is that the lesson's
+   * closing narration quotes "72 cycles with forwarding off, 51 with it on" AS FACT, and those
+   * numbers hold only under predict-not-taken (`static-taken` runs the same program in 70 and 49).
+   * Leaving prediction alone therefore parks the user in a machine the lesson lies about — seen in
+   * the browser as prose reading 51 above a transport reading 49.
+   *
+   * So a lesson pins every honored knob, because it is a controlled experiment and the knobs it is
+   * NOT about are exactly the controls. Arriving on `static-taken` must not survive.
    */
-  it('a lesson with an opinion about ONE knob leaves the OTHER alone', () => {
+  it('a declared config resets EVERY knob, including ones the lesson is not about', () => {
     const opening = lessonOpening(
-      pipelineLesson({ forwarding: false }), // the real shape of forwarding-bubble.json
-      arrivingWith(true, 'static-taken'),
+      pipelineLesson({
+        ...defaultConfig(),
+        forwarding: false,
+        branchPrediction: 'static-not-taken',
+      }),
+      arrivingWith(true, 'static-taken'), // the user arrived with BOTH knobs against the lesson
     );
-    expect(opening.forwarding, 'the declared knob is honored').toBe(false);
-    expect(opening.branchPrediction, 'the undeclared knob is untouched').toBe('static-taken');
+    expect(opening.forwarding, 'the subject knob is pinned').toBe(false);
+    expect(opening.branchPrediction, 'the CONTROL knob is pinned too').toBe('static-not-taken');
   });
 
-  it('honors a declared prediction scheme, for whichever lesson eventually declares one', () => {
-    // Nothing ships one yet (M4 step 7 is the prediction lesson), so this pins the seam rather
-    // than the corpus — the field is honored the moment a lesson uses it, which is precisely what
-    // WAS NOT true of `model`/`config` from M1 until M3 step 8 (declared-and-honored-by-nobody).
+  it('honors a declared prediction scheme — the field is live the moment a lesson uses it', () => {
+    // `model`/`config` were declared-and-honored-by-nobody from M1 until M3 step 8. This pins that
+    // prediction did not inherit that fate: it is honored on arrival, not "when M4 step 7 needs it".
     const opening = lessonOpening(
-      pipelineLesson({ branchPrediction: 'static-taken' }),
+      pipelineLesson({ ...defaultConfig(), branchPrediction: 'static-taken' }),
       arrivingWith(true, 'none'),
     );
-    expect(opening.branchPrediction, 'the declared knob is honored').toBe('static-taken');
-    expect(opening.forwarding, 'the undeclared knob is untouched').toBe(true);
+    expect(opening.branchPrediction).toBe('static-taken');
   });
 
   it('opens every SHIPPED lesson on a model that exists, in a position it can teach in', () => {
@@ -157,23 +165,19 @@ describe('a lesson opens on the model + config it declares', () => {
     // opening is the one thing about them no anchoring test can check (an anchor proves an event
     // fired; it cannot prove the user is looking at the machine the words describe).
     //
-    // Asserted per KNOB (`!== undefined`), not per config: under `Partial` a declared config no
-    // longer implies a declared forwarding, so `config && expect(opening.forwarding).toBe(
-    // config.forwarding)` would demand that an undeclared knob equal `undefined` — failing on
-    // exactly the lessons the Partial change exists to allow.
+    // Arriving on the position each shipped lesson would be WRONG in, so "honored" is a claim the
+    // sweep can fail rather than one it can coincide with: every lesson that declares a config is
+    // reset off `static-taken`, and the one lesson that declares forwarding is reset off ON.
     for (const lesson of LESSONS) {
-      const opening = lessonOpening(lesson, arrivingWith(false));
+      const opening = lessonOpening(lesson, arrivingWith(true, 'static-taken'));
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
-      if (lesson.config?.forwarding !== undefined) {
-        expect(opening.forwarding, `${lesson.id} opens in its declared forwarding position`).toBe(
-          lesson.config.forwarding,
-        );
-      }
-      if (lesson.config?.branchPrediction !== undefined) {
-        expect(opening.branchPrediction, `${lesson.id} opens in its declared scheme`).toBe(
-          lesson.config.branchPrediction,
-        );
-      }
+      if (lesson.config === undefined) continue;
+      expect(opening.forwarding, `${lesson.id} opens in its declared forwarding position`).toBe(
+        lesson.config.forwarding,
+      );
+      expect(opening.branchPrediction, `${lesson.id} opens in its declared scheme`).toBe(
+        lesson.config.branchPrediction,
+      );
     }
   });
 });

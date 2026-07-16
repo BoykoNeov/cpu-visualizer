@@ -49,27 +49,34 @@ export interface Lesson {
   /** Which microarchitecture (model family id, handoff §2). */
   model: string;
   /**
-   * The feature toggles the lesson has an OPINION about (forwarding, prediction, cache, …). Every
-   * knob is optional, and absent means "leave it as the user set it" — not "use the default".
+   * The MACHINE the lesson opens on: the whole feature-toggle set, or nothing at all. Optional
+   * because a config-blind model ignores every knob; a lesson that omits it has no opinion about
+   * the machine and leaves the user's position alone (see `lessonOpening`).
    *
-   * **`Partial`, and that is load-bearing (M4 step 4).** This was a full `ProcessorConfig` while
-   * `forwarding` was the only knob any model honored, and the two readings were indistinguishable:
-   * a lesson that declared a config declared *the* knob, so "declared a config" and "has an opinion
-   * about forwarding" were the same statement. The rule `lessonOpening` pins — *config is honored
-   * only when DECLARED, because a lesson with no opinion must not silently reset a position the
-   * user chose* — was therefore always per-KNOB in its prose and per-CONFIG in its type, and
-   * nothing could tell.
+   * **Whole config, not `Partial`, and M4 step 4 tried the other way and was wrong (the 4th field
+   * this project has declined).** The reasoning that failed is worth keeping, because it is
+   * seductive: `forwarding-bubble` is a lesson ABOUT forwarding, so it looks like it has no opinion
+   * about branch prediction, so a required `branchPrediction` looks like boilerplate the type
+   * extorted — and `Partial` looks like the fix that lets "declared" mean per-knob.
    *
-   * A second honored knob separates them. `forwarding-bubble` is about stalls and has no opinion
-   * whatsoever about branch prediction, but a required field forced it to state one anyway
-   * (`"branchPrediction": "none"` — boilerplate, never a decision). That leaves only two behaviors,
-   * and the pinned rule calls both bugs: honor it and starting a forwarding lesson silently resets
-   * a prediction the user picked; ignore it and the field is declared-and-honored-by-nobody, the
-   * exact M1-era defect step 8 fixed. `Partial` makes "declared" mean per-knob, which is what the
-   * rule always said — so the fix is a type weakening plus a subtraction from the JSON, not a new
-   * field.
+   * The browser said otherwise. That lesson's closing narration states *"72 cycles with the toggle
+   * off, 51 with it on"* **as fact**, and those numbers are true only under predict-not-taken;
+   * under `static-taken` the same program runs 70 and 49. Dropping the declaration let the shell
+   * park a user in a position where the lesson's own prose is FALSE — visible in one screenshot as
+   * prose reading 51 above a transport reading 49.
+   *
+   * So the distinction that matters is not the one `Partial` expresses. A lesson's SUBJECT and the
+   * machine its PROSE depends on are different things, and only the second decides what must be
+   * declared — which is M3 step 8's rule (*anchoring is not truth; a lesson is prose about ONE
+   * machine*) reaching the config axis, having only ever been tested on the model axis.
+   *
+   * Put positively: **a lesson is a controlled experiment.** Every honored knob is either the
+   * independent variable the narration invites you to flip, or a control that must be pinned —
+   * and you cannot control a variable you did not declare. There is no third category, so there is
+   * nothing for `Partial` to express. "No opinion about a knob" was an invented category, and the
+   * type was right before anyone touched it.
    */
-  config?: Partial<ProcessorConfig>;
+  config?: ProcessorConfig;
   depthDefault: DepthTier;
   steps: LessonStep[];
 }

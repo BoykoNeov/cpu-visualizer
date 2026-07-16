@@ -115,31 +115,39 @@ export function predictsTaken(scheme: BranchPrediction): boolean {
  *    cycle" — true on single-cycle, false on multi-cycle and false on the pipeline. A lesson's
  *    ANCHORS survive a model swap (INV-6, and `lessons.test.ts` proves it); its WORDS do not.
  *    Anchoring is not truth, so a lesson opens on the model it was written for.
- *  - **`config` is honored only when DECLARED, per KNOB.** The config position is session-level and
- *    persists across model switches (M3 step 5). A lesson with no opinion about a knob — single-
- *    cycle ignores them entirely — must not silently reset a position the user chose, so
- *    `undefined` means "leave it alone", not "fall back to the default".
+ *  - **`config` is honored only when DECLARED, and then WHOLE.** The config position is session-
+ *    level and persists across model switches (M3 step 5). A lesson with no opinion about the
+ *    machine — a single-cycle lesson, since that model ignores every knob — must not silently reset
+ *    a position the user chose, so an absent `config` means "leave it alone", not "fall back to the
+ *    default". A DECLARED config, though, is honored down to the last knob.
  *
- * **The per-KNOB reading is M4 step 4's, and the type could not express it before** (see
- * `Lesson.config`). While `forwarding` was the only honored knob, "declared a config" and "has an
- * opinion about forwarding" were the same statement, so this function could not tell which rule it
- * was implementing. A second knob separates them: `forwarding-bubble` declares `forwarding: false`
- * as a real decision and has no opinion at all about prediction, so starting it must leave a
- * prediction the user chose exactly where it is. `Partial<ProcessorConfig>` is what lets `??` mean
- * what it reads like — before it, a lesson that declared any config declared every knob, and the
- * fallback below was dead code wearing the look of a rule.
+ * **M4 step 4 tried to make this per-knob and the browser said no.** The seductive reading: a
+ * lesson is about one knob, so it should declare that one and leave the rest to the user. Applied
+ * to `forwarding-bubble` — a lesson about forwarding — it dropped the prediction declaration, and
+ * the shell duly parked a user on `static-taken` with the lesson's own closing prose reading "51
+ * cycles" above a transport reading 49. A lesson's SUBJECT and the machine its PROSE depends on are
+ * different, and only the second decides what to declare. See `Lesson.config` for the full account;
+ * the short version is that a lesson is a controlled experiment, `config` names the controls, and
+ * you cannot control a variable you did not declare.
  *
  * This is the OPENING position only. The picker and both toggles stay live afterwards, so the
  * cross-model degradation stays reachable, and flipping forwarding mid-lesson — the whole point of
- * `forwarding-bubble` — re-records and re-anchors underneath the lesson (INV-6).
+ * `forwarding-bubble` — re-records and re-anchors underneath the lesson (INV-6). Flipping
+ * PREDICTION mid-lesson is the same kind of reachable degradation, off the invited path: the steps
+ * still anchor (`lessons.test.ts` sweeps all four positions), but a narration that quotes cycle
+ * counts is quoting the machine it opened on.
  */
 export function lessonOpening(
   lesson: Lesson,
   current: { forwarding: boolean; branchPrediction: BranchPrediction },
 ): LessonOpening {
+  // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
+  // behave like this one — the type makes a declared config total — which is the shape that hid the
+  // question until a second knob existed.
+  if (lesson.config === undefined) return { modelId: lesson.model, ...current };
   return {
     modelId: lesson.model,
-    forwarding: lesson.config?.forwarding ?? current.forwarding,
-    branchPrediction: lesson.config?.branchPrediction ?? current.branchPrediction,
+    forwarding: lesson.config.forwarding,
+    branchPrediction: lesson.config.branchPrediction,
   };
 }

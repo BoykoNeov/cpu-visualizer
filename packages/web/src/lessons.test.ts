@@ -22,6 +22,7 @@ import {
 import { MODELS, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { LESSONS } from './lessons';
+import { predictsTaken } from './session';
 import { loadSource } from './simulator';
 
 /**
@@ -326,16 +327,25 @@ describe('authored lessons (INV-6)', () => {
         //
         // Rewritten in M4 step 4, and the old shape was vacuous in a way worth naming. It read
         // `if (lesson.config.forwarding) expect(...configurableForwarding).toBe(true)` — a guard on
-        // the knob's VALUE being truthy rather than on the knob being DECLARED. The one lesson that
-        // declares a config declares `forwarding: false`, so the check never ran on the shipped
-        // corpus. Under `Partial<ProcessorConfig>` the honest test is `!== undefined`: "declared" is
-        // now a question the type can answer, and asking it correctly makes the check live.
+        // the knob's VALUE being truthy rather than on the knob being SET AWAY FROM NEUTRAL. The one
+        // lesson that declares a config declares `forwarding: false`, so the check never ran on the
+        // shipped corpus at all.
+        //
+        // A declared config is total, so "names a knob" cannot mean "mentions it" — every config
+        // mentions every knob. It means LEANS on it: holds it somewhere the default does not, which
+        // is the only way a config can be inert-but-load-bearing. Compared against `defaultConfig()`
+        // rather than a list here, so the neutral position has one definition.
         if (lesson.config === undefined) return;
         const caps = modelById(lesson.model).capabilities;
-        if (lesson.config.forwarding !== undefined) {
+        const neutral = defaultConfig();
+        if (lesson.config.forwarding !== neutral.forwarding) {
           expect(caps.configurableForwarding, `${lesson.model} honors forwarding`).toBe(true);
         }
-        if (lesson.config.branchPrediction !== undefined) {
+        // `'none'` and `'static-not-taken'` are the same machine, so leaning on prediction means
+        // asking for a DIFFERENT one — naming not-taken by its explicit name is not a lean.
+        if (
+          predictsTaken(lesson.config.branchPrediction) !== predictsTaken(neutral.branchPrediction)
+        ) {
           expect(caps.configurableBranchPrediction, `${lesson.model} honors prediction`).toBe(true);
         }
         if (lesson.config.cache != null) {
@@ -727,8 +737,24 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
   }
 
   const lesson = (): Lesson => byId('forwarding-bubble');
-  const record = (forwarding: boolean): readonly CycleTrace[] =>
-    recordProgramPipeline('array-sum', forwarding);
+
+  /**
+   * The lesson's OWN declared machine, with the single knob it is about varied — program, model and
+   * every other knob DERIVED from the declaration rather than restated here (M4 step 4).
+   *
+   * This read `recordProgramPipeline('array-sum', forwarding)`, which quietly meant
+   * `{...defaultConfig(), forwarding}` — i.e. it pinned the narration's cycle counts under an
+   * IMPLICIT predict-not-taken. True, and true by luck: nothing tied it to what the lesson declares,
+   * so the moment the lesson's machine changed, the numbers this file swears the narration states
+   * "as fact" would have gone on passing while the shipped prose went false. That is the `2·T` trap
+   * exactly — specific, in a place that reads as general — one layer up from where step 3 found it.
+   */
+  const record = (forwarding: boolean): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared)
+      throw new Error('forwarding-bubble must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, forwarding });
+  };
 
   it('opens on the pipeline, with forwarding OFF — stall first, then flip', () => {
     // The lesson's declared opening position, which `startLesson` applies (M3 step 8). Off is not
@@ -736,6 +762,15 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
     // wait BEFORE they are shown the fix (§12.2), and the lesson's first two beats are the stalls.
     expect(lesson().model).toBe('pipeline');
     expect(lesson().config?.forwarding).toBe(false);
+  });
+
+  it('pins its CONTROL knob too, because its closing narration quotes cycle counts', () => {
+    // The declaration M4 step 4 removed and put back, and the reason is the whole finding: this
+    // lesson's last step says "72 cycles with forwarding off, 51 with it on" as FACT. Those numbers
+    // are properties of the WHOLE machine — under `static-taken` the same program runs 70 and 49 —
+    // so a lesson quoting them must pin prediction even though prediction is not its subject.
+    // Without this the shell parks the user on whatever scheme they last chose, and the prose lies.
+    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
   });
 
   it('THE BUBBLE VANISHES: the branch interlocks with forwarding off, and forwards with it on', () => {
@@ -803,6 +838,10 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
     }
     // ...and step 3's pinned corpus timing, which the lesson's closing narration quotes. Asserted
     // here rather than trusted: the narration states these numbers to the user as fact.
+    //
+    // They are facts about the lesson's DECLARED machine, not about the program (M4 step 4): under
+    // `static-taken` this same pair is 70 and 49. `record` now derives the scheme from the lesson,
+    // so these two numbers and the shipped prose cannot drift apart without this line going red.
     expect(off.length).toBe(72);
     expect(on.length).toBe(51);
   });
