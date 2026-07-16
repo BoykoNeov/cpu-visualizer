@@ -10,7 +10,7 @@ import {
   type ProcessorConfig,
   type ProgramImage,
 } from '@cpu-viz/trace';
-import { checkProgram, runConformance } from './conformance';
+import { checkProgram, conformanceCases, runConformance } from './conformance';
 
 /**
  * The harness's own test: proves the config matrix (m3 step 0) is **not vacuous** — that a config
@@ -23,10 +23,13 @@ import { checkProgram, runConformance } from './conformance';
  * structurally blind to: it would have gone **green**. Under the matrix it fails, and the `it()`
  * title says which position broke.
  *
- * Two things need proving, and they need different means:
+ * Three things need proving, and they need different means:
  *  1. the **check** is config-sensitive — the `checkProgram` pair below;
  *  2. `runConformance` genuinely **hands each config in its list to the model** — the inverted-stub
- *     suite at the bottom, which goes through the public entry point rather than around it.
+ *     suite at the bottom, which goes through the public entry point rather than around it;
+ *  3. a **multi-config** list really does run the corpus once per config, distinctly labelled — the
+ *     `conformanceCases` block. Claims 1 and 2 both run against a single config, so neither would
+ *     notice a matrix that only ever ran `configs[0]`.
  *
  * Note this proves a *fidelity* net, not a timing one: INV-8 compares final architectural state
  * only, so a pipeline that merely over-stalls still passes both positions silently. That blind
@@ -127,6 +130,49 @@ describe('the conformance config matrix is not vacuous', () => {
     // Pins the claim in this file's header rather than narrating it: the single config the old
     // harness hardcoded is exactly the one the stub is correct in.
     expect(defaultConfig().forwarding).toBe(false);
+  });
+});
+
+/**
+ * Claim 3: a multi-config list runs the whole corpus once per config, each case distinctly named.
+ *
+ * The two stub-driven claims each run under exactly ONE config, so neither can see the matrix's
+ * defining behavior. A `runConformance` that iterated `configs` but only ever ran `configs[0]`
+ * would pass both of them and pass the two model suites (whose lists are length 1 by default) —
+ * and then step 2's `[forwardingOff, forwardingOn]` call would prove the pipeline in one position
+ * while reading as if it proved both. Asserting on the case list catches that; it is why the
+ * enumeration is pure data rather than a loop inlined into `describe`.
+ */
+describe('the matrix enumerates the corpus once per config', () => {
+  const corpusSize = conformanceCases([FORWARDING_OFF]).length;
+
+  it('has a corpus to enumerate at all', () => {
+    expect(corpusSize).toBeGreaterThan(0);
+  });
+
+  it('runs every program under every config', () => {
+    const cases = conformanceCases([FORWARDING_OFF, FORWARDING_ON]);
+
+    expect(cases).toHaveLength(2 * corpusSize);
+    expect(cases.filter((c) => !c.config.forwarding)).toHaveLength(corpusSize);
+    expect(cases.filter((c) => c.config.forwarding)).toHaveLength(corpusSize);
+  });
+
+  it('names the config in every title, so a failure says which position broke', () => {
+    for (const c of conformanceCases([FORWARDING_OFF, FORWARDING_ON])) {
+      expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
+    }
+  });
+
+  it('gives every case a distinct title, so the two positions do not collide in the report', () => {
+    const cases = conformanceCases([FORWARDING_OFF, FORWARDING_ON]);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('leaves a lone config unlabelled, so a config-blind suite reads as it always did', () => {
+    for (const c of conformanceCases([defaultConfig()])) {
+      expect(c.title).not.toContain('forwarding');
+    }
   });
 });
 

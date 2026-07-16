@@ -173,6 +173,40 @@ function configLabel(config: ProcessorConfig): string {
   return `forwarding ${config.forwarding ? 'on' : 'off'}`;
 }
 
+/** One `it()` the matrix will register: which program, under which config, named how. */
+export interface ConformanceCase {
+  config: ProcessorConfig;
+  file: string;
+  /** The `it()` title — the config is named only when there is more than one to tell apart. */
+  title: string;
+}
+
+/**
+ * Enumerate the matrix — the full corpus once per config — as **pure data**, no `it()` in sight.
+ *
+ * Split out from {@link runConformance} for the same reason {@link checkProgram} was: so the part
+ * that could silently go vacuous is directly assertable. A matrix that ran only `configs[0]`, or
+ * that labelled every case identically, would pass a suite built from it while proving the model
+ * in one position only — so `conformance.test.ts` asserts on this list rather than trusting the
+ * loop by eye. Not re-exported from the package `index.ts`; models see only `runConformance`.
+ */
+export function conformanceCases(configs: readonly ProcessorConfig[]): ConformanceCase[] {
+  const cases: ConformanceCase[] = [];
+  for (const config of configs) {
+    // A label only distinguishes when there is something to distinguish; naming a lone neutral
+    // config would suggest a config-blind model cared about it.
+    const suffix = configs.length > 1 ? ` [${configLabel(config)}]` : '';
+    for (const file of PROGRAMS) {
+      cases.push({
+        config,
+        file,
+        title: `${file}${suffix}: final reg + mem state matches the reference`,
+      });
+    }
+  }
+  return cases;
+}
+
 /**
  * Register the full INV-8 conformance suite for one model, once per config in `configs`.
  * `modelName` labels the `describe` block; `makeProcessor` builds a fresh instance per (config,
@@ -180,8 +214,8 @@ function configLabel(config: ProcessorConfig): string {
  * carries no corpus, oracle, or equality logic.
  *
  * `configs` defaults to the single neutral {@link defaultConfig}, which is why the config-blind
- * models' suites read and behave exactly as they did before the matrix existed. A model whose
- * behavior depends on config passes every position it claims to honor, e.g.
+ * models' suites behave exactly as they did before the matrix existed. A model whose behavior
+ * depends on config passes every position it claims to honor, e.g.
  * `runConformance('pipeline', () => new PipelineProcessor(), [forwardingOff, forwardingOn])`.
  */
 export function runConformance(
@@ -200,15 +234,10 @@ export function runConformance(
       expect(configs.length).toBeGreaterThan(0);
     });
 
-    for (const config of configs) {
-      // A label only distinguishes when there is something to distinguish; naming a lone neutral
-      // config would suggest a config-blind model cared about it.
-      const suffix = configs.length > 1 ? ` [${configLabel(config)}]` : '';
-      for (const file of PROGRAMS) {
-        it(`${file}${suffix}: final reg + mem state matches the reference`, () => {
-          checkProgram(makeProcessor, config, file);
-        });
-      }
+    for (const { config, file, title } of conformanceCases(configs)) {
+      it(title, () => {
+        checkProgram(makeProcessor, config, file);
+      });
     }
   });
 }

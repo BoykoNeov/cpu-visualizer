@@ -1,6 +1,6 @@
 # Milestone 3 — the classic 5-stage pipeline (hazards, forwarding, stalls, flushes)
 
-**Status: STEP 0 DONE, 2026-07-16 (440 → 452 tests); the pipeline model itself is not started.
+**Status: STEP 0 DONE, 2026-07-16 (440 → 457 tests); the pipeline model itself is not started.
 Proven so far: that the seams M3 fills already exist (`ProcessorConfig.forwarding`,
 `ProcessorCapabilities.configurableForwarding`, and the `forward`/`stall`/`flush`/
 `branch-resolved` events are all declared in the schema today and honored by nobody), and — as of
@@ -117,20 +117,22 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
 
 ## Build order (each step testable before the next)
 
-- [x] **0. Extend the conformance harness to a config matrix.** ✅ Done (2026-07-16, 440 → 452
+- [x] **0. Extend the conformance harness to a config matrix.** ✅ Done (2026-07-16, 440 → 457
       tests). `runConformance` grew an optional third parameter — a readonly `ProcessorConfig`
       list defaulting to `[defaultConfig()]` — and runs the corpus once per config. Both
       `differential.test.ts` files are byte-for-byte untouched (the default parameter is what buys
-      that) and their suites read exactly as before: the config is named in the `it()` title **only
-      when there is more than one**, since labelling a lone neutral config would imply a
-      config-blind model cared about it. The per-(config, program) check was extracted out of the
-      `it()` body into a throwing `checkProgram(makeProcessor, config, file)` — exported from the
-      module but **not** from the package `index.ts`, so models still see only `runConformance` —
-      and `runToHalt` now takes the config as a parameter instead of hardcoding `defaultConfig()`.
+      that) and their per-program titles are unchanged: the config is named in the `it()` title
+      **only when there is more than one**, since labelling a lone neutral config would imply a
+      config-blind model cared about it. (Each model suite does gain one new guard `it()` — see
+      below.) The per-(config, program) check was extracted out of the `it()` body into a throwing
+      `checkProgram(makeProcessor, config, file)`, and the matrix enumeration into a pure
+      `conformanceCases(configs)` — both exported from the module but **not** from the package
+      `index.ts`, so models still see only `runConformance` — and `runToHalt` now takes the config
+      as a parameter instead of hardcoding `defaultConfig()`.
       Non-vacuity is proven in a new `conformance.test.ts` by a **reference-backed stub**: it
       delegates to the golden reference for its answer (so it is correct by construction) and then
-      corrupts one register in a chosen `forwarding` position. Two claims needed proving, by
-      different means, because neither implies the other. **First, the check is config-sensitive:**
+      corrupts one register in a chosen `forwarding` position. Three claims needed proving, by
+      different means, because none implies the others. **First, the check is config-sensitive:**
       `checkProgram` on one stub `not.toThrow()`s under forwarding off and throws an
       `AssertionError` under forwarding on. The passing half is load-bearing, not decoration — it
       is what makes the failing half attributable to the perturbation rather than to an incidental
@@ -143,15 +145,23 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
       `[FORWARDING_ON]`. The first claim alone would not catch a loop that iterated configs while
       passing `defaultConfig()` to every check — a matrix running the corpus N times in the same
       position, which is the exact vacuity this step exists to remove and which step 2's
-      two-position suite would then pass silently.
+      two-position suite would then pass silently. **Third, a multi-config list really does run the
+      corpus once per config, distinctly labelled:** asserted on `conformanceCases`. Both
+      stub-driven claims run under exactly _one_ config, and the two model suites' lists are length
+      1 by default, so nothing above covers the multi-config path at all — a matrix that iterated
+      `configs` but only ever ran `configs[0]` would pass every one of them, and step 2 would then
+      prove the pipeline in one position while reading as if it proved both. That is why the
+      enumeration is pure data rather than a loop inlined into `describe`.
 
-      Both guards were **mutation-checked**, not merely observed green: deleting the perturbation
-      fails the first claim's test, and reintroducing the pre-step-0 `defaultConfig()` hardcode
-      fails all five corpus programs under the second. One more `it()` guards an empty `configs`
-      list from skipping the corpus vacuously, mirroring the existing empty-fixture guard. The stub
-      is program-agnostic — it rebuilds its input from the `ProgramImage` handed to `reset`, which
-      is sound because the reference reads only `words`/`data` and never `symbols` — and that is
-      what lets one stub serve both the single-program checks and the whole-corpus suite.
+      All three guards were **mutation-checked**, not merely observed green: deleting the
+      perturbation fails the first claim's test; reintroducing the pre-step-0 `defaultConfig()`
+      hardcode fails all five corpus programs under the second; and under the third, enumerating
+      only `configs[0]` fails the case-count assertion while dropping the title label fails the two
+      labelling assertions. One more `it()` guards an empty `configs` list from skipping the corpus
+      vacuously, mirroring the existing empty-fixture guard. The stub is program-agnostic — it
+      rebuilds its input from the `ProgramImage` handed to `reset`, which is sound because the
+      reference reads only `words`/`data` and never `symbols` — and that is what lets one stub
+      serve both the single-program checks and the whole-corpus suite.
 
       _Original plan text:_ `runConformance(modelName, makeProcessor)` today calls `runToHalt`,
       which hardcodes `defaultConfig()` and documents
