@@ -1,11 +1,14 @@
 # Milestone 4 — branch prediction (the second toggle on the pipeline)
 
-**Status: NOT STARTED, 2026-07-16. Nothing built. M3 is complete (685 tests, all steps landed
-and pushed), which is the precondition: prediction is a feature toggle ON the pipeline (spec
-§12.3) and needs the pipeline to exist before it means anything. Scope below is
-prediction ONLY — caches are the other half of §12.3 and are deliberately a separate
-milestone (they carry a prerequisite prediction does not: the spec warns cache behavior only
-becomes visible with array-walking programs, so the example library must grow first).**
+**Status: STEP 0 DONE, 2026-07-16 (685 → 691 tests). The machine still predicts not-taken —
+step 0 is deliberately inert, and its inertness is the proof. `speculativeTarget` is pure,
+unwired, and its agreement with EX is pinned over the corpus + mutation-checked four ways.
+PENDING: everything that changes behavior (step 1 on), and every browser eyeball. M3 is
+complete, which is the precondition: prediction is a feature toggle ON the pipeline (spec
+§12.3) and needs the pipeline to exist before it means anything. Scope is prediction ONLY —
+caches are the other half of §12.3 and are deliberately a separate milestone (they carry a
+prerequisite prediction does not: the spec warns cache behavior only becomes visible with
+array-walking programs, so the example library must grow first).**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap), item 3. The load-bearing
 constraints are the architectural invariants (§3) and the trace schema (§5). The pipeline this
@@ -104,25 +107,64 @@ code moves.
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. ID learns what a control transfer is, and where it would go.** The prerequisite M3
-      declined, landed **alone and behavior-free**: a `BRANCHES` classification + PC-relative
-      target computation in ID, computed and carried but **not yet acted on**. The machine still
-      predicts not-taken; every existing trace is byte-identical. This is deliberately its own
-      step because it is the one change that can be proven _inert_, and proving it inert is what
-      makes the next step's behavior change attributable.
-      Acceptance: all 685 tests green **unchanged** (no timing test moves — the strongest
-      possible statement that this step changed nothing), plus a new unit test pinning that ID's
-      computed target **equals EX's `nextPc`** for every PC-relative transfer in the corpus. That
-      agreement is the safety property the ID redirect will rest on; pin it before relying on it.
+- [x] **0. ID learns what a control transfer is, and where it would go.** ✅ Done (2026-07-16,
+      685 → **691 tests**). `predict.ts`: `speculativeTarget(decoded, pc)` + `isPredictable(d)`
+      over a `PC_RELATIVE_TRANSFERS` set — the classification M3 deliberately refused
+      (`processor.ts:175`), back because **a prediction must be made before the answer exists**.
+      Pure, and **called by nothing**: the machine still predicts not-taken, every existing test
+      green and **unmoved** (685 + 6 new = 691), which is the strongest available statement that
+      this step changed no behavior. Not exported from the package `index.ts` — the M3 step-0
+      pattern (`checkProgram`/`conformanceCases` stayed module-local); prediction is the pipeline's
+      business, and nothing outside it has a use for the function.
+
+      **The scope shrank while landing, and that was the point.** The plan said the target would be
+      "computed and carried" — carrying it in `IdExLatch` would have changed `micro`, hence the
+      recorded trace, hence "behavior-free" would have been a false claim. So the latch field was
+      **deferred to step 1**, where it is acted on. A pure function nothing calls is *provably*
+      inert; a new latch field is only arguably so.
+
+      The deliverable is the **safety property**, pinned before anything rests on it: ID's target
+      agrees with EX's `nextPc` for every taken PC-relative transfer in the corpus. It reads like a
+      tautology (both spell `pc + imm`) and is not — two units computing one address from different
+      inputs at different times is the shape of the classic BTB bug. So it is asserted against the
+      **engine's own `branch-resolved` events**, never against a re-derivation of the arithmetic in
+      the test, which would agree with a broken predictor for the reason it was broken.
+
+      **Mutation-checked, and the fourth mutation found a real gap rather than confirming a
+      belief.** Emptying `PC_RELATIVE_TRANSFERS` leaves the headline claim **vacuously green** and
+      fails only the count guard — exactly the M3 step-0 lesson (claims don't imply each other),
+      now measured rather than asserted. Adding `jalr` fails 3. Breaking the arithmetic to
+      `pc+4+imm` fails the agreement. But **deleting the `>>> 0` failed nothing**: every corpus
+      address is small enough that the signed and unsigned readings agree, and the agreement test
+      is structurally blind to it because *EX normalizes too* — both routes would be wrong together
+      and still match. Fixed by a **direct** test (a backward branch evaluated near zero), not by
+      softening the comment that claimed it was covered. **No corpus sweep can prove this one**;
+      the milestone's first finding is that the corpus has a blind spot the plan assumed it didn't.
+
+      A second slip, caught by the derivation rather than by the run: the vacuity count was written
+      `15` while its own comment derived `9 + 4 + 1`. The fix was **not** to paste the observed 14 —
+      that is a snapshot, and "a cycle count copied from a passing run is not a pin" is M3 step 3's
+      rule. It is now asserted **per program**, each count read off that program's trip count.
 
 - [ ] **1. The engine honors `config.branchPrediction` — three schemes, three behaviors.**
       `static-taken` acts on step 0's target: an ID redirect (the bet) coexisting with the EX
       redirect (the correction), with `branch-resolved.predicted` finally telling the truth.
       `configurableBranchPrediction` flips to `true`. Whether `none` is a third behavior or an
       alias is pinned below — decide it here, in the open.
+      **Two-redirect precedence is the bug this step must pin, not merely describe.** With two
+      redirect points, an older branch's EX correction and a younger branch's ID bet can want to
+      steer fetch in the **same cycle**. The rule: **EX wins, and the EX squash invalidates the ID
+      bet entirely** — the instruction in ID was fetched _after_ the older branch, so it is
+      wrong-path and about to be squashed; letting its bet steer fetch would be a wrong-path
+      instruction redirecting a machine that has already decided it never runs. Prose is not proof:
+      this needs a hand-derived case where a bet and a correction collide.
+      Also: conformance's green-first-run (step 2) rests on wrong-path instructions being squashed
+      **before MEM** — no speculative stores. The EX-resolved squash already guarantees this, so it
+      is inherited; this step must not introduce a path that commits before squash.
       Acceptance: hand-derived unit tests over each scheme, in the M3 step-2 style (the soul
       pinned by hand-derived cases, not by a corpus sweep). Specifically: a correctly-predicted
-      taken branch costs 1; a mispredicted branch costs 2; `jalr` costs 2 under every scheme.
+      taken branch costs 1; a mispredicted branch costs 2; `jalr` costs 2 under every scheme; and
+      a bet colliding with a correction resolves to the correction.
 
 - [ ] **2. Conformance across the scheme matrix (INV-8) — prediction is architecturally
       invisible.** M3 step 0 built `runConformance`'s config list for exactly this. The pipeline's
