@@ -48,23 +48,31 @@ import { loadSource } from './simulator';
  * format field (cf. step 6, which derived contraction visibility instead of declaring it):
  *
  *   Drive each lesson under the model it DECLARES, across every config position that model
- *   HONORS (`capabilities.configurableForwarding`). Every step must anchor in AT LEAST ONE
- *   position; within each position, the survivors anchor in order, with resolvable narration,
- *   and no two share a cycle.
+ *   HONORS (the cross product over its capability flags — see `positionsFor`). Every step must
+ *   anchor in AT LEAST ONE position; within each position, the survivors anchor in order, with
+ *   resolvable narration, and no two share a cycle.
  *
  * That one rule degenerates correctly at both ends, which is why it needs no per-lesson special
  * case. A single-cycle lesson honors no config, so its position list has length 1 and "at least
  * one" IS "every step anchors" — the old strict rule, unchanged in force. The pipeline lesson gets
- * two positions, so a config-exclusive step is lawful — while a MISTYPED one (an unsatisfiable
- * `where`, a bad event name) is still caught, because it is dead in BOTH. Order and the shared-
- * cycle guard are checked per RECORDING, never on a merged anchoring: a step that is null in one
- * position must be skipped there, which the runner already does correctly per-recording.
+ * four (M4 step 4 added prediction), so a config-exclusive step is lawful — while a MISTYPED one
+ * (an unsatisfiable `where`, a bad event name) is still caught, because it is dead in ALL. Order and
+ * the shared-cycle guard are checked per RECORDING, never on a merged anchoring: a step that is null
+ * in one position must be skipped there, which the runner already does correctly per-recording.
  *
  * What that generic rule deliberately CANNOT see is the pedagogy — a step that fires in both
  * positions when it was meant to fire in one would pass it. That claim is the lesson's whole
  * point, so it is asserted positively and by name, in `forwarding-bubble`'s own oracle below:
  * the interlock is alive-off and dead-on ("the bubble vanishes") and the load-use stall is alive
  * in both... on different terms. Those are the assertions, not this sweep.
+ *
+ * **M4 step 4 measured how blind that blindness is, and it is worth the warning.** The sweep went
+ * from two positions to four, green throughout — while the shell was simultaneously shipping
+ * `forwarding-bubble`'s closing prose ("51 cycles") over a transport reading 49, because the lesson
+ * had stopped declaring the prediction scheme its numbers depend on. Anchoring survived the config
+ * change; the WORDS did not. Every step fired, in order, at its own cycle, in all four positions,
+ * and the lesson was lying. A narration oracle is the only thing that can see that — hence the
+ * `72 → 51` test below, and hence its scheme being DERIVED from the lesson rather than assumed.
  */
 
 /** Assemble a corpus program and record it to completion — the runner's precondition. */
