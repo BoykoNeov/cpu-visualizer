@@ -31,7 +31,7 @@ import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
  * the web shell dispatches on this discriminator rather than a plain has/has-not flag. `'none'`
  * falls back to a placeholder for models whose datapath isn't built yet.
  */
-export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'none';
+export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'pipeline' | 'none';
 
 /** A selectable microarchitecture: its id, a display label, and how to make a fresh engine. */
 export interface ModelChoice {
@@ -79,10 +79,10 @@ export const MODELS: readonly ModelChoice[] = [
     description:
       '5-stage pipeline — five instructions in flight at once, with forwarding, stalls, and flushes',
     make: () => new PipelineProcessor(),
-    // No bespoke geometry yet (M3 step 6 authors it). Deliberately NOT reusing multi-cycle's
-    // diagram: it draws a single shared memory and one instruction in flight, so a pipeline trace
-    // would light it into a contradictory picture (INV-5). The placeholder is the honest stand-in.
-    datapath: 'none',
+    // Its OWN hand-authored geometry (M3 step 6). Deliberately NOT reusing multi-cycle's diagram:
+    // that one draws a single shared memory and one instruction in flight, so a pipeline trace
+    // would light it into a contradictory picture (INV-5).
+    datapath: 'pipeline',
     capabilities: PIPELINE_CAPABILITIES,
   },
 ];

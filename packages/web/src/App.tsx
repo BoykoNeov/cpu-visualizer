@@ -7,6 +7,7 @@ import { formatInstruction } from './format';
 import { LESSONS } from './lessons';
 import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
+import { PipelineDatapath } from './PipelineDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -204,6 +205,16 @@ export function App(): React.JSX.Element {
             <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
           ) : activeModel.datapath === 'multi-cycle' ? (
             <MultiCycleDatapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+          ) : activeModel.datapath === 'pipeline' ? (
+            // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
+            // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
+            // events to draw). The view already holds the position; the user set it.
+            <PipelineDatapath
+              trace={sim.cycleTrace}
+              cycleKey={sim.cursor}
+              tier={tier}
+              forwarding={sim.forwarding}
+            />
           ) : (
             <DatapathPlaceholder modelLabel={activeModel.label} />
           )}

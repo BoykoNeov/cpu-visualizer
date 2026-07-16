@@ -11,7 +11,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
-import type { CycleTrace } from '@cpu-viz/trace';
+import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { it } from 'vitest';
 
@@ -19,6 +20,7 @@ import { it } from 'vitest';
 const RUN = process.env.SNAP ? it : it.skip;
 import { Datapath } from './DatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
+import { PipelineDatapath } from './PipelineDatapathView';
 import { loadSource } from './simulator';
 import type { DepthTier } from '@cpu-viz/curriculum';
 
@@ -31,6 +33,21 @@ function traceAt(source: string, cycles: number, multi: boolean): CycleTrace {
     `${source}\n  li a7, 10\n  ecall\n`,
     multi ? () => new MultiCycleProcessor() : undefined,
   );
+  if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+  const { recorder } = result.loaded;
+  for (let i = 0; i < cycles; i++) recorder.stepForward();
+  const trace = recorder.current();
+  if (!trace) throw new Error(`no trace at cycle ${cycles}`);
+  return trace;
+}
+
+/** The pipeline's counterpart — the only model whose trace depends on the CONFIG, which is the
+ *  whole reason its snapshots come in pairs. */
+function pipelineAt(source: string, cycles: number, forwarding: boolean): CycleTrace {
+  const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new PipelineProcessor(), {
+    ...defaultConfig(),
+    forwarding,
+  });
   if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
   const { recorder } = result.loaded;
   for (let i = 0; i < cycles; i++) recorder.stepForward();
@@ -115,5 +132,36 @@ RUN('emit datapath snapshots', () => {
     // A jal WB exercises the pcarith → wbmux writeback path.
     const jw = traceAt('jal x1, tgt\n nop\ntgt:', 3, true);
     emit('mc-focus-jalWB', block('multi-cycle · jal@WB · expert', renderToStaticMarkup(<MultiCycleDatapath trace={jw} cycleKey={3} tier="expert" />))); // prettier-ignore
+  }
+
+  // Pipeline: the eyeball has TWO axes here, and the config one is the reason this block exists —
+  // the forwarding network must be visibly ABSENT with the toggle off, not drawn-and-idle. Every
+  // page is a FULL PIPE (five instructions, five stages, five hues at once), because a diagram that
+  // looked right with one instruction in it would say nothing about the model this tier is for.
+  {
+    // Six independent addis fill the pipe by cycle 4 — no hazards, so all five stages are occupied.
+    const FILL = ' addi x1, x0, 1\n addi x2, x0, 2\n addi x3, x0, 3\n addi x4, x0, 4\n addi x5, x0, 5\n addi x6, x0, 6'; // prettier-ignore
+    const full = pipelineAt(FILL, 5, true);
+    const blocks = tiers
+      .map(
+        (tier) =>
+        block(`pipeline · full pipe · ${tier} · fwd on`, renderToStaticMarkup(<PipelineDatapath trace={full} cycleKey={4} tier={tier} forwarding />)), // prettier-ignore
+      )
+      .join('');
+    emit('pl-fill', blocks);
+
+    // The flagship comparison, side by side and same tier: the ONLY difference must be the
+    // forwarding network's existence. A RAW chain, at the cycle its consumer executes.
+    const raw = ' addi x1, x0, 7\n add x2, x1, x1\n sub x3, x2, x1';
+    emit(
+      'pl-toggle',
+      block('pipeline · RAW · expert · fwd ON (network present)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, true)} cycleKey={3} tier="expert" forwarding />)) + // prettier-ignore
+        block('pipeline · RAW · expert · fwd OFF (network absent)', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(raw, 4, false)} cycleKey={3} tier="expert" forwarding={false} />)), // prettier-ignore
+    );
+
+    // Focused expert pages: the load-use bubble (the stall that survives forwarding, lighting the
+    // hazard unit) and a taken branch (the redirect M2's datapath could not honestly draw).
+    emit('pl-focus-loaduse', block('pipeline · load-use stall · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' lw x1, 64(x0)\n add x2, x1, x1', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
+    emit('pl-focus-branch', block('pipeline · taken branch redirect · expert · fwd on', renderToStaticMarkup(<PipelineDatapath trace={pipelineAt(' addi x1, x0, 1\n beq x0, x0, tgt\n addi x9, x0, 9\ntgt:\n addi x2, x0, 2', 4, true)} cycleKey={3} tier="expert" forwarding />))); // prettier-ignore
   }
 });

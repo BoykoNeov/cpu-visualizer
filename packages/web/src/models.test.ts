@@ -62,15 +62,17 @@ describe('the model table', () => {
   });
 
   /**
-   * The datapath discriminator, which App dispatches on. The pipeline's is `'none'` until M3
-   * step 6 authors its geometry — it renders the placeholder rather than borrowing a neighbour's
-   * diagram, which lit by a pipeline trace would draw a contradictory picture (INV-5).
+   * The datapath discriminator, which App dispatches on. Every model has its OWN hand-authored
+   * geometry and none reuses a neighbour's: lit by the wrong model's trace, a diagram draws a
+   * contradictory picture (INV-5) — multi-cycle's single shared memory and one-in-flight layout
+   * would simply be a lie about a pipeline. Asserted as a table rather than "each is not none",
+   * since the failure worth catching is a row pointing at the WRONG diagram, not a missing one.
    */
-  it('dispatches each model to its own datapath, and the pipeline to the placeholder', () => {
+  it('dispatches each model to its own bespoke datapath — never a neighbour’s', () => {
     expect(MODELS.map((m) => [m.id, m.datapath])).toEqual([
       ['single-cycle', 'single-cycle'],
       ['multi-cycle', 'multi-cycle'],
-      ['pipeline', 'none'],
+      ['pipeline', 'pipeline'],
     ]);
   });
 
