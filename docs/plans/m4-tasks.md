@@ -1,12 +1,16 @@
 # Milestone 4 — branch prediction (the second toggle on the pipeline)
 
-**Status: STEPS 0–2 DONE, 2026-07-16 (685 → 722 tests). The engine HONORS `branchPrediction`:
-`static-taken` places an ID bet, EX corrects on misprediction, and INV-8 is clean across the
-full 2×3 config matrix (30 cases, green first-run — speculation does not leak). PROVEN
-headlessly: the payoff (a correct bet costs 1, not 2), the regression (a lost bet costs 2), the
-`jalr` asymmetry, and the bet-vs-correction collision. PENDING: step 3's corpus-wide timing
-derivation, everything in the browser (steps 4–7), and every eyeball. The milestone's title was
-already corrected once — there are three scheme NAMES but only **two behaviors**: `'none'` and
+**Status: STEPS 0–3 DONE — the ENGINE IS COMPLETE, 2026-07-16 (685 → 746 tests). The engine
+honors `branchPrediction`: `static-taken` places an ID bet, EX corrects on misprediction, INV-8
+is clean across the full 2×3 matrix (30 cases, green first-run — speculation does not leak), and
+the timing is pinned corpus-wide as a DERIVATION. PROVEN headlessly: the payoff (a correct bet
+costs 1, not 2), the regression (`call-return` **17 → 18** — slower under `static-taken`, in
+both forwarding positions), the `jalr` asymmetry, the bet-vs-correction collision, and the
+milestone's thesis as signed per-program deltas (`sum-loop` −7, `array-sum` −2, `call-return`
+**+1**). Blind spot re-measured: a pipeline ignoring the knob leaves conformance **32/32 green**
+and fails 10 timing + 4 soul tests. PENDING: everything in the browser (steps 4–7) and every
+eyeball — which has caught a real defect in five consecutive view steps. The milestone's own
+title was corrected once already: three scheme NAMES, only **two behaviors** — `'none'` and
 `'static-not-taken'` are one machine, because the fall-through IS the not-taken path. M3 is
 complete, which is the precondition: prediction is a feature toggle ON the pipeline (spec
 §12.3) and needs the pipeline to exist before it means anything. Scope is prediction ONLY —
@@ -234,9 +238,46 @@ code moves.
       The multi-axis list is now a case in the harness's own suite, so the guard can reach what it
       guards.
 
-- [ ] **3. Timing — the closed form generalizes, and `2·T` was a special case.** M3 step 3 pinned
-      `cycles = N + 4 + S + 2·T` as a _derivation_. M4 reveals that `2·T` was never general: it
-      was the **static-not-taken** instance of a scheme-dependent penalty term.
+- [x] **3. Timing — the closed form generalizes, and `2·T` was a special case.** ✅ Done
+      (2026-07-16, 722 → **746 tests**). **Every number was right first run** — the whole thesis
+      derived before the engine was asked, then confirmed: `sum-loop` −7, `array-sum` −2,
+      `call-return` **+1**, `add`/`byte-loads` unmoved.
+
+      **The generalization is smaller and better than the plan predicted.** The plan proposed three
+      per-scheme formulas. The truth is ONE rule, per transfer: **2 if mispredicted, 1 if correctly
+      predicted taken, 0 if correctly predicted not-taken.** The scheme's only job is to decide
+      `predicted`; everything else falls out. `2·T` is then not a formula to replace but a
+      *consequence* — under not-taken nothing is ever predicted taken, so every taken transfer
+      mispredicts and every declined branch is free. **Nothing M3 pinned was wrong; it was
+      *specific*, in a place that read as general.** `T` also stopped being stated: it is now
+      derived from the transfer breakdown, so the two cannot drift.
+
+      **The thesis is MEASURED, not asserted, and it is the sharper mirror of M3 step 3.** There,
+      the crown jewel had to be corrected: forwarding is not always faster (`call-return` is 17 in
+      both positions). Here the same program does not merely fail to improve — it gets **worse**:
+      **17 → 18 cycles under `static-taken`, in both forwarding positions.** Its three transfers are
+      one of each kind, which makes it the corpus's whole argument in one program: `jal` improves
+      (2→1), the never-taken `bge` regresses (0→2), and `ret` (a `jalr`) cannot be predicted by
+      anyone and stays at 2. Asserted as a **signed delta per program**, never as an average — the
+      average is exactly the claim that would let the loss hide.
+
+      **The blind spot, re-measured for M4.** A pipeline that ignores `branchPrediction` entirely
+      leaves **conformance 32/32 GREEN** and fails **10 timing + 4 soul tests** — the same shape M3
+      measured for forwarding (12/12 green, 10 unit + 14 timing). Mutation-checked three ways; the
+      third found something worth keeping: **killing the bet's `flush` fails exactly ONE test, and
+      timing is untouched.** The cycle count does not depend on the event, so the casualty pin is
+      its _only_ net. That is why "a correct prediction still emits a flush" had to be a test rather
+      than a comment — and why step 6 inherits `18 → 11` as a number rather than inventing one.
+
+      **Unplanned payoff: casualties ARE the penalty**, and not by coincidence — a killed
+      instruction is a wasted fetch slot, and a wasted fetch slot is a cycle. `sum-loop` draws 18
+      casualties under not-taken and 11 under taken, exactly `P`. The two schemes even reach 11 by
+      different routes (9 bets × 1 + a 2-cycle exit mispredict whose correction cuts only IF,
+      because the bet had already emptied ID) and still land on the same number.
+
+      _(Original plan text follows.)_ M3 step 3 pinned `cycles = N + 4 + S + 2·T` as a
+      _derivation_. M4 reveals that `2·T` was never general: it was the **static-not-taken**
+      instance of a scheme-dependent penalty term.
 
       > **cycles = N + 4 + S + P**, where `P` is the speculation penalty:
       > `static-not-taken`: `P = 2·T` (M3's term, unchanged) · `none`: `P = 2·B` over **all**

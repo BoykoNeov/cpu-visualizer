@@ -44,28 +44,44 @@ import { PipelineProcessor } from './index';
  *   consumer may leave ID in the very cycle the producer writes back.
  * - forwarding ON: only a LOAD producer stalls its consumer (`d_i >= d_L + 2`) — the load-use
  *   bubble. Every other RAW is covered by a forward.
- * - a taken transfer `b`: the redirect is clocked at the end of b's EX (`d_b+1`), so the target is
- *   fetched at `d_b+2` and leaves ID at `d_b+3` — a +2 penalty over the `d_b+1` baseline.
+ * - a MISPREDICTED transfer `b`: the redirect is clocked at the end of b's EX (`d_b+1`), so the
+ *   target is fetched at `d_b+2` and leaves ID at `d_b+3` — a +2 penalty over the `d_b+1` baseline.
+ * - a CORRECTLY PREDICTED taken transfer (M4): ID steers fetch at `d_b`, a cycle earlier than EX
+ *   could, so only the one already-fetched fall-through is lost — **+1**, not +2.
  *
  * Summing the recurrence over a whole run collapses to one closed form:
  *
- * > **cycles = N + 4 + S + 2·T**
+ * > **cycles = N + 4 + S + P**
  * >
- * > N = instructions that RETIRE, S = total stall cycles, T = taken control transfers.
+ * > N = instructions that RETIRE, S = total stall cycles, P = the speculation penalty.
  *
  * That is what makes this a table of derivations rather than a table of magic numbers, and it is
  * why each term is asserted SEPARATELY below: a single opaque total lets a compensating pair of
- * errors (over-count S, under-count T) pass, and tells you nothing about where it broke.
+ * errors (over-count S, under-count P) pass, and tells you nothing about where it broke.
  *
- * **The thesis, stated in the formula:** N and T belong to the PROGRAM and S to the
- * MICROARCHITECTURE. Forwarding cannot change which instructions run or which branches are taken,
- * so `cycles_off - cycles_on = S_off - S_on`, exactly. The crown jewel is that subtraction being
- * positive — and it is asserted on its own below, not resting on the formula being right.
+ * **M4 corrected this file's own formula, and the correction is the milestone.** M3 pinned
+ * `cycles = N + 4 + S + 2·T` and read `2·T` as a rule about taken transfers. It was not a rule: it
+ * was the **static-not-taken instance** of a scheme-dependent term, true only of a machine that can
+ * never be right about a taken branch. See {@link penaltyOf} for the general form. M3's formula is
+ * recovered exactly when the scheme is not-taken, so nothing it pinned was wrong — it was
+ * *specific*, in a place that read as general.
  *
- * **Careful — the +2 is per taken TRANSFER, not per `flush` EVENT.** They come apart in the
- * corpus: `call-return.s`'s `ret` is the last word of `.text`, so nothing is behind it to kill. It
- * emits no `flush` at all (the pinned "a flush reports real casualties" rule) and still costs its
- * two cycles: the target cannot be fetched until the redirect lands either way. A penalty is not a
+ * **The thesis, stated in the formula.** N and the TRANSFER STRUCTURE belong to the PROGRAM; S to
+ * the forwarding toggle; P to the prediction toggle. No config can change which instructions run or
+ * which branches are taken, so:
+ *
+ * > `cycles_off − cycles_on = S_off − S_on` and `cycles_notTaken − cycles_taken = P_nt − P_t`
+ *
+ * — each toggle's whole effect is one subtraction, and the two are orthogonal (different stages,
+ * different questions: when operands are ready vs. where to fetch). Both are asserted on their own
+ * below rather than resting on the formula being right. And **neither subtraction is always
+ * positive**: M3 measured `call-return.s` at 17 cycles in BOTH forwarding positions, and M4 finds
+ * the sharper version — `call-return.s` is *slower* under `static-taken`. A toggle is a tradeoff.
+ *
+ * **Careful — the penalty is per TRANSFER, not per `flush` EVENT.** They come apart in the corpus:
+ * `call-return.s`'s `ret` is the last word of `.text`, so nothing is behind it to kill. It emits no
+ * `flush` at all (the pinned "a flush reports real casualties" rule) and still costs its two
+ * cycles: the target cannot be fetched until the redirect lands either way. A penalty is not a
  * casualty.
  */
 
@@ -79,6 +95,22 @@ type Position = 'off' | 'on';
 const CONFIG: Record<Position, ProcessorConfig> = { off: OFF, on: ON };
 
 /**
+ * The two prediction BEHAVIORS (M4). There are three config values, but `'none'` and
+ * `'static-not-taken'` are one machine — a processor with no predictor keeps fetching, and the
+ * fall-through IS the not-taken path. `processor.test.ts` pins that equivalence on whole traces;
+ * repeating `'none'` here would add five identical runs and prove nothing this file is about.
+ *
+ * `OFF`/`ON` above are `defaultConfig()`-derived, i.e. `'none'` — so every M3 assertion in this
+ * file was already testing the not-taken behavior, and still is.
+ */
+type Scheme = 'static-not-taken' | 'static-taken';
+const SCHEMES: readonly Scheme[] = ['static-not-taken', 'static-taken'];
+const withScheme = (config: ProcessorConfig, branchPrediction: Scheme): ProcessorConfig => ({
+  ...config,
+  branchPrediction,
+});
+
+/**
  * Where stalls land: the pc of the stalling instruction → how many cycles it spent stalled,
  * summed across the whole run. A histogram rather than a bare count, because a model that stalls
  * the right NUMBER of times in the wrong PLACES is wrong, and because it keeps count and
@@ -90,15 +122,65 @@ const CONFIG: Record<Position, ProcessorConfig> = { off: OFF, on: ON };
  */
 type StallSites = Readonly<Record<number, number>>;
 
+/**
+ * How a program's control transfers break down (M4). Every field is a property of the PROGRAM —
+ * config-invariant, exactly like `retires` — because no scheme can change which branches are taken.
+ * What a scheme changes is only the PRICE of each kind, which is why `P` factors through this.
+ */
+interface Transfers {
+  /** Taken AND PC-relative: the ones ID can bet on and win. A correct bet costs 1. */
+  readonly takenPredictable: number;
+  /** Conditional branches that DECLINED. Free under not-taken; a lost bet (2) under taken. */
+  readonly notTaken: number;
+  /** Taken but unpredictable — `jalr`, whose target is a register. Mispredicts under EVERY scheme. */
+  readonly takenUnpredictable: number;
+}
+
 interface Timing {
   /** Instructions that RETIRE — a property of the program. Config-invariant. */
   readonly retires: number;
-  /** Taken control transfers — a property of the program. Config-invariant. */
-  readonly takenTransfers: number;
-  /** `flush` events that name real casualties. NOT the same as `takenTransfers` — see the header. */
+  /**
+   * The transfer breakdown. M3 stated a bare `takenTransfers: number` here; M4 needs the KINDS,
+   * because a scheme prices them differently — and `T` is now DERIVED from this rather than stated
+   * beside it, so the two can never drift apart.
+   */
+  readonly transfers: Transfers;
+  /** `flush` events that name real casualties. NOT the same as `T` — see the header. */
   readonly flushes: { readonly branchTaken: number; readonly halt: number };
-  /** The ONLY term the toggle moves. */
+  /** The only term the FORWARDING toggle moves. */
   readonly stalls: Readonly<Record<Position, StallSites>>;
+}
+
+/** `T` — taken control transfers, derived. Stating it beside its own parts would invite drift. */
+const T = (t: Transfers): number => t.takenPredictable + t.takenUnpredictable;
+
+/**
+ * **`P` — the speculation penalty, and the reason M3's closed form needed generalizing.**
+ *
+ * M3 pinned `cycles = N + 4 + S + 2·T` and called `2·T` a rule. It was not: it was the
+ * *static-not-taken instance* of a scheme-dependent term. The general rule is per TRANSFER, and it
+ * makes both schemes one formula rather than two:
+ *
+ * > every resolved transfer costs **2 if mispredicted**, **1 if correctly predicted taken**, and
+ * > **0 if correctly predicted not-taken**.
+ *
+ * A mispredict costs 2 because the target cannot be fetched until EX's redirect lands at the clock
+ * edge, by which time two fetch slots are gone. A correct taken bet costs 1 because ID places it
+ * one cycle earlier — one slot, not two. A correct not-taken "prediction" costs nothing because
+ * the machine was already fetching the right instructions; it never had to change its mind.
+ *
+ * The scheme's only job is to decide `predicted`, and everything else falls out:
+ *
+ * - `static-not-taken` (≡ `none`): nothing is ever predicted taken ⇒ every taken transfer
+ *   mispredicts (2·T) and every declined branch is free. **That is M3's `2·T`, recovered.**
+ * - `static-taken`: predictable taken ⇒ correct bet (1); declined ⇒ lost bet (2); `jalr` ⇒ can't
+ *   bet, and it always goes ⇒ mispredict (2).
+ */
+function penaltyOf(t: Transfers, scheme: Scheme): number {
+  if (scheme === 'static-taken') {
+    return 1 * t.takenPredictable + 2 * t.notTaken + 2 * t.takenUnpredictable;
+  }
+  return 2 * T(t);
 }
 
 /**
@@ -126,7 +208,10 @@ const TIMING: Readonly<Record<string, Timing>> = {
    */
   'add.s': {
     retires: 3,
-    takenTransfers: 0,
+    // No control transfers at all: P = 0 under every scheme, which is what makes this program the
+    // control for the whole M4 table — a prediction toggle must not move a program with nothing to
+    // predict.
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
     flushes: { branchTaken: 0, halt: 0 },
     stalls: { off: { 8: 2 }, on: {} },
   },
@@ -151,7 +236,9 @@ const TIMING: Readonly<Record<string, Timing>> = {
    */
   'array-sum.s': {
     retires: 34,
-    takenTransfers: 4,
+    // `bnez t1, loop` is PC-relative and goes 4 times (t1 = 4…1), then declines on the 5th (t1 = 0).
+    // No `jalr`. P: not-taken 2·4 = 8; taken 4·1 + 1·2 = 6.
+    transfers: { takenPredictable: 4, notTaken: 1, takenUnpredictable: 0 },
     flushes: { branchTaken: 4, halt: 0 },
     stalls: { off: { 4: 2, 20: 10, 32: 10, 40: 2, 44: 2 }, on: { 20: 5 } },
   },
@@ -167,7 +254,8 @@ const TIMING: Readonly<Record<string, Timing>> = {
    */
   'byte-loads.s': {
     retires: 6,
-    takenTransfers: 0,
+    // Straight-line: `la` + two loads + `ecall`. No transfers ⇒ P = 0 under every scheme.
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
     flushes: { branchTaken: 0, halt: 0 },
     stalls: { off: { 4: 2, 8: 2 }, on: {} },
   },
@@ -192,7 +280,15 @@ const TIMING: Readonly<Record<string, Timing>> = {
    */
   'call-return.s': {
     retires: 9,
-    takenTransfers: 2,
+    // **The program that punishes a taken-bet, and the milestone's thesis in one row.** Three
+    // transfers, one of each kind: `jal max` is PC-relative and always goes (a bet ID wins);
+    // `bge a0, a1, done` is 17 >= 42 — it NEVER goes, so predict-not-taken is right and a taken-bet
+    // is wrong; `ret` is a `jalr`, whose target is a register ID has not read, so no scheme can bet
+    // on it and it mispredicts always.
+    //
+    // P: not-taken 2·(1+1) = 4; taken 1·1 + 2·1 + 2·1 = 5. **The bet costs a cycle here** — the one
+    // corpus program that gets SLOWER under static-taken.
+    transfers: { takenPredictable: 1, notTaken: 1, takenUnpredictable: 1 },
     flushes: { branchTaken: 1, halt: 1 }, // jal flushes; ret has nothing behind it to kill
     stalls: { off: {}, on: {} },
   },
@@ -215,7 +311,9 @@ const TIMING: Readonly<Record<string, Timing>> = {
    */
   'sum-loop.s': {
     retires: 34,
-    takenTransfers: 9,
+    // `bnez t0, loop` goes 9 times (t0 = 9…1) and declines on the 10th. P: not-taken 2·9 = 18 —
+    // which is exactly the 18 casualties M3's pipeline map draws; taken 9·1 + 1·2 = 11.
+    transfers: { takenPredictable: 9, notTaken: 1, takenUnpredictable: 0 },
     flushes: { branchTaken: 9, halt: 0 },
     stalls: { off: { 8: 2, 16: 20 }, on: {} },
   },
@@ -272,6 +370,18 @@ function stallSites(ts: CycleTrace[]): Record<number, number> {
 
 const total = (sites: StallSites): number => Object.values(sites).reduce((sum, n) => sum + n, 0);
 
+/**
+ * `P` as the ENGINE actually paid it: each resolved transfer priced by what it predicted and what
+ * happened. Independent of {@link penaltyOf}, which prices the same transfers from the hand-derived
+ * table — two routes to one number, so a disagreement localizes to the transfer whose prediction
+ * outcome differs from what the table claims.
+ */
+const penaltyFromEvents = (ts: CycleTrace[]): number =>
+  eventsOf(ts, 'branch-resolved').reduce(
+    (sum, e) => sum + (e.predicted !== e.actual ? 2 : e.predicted ? 1 : 0),
+    0,
+  );
+
 const takenTransfers = (ts: CycleTrace[]): number =>
   eventsOf(ts, 'branch-resolved').filter((e) => e.actual).length;
 
@@ -296,17 +406,21 @@ describe('the pinned cycle-count table', () => {
     const ts = run(file, CONFIG[position]);
     const sites = pinned.stalls[position];
 
-    // Each term of `cycles = N + 4 + S + 2·T` is asserted on its own, against the events that
+    // Each term of `cycles = N + 4 + S + P` is asserted on its own, against the events that
     // define it. Checking only the total would let a compensating pair of errors through, and
     // would say nothing about WHICH term drifted when it failed.
     expect(eventsOf(ts, 'instr-retire'), 'N — retired instructions').toHaveLength(pinned.retires);
-    expect(takenTransfers(ts), 'T — taken control transfers').toBe(pinned.takenTransfers);
+    expect(takenTransfers(ts), 'T — taken control transfers').toBe(T(pinned.transfers));
     // S, and every stall's PLACE at once: a model that stalls the right number of times at the
     // wrong instructions is wrong, and this catches it without naming a single cycle number.
     expect(stallSites(ts), 'S — where the stalls land').toEqual(sites);
 
-    // ...and only then the closed form itself.
-    expect(ts).toHaveLength(pinned.retires + 4 + total(sites) + 2 * pinned.takenTransfers);
+    // ...and only then the closed form itself. `CONFIG[position]` is `defaultConfig()`-derived,
+    // i.e. `'none'` — the not-taken behavior — so P here is M3's `2·T`, now spelled as the instance
+    // of the general rule that it always was.
+    const P = penaltyOf(pinned.transfers, 'static-not-taken');
+    expect(P, "the not-taken scheme's P is exactly M3's 2·T").toBe(2 * T(pinned.transfers));
+    expect(ts).toHaveLength(pinned.retires + 4 + total(sites) + P);
   });
 });
 
@@ -347,7 +461,7 @@ describe("the formula's constant terms, isolated", () => {
       expect(eventsOf(ts, 'stall')).toEqual([]);
       expect(eventsOf(ts, 'instr-retire')).toHaveLength(3);
       expect(takenTransfers(ts)).toBe(1);
-      expect(ts).toHaveLength(3 + 4 + 0 + 2 * 1);
+      expect(ts).toHaveLength(3 + 4 + 0 + 2 * 1); // P = 2·T: the not-taken scheme, mispredicting
     }
   });
 
@@ -507,4 +621,128 @@ describe('stall and flush placement across the corpus', () => {
       }
     },
   );
+});
+
+/**
+ * M4 step 3 — the speculation penalty, corpus-wide.
+ *
+ * Everything above pins the machine under the not-taken behavior (`CONFIG[position]` is
+ * `defaultConfig()`-derived), which is all M3 had. This is the other half: `static-taken`, where
+ * `P` finally differs from `2·T` and the prediction toggle becomes observable at all.
+ *
+ * Nothing here is a snapshot. Every `P` comes from {@link penaltyOf} applied to the program's
+ * hand-derived transfer breakdown, and the cycle count is the closed form — so a failure names the
+ * term that drifted rather than a number that moved.
+ */
+const MATRIX = Object.keys(TIMING).flatMap((file) =>
+  (['off', 'on'] as const).flatMap((position) =>
+    SCHEMES.map((scheme) => ({ file, position, scheme })),
+  ),
+);
+
+describe('P — the speculation penalty (the term 2·T was hiding)', () => {
+  it.each(MATRIX)('$file [forwarding $position, predict $scheme]', ({ file, position, scheme }) => {
+    const pinned = TIMING[file]!;
+    const ts = run(file, withScheme(CONFIG[position], scheme));
+    const sites = pinned.stalls[position];
+
+    // N and the transfer structure are the PROGRAM: no scheme can change them. Asserting it in
+    // every cell is what makes the P column attributable — a scheme that "sped things up" by
+    // skipping an instruction or taking a different branch is caught here, not in the total.
+    expect(eventsOf(ts, 'instr-retire'), 'N — the program, not the config').toHaveLength(
+      pinned.retires,
+    );
+    expect(takenTransfers(ts), 'T — the program, not the config').toBe(T(pinned.transfers));
+    // S is the FORWARDING toggle's term and must not move with the scheme (different stages,
+    // different questions). Step 1 pinned that orthogonality on a hand-built case; this is it
+    // corpus-wide, and it is what lets the closed form have two independent config terms at all.
+    expect(stallSites(ts), 'S — the forwarding toggle, untouched by prediction').toEqual(sites);
+
+    // P, by two independent routes. The pinned route derives it from the transfer breakdown; the
+    // measured route applies the per-transfer rule to the engine's OWN prediction outcomes. If the
+    // engine mispredicted something the table says it should have called right, these disagree —
+    // which no cycle count could tell you, since the two errors would cancel in the total.
+    const P = penaltyOf(pinned.transfers, scheme);
+    expect(penaltyFromEvents(ts), 'P — each transfer priced by what the engine predicted').toBe(P);
+
+    // ...and only then the closed form.
+    expect(ts).toHaveLength(pinned.retires + 4 + total(sites) + P);
+  });
+
+  /**
+   * **THE THESIS: no scheme dominates.** The milestone's whole pedagogical claim, measured rather
+   * than asserted — and the sharper mirror of what M3 step 3 had to discover about forwarding,
+   * where `call-return.s` turned out to be 17 cycles in BOTH positions.
+   *
+   * Here the same program does not merely fail to improve; it gets **worse**. A predictor is a BET,
+   * and the corpus contains a program that punishes each way of betting:
+   *
+   * - `sum-loop.s` — a backward loop branch taken 9 of 10. `P: 18 → 11`, a **7-cycle win**.
+   * - `array-sum.s` — same shape, 4 of 5. `P: 8 → 6`, a **2-cycle win**.
+   * - `call-return.s` — `bge a0, a1` is `17 >= 42`: it never goes. `P: 4 → 5`, a **1-cycle LOSS**.
+   *
+   * Asserted as a signed delta per program rather than as "prediction is faster on average",
+   * because the average is exactly the claim that would let the loss hide.
+   */
+  it.each(['off', 'on'] as const)(
+    'no scheme dominates [forwarding %s] — sum-loop wins, call-return LOSES',
+    (position) => {
+      const cyclesOf = (file: string, scheme: Scheme): number =>
+        run(file, withScheme(CONFIG[position], scheme)).length;
+      const delta = (file: string): number =>
+        cyclesOf(file, 'static-not-taken') - cyclesOf(file, 'static-taken');
+
+      // Positive = static-taken is faster. Each equals its `P_nt − P_t` exactly, because N and S
+      // are config-invariant — the subtraction IS the toggle's whole effect.
+      expect(delta('sum-loop.s'), 'P 18 → 11: nine correct bets').toBe(7);
+      expect(delta('array-sum.s'), 'P 8 → 6: four correct bets').toBe(2);
+      expect(delta('call-return.s'), 'P 4 → 5: the bet that loses — NEGATIVE').toBe(-1);
+      // A program with nothing to predict must not move at all.
+      expect(delta('add.s'), 'no transfers ⇒ no penalty ⇒ no effect').toBe(0);
+      expect(delta('byte-loads.s'), 'straight-line').toBe(0);
+    },
+  );
+
+  /**
+   * The regression in absolute numbers, so it cannot be read as noise. M3 pinned `call-return.s` at
+   * **17 cycles in both forwarding positions** — the program where every RAW already sits behind a
+   * flush gap, so `S = 0` and forwarding buys nothing. Under `static-taken` it is **18**: the one
+   * corpus program made slower by a toggle sold as an optimization.
+   *
+   * Its three transfers are one of each kind, which is why it is the corpus's whole argument in a
+   * single program: `jal` improves (2 → 1), the never-taken `bge` regresses (0 → 2), and `ret` (a
+   * `jalr`) cannot be predicted by anyone and stays at 2.
+   */
+  it('call-return.s: 17 cycles under not-taken, 18 under taken — a toggle is a tradeoff', () => {
+    for (const position of ['off', 'on'] as const) {
+      const nt = run('call-return.s', withScheme(CONFIG[position], 'static-not-taken'));
+      const t = run('call-return.s', withScheme(CONFIG[position], 'static-taken'));
+      expect(nt, `[forwarding ${position}] N=9, S=0, P=2·2`).toHaveLength(17);
+      expect(t, `[forwarding ${position}] N=9, S=0, P=1+2+2`).toHaveLength(18);
+    }
+  });
+
+  /**
+   * Casualties ARE the penalty, and it is not a coincidence: a killed instruction is a wasted fetch
+   * slot, and a wasted fetch slot is a cycle. This is the bridge to the pipeline map — M3 draws 18
+   * casualty rows for `sum-loop`, and the map must show 11 once the bet is on. Pinning it here
+   * means step 6 inherits a number instead of inventing one.
+   *
+   * Note this holds even though the two schemes reach it differently: not-taken pays 9 flushes of 2
+   * casualties each, while taken pays 9 flushes of 1 (the bets) plus a 2-casualty correction at the
+   * loop exit... except the exit's bet has already emptied ID, so that correction cuts only IF. The
+   * arithmetic still lands on 11 because the exit's bet contributed a casualty of its own.
+   */
+  it('casualties ARE the penalty — sum-loop draws 18 rows, then 11', () => {
+    const casualties = (scheme: Scheme): number =>
+      eventsOf(run('sum-loop.s', withScheme(ON, scheme)), 'flush')
+        .filter((e) => e.reason !== 'halt')
+        .reduce((sum, e) => sum + e.stages.length, 0);
+
+    const pinned = TIMING['sum-loop.s']!.transfers;
+    expect(casualties('static-not-taken'), "9 taken × 2 squashed — M3's pinned 18").toBe(18);
+    expect(casualties('static-taken'), '9 bets × 1, plus the exit mispredict').toBe(11);
+    expect(casualties('static-not-taken')).toBe(penaltyOf(pinned, 'static-not-taken'));
+    expect(casualties('static-taken')).toBe(penaltyOf(pinned, 'static-taken'));
+  });
 });
