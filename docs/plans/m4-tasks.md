@@ -531,7 +531,25 @@ code moves.
 
       **The eyeball did NOT find a product defect — the streak breaks at 7**, and the honest report is
       that the marks read correctly in both themes at real pixels (quiet grey `?` because a bet is
-      routine; loud red `!` because being wrong is the exception). It found two smaller things
+      routine; loud red `!` because being wrong is the exception). **But the first pass nearly declared
+      that having only looked at TOYS** — six-instruction synthetics carrying one mark each — while
+      the acceptance is written about `sum-loop` and `call-return`, and this project's own record (M3
+      step 7) is that the map's real defects *were visible only at REAL scale*. So `call-return` joined
+      the harness as the one corpus map page (18 cycles, 13 rows — it fits whole, which is why
+      `sum-loop` did not join it: at 45 rows it is clipped by the map's own scroll container, exactly
+      the reason the other pages are deliberately short).
+
+      **That page is the step's most convincing artifact, and it had only ever been asserted
+      headlessly: the whole thesis is one picture.** Under `static-taken`, `jal` bets and WINS (`?`,
+      no `!`, one `✕` — cost 1); `bge` bets and LOSES (`?` then `!`, two `✕` — cost 2); and `ret`
+      mispredicts with **no `✕` at all** (cost 2, zero casualties). That is step 3's signed deltas
+      −1 / +2 / 0 = **+1**, drawn. And under not-taken the same page carries the contrast that
+      justifies the whole design: **two mispredictions, one killing two instructions and one killing
+      nobody**, side by side. `sum-loop` answered the clutter question — ten quiet `?` do not shout,
+      and on a STALLED branch (`IF ID ID ID?`) the `?` lands on the LAST ID cell, the cycle the bet is
+      actually placed.
+
+      It found two smaller things
       instead: `font-size: 0.62rem` was the CELL's size baked into a class deliberately serving two
       contexts, so the legend's key rendered *smaller than the sentence it sits in* (size moved beside
       `position`, under `.pmap-cell .pmap-mark`); and a probe killed a piece of **dead defensive CSS**

@@ -22,6 +22,7 @@ import { Datapath } from './DatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { PipelineMap } from './PipelineMapView';
+import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 import type { DepthTier } from '@cpu-viz/curriculum';
 
@@ -279,6 +280,30 @@ RUN('emit datapath snapshots', () => {
         mapPage('pipeline map · same branch · PREDICT TAKEN — bet WON (? on ID), one cut row, no !', pipelineRun(won, true, true), 4) + // prettier-ignore
         mapPage('pipeline map · a LOST bet · PREDICT TAKEN — ? and ! on one row, two cut rows', pipelineRun(lost, true, true), 4), // prettier-ignore
     );
+
+    // THE THESIS, on a REAL corpus program rather than a toy — the one page here that is not a
+    // synthetic. Every other map block above is deliberately short, and that is a trap this project
+    // has fallen into before: M3 step 7's real defects were visible only at REAL scale. 18 cycles
+    // and 13 rows fits whole in a screenshot, and it is the program the acceptance is written about.
+    //
+    // What must read, and what nothing else can show: `ret` (a `jalr`, unpredictable by anyone)
+    // wears a `!` with NO `✕` beneath it — the misprediction that kills nobody, which is exactly
+    // why the marks exist. Beside it `bge` bets and LOSES (`?` and `!` on one row), which is the
+    // whole +1 regression as a picture.
+    const callReturn = EXAMPLE_PROGRAMS.find((p) => p.name === 'call-return');
+    if (callReturn) {
+      const corpusRun = (predictTaken: boolean): CycleTrace[] => {
+        const r = loadSource(callReturn.source, () => new PipelineProcessor(), { ...defaultConfig(), branchPrediction: predictTaken ? 'static-taken' : 'static-not-taken' }); // prettier-ignore
+        if (!r.ok) throw new Error('call-return should assemble');
+        r.loaded.recorder.runToEnd();
+        return [...r.loaded.recorder.recorded];
+      };
+      emit(
+        'map-corpus-predict',
+        mapPage('pipeline map · call-return · NOT-TAKEN (17 cycles) — jal and ret both mispredict; ret kills NOBODY', corpusRun(false), 8) + // prettier-ignore
+          mapPage('pipeline map · call-return · PREDICT TAKEN (18 cycles, the +1 REGRESSION) — jal bets and wins, bge bets and LOSES, ret still mispredicts with no ✕', corpusRun(true), 8), // prettier-ignore
+      );
+    }
 
     // The follow ring, which must be legible ON TOP of a stage hue (it is hue-free for exactly this
     // reason) and must pick out ONE row from the tangle.

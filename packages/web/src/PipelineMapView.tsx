@@ -355,10 +355,18 @@ export function PipelineMap(props: {
             {f}
           </span>
         ))}
-        {/* The relief rule reaches the marks: a glyph with no key is a puzzle. `?` and `!` sit on
-            the BRANCH's row (its action); `✕` sits under its victims (the cost) — which is the
-            distinction the whole step is about, so the key states it rather than listing three
-            symbols. */}
+        {/* The relief rule reaches the marks: a glyph with no key is a puzzle.
+
+            The keys are STATIC while the hue swatches above are DERIVED, and that is a chosen
+            tradeoff rather than an oversight — the two halves answer different questions. A swatch
+            says "this recording contains this stage"; a key says "this is what the symbol means".
+            Note the precedent does not settle it: `✕ = flushed` is keyed on a run with no flushes,
+            but that is DIDN'T-happen, whereas `? = bet` under predict-not-taken is CAN'T-happen —
+            the scheme performs no action at ID, ever. Deriving the glyph keys would fix that and
+            cost more than it buys: the legend's width would change on every toggle of a control
+            sitting right beside it, so the surface would twitch each time the reader flips the
+            thing they are trying to compare. A key to a symbol you have not met yet is a reference;
+            a legend that moves under you is a distraction. */}
         <span style={{ marginLeft: 'auto', color: T.ink3 }}>
           repeated cell = stall · <span className="pmap-mark pmap-mark--bet">?</span> = bet ·{' '}
           <span className="pmap-mark pmap-mark--wrong">!</span> = mispredicted ·{' '}
