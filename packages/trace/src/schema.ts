@@ -56,7 +56,21 @@ export type TraceEvent =
   | { type: 'forward'; from: string; to: string; value: number; instr: string }
   | { type: 'stall'; reason: string; stage: string; instr: string }
   | { type: 'flush'; reason: string; stages: string[] }
-  | { type: 'branch-resolved'; instr: string; predicted: boolean; actual: boolean }
+  | {
+      type: 'branch-resolved';
+      instr: string;
+      /** Was the transfer PREDICTED taken? A fixed predict-not-taken machine always says `false`. */
+      predicted: boolean;
+      /** Was it ACTUALLY taken? Unconditional jumps (`jal`/`jalr`) always say `true`. */
+      actual: boolean;
+      /**
+       * The resolved next pc — the branch unit's answer, whichever way it went (so a not-taken
+       * conditional reports its fall-through, `pc + 4`). The datapath needs this value to label
+       * the redirect it draws from this event; INV-3 says extend the schema rather than let a
+       * view reach into the engine for it, and this is that.
+       */
+      target: number;
+    }
   | { type: 'cache-access'; level: number; addr: number; hit: boolean; evicted?: number };
 
 /** One tick of the machine; the engine returns this from `step()`. */
