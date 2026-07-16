@@ -115,6 +115,14 @@ Deliberate non-choices, to keep encodings from colliding:
   wash; a lane in either would impersonate a status color.
 - Going wider than 2 lanes later means appending categorical slots and **re-running the
   validator on the new set in fixed order** — never inventing a hue.
+- **Deeper pipelines are the symmetric problem, and they do not get new hues either.** A 7-
+  or 12-stage model has more stages than the five validated phase hues. Rule: **hue by stage
+  _family_** (fetch / decode / execute / memory / writeback), with the cell's text giving the
+  exact stage — so `IF1`/`IF2`/`IF3` all wear the fetch hue and stay individually readable via
+  the relief rule (which already mandates a text label next to every hue). At five stages
+  family _is_ stage, so this changes nothing about M3 and needs no code there; it is why the
+  M3 pipeline map derives its stage set and hue mapping from the trace instead of a hard-coded
+  5-element lookup (M3 step 7).
 
 ## Depth tiers (INV-5 — lawful at every level)
 
@@ -151,7 +159,7 @@ The visuals read the trace only (INV-3). What must exist by the superscalar mile
 | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
 | Pipeline map component (rows×cycles, phase-hue cells)       | pipeline (M3) — single-issue                                              |
 | Follow-an-instruction highlight across all three surfaces   | pipeline (M3)                                                             |
-| Renderer deltas 1–4 (hue override, markers, legend, follow) | pipeline (M3), lane-parametric from day one                               |
+| Renderer deltas 1–4 (hue override, markers, legend, follow) | pipeline (M3), **stage-and-lane-parametric** from day one (M3 step 7)     |
 | Stall/flush visual idioms (repeated cells, cut rows)        | pipeline (M3)                                                             |
 | `--lane-*` tokens + widened geometry + pairing readout      | superscalar milestone                                                     |
 | IPC stat tile (retired ÷ cycles, view-derived)              | superscalar milestone                                                     |
