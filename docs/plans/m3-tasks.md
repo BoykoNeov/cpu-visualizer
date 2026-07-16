@@ -627,8 +627,15 @@ no new SVG. Step 5 is a shippable checkpoint on its own (M2 shipped exactly this
       violating lawful simplification (INV-5) — including the forwarding/hazard units'
       `minTier` structural hiding and their **config-driven** absence, each backed by a lawful
       contraction.
-- [ ] Editing the program mid-lesson **forks into a sandbox** (annotations detach) and the sandbox
-      run still animates — free via INV-3, but assert it once on this model.
+- [x] Editing the program mid-lesson **forks into a sandbox** (annotations detach) and the sandbox
+      run still animates — free via INV-3, but assert it once on this model. ✅ step 5
+      (`sandbox.test.ts`): the edited sum-loop detaches the lesson and records to **its own** result
+      (15, not the lesson program's 55) on the pipeline, and time-travels. Free was a claim until
+      something exercised it — a sandbox is the one entry point whose program is **user text rather
+      than a corpus fixture**, and step 5 had just given the load path a new `config` argument that
+      every entry point must carry. So the toggle is asserted to reach a sandbox program too
+      (strictly fewer cycles, identical registers): a fork that silently dropped the config would
+      still animate — just not the machine the user is looking at — and nothing else would catch it.
 - [ ] `engine/pipeline` has **zero imports** from `web`/`curriculum` and from any other engine's
       production code; the trace schema is the only shared type surface (INV-2/INV-3, mechanically
       enforced).

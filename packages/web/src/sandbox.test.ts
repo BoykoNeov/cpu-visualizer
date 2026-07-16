@@ -1,3 +1,5 @@
+import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { defaultConfig } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import { LESSONS } from './lessons';
 import { activeLessonOf, forkToSandbox, lessonSession, type Session } from './session';
@@ -65,5 +67,57 @@ describe('sandbox fork (real single-cycle engine)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(() => result.loaded.recorder.runToEnd(TEACHING_CAP)).toThrow();
+  });
+});
+
+/**
+ * The same fork, on the pipeline — the M3 acceptance box "editing mid-lesson forks into a sandbox
+ * and the sandbox run still animates: free via INV-3, but **assert it once on this model**".
+ *
+ * Free is a claim, not a fact, until something exercises it: a sandbox is the one entry point that
+ * does NOT come from the corpus, so it is the only path where the program is user text rather than
+ * a fixture — and step 5 gave the load path a new `config` argument that every entry point must
+ * carry. `useSimulator.loadEdited` and `select` share one `loadInto`, so the config reaches an
+ * edited program by construction; this is what makes "by construction" checkable. Asserted in BOTH
+ * positions, because a sandbox fork that silently dropped the toggle would still animate — just
+ * not the machine the user is looking at.
+ */
+describe('sandbox fork on the pipeline (M3 acceptance: assert it once on this model)', () => {
+  const forked = (): Session =>
+    forkToSandbox(lessonSession(LESSONS.find((l) => l.program === 'sum-loop')!));
+
+  const runEdited = (forwarding: boolean) => {
+    const result = loadSource(EDITED_SUM_LOOP, () => new PipelineProcessor(), {
+      ...defaultConfig(),
+      forwarding,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable: the edited program should assemble');
+    result.loaded.recorder.runToEnd(TEACHING_CAP);
+    return result.loaded.recorder;
+  };
+
+  it('an edit mid-lesson detaches the lesson and the edited program animates on the pipeline', () => {
+    const session = forked();
+    expect(session.kind).toBe('sandbox');
+    expect(activeLessonOf(session)).toBeNull();
+
+    const recorder = runEdited(false);
+    // ITS result (1+2+3+4+5 = 15), not the lesson program's 55 — the fork animates the edit.
+    expect(recorder.currentState().registers[10]).toBe(15);
+    // ...and it time-travels like any recorded run.
+    recorder.scrubTo(0, TEACHING_CAP);
+    expect(recorder.cursor).toBe(0);
+    expect(recorder.currentState().registers[10]).toBe(0);
+  });
+
+  it('the forwarding toggle reaches a SANDBOX program too, not just the corpus', () => {
+    const off = runEdited(false);
+    const on = runEdited(true);
+    // The crown jewel on user-authored code: strictly fewer cycles, identical result. A sandbox
+    // that dropped the config would show equal counts here and nowhere else.
+    expect(on.recordedCycles).toBeLessThan(off.recordedCycles);
+    expect(on.currentState().registers[10]).toBe(15);
+    expect([...on.currentState().registers]).toEqual([...off.currentState().registers]);
   });
 });
