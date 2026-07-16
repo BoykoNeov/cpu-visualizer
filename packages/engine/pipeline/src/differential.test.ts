@@ -17,7 +17,27 @@ import { PipelineProcessor } from './index';
  * observable effect lives in that blind spot.
  */
 
-const FORWARDING_OFF: ProcessorConfig = { ...defaultConfig(), forwarding: false };
-const FORWARDING_ON: ProcessorConfig = { ...defaultConfig(), forwarding: true };
+/**
+ * M4 extends this to the full cross product: 2 forwarding positions × 3 prediction schemes × 5
+ * programs = 30 cases. The cost is trivial and the interaction is exactly where a bug would hide —
+ * a squash and a forward reaching for the same cycle.
+ *
+ * **This matrix is expected to be green the moment prediction is honored, and that is its entire
+ * point.** Speculation is architecturally invisible BY CONSTRUCTION: wrong-path instructions are
+ * killed before MEM, so they never store and never write back, and a machine that guesses well and
+ * a machine that guesses badly must agree on every register and every byte. The scheme changes only
+ * WHEN the right answer arrives, never WHAT it is. So a red cell here would not mean "the predictor
+ * is slow" — it would mean speculation is LEAKING, which is the one bug prediction could introduce
+ * that the timing suite could never see.
+ *
+ * The corollary is the same blind spot M3 step 3 was built for, one level worse: since a correct
+ * predictor cannot move these numbers, **conformance says nothing whatever about whether
+ * `branchPrediction` is honored at all.** A pipeline that ignored the knob entirely passes all 30.
+ * The toggle's whole observable effect is timing, and `timing.test.ts` is the net for it.
+ */
+const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
+const CONFIGS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
+  SCHEMES.map((branchPrediction) => ({ ...defaultConfig(), forwarding, branchPrediction })),
+);
 
-runConformance('pipeline', () => new PipelineProcessor(), [FORWARDING_OFF, FORWARDING_ON]);
+runConformance('pipeline', () => new PipelineProcessor(), CONFIGS);

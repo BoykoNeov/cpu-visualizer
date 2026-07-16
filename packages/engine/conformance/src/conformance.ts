@@ -165,12 +165,35 @@ export function checkProgram(
 }
 
 /**
- * Name a config for an `it()` title, so a failure says which position broke. Only the knobs a
- * model can actually honor today are worth naming; `branchPrediction` and `cache` join this when
- * a model honors them (M4).
+ * Name a config for an `it()` title, so a failure says which position broke — naming exactly the
+ * knobs that VARY across `among`, and no others.
+ *
+ * **Derived rather than declared, because the declared version broke the moment M4 used it.** This
+ * function used to hardcode `forwarding`, with a comment promising `branchPrediction` would "join
+ * when a model honors them (M4)". When it did, the pipeline's six-config matrix collapsed onto two
+ * labels: three separate schemes all reported as `[forwarding off]`, so a failure could not say
+ * which one broke — and the harness's own distinctness guard never noticed, because it was only
+ * ever handed the two-forwarding list. A guard whose case list cannot reach the collision is not a
+ * guard.
+ *
+ * Naming what varies fixes that class rather than that instance. A list that varies only forwarding
+ * gets exactly M3's titles back (so no existing suite moves); a list that varies both gets both;
+ * and a knob every config shares is silent, since a label constant across the matrix distinguishes
+ * nothing and only adds noise. `cache` joins by adding one clause here when a model honors it —
+ * deliberately not written yet: it is an object, so it would need a deep compare to answer "does
+ * this vary", and inventing that for a knob no model reads would be guessing at M5's shape.
  */
-function configLabel(config: ProcessorConfig): string {
-  return `forwarding ${config.forwarding ? 'on' : 'off'}`;
+function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[]): string {
+  const first = among[0];
+  if (first === undefined) return '';
+  const parts: string[] = [];
+  if (among.some((c) => c.forwarding !== first.forwarding)) {
+    parts.push(`forwarding ${config.forwarding ? 'on' : 'off'}`);
+  }
+  if (among.some((c) => c.branchPrediction !== first.branchPrediction)) {
+    parts.push(`predict ${config.branchPrediction}`);
+  }
+  return parts.join(', ');
 }
 
 /** One `it()` the matrix will register: which program, under which config, named how. */
@@ -194,8 +217,11 @@ export function conformanceCases(configs: readonly ProcessorConfig[]): Conforman
   const cases: ConformanceCase[] = [];
   for (const config of configs) {
     // A label only distinguishes when there is something to distinguish; naming a lone neutral
-    // config would suggest a config-blind model cared about it.
-    const suffix = configs.length > 1 ? ` [${configLabel(config)}]` : '';
+    // config would suggest a config-blind model cared about it. `configLabel` applies the same
+    // rule one level down, per knob — so a lone config and a knob that never varies are the same
+    // case, and both stay silent.
+    const label = configLabel(config, configs);
+    const suffix = label === '' ? '' : ` [${label}]`;
     for (const file of PROGRAMS) {
       cases.push({
         config,

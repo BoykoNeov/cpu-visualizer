@@ -120,8 +120,11 @@ describe('capabilities', () => {
     expect(PIPELINE_CAPABILITIES.hasHazards).toBe(true);
     // The flagship: the trace genuinely depends on this knob. Every earlier model said false.
     expect(PIPELINE_CAPABILITIES.configurableForwarding).toBe(true);
-    // Deferred to M4 — feature toggles ON this pipeline (§12.3), not part of M3.
-    expect(PIPELINE_CAPABILITIES.configurableBranchPrediction).toBe(false);
+    // M4: the second honored knob. Was `false` through all of M3, with a comment naming this
+    // milestone — the seam was cut before the pipeline existed and is finally filled.
+    expect(PIPELINE_CAPABILITIES.configurableBranchPrediction).toBe(true);
+    // Still deferred: caches are the other half of §12.3 and their own milestone (they need
+    // array-walking programs before a hit or a miss means anything).
     expect(PIPELINE_CAPABILITIES.configurableCache).toBe(false);
   });
 });
@@ -518,6 +521,222 @@ describe('control hazards', () => {
     // `jal` writes ra; the `jalr` returning through it lands back on `addi x2` — which the jal's
     // own flush had killed the first time around. That round trip is the whole test.
     expect(reg(last(ts), 2)).toBe(111);
+  });
+});
+
+/**
+ * M4 step 1 — branch prediction, pinned by hand-derived cases.
+ *
+ * Placed beside "the forwarding toggle — the milestone in one test" on purpose: this is M3's
+ * pattern's second instance, and a toggle's soul lives in this file by precedent.
+ *
+ * Conformance is blind to all of it — a correct predictor cannot move final architectural state,
+ * which is the *point* of speculation — and so, mostly, is the corpus (`predict.test.ts` already
+ * found a property the corpus structurally cannot see). So the schemes are pinned on minimal
+ * programs whose every cycle is derived from the closed form rather than read off a run:
+ *
+ * > **cycles = N + 4 + S + P** — M3 step 3's `cycles = N + 4 + S + 2·T`, with `2·T` revealed as
+ * > what it always was: the *static-not-taken instance* of a scheme-dependent penalty `P`.
+ *
+ * Each program isolates `P`: `x0` supplies both operands wherever a comparison is needed, so no
+ * RAW exists, `S = 0`, and every scheme runs identically in both forwarding positions. That
+ * orthogonality is itself a claim, and it is asserted rather than assumed.
+ */
+const TAKEN: ProcessorConfig = { ...defaultConfig(), branchPrediction: 'static-taken' };
+const NOT_TAKEN: ProcessorConfig = { ...defaultConfig(), branchPrediction: 'static-not-taken' };
+
+/** Always taken (`0 == 0`), reads no produced register ⇒ isolates P with S = 0. */
+const ALWAYS = 'beq x0, x0, tgt\naddi x2, x0, 99\ntgt:\naddi x3, x0, 7\necall\n';
+/** Never taken (`0 != 0` is false) — the branch that punishes a taken-bet. */
+const NEVER = 'bne x0, x0, tgt\naddi x2, x0, 5\ntgt:\naddi x3, x0, 7\necall\n';
+
+describe('branch prediction — the second toggle', () => {
+  /**
+   * `'none'` and `'static-not-taken'` are ONE MACHINE — the milestone's first real finding, not an
+   * implementation shortcut. A processor with no predictor does not stop and wait for EX; it just
+   * keeps fetching the next address, and **the fall-through IS the not-taken path**. "No
+   * prediction" and "predict not taken" are one policy under two names.
+   *
+   * Asserted on whole traces rather than cycle counts: two machines that merely agreed on timing
+   * could still differ in their events. `toEqual` over every cycle is the strongest statement
+   * available.
+   *
+   * This is also why the entire pre-M4 suite stayed green when `branchPrediction` became honored —
+   * `defaultConfig()` is `'none'`, so had these come apart, every pinned number in `timing.test.ts`
+   * would have moved. The alternative reading (`'none'` = stall until EX resolves) is a defensible
+   * machine, but it is not what "no predictor" means, and adopting it would have silently
+   * redefined the default pipeline M3 pinned.
+   */
+  it("'none' and 'static-not-taken' are the same machine — the fall-through IS the not-taken path", () => {
+    for (const forwarding of [false, true]) {
+      const none = run(ALWAYS, { ...defaultConfig(), forwarding, branchPrediction: 'none' });
+      const snt = run(ALWAYS, {
+        ...defaultConfig(),
+        forwarding,
+        branchPrediction: 'static-not-taken',
+      });
+      expect(snt, `forwarding=${forwarding}`).toEqual(none);
+    }
+  });
+
+  /**
+   * THE payoff, and why `static-taken` is the MVP rather than deferrable fidelity: a correctly
+   * predicted taken branch costs **1**, not 2. Derived, not measured — `N = 3` (the `addi x2`
+   * fall-through dies), `S = 0`, so only `P` can differ:
+   *
+   * - `static-not-taken`: fetch carries on; EX corrects and kills ID+IF. `P = 2` ⇒ `3+4+0+2 = 9`.
+   * - `static-taken`: ID steers fetch to `tgt` a cycle earlier; only the one already-fetched
+   *   fall-through dies, and EX confirms with nothing to correct. `P = 1` ⇒ `3+4+0+1 = 8`.
+   *
+   * **Not 0**, and that is honest rather than a bug: the bet is placed in ID, by which time IF has
+   * already fetched the fall-through. Predicting from the pc alone at IF — a BTB — is what buys a
+   * free correct prediction, and it is a deferred tier (INV-5: lawful omission, never contradiction).
+   */
+  it('a correctly predicted taken branch costs 1 cycle, not 2', () => {
+    expect(run(ALWAYS, NOT_TAKEN), 'N=3, S=0, P=2').toHaveLength(9);
+    expect(run(ALWAYS, TAKEN), 'N=3, S=0, P=1 — the bet saves exactly one cycle').toHaveLength(8);
+
+    // The saving is real work skipped, not an accounting trick: same program, same answer...
+    expect(reg(last(run(ALWAYS, TAKEN)), 3)).toBe(7);
+    expect(reg(last(run(ALWAYS, NOT_TAKEN)), 3)).toBe(7);
+    // ...and the fall-through never commits under either scheme (INV-8's whole basis).
+    expect(reg(last(run(ALWAYS, TAKEN)), 2)).toBe(0);
+    expect(reg(last(run(ALWAYS, NOT_TAKEN)), 2)).toBe(0);
+  });
+
+  /**
+   * The mirror, and the milestone's thesis in miniature: **a predictor is a bet, and a bet can
+   * lose.** `bne x0, x0, tgt` never goes, so predict-not-taken is RIGHT and pays nothing while
+   * predict-taken is WRONG and pays 2. `N = 4` — nothing dies architecturally, because the
+   * fall-through the bet discarded is simply re-fetched after the correction.
+   *
+   * - `static-not-taken`: `P = 0` ⇒ `4+4+0+0 = 8`. A free branch.
+   * - `static-taken`: `P = 2` ⇒ `4+4+0+2 = 10`. Two cycles that bought nothing.
+   *
+   * This is `call-return.s`'s regression, isolated: no scheme dominates.
+   */
+  it('a mispredicted branch costs 2 — the bet that loses', () => {
+    expect(run(NEVER, NOT_TAKEN), 'P=0 — predicting not-taken is RIGHT here').toHaveLength(8);
+    expect(run(NEVER, TAKEN), 'P=2 — the bet lost').toHaveLength(10);
+
+    // The wrongly-discarded fall-through is re-fetched and runs: a misprediction costs TIME, never
+    // correctness. A 0 here would mean speculation leaking into architectural state.
+    expect(reg(last(run(NEVER, TAKEN)), 2)).toBe(5);
+    expect(reg(last(run(NEVER, NOT_TAKEN)), 2)).toBe(5);
+  });
+
+  /**
+   * `jalr` is unpredictable BY CONSTRUCTION (its target is `rs1 + imm`, a register ID has not
+   * read), so it mispredicts under every scheme and always pays full price. Nothing
+   * special-cases it: `speculativeTarget` returns null, `predictedTaken` is false, the transfer is
+   * taken, and `predicted !== taken` falls out.
+   *
+   * The other half of `call-return.s`'s regression — its `jal` improves while its `ret` cannot —
+   * so the null is load-bearing for the thesis rather than a gap to close later.
+   */
+  it('jalr pays full price under every scheme — its target is a register, not a decode', () => {
+    const src = 'la x5, done\njalr x0, 0(x5)\naddi x4, x0, 99\ndone:\naddi x3, x0, 7\necall\n';
+    const taken = run(src, TAKEN);
+    expect(taken, 'no scheme can predict a jalr').toHaveLength(run(src, NOT_TAKEN).length);
+    for (const ts of [taken, run(src, NOT_TAKEN)]) {
+      const jalr = eventsOf(ts, 'branch-resolved').filter((e) => e.actual && !e.predicted);
+      expect(jalr.length, 'the jalr resolved unpredicted').toBeGreaterThan(0);
+      expect(reg(last(ts), 4), 'the shadow never commits').toBe(0);
+      expect(reg(last(ts), 3)).toBe(7);
+    }
+  });
+
+  /**
+   * **The collision: a bet and a correction want the fetch pointer in the same cycle.** The one
+   * real bug this step could have shipped. The reverse stage walk prevents it — but structure is
+   * not proof, so it is pinned as behavior.
+   *
+   * The setup is the only shape that reaches it. An UNPREDICTABLE transfer (`jalr`) places no bet,
+   * so it does NOT empty ID; the wrong-path instruction behind it is still sitting in ID during the
+   * correction cycle — and here that instruction is itself a branch, which under `static-taken`
+   * would love to bet. It must not: it was fetched after a transfer already proven to go elsewhere,
+   * so it is wrong-path and about to die. A bet placed from ID would overwrite `ctx.redirect` — the
+   * correction — and send the machine to `bad`.
+   *
+   * `stageId` returns early on `ctx.squash !== null`, and EX runs BEFORE ID in the walk, so the
+   * correction is already visible when the bet would be placed. Move the bet above that early
+   * return and this fails with `x4 = 99`: the machine executing code a resolved branch had ruled out.
+   *
+   * Note the failure is architecturally VISIBLE, so conformance would catch it — but only on a
+   * program shaped like this, and the corpus has no branch behind a `jalr`. The net that would
+   * catch it does not contain the case that triggers it.
+   */
+  it('an EX correction beats a younger ID bet — a wrong-path branch never steers fetch', () => {
+    const src = [
+      'la x5, done', // x5 = &done (la expands to auipc+addi; instruction count is not load-bearing)
+      'jalr x0, 0(x5)', // unpredictable ⇒ mispredicts ⇒ corrects at EX, leaving ID occupied
+      'beq x0, x0, bad', // WRONG-PATH branch, alive in ID during the correction. Would bet taken.
+      'bad:',
+      'addi x4, x0, 99', // must NEVER execute
+      'done:',
+      'addi x3, x0, 7',
+      'ecall',
+    ].join('\n');
+
+    for (const config of [TAKEN, NOT_TAKEN]) {
+      const ts = run(src, config);
+      expect(reg(last(ts), 4), 'the wrong-path branch must not redirect the machine').toBe(0);
+      expect(reg(last(ts), 3), 'the jalr target runs').toBe(7);
+    }
+  });
+
+  /**
+   * Prediction changes `P`; forwarding changes `S`. The closed form only splits into independent
+   * terms if the two are genuinely orthogonal — different stages, different questions (where to
+   * fetch vs. when operands are ready) — so a scheme's cycle count must not depend on the
+   * forwarding position in a program with no RAW to stall on. Step 3 relies on this corpus-wide,
+   * and a formula whose terms interact is not a derivation, just an equation that happens to balance.
+   */
+  it('prediction and forwarding are orthogonal — P is not S', () => {
+    for (const scheme of [TAKEN, NOT_TAKEN]) {
+      const off = run(ALWAYS, { ...scheme, forwarding: false });
+      const on = run(ALWAYS, { ...scheme, forwarding: true });
+      expect(on, `${scheme.branchPrediction}: S=0, so the toggle changes nothing`).toEqual(off);
+    }
+  });
+
+  /**
+   * A CORRECT prediction still kills something, and the event must fire. The bet discards the
+   * fall-through IF had already fetched — that discarded instruction IS the "1" in "a correct
+   * prediction costs 1" — so emitting a flush only on misprediction would make the cost invisible
+   * to every consumer that counts casualties, and the pipeline map would draw a free prediction the
+   * machine never made.
+   */
+  it('a correct prediction emits its own flush — one casualty, and the branch survives it', () => {
+    const ts = run(ALWAYS, TAKEN);
+    const flushes = eventsOf(ts, 'flush').filter((e) => e.reason !== 'halt');
+    expect(flushes).toEqual([{ type: 'flush', reason: 'branch-predicted-taken', stages: ['IF'] }]);
+
+    // The branch that placed the bet is NOT among the casualties — a bet kills one, a squash kills
+    // two, and that difference is the entire saving.
+    const resolved = eventsOf(ts, 'branch-resolved');
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]!.predicted, 'the bet').toBe(true);
+    expect(resolved[0]!.actual, 'and it was right').toBe(true);
+  });
+
+  /**
+   * The mirror reason. `flush.reason` is a shared surface — the pipeline map prints it as the cause
+   * of death — and M3's single `'branch-taken'` is no longer sufficient: a bet on a branch that then
+   * declines corrects with `actual === false`, and calling that `'branch-taken'` would state the
+   * opposite of what happened.
+   */
+  it("a lost bet flushes as 'branch-not-taken' — the reason states what happened", () => {
+    const ts = run(NEVER, TAKEN);
+    const reasons = eventsOf(ts, 'flush')
+      .filter((e) => e.reason !== 'halt')
+      .map((e) => e.reason);
+    // The bet's own casualty, then the correction's — two flushes, two cycles, one bad guess.
+    expect(reasons).toEqual(['branch-predicted-taken', 'branch-not-taken']);
+
+    const resolved = eventsOf(ts, 'branch-resolved');
+    expect(resolved[0]!.predicted, 'we bet taken').toBe(true);
+    expect(resolved[0]!.actual, 'it declined').toBe(false);
   });
 });
 

@@ -174,6 +174,54 @@ describe('the matrix enumerates the corpus once per config', () => {
       expect(c.title).not.toContain('forwarding');
     }
   });
+
+  /**
+   * M4 — the guard above was real but its CASE LIST was stale, and that is the bug this file
+   * exists to prevent one level up.
+   *
+   * Every claim here was parameterized by `[FORWARDING_OFF, FORWARDING_ON]`, a list that varies one
+   * knob. So when the pipeline's matrix grew a second axis, the labels collapsed — three prediction
+   * schemes all reporting `[forwarding off]` — and *every test in this describe stayed green*,
+   * because none of them was ever handed a list that could collide. The distinctness guard could
+   * not see the collision it was written to catch.
+   *
+   * This is exactly the vacuity shape the file's own header warns about ("a matrix that iterated
+   * configs but only ever ran configs[0] would pass every one of them"), reappearing in the guard
+   * rather than in the thing guarded. So the multi-axis list is now a case in its own right.
+   */
+  const MULTI_AXIS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
+    (['none', 'static-not-taken', 'static-taken'] as const).map((branchPrediction) => ({
+      ...defaultConfig(),
+      forwarding,
+      branchPrediction,
+    })),
+  );
+
+  it('keeps every case distinct when the matrix varies TWO knobs, not just one', () => {
+    const cases = conformanceCases(MULTI_AXIS);
+    expect(cases).toHaveLength(6 * corpusSize);
+    // The claim that fails if `configLabel` names only `forwarding`: 6 configs, 6 labels.
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('names both varying knobs, so a failure says which SCHEME broke and not just which position', () => {
+    for (const c of conformanceCases(MULTI_AXIS)) {
+      expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
+      expect(c.title).toContain(`predict ${c.config.branchPrediction}`);
+    }
+  });
+
+  /**
+   * The other half of "name what varies": a knob CONSTANT across the matrix is not named. A label
+   * that never changes distinguishes nothing and would be pure noise — and, concretely, this is
+   * what keeps M3's two-position titles byte-identical now that a second axis exists at all.
+   */
+  it('stays silent about a knob that does not vary, so M3-shaped suites read as they always did', () => {
+    for (const c of conformanceCases([FORWARDING_OFF, FORWARDING_ON])) {
+      expect(c.title).not.toContain('predict');
+      expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
+    }
+  });
 });
 
 /**

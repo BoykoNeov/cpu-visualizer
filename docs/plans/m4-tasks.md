@@ -1,9 +1,13 @@
 # Milestone 4 — branch prediction (the second toggle on the pipeline)
 
-**Status: STEP 0 DONE, 2026-07-16 (685 → 691 tests). The machine still predicts not-taken —
-step 0 is deliberately inert, and its inertness is the proof. `speculativeTarget` is pure,
-unwired, and its agreement with EX is pinned over the corpus + mutation-checked four ways.
-PENDING: everything that changes behavior (step 1 on), and every browser eyeball. M3 is
+**Status: STEPS 0–2 DONE, 2026-07-16 (685 → 722 tests). The engine HONORS `branchPrediction`:
+`static-taken` places an ID bet, EX corrects on misprediction, and INV-8 is clean across the
+full 2×3 config matrix (30 cases, green first-run — speculation does not leak). PROVEN
+headlessly: the payoff (a correct bet costs 1, not 2), the regression (a lost bet costs 2), the
+`jalr` asymmetry, and the bet-vs-correction collision. PENDING: step 3's corpus-wide timing
+derivation, everything in the browser (steps 4–7), and every eyeball. The milestone's title was
+already corrected once — there are three scheme NAMES but only **two behaviors**: `'none'` and
+`'static-not-taken'` are one machine, because the fall-through IS the not-taken path. M3 is
 complete, which is the precondition: prediction is a feature toggle ON the pipeline (spec
 §12.3) and needs the pipeline to exist before it means anything. Scope is prediction ONLY —
 caches are the other half of §12.3 and are deliberately a separate milestone (they carry a
@@ -146,34 +150,89 @@ code moves.
       that is a snapshot, and "a cycle count copied from a passing run is not a pin" is M3 step 3's
       rule. It is now asserted **per program**, each count read off that program's trip count.
 
-- [ ] **1. The engine honors `config.branchPrediction` — three schemes, three behaviors.**
-      `static-taken` acts on step 0's target: an ID redirect (the bet) coexisting with the EX
-      redirect (the correction), with `branch-resolved.predicted` finally telling the truth.
-      `configurableBranchPrediction` flips to `true`. Whether `none` is a third behavior or an
-      alias is pinned below — decide it here, in the open.
-      **Two-redirect precedence is the bug this step must pin, not merely describe.** With two
-      redirect points, an older branch's EX correction and a younger branch's ID bet can want to
-      steer fetch in the **same cycle**. The rule: **EX wins, and the EX squash invalidates the ID
-      bet entirely** — the instruction in ID was fetched _after_ the older branch, so it is
-      wrong-path and about to be squashed; letting its bet steer fetch would be a wrong-path
-      instruction redirecting a machine that has already decided it never runs. Prose is not proof:
-      this needs a hand-derived case where a bet and a correction collide.
-      Also: conformance's green-first-run (step 2) rests on wrong-path instructions being squashed
-      **before MEM** — no speculative stores. The EX-resolved squash already guarantees this, so it
-      is inherited; this step must not introduce a path that commits before squash.
-      Acceptance: hand-derived unit tests over each scheme, in the M3 step-2 style (the soul
-      pinned by hand-derived cases, not by a corpus sweep). Specifically: a correctly-predicted
-      taken branch costs 1; a mispredicted branch costs 2; `jalr` costs 2 under every scheme; and
-      a bet colliding with a correction resolves to the correction.
+- [x] **1. The engine honors `config.branchPrediction` — three schemes, TWO behaviors.** ✅ Done
+      (2026-07-16, 691 → **699 tests**). The step title was wrong, and correcting it is the
+      finding: **`'none'` and `'static-not-taken'` are the same machine.** A processor with no
+      predictor does not stop and wait — it keeps fetching the next address, and **the fall-through
+      IS the not-taken path**. "No prediction" and "predict not taken" are one policy under two
+      names, so the three-valued config collapses honestly to `private predictTaken: boolean`
+      rather than to a `switch` with two identical arms. Pinned by whole-trace `toEqual` in both
+      forwarding positions — not by cycle count, since two machines agreeing on timing could still
+      differ in events.
 
-- [ ] **2. Conformance across the scheme matrix (INV-8) — prediction is architecturally
-      invisible.** M3 step 0 built `runConformance`'s config list for exactly this. The pipeline's
-      list grows from 2 configs (forwarding off/on) to the prediction matrix. **This step is
-      expected to be green on the first run, and that is its entire point:** speculatively fetched
-      instructions must never commit, so a correct predictor cannot move final architectural
-      state. It is the cheapest possible proof of the milestone's central safety claim.
-      Acceptance: every (config, program) pair matches the golden reference. If this step is _not_
-      green first-run, a squashed instruction is committing — a real bug, caught for free.
+      **The decision was forced by a fact the plan's seed missed: `'none'` is `defaultConfig()`.**
+      The seeded lean (`'none'` = stall-on-branch) would have redefined the DEFAULT pipeline, moving
+      every timing number M3 pinned. Measured, not argued: when `branchPrediction` became honored,
+      **exactly one test in the whole suite failed — the capabilities assertion** (`false` → `true`).
+      Every timing, conformance, recorder, and web test stayed green, which is the coincidence
+      claim proven corpus-wide for free. It also dissolves the `predicted: boolean` honesty question
+      (see decisions): nobody stalls, so `predicted: false` is never a lie.
+
+      **The central reframe: EX squashes on MISPREDICTION, not on TAKEN.** `if (taken)` was only
+      ever predict-not-taken's spelling of `if (predicted !== taken)`. `nextPc` serves as the
+      correction for both directions with no branch on which way we were wrong — the schema already
+      defines it as "the resolved next pc, whichever way it went". The latch field deferred from
+      step 0 landed as **a boolean, not a target**, and step 0 is what bought that: since
+      `speculativeTarget` provably equals EX's `nextPc` for every taken PC-relative transfer, "we
+      both say taken" already implies "we both mean the same address". `jalr` needs **no special
+      case anywhere** — never predictable ⇒ `predictedTaken: false` ⇒ always taken ⇒ always
+      mispredicts ⇒ always pays 2. The `call-return` regression is mechanical, not coded.
+
+      **The bet is NOT `ctx.squash`, because it kills a different set** — one casualty, not two. A
+      squash means "everything younger than the deciding stage is wrong" (ID+IF); a bet means only
+      "the instruction IF just fetched is off the predicted path" — the branch in ID is the thing
+      predicting and sails on to EX. That difference IS the payoff: 1 instead of 2. And **a CORRECT
+      prediction still emits a flush**: the discarded fall-through is the "1", so emitting only on
+      misprediction would make the cost invisible to every casualty-counting consumer and let the
+      map draw a free prediction the machine never made.
+
+      **`flush.reason` grew by exactly one word.** `'branch-taken'` was true under M3 (predict-not-
+      taken can only be wrong about a branch that WAS taken, so "prediction broke" and "branch was
+      taken" were one event). `static-taken` separates them: a bet on a branch that then declines
+      corrects with `actual === false`, and reporting `'branch-taken'` there states the opposite of
+      what happened to a consumer that prints it. So `'branch-not-taken'` joins, and `'branch-taken'`
+      keeps its meaning rather than generalizing to `'branch-mispredicted'` — every EX correction IS
+      a misprediction, so that name would say nothing a reader could act on while moving a string
+      three suites and the map already pin.
+
+      **The precedence bug turned out to be structural, and is pinned anyway.** EX runs before ID in
+      the reverse walk and `stageId` already returns early on `ctx.squash !== null`, so a wrong-path
+      branch in ID never bets — the correction always wins, for free. Prose is not proof: the test
+      needs a `jalr` (unpredictable ⇒ places no bet ⇒ does NOT empty ID) with a branch behind it,
+      the only shape that leaves ID occupied during a correction. Move the bet above that early
+      return and it fails with `x4 = 99` — the machine executing code a resolved transfer had ruled
+      out. Note the failure is architecturally VISIBLE, so conformance *would* catch it — but the
+      corpus has no branch behind a `jalr`, so **the net that would catch it does not contain the
+      case that triggers it**.
+
+      Acceptance met: every hand-derived cycle count (9/8 correct-taken, 8/10 mispredict) was right
+      **first run**, both derived from `N + 4 + S + P` before the engine was asked.
+
+- [x] **2. Conformance across the scheme matrix (INV-8) — prediction is architecturally
+      invisible.** ✅ Done (2026-07-16, 699 → **722 tests**). The pipeline's list is now the full
+      cross product (2 forwarding × 3 schemes × 5 programs = **30 cases**), and it was **green on
+      the first run, which is the whole point**: speculation is invisible by construction, since
+      wrong-path instructions are killed before MEM and so never store and never write back. A red
+      cell would not have meant "the predictor is slow" — it would have meant speculation is
+      LEAKING.
+
+      **But the step found a real defect the plan never imagined, and only the eyeball caught it:
+      the six configs produced only TWO labels.** `configLabel` named `forwarding` alone — with a
+      comment promising `branchPrediction` would "join when a model honors them (M4)" — so three
+      schemes all reported as `sum-loop.s [forwarding off]` and a failure could not say which one
+      broke. **The harness's own distinctness guard never noticed**, because every claim in it was
+      parameterized by the two-forwarding list: _a guard whose case list cannot reach the collision
+      is not a guard._ That is the exact vacuity shape M3 step 0 wrote this file to prevent,
+      reappearing **in the guard rather than in the thing guarded**.
+
+      Fixed by **deriving rather than declaring** (M3 step 6's move, one layer down): `configLabel`
+      names exactly the knobs that **vary across the list**. A list varying only forwarding gets
+      M3's titles back byte-identical, so nothing moves; a multi-axis list names both; a constant
+      knob stays silent, since a label that never changes distinguishes nothing. `cache` joins by
+      adding one clause — deliberately **not** written: it is an object, so "does this vary" needs a
+      deep compare, and inventing that for a knob no model reads would be guessing at M5's shape.
+      The multi-axis list is now a case in the harness's own suite, so the guard can reach what it
+      guards.
 
 - [ ] **3. Timing — the closed form generalizes, and `2·T` was a special case.** M3 step 3 pinned
       `cycles = N + 4 + S + 2·T` as a _derivation_. M4 reveals that `2·T` was never general: it
@@ -243,14 +302,14 @@ code moves.
 
 ## Decisions to pin (fill in as steps land — seeded with the recommended answers)
 
-| Decision                                          | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Pinned answer |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| **Is `static-taken` in the MVP?**                 | **Yes — it IS the MVP.** `static-not-taken` alone is a rename of current behavior. See the headline decision.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | _(open)_      |
-| **What does `none` mean?**                        | **Stall-on-branch: the machine that refuses to guess** (bubble until EX resolves, `P = 2·B`). Makes the config's three names three _behaviors_ rather than two, and shares step 0's ID classification, so it is nearly free once that lands. **Caveat:** it differs from `static-not-taken` only on _not-taken_ branches, and the corpus is mostly taken — so its corpus swing is thin and its pedagogy is "pays on every branch," not a big number. The alternative (alias of `static-not-taken`) is defensible: a machine with no predictor naturally just keeps fetching PC+4. | _(open)_      |
-| **`jal` vs `jalr` under `static-taken`.**         | **`jal` is predicted (PC-relative, computable in ID); `jalr` always pays the full EX penalty** — its target is `rs1+imm`, a register not reliably available in ID. This asymmetry is _why_ `call-return` regresses, so it is load-bearing for the thesis, not a corner case. Verify the arithmetic against M3's pinned 17-cycle figure.                                                                                                                                                                                                                                           | _(open)_      |
-| **Is `predicted: boolean` honest under `none`?**  | **Genuinely open — this is M4's add-or-decline-a-field question** (M3 declined three: `maxTier`, renderer delta 2, `LessonStep.requires`). Under `none`-as-stall _nothing was predicted_, so `predicted: false` ("not predicted taken") would let a lesson keying on `predicted === actual` count every not-taken branch as a correct prediction — a lie about a machine that made no prediction. Options: `boolean \| null`, or `none` reports something defined. **Lean: let step 1 force it** rather than deciding on paper.                                                   | _(open)_      |
-| **Does the ID bet need its own trace event?**     | **Probably yes, and this is the schema question of the milestone.** `branch-resolved` is an EX-stage event: the _correction_. The ID bet is a different fact at a different cycle, and the datapath (step 5) must draw the redirect in the cycle it happens. INV-3 forbids the view reaching into the engine for it. But M3's pattern says the field that seems needed often is not — try to build step 5 without it first.                                                                                                                                                       | _(open)_      |
-| **Conformance matrix size.**                      | **Full cross product** (2 forwarding × 3 prediction = 6 configs × 5 programs = 30 cases). Cheap, and prediction×forwarding interaction is exactly where a squash-vs-forward bug would hide. Revisit only if runtime bites.                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
-| **BTB / zero-penalty correct prediction.**        | **Explicitly deferred, and say so in the UI's honesty budget.** Predicting from PC alone at IF is what buys a 0-cycle correct prediction; it needs a tagged structure and is a fancier tier. M4's correctly-predicted taken branch costs **1**, and that is a _true_ fact about _this_ machine, not a bug (INV-5: lawful omission, never contradiction).                                                                                                                                                                                                                          | _(open)_      |
-| **Dynamic prediction (2-bit counters, history).** | **Out of scope.** The config type names only static schemes; adding dynamic ones is a schema change and its own milestone.                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
-| **Relationship to M2 step 5c.**                   | **Independent; 5c stays deferred.** M4 draws an **ID-stage** redirect for speculation. 5c is about the **multi-cycle** model's ALUOut→PC path and its engine-level `alu-op` emission. Neither blocks the other; do not let step 5 quietly absorb 5c.                                                                                                                                                                                                                                                                                                                              | _(open)_      |
+| Decision                                          | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Pinned answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Is `static-taken` in the MVP?**                 | **Yes — it IS the MVP.** `static-not-taken` alone is a rename of current behavior. See the headline decision.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **HELD — it is the MVP, and step 1 shipped it.** The seed was right for the reason given: `static-not-taken` turned out to be not merely "a rename" but literally `defaultConfig()`'s existing behavior, so a not-taken-only milestone would have shipped zero behavior change.                                                                                                                                                                                                                                                                             |
+| **What does `none` mean?**                        | **Stall-on-branch: the machine that refuses to guess** (bubble until EX resolves, `P = 2·B`). Makes the config's three names three _behaviors_ rather than two, and shares step 0's ID classification, so it is nearly free once that lands. **Caveat:** it differs from `static-not-taken` only on _not-taken_ branches, and the corpus is mostly taken — so its corpus swing is thin and its pedagogy is "pays on every branch," not a big number. The alternative (alias of `static-not-taken`) is defensible: a machine with no predictor naturally just keeps fetching PC+4. | **REVERSED — `none` ≡ `static-not-taken`, ONE machine.** The seed's lean (stall-on-branch) missed the deciding fact: **`none` is `defaultConfig()`**, so making it a third behavior would silently redefine the default pipeline and move every timing number M3 pinned. The coincidence is a **finding, not a wart**: a machine with no predictor does not wait — it keeps fetching, and **the fall-through IS the not-taken path**. Measured: honoring the knob failed exactly ONE test in the suite (the capabilities flag). Two behaviors, three names. |
+| **`jal` vs `jalr` under `static-taken`.**         | **`jal` is predicted (PC-relative, computable in ID); `jalr` always pays the full EX penalty** — its target is `rs1+imm`, a register not reliably available in ID. This asymmetry is _why_ `call-return` regresses, so it is load-bearing for the thesis, not a corner case. Verify the arithmetic against M3's pinned 17-cycle figure.                                                                                                                                                                                                                                           | **HELD, and it needed NO code.** `jalr` is absent from `PC_RELATIVE_TRANSFERS`, so `predictedTaken` is false, it is always taken, and `predicted !== taken` makes it always mispredict — the full penalty falls out with nothing that mentions `jalr`. The `call-return` regression is mechanical.                                                                                                                                                                                                                                                          |
+| **Is `predicted: boolean` honest under `none`?**  | **Genuinely open — this is M4's add-or-decline-a-field question** (M3 declined three: `maxTier`, renderer delta 2, `LessonStep.requires`). Under `none`-as-stall _nothing was predicted_, so `predicted: false` ("not predicted taken") would let a lesson keying on `predicted === actual` count every not-taken branch as a correct prediction — a lie about a machine that made no prediction. Options: `boolean \| null`, or `none` reports something defined. **Lean: let step 1 force it** rather than deciding on paper.                                                   | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Does the ID bet need its own trace event?**     | **Probably yes, and this is the schema question of the milestone.** `branch-resolved` is an EX-stage event: the _correction_. The ID bet is a different fact at a different cycle, and the datapath (step 5) must draw the redirect in the cycle it happens. INV-3 forbids the view reaching into the engine for it. But M3's pattern says the field that seems needed often is not — try to build step 5 without it first.                                                                                                                                                       | **Still open, but the pressure is off** — the bet already surfaces as a `flush` with `reason: 'branch-predicted-taken'` and `stages: ['IF']`, in the cycle it happens. Step 5 should try to draw the redirect from that plus `branch-resolved.predicted` before adding anything.                                                                                                                                                                                                                                                                            |
+| **Conformance matrix size.**                      | **Full cross product** (2 forwarding × 3 prediction = 6 configs × 5 programs = 30 cases). Cheap, and prediction×forwarding interaction is exactly where a squash-vs-forward bug would hide. Revisit only if runtime bites.                                                                                                                                                                                                                                                                                                                                                        | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **BTB / zero-penalty correct prediction.**        | **Explicitly deferred, and say so in the UI's honesty budget.** Predicting from PC alone at IF is what buys a 0-cycle correct prediction; it needs a tagged structure and is a fancier tier. M4's correctly-predicted taken branch costs **1**, and that is a _true_ fact about _this_ machine, not a bug (INV-5: lawful omission, never contradiction).                                                                                                                                                                                                                          | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Dynamic prediction (2-bit counters, history).** | **Out of scope.** The config type names only static schemes; adding dynamic ones is a schema change and its own milestone.                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Relationship to M2 step 5c.**                   | **Independent; 5c stays deferred.** M4 draws an **ID-stage** redirect for speculation. 5c is about the **multi-cycle** model's ALUOut→PC path and its engine-level `alu-op` emission. Neither blocks the other; do not let step 5 quietly absorb 5c.                                                                                                                                                                                                                                                                                                                              | _(open)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

@@ -55,6 +55,7 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
+import { speculativeTarget } from './predict';
 import {
   defaultConfig,
   makeRegisters,
@@ -101,6 +102,23 @@ export interface IdExLatch extends IfIdLatch {
   readonly a: number | null;
   /** `Reg[rs2]` as read at ID, PRE-forwarding; null if rs2 is no source. */
   readonly b: number | null;
+  /**
+   * The BET ID placed on this instruction: did ID steer fetch to its target? (M4.) Always `false`
+   * under `'none'`/`'static-not-taken'`, where fetch simply carries on — which is why those two
+   * config values are one machine.
+   *
+   * **A boolean, deliberately, and not the predicted target.** EX never needs the address ID bet
+   * on, because M4 step 0 PROVED the two agree: `speculativeTarget` equals EX's `nextPc` for every
+   * taken PC-relative transfer, pinned over the corpus. So "we both say taken" already implies "we
+   * both mean the same address", and carrying the target would be carrying a value whose only
+   * possible use is a comparison that cannot fail. The step-0 safety property is exactly what buys
+   * the minimal field — remove that proof and this would have to become a `number | null`.
+   *
+   * `jalr` needs no special case anywhere downstream: it is never predictable, so this is always
+   * `false`, it is always taken, it therefore always mispredicts and always pays full price. The
+   * `call-return.s` regression under `static-taken` falls out of that with no code that mentions it.
+   */
+  readonly predictedTaken: boolean;
 }
 
 /** EX/MEM — the ALU's answer on its way to memory. */
@@ -156,17 +174,27 @@ export interface PipelineMicro {
 }
 
 /**
- * The pipeline is the first model whose behavior depends on its CONFIG: `forwarding` genuinely
- * changes the machine, so `configurableForwarding` is finally `true`. `branchPrediction` stays
- * honored-`false` (fixed predict-not-taken) and caches are unmodeled — both are M4 feature
- * toggles ON this pipeline (§12.3), which need it to exist before they mean anything.
+ * The pipeline is the model whose behavior depends on its CONFIG — `forwarding` (M3) and now
+ * `branchPrediction` (M4) both genuinely change the machine. Caches remain unmodeled: the other
+ * half of §12.3, and a separate milestone, because they need array-walking programs before a
+ * hit/miss means anything.
+ *
+ * **`configurableBranchPrediction: true` is a claim about two schemes, not three.** `'none'` and
+ * `'static-not-taken'` are the SAME MACHINE here, and that coincidence is a finding rather than a
+ * shortcut: a processor with no predictor does not stop and wait — it just keeps fetching the next
+ * address, and **the fall-through IS the not-taken path**. "No prediction" and "predict not taken"
+ * are one policy wearing two names. The alternative reading (`'none'` = stall until EX resolves)
+ * would be a different, defensible machine — but it is not what "no predictor" means, and since
+ * `'none'` is `defaultConfig()`, adopting it would silently redefine the default pipeline that M3
+ * pinned. So the honored positions are: keep fetching (`'none'` = `'static-not-taken'`), or bet on
+ * the target (`'static-taken'`).
  */
 export const PIPELINE_CAPABILITIES: ProcessorCapabilities = {
   model: 'pipeline',
   pipelined: true,
   hasHazards: true,
   configurableForwarding: true,
-  configurableBranchPrediction: false,
+  configurableBranchPrediction: true,
   configurableCache: false,
 };
 
@@ -290,6 +318,27 @@ function toLatch(f: Fetched): IfIdLatch {
 /** Why everything younger than the deciding stage is being killed this cycle. */
 type Squash = 'branch' | 'halt';
 
+/**
+ * The `flush.reason` for an EX correction, named for what the machine LEARNED — which M4 forces to
+ * be two answers where M3 only ever had one.
+ *
+ * M3 wrote `'branch-taken'` unconditionally, and it was true: predict-not-taken can only ever be
+ * wrong about a branch that WAS taken, so "the prediction broke" and "the branch was taken" were
+ * the same event. `static-taken` separates them — a bet on a branch that then declines corrects
+ * with `actual === false`, and reporting `'branch-taken'` there would state the opposite of what
+ * happened to a consumer that reads it (the pipeline map prints this string as the cause of death).
+ *
+ * So the vocabulary grows by exactly one word, and `'branch-taken'` keeps its old meaning rather
+ * than being generalized to `'branch-mispredicted'`: every EX correction IS a misprediction, so
+ * that name would say nothing a reader could act on, and it would move a string three test suites
+ * and the map already pin. Each reason states the fact that killed you, and the direction is the
+ * only fact that varies.
+ */
+function squashReason(inEx: IdExLatch | null): string {
+  // `inEx` is the instruction that resolved this cycle: EX is the only stage that raises 'branch'.
+  return inEx !== null && inEx.predictedTaken ? 'branch-not-taken' : 'branch-taken';
+}
+
 /** The mutable working set for one cycle: read `prev`, fill `next`, collect events and signals. */
 interface CycleCtx {
   readonly prev: Latches;
@@ -313,6 +362,18 @@ interface CycleCtx {
    * `call-return.s` puts live code (`max:`) directly behind its `ecall`.
    */
   stopFetch: boolean;
+  /**
+   * The ID BET (M4): ID predicted a transfer taken and steered fetch to its target via `redirect`.
+   * Read by IF, whose fall-through fetch is now off the predicted path and dies.
+   *
+   * **Deliberately NOT folded into `squash`, because it kills a different set.** A squash means
+   * "everything younger than the deciding stage is wrong" — ID *and* IF. A bet means only "the
+   * instruction IF just fetched is not the one we now think comes next": the branch in ID is the
+   * thing doing the predicting and sails on to EX. One casualty, not two — and that difference IS
+   * the milestone's payoff, the whole reason a correct prediction costs 1 instead of 2. Overloading
+   * `squash` would kill the branch that placed the bet.
+   */
+  bet: boolean;
 }
 
 export class PipelineProcessor implements Processor {
@@ -332,6 +393,13 @@ export class PipelineProcessor implements Processor {
   private sourceMap: ReadonlyMap<number, number> = new Map();
   /** The honored config knob — the first model whose trace depends on one. */
   private forwarding = false;
+  /**
+   * The second honored knob (M4). `true` only for `'static-taken'`: `'none'` and
+   * `'static-not-taken'` both mean "keep fetching the fall-through", which is one machine under two
+   * names — see {@link PIPELINE_CAPABILITIES}. Collapsing the three-valued config to a boolean here
+   * is the honest encoding of that, rather than a `switch` with two identical arms.
+   */
+  private predictTaken = false;
   private latches: Latches = EMPTY_LATCHES();
   /** The instruction in the IF stage: fetched this cycle, or held over across a stall. */
   private ifSlot: Fetched | null = null;
@@ -340,6 +408,7 @@ export class PipelineProcessor implements Processor {
 
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     this.forwarding = config.forwarding;
+    this.predictTaken = config.branchPrediction === 'static-taken';
     this.registers = makeRegisters();
     this.memory = new SparseMemory();
     // Text loaded little-endian from entry; then initialized data. One flat space (§9).
@@ -386,6 +455,7 @@ export class PipelineProcessor implements Processor {
       squash: null,
       redirect: null,
       stopFetch: false,
+      bet: false,
     };
 
     // Who is where, captured before the walk. `prev` is the start-of-cycle latch state, so the
@@ -429,10 +499,20 @@ export class PipelineProcessor implements Processor {
       if (stages.length > 0) {
         ctx.events.push({
           type: 'flush',
-          reason: ctx.squash === 'branch' ? 'branch-taken' : 'halt',
+          reason: ctx.squash === 'branch' ? squashReason(inEx) : 'halt',
           stages,
         });
       }
+    } else if (ctx.bet && inIf !== null) {
+      // The BET's casualty (M4). A CORRECT prediction still kills something — the fall-through IF
+      // had already fetched — and that discarded instruction is precisely the "1" in "a correctly
+      // predicted taken branch costs 1, not 0". Emitting it only on misprediction would be the
+      // easy mistake: the cost would then be invisible to every consumer that counts casualties,
+      // and the map would draw a free prediction the machine never made.
+      //
+      // One stage, never two, and no `inId` check: a bet does not kill ID (that instruction IS the
+      // branch). The single-casualty shape is not new — a halt flush has always cut only IF.
+      ctx.events.push({ type: 'flush', reason: 'branch-predicted-taken', stages: ['IF'] });
     }
 
     // Halt-with-drain, asserted rather than assumed. `halted` may only be raised once the pipe is
@@ -770,20 +850,32 @@ export class PipelineProcessor implements Processor {
         break;
     }
 
-    // Every control transfer resolves HERE. We predict not-taken and fetch straight on, so a
-    // taken transfer leaves two younger instructions (in ID and IF) that were never going to run.
+    // Every control transfer resolves HERE — and M4 changes what resolution MEANS. The old rule
+    // was "squash if taken", which was only ever the fixed predict-not-taken machine's spelling of
+    // the real rule: **squash if the prediction was WRONG**. Under `'none'`/`'static-not-taken'`
+    // nothing is ever predicted taken, so `predicted !== taken` reduces to `taken` and the machine
+    // behaves exactly as M3 pinned it. Under `static-taken` the two come apart, in both directions.
     if (taken !== null) {
+      const predicted = ie.predictedTaken;
       ctx.events.push({
         type: 'branch-resolved',
         instr: ie.instr,
-        predicted: false, // fixed predict-not-taken; `branchPrediction` is an M4 toggle
+        predicted,
         actual: taken,
         target: nextPc,
       });
-      if (taken) {
+      if (predicted !== taken) {
+        // `nextPc` is the correction for BOTH directions with no branching on which way we were
+        // wrong: the schema defines it as "the resolved next pc, whichever way it went", so a
+        // wrongly-predicted-taken branch reports its fall-through and a wrongly-predicted-not-taken
+        // one reports its target. Fetch is wherever the bad guess sent it; this is where it belongs.
         ctx.squash = 'branch'; // the `flush` event itself is emitted at the edge — see step()
-        ctx.redirect = nextPc; // applied at the clock edge, AFTER IF has fetched the fall-through
+        ctx.redirect = nextPc; // applied at the clock edge, AFTER IF has fetched the wrong path
       }
+      // A CORRECT taken prediction needs no redirect: ID already steered fetch to this exact
+      // address, which is not an assumption but M4 step 0's pinned safety property (ID's
+      // `speculativeTarget` equals EX's `nextPc` for every taken PC-relative transfer). The bet's
+      // own casualty — the fall-through ID discarded — was already flushed back at the bet.
     }
 
     ctx.next.exMem = {
@@ -888,6 +980,23 @@ export class PipelineProcessor implements Processor {
       ctx.squash = 'halt'; // the `flush` event itself is emitted at the edge — see step()
     }
 
+    // The BET (M4). Everything above this line has already established that this instruction is
+    // real: it survived the `ctx.squash` early-return at the top (so it is not in an older
+    // transfer's shadow) and it did not stall. Both matter, and the first is load-bearing enough
+    // to state — a bet placed before that return would let a WRONG-PATH instruction steer the
+    // fetch pointer, overwriting the very redirect that condemned it. The stage walk runs in
+    // reverse order (EX before ID) precisely so EX's correction is already visible here, which is
+    // what makes "the correction always beats the bet" structural rather than a rule to enforce.
+    //
+    // `predictTaken` gates it, so under 'none'/'static-not-taken' this is dead and the machine is
+    // byte-for-byte M3's. A halt is not a transfer, so the `isArchHalt` squash above cannot
+    // coincide with a bet.
+    const target = this.predictTaken ? speculativeTarget(d, fd.pc) : null;
+    if (target !== null) {
+      ctx.bet = true;
+      ctx.redirect = target; // applied at the clock edge, AFTER IF has fetched the fall-through
+    }
+
     ctx.next.idEx = {
       instr: fd.instr,
       pc: fd.pc,
@@ -896,6 +1005,7 @@ export class PipelineProcessor implements Processor {
       rd: destReg(d),
       a,
       b,
+      predictedTaken: target !== null,
     };
   }
 
@@ -963,6 +1073,17 @@ export class PipelineProcessor implements Processor {
       this.ifSlot = null;
       ctx.next.ifId = null;
       return slot; // it was here this cycle, and it dies here
+    }
+
+    if (ctx.bet) {
+      // The ID bet steered fetch to a predicted target, so the fall-through this stage just
+      // fetched is off the predicted path and dies — exactly like a squash from IF's point of
+      // view. The difference is invisible here and decisive one stage up: ID's own instruction (the
+      // branch doing the predicting) is NOT killed, so `ctx.next.idEx` — already set by stageId —
+      // stands. One casualty instead of two is the entire saving a correct prediction buys.
+      this.ifSlot = null;
+      ctx.next.ifId = null;
+      return slot;
     }
 
     if (ctx.stalled) {
