@@ -117,6 +117,14 @@ describe('loadSource model swap (INV-3 / INV-8)', () => {
 describe('loadSource forwarding config — the crown jewel on the live timeline (M3 step 5)', () => {
   const config = (forwarding: boolean): ProcessorConfig => ({ ...defaultConfig(), forwarding });
 
+  /** The most instructions ever in flight in one cycle of a completed run. */
+  const maxInFlight = (source: string, make: () => Processor, forwarding: boolean): number => {
+    const result = loadSource(source, make, config(forwarding));
+    if (!result.ok) throw new Error('unreachable: a corpus program should assemble');
+    result.loaded.recorder.runToEnd();
+    return Math.max(...result.loaded.recorder.recorded.map((c) => c.instructions.length));
+  };
+
   /** Record a corpus program to a halt on the pipeline under a chosen forwarding position. */
   const runPipeline = (name: string, forwarding: boolean) => {
     const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
@@ -192,6 +200,58 @@ describe('loadSource forwarding config — the crown jewel on the live timeline 
     ]);
     // ...and it names a real source line, so the highlight lands somewhere honest.
     expect(shown.sourceLine).not.toBeNull();
+  });
+
+  /**
+   * The premise the transport's in-flight qualifier rests on. App appends "in WB · 5 in flight"
+   * exactly when `instructions.length > 1` — a rule with no model knowledge in it, derived purely
+   * from the trace (INV-3). That rule is only HONEST if the count really does separate the models
+   * the way the rule assumes: the qualifier must never appear for a one-at-a-time model (there is
+   * nothing to qualify) and must appear for the pipeline (where the shown instruction is one of
+   * five). Both halves are pinned here, because the rule silently degrades if either fails — a
+   * qualifier on single-cycle would be noise, and its absence on the pipeline would leave the
+   * shell showing one instruction while the header promises five.
+   */
+  it('the in-flight count separates the models exactly as the transport assumes', () => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+
+    // One at a time, by construction — M1 and M2's defining simplification. Never qualified.
+    expect(maxInFlight(program.source, () => new SingleCycleProcessor(), false)).toBe(1);
+    expect(maxInFlight(program.source, () => new MultiCycleProcessor(), false)).toBe(1);
+    // The pipeline breaks it in BOTH positions, which is the whole point of the tier — and the
+    // qualifier must appear regardless of how the user has the toggle set.
+    expect(maxInFlight(program.source, () => new PipelineProcessor(), false)).toBeGreaterThan(1);
+    expect(maxInFlight(program.source, () => new PipelineProcessor(), true)).toBeGreaterThan(1);
+  });
+
+  /**
+   * A second observable of the toggle, found by measuring rather than assuming (the first draft of
+   * the test above asserted a flat "the pipeline reaches five" and was wrong): forwarding does not
+   * only make the pipe FASTER, it is what FILLS it. A bubble is a `null` latch and deliberately
+   * never appears in `instructions[]`, so an interlocked pipe carries strictly fewer LIVE
+   * instructions — `sum-loop` never gets past four of the five stages holding real work with
+   * forwarding off, and reaches all five with it on. It is visible in the transport chip's count.
+   *
+   * Scoped to `sum-loop`, NOT claimed of the corpus — the same discipline step 3 applied to the
+   * crown jewel, and for the same reason: `array-sum` and `call-return` reach five in BOTH
+   * positions, so a blanket claim would be false about programs we ship.
+   */
+  it('forwarding also FILLS the pipe: sum-loop carries 4 live instructions off, 5 on', () => {
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!.source;
+    expect(maxInFlight(sumLoop, () => new PipelineProcessor(), false)).toBe(4);
+    expect(maxInFlight(sumLoop, () => new PipelineProcessor(), true)).toBe(5);
+  });
+
+  /**
+   * The other reason a stage can sit empty, and why the test above pins a PROGRAM rather than a
+   * constant: `add.s` holds only three instructions, so it can never fill five stages no matter how
+   * the toggle is set. Program-bound, not stall-bound — two different causes for the same symptom,
+   * separated here so neither is mistaken for the other.
+   */
+  it('...but a 3-instruction program can never fill five stages, in either position', () => {
+    const add = EXAMPLE_PROGRAMS.find((p) => p.name === 'add')!.source;
+    expect(maxInFlight(add, () => new PipelineProcessor(), false)).toBe(3);
+    expect(maxInFlight(add, () => new PipelineProcessor(), true)).toBe(3);
   });
 
   it('is inert for a model that does not honor it (single-cycle ignores the toggle)', () => {

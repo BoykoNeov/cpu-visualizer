@@ -626,6 +626,7 @@ function Transport(props: {
   inFlight: InstructionInstance | null;
 }): React.JSX.Element {
   const { sim, atStart, lastCycle, inFlight } = props;
+  const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
   return (
     <div style={{ marginTop: '1rem' }}>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -663,6 +664,22 @@ function Transport(props: {
         {inFlight ? (
           <span style={{ color: T.ink2, fontFamily: MONO, fontSize: '0.85rem' }}>
             {formatInstruction(inFlight.decoded)}
+          </span>
+        ) : null}
+        {/* Qualify the instruction above exactly when it is NOT the whole story — i.e. when more
+            than one is in flight. Derived purely from the trace (INV-3) with no model knowledge:
+            single-cycle and multi-cycle always have exactly one occupant, so this never appears
+            for them; the pipeline qualifies itself. Without it the shell shows one instruction
+            while the header promises five, and the reader has no way to tell that the line
+            highlighted is the one RETIRING rather than the only one running — which reads as "a
+            pipeline is just a slow single-cycle", the exact misconception this tier exists to
+            break. The full picture is the step-7 map's job; this is the honest placeholder. */}
+        {inFlightCount > 1 ? (
+          <span
+            style={{ color: T.ink3, fontFamily: MONO, fontSize: '0.8rem' }}
+            title={`${inFlightCount} instructions are in flight this cycle; the one named above is in ${inFlight?.location} (nearest retirement). The pipeline map will show all of them.`}
+          >
+            in {inFlight?.location} · {inFlightCount} in flight
           </span>
         ) : null}
       </div>
