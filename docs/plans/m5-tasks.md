@@ -188,14 +188,33 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       `add.s` is the corpus's only `ecall`-free program, so giving it an exit would delete the one
       place the track can teach halting, and change every model and differential test (INV-7) to do it.
 
-      Two smaller finds. **`addi` emits `alu-op` with `op: "add"`**, not `"addi"` — so the
+      **The front door computes into `ra` and `sp`, and only the browser says so.** `add.s` uses
+      `x1`, `x2`, `x5` — which the register panel names **`ra`, `sp`, `t0`**, because those are the
+      ABI's. So the track's first lesson narrates "5 goes into x1" beside a panel row reading `ra`,
+      and a beginner's first program computes into the return-address and stack-pointer registers.
+      No test can see this: the lesson is true, the panel is true, and they disagree only in the
+      reader's head. `add.s` stays as it is (INV-7, and the same ending argument above), so the fix
+      is one clause in step 1 — the nicknames are an ABI **convention** about how functions agree to
+      share registers, not a rule the hardware enforces, and this program ignores them. That is
+      on-topic rather than scope creep: the step's own first sentence is about registers being named
+      slots, and the clause lands directly above the panel it explains.
+
+      Three smaller finds. **`addi` emits `alu-op` with `op: "add"`**, not `"addi"` — so the
       "obvious" `{ event: 'alu-op', where: { op: 'add' } }` trigger matches the FIRST `addi`, not the
       `add`; the reg-write triggers sidestep it entirely. And the browser eyeball's own trap: forcing
       `data-theme` via CDP renders a **half-dark page** that reads exactly like a theme defect and is
       not one — the shell's inline styles read a React-held theme object that the attribute never
       touches. Click the real toggle. (The recipe's `taskkill //IM chrome.exe` also closed the user's
       own browser; a fresh `--user-data-dir` per run is the actual fix for the stale-profile lock it
-      was working around.)
+      was working around.) And the depth dial's buttons carry the **raw** tier id (`essentials`) —
+      they only READ capitalized, via CSS `text-transform`, so a driver matching the on-screen
+      spelling finds nothing. Both are driver traps that present as product defects; neither was one.
+
+      All three tiers were then rendered in the browser, not just `detailed`: essentials collapses
+      to its one-liner, expert swaps to the I-type sign-extension variant, code spans intact and no
+      literal asterisks in any of them. (`detailed` is the only tier the validator resolves, so the
+      other two are authored-but-unproven until something looks — M1's lesson panel set the
+      precedent by toggling to Essentials.)
 
 - [ ] **2. `sign-and-zero` on `byte-loads.s`.** The corpus's orphaned teaching program, finally
       taught with: one byte, `0x80`, read as −128 by `lb` and +128 by `lbu`. Anchors: `mem-read`

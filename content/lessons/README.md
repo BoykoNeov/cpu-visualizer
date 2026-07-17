@@ -174,6 +174,13 @@ Listed in `index.json`'s teaching order — the language track first, then the �
   That is why `add.s` keeps its ending (INV-7: changing it changes it for every model and every
   differential test, and would delete this lesson's last beat).
 
+  It is also the only lesson whose registers ignore the ABI: `add.s` computes in `x1`, `x2`, `x5`,
+  which the register panel names **`ra`, `sp`, `t0`** — so the track's first lesson narrates "5 goes
+  into x1" beside a row reading `ra`, and a beginner's first program computes into the
+  return-address and stack-pointer registers. Nothing can test that: the lesson is true, the panel
+  is true, and they disagree only in the reader's head. Step 1 names the mismatch in one clause
+  (the nicknames are a convention, not a hardware rule) rather than editing the corpus.
+
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
   branch → the final total (55).
 - **`array-in-memory`** — walking an array in `.data` (`array-sum`): the first `lw`, a negative

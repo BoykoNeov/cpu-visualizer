@@ -9,7 +9,7 @@
       "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 1 } },
       "narration": {
         "essentials": "The first instruction puts the number 5 into a register, x1.",
-        "detailed": "Registers are the handful of named slots the processor computes in, and this is how a number gets into one: `addi x1, x0, 5` adds 5 to x0 and writes the result to x1. x0 is hardwired to zero, so adding to it is simply a way of saying \"the constant 5\" — the assembler's `li` pseudo-instruction is exactly this for a small number.",
+        "detailed": "Registers are the handful of named slots the processor computes in, and this is how a number gets into one: `addi x1, x0, 5` adds 5 to x0 and writes the result to x1. x0 is hardwired to zero, so adding to it is simply a way of saying \"the constant 5\" — the assembler's `li` pseudo-instruction is exactly this for a small number. The register panel also calls x1 `ra`: the nicknames are an ABI convention about how functions agree to share the registers, not a rule the hardware enforces, and this program ignores them.",
         "expert": "I-type: the 12-bit immediate is sign-extended to 32 bits, added to the value read from x0 (always 0), and the sum is written back to x1 in this same cycle."
       }
     },
