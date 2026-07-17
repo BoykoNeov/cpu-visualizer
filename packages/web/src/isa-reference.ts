@@ -514,14 +514,10 @@ export function registerCount(): number {
   return new Set(registerEntries().map((r) => r.number)).size;
 }
 
-/**
- * A starter program for the empty editor: the smallest thing that computes something and
- * stops. Assembled by the test like every other example.
- */
-export const STARTER_PROGRAM = `    .text
-_start:
-    li   t0, 5          # t0 = 5
-    li   t1, 37         # t1 = 37
-    add  a0, t0, t1     # a0 = 42
-    ecall               # stop here
-`;
+// A `STARTER_PROGRAM` for "the empty editor" was written here and deleted unused: the editor's
+// draft is always seeded from the current corpus program, so there is no empty state for it to
+// fill. It is worth a line because of HOW it survived review — it had a passing test ("the
+// starter program assembles"), which is green when the string parses, not when anything renders
+// it. A test over an unreferenced export is the vacuity trap this repo keeps re-finding, wearing
+// a coverage badge. If a blank-slate affordance is ever wanted, it is a product decision with a
+// button attached, not a constant.

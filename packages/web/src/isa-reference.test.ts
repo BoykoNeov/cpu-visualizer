@@ -27,7 +27,6 @@ import {
   DIRECTIVE_NOTES,
   INSTRUCTION_NOTES,
   PSEUDO_NOTES,
-  STARTER_PROGRAM,
   directiveEntries,
   formsFor,
   instructionSections,
@@ -136,12 +135,6 @@ describe('isa-reference: every example is real assembly', () => {
       expect(assembleOk(inData(example)).errors).toEqual([]);
     },
   );
-
-  it('assembles the starter program the empty editor offers', () => {
-    const { program, errors } = assembleOk(STARTER_PROGRAM);
-    expect(errors).toEqual([]);
-    expect(program!.words.length).toBeGreaterThan(0);
-  });
 
   it('every register name listed can actually be typed as an operand', () => {
     for (const { name } of registerEntries()) {
