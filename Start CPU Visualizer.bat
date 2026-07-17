@@ -52,6 +52,11 @@ if defined DEV_URL (
     echo.
     REM `start` needs the empty "" title argument, or it reads the URL as a window title.
     start "" "%DEV_URL%"
+    REM Nothing to babysit on this path - there is no server of ours to keep alive - so the
+    REM window would otherwise vanish the instant it is double-clicked and the note above
+    REM would never be readable. Hold it open briefly, then close on our own. `timeout` wants
+    REM a real console: if this was piped or redirected it fails harmlessly and we just exit.
+    timeout /t 8 /nobreak >nul 2>&1
     exit /b 0
 )
 
