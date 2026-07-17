@@ -44,6 +44,26 @@ whose narration contains a `*` outside a code span — it exists because the fla
 `**not**` to the browser, and every test was green, since they all assert narration _resolves_
 rather than _renders_.
 
+### A step alive in two positions must read true from BOTH — including its imperatives
+
+The mirror of the rule below, and the subtler half. A step that is _not_ config-exclusive fires on
+every machine the lesson honors, so its narration is prose about all of them at once. Numbers are the
+obvious trap (M4 step 4: "51 cycles" over a transport reading 49), but **directions are the one that
+survives review**, because a sentence can be true, checkable, and still wrong from where the reader is
+sitting. `branch-bet`'s closing step shipped "Flip it and watch the total move the wrong way" — true
+read from predict-not-taken (17 → 18), false read from predict-taken, where flipping goes 18 → 17 and
+the total moves the right way. Every test was green: the numbers it quotes are correct in both, and no
+guard can see which way the reader is facing.
+
+Write the comparison symmetrically instead — `forwarding-bubble` already had it right ("flip the
+toggle back and forth and watch the total stay put while the cycle count moves"), and `branch-bet` now
+does ("the 42 never budges, and the count sits one cycle higher on the side that bets"). A both-
+positions step should name the sides, never say "flip it and watch X happen".
+
+This is stated rather than guarded, deliberately: which way a sentence faces is semantics, and a test
+that pattern-matched imperatives would be a style rule wearing a test's clothes. It is here because it
+is the third time a lesson's closing narration went wrong in a way only the browser could see.
+
 ### A step may be lawfully dead in a config
 
 A lesson's steps need not all fire. `forwarding-bubble` is _about_ a stall that disappears when a
@@ -83,3 +103,14 @@ against any model unchanged (INV-6).
   (one cycle instead of two, renamed `load-use`) — because a load's value is not ready any earlier,
   which is the point most courses fumble. Flip the toggle mid-lesson and the rail's middle two steps
   swap.
+
+- **`branch-bet`** — "the bet, and what it costs when it's wrong" (M4, the second pipeline flagship),
+  on `call-return`, opening on **predict-not-taken** — the baseline, so the bet reads as an idea
+  rather than as the way things are. `call-return` is the only corpus program that can carry it, and
+  for the same reason `array-sum` was the only one that could carry `forwarding-bubble`: it holds one
+  of **each** kind of transfer on a source-visible line. `jal ra, max` is PC-relative and always goes,
+  so the bet **wins** (2 cycles → 1); `bge a0, a1, done` is `17 >= 42`, so it never goes and the bet
+  **loses** (0 → 2); `ret` is a `jalr` whose target lives in a register, so **no scheme can bet at
+  all** (2 either way). Signed, that is −1 + 2 + 0 = **+1**: flipping to `static-taken` makes this
+  program _slower_, 17 → 18, which is the milestone's thesis — no scheme dominates. Flip the toggle
+  mid-lesson and the rail re-forms from five steps to six, four of them different.
