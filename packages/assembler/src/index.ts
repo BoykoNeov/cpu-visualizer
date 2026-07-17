@@ -12,5 +12,16 @@
 
 export type { AssembledProgram } from './program';
 export { emptyProgram, TEXT_BASE, DATA_BASE } from './program';
-export { assemble, type AssembleResult } from './assemble';
+export { assemble, DIRECTIVES, type AssembleResult } from './assemble';
 export type { AssemblerError } from './diagnostics';
+
+/**
+ * The grammar surface (M5 step 1). A learner editing a program needs to know what they may
+ * type, and the only correct source for that is the code that parses it — so the assembler
+ * publishes its own vocabulary rather than letting a panel keep a second copy that drifts:
+ * the syntax classes {@link handlerFor} dispatches on, the pseudo table's own keys, the
+ * directive dispatch table's own keys, and the register names `resolveRegister` accepts.
+ */
+export { SYNTAX_FORMS, SYNTAX_CLASS_MEMBERS, syntaxClassOf, type SyntaxClass } from './operands';
+export { PSEUDO_MNEMONICS } from './pseudo';
+export { ABI_REGISTERS } from './registers';

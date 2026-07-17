@@ -104,25 +104,80 @@ export class OperandReader {
 
 type Handler = (r: OperandReader, line: number) => InstrUnit;
 
-const REGS3: ReadonlySet<string> = new Set([
-  'add',
-  'sub',
-  'sll',
-  'slt',
-  'sltu',
-  'xor',
-  'srl',
-  'sra',
-  'or',
-  'and',
-]);
-const I_ALU: ReadonlySet<string> = new Set(['addi', 'slti', 'sltiu', 'xori', 'ori', 'andi']);
-const I_SHIFT: ReadonlySet<string> = new Set(['slli', 'srli', 'srai']);
-const I_LOAD: ReadonlySet<string> = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
-const S_STORE: ReadonlySet<string> = new Set(['sb', 'sh', 'sw']);
-const B_BRANCH: ReadonlySet<string> = new Set(['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu']);
-const U_TYPE: ReadonlySet<string> = new Set(['lui', 'auipc']);
-const NO_OPERANDS: ReadonlySet<string> = new Set(['fence', 'ecall', 'ebreak']);
+/**
+ * The assembly-SYNTAX classes, as distinct from `InstructionDef.format` (the encoding
+ * class) — see this file's header. Two instructions share a class exactly when they read
+ * the same operand grammar, so this union is the assembler's own answer to "what may I
+ * write after this mnemonic".
+ *
+ * It is exported because it is the only correct source for that question, and the ISA
+ * reference panel asks it. {@link handlerFor} dispatches through {@link syntaxClassOf},
+ * so the class that *documents* an instruction and the class that *parses* it are the
+ * same value: a panel cannot describe a grammar the assembler does not accept, the way
+ * two hand-maintained tables would eventually let it.
+ */
+export type SyntaxClass =
+  | 'r-type'
+  | 'i-alu'
+  | 'i-shift'
+  | 'i-load'
+  | 's-store'
+  | 'b-branch'
+  | 'u-type'
+  | 'no-operands'
+  | 'jal'
+  | 'jalr';
+
+const CLASS_MEMBERS: Readonly<Record<SyntaxClass, readonly string[]>> = {
+  'r-type': ['add', 'sub', 'sll', 'slt', 'sltu', 'xor', 'srl', 'sra', 'or', 'and'],
+  'i-alu': ['addi', 'slti', 'sltiu', 'xori', 'ori', 'andi'],
+  'i-shift': ['slli', 'srli', 'srai'],
+  'i-load': ['lb', 'lh', 'lw', 'lbu', 'lhu'],
+  's-store': ['sb', 'sh', 'sw'],
+  'b-branch': ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu'],
+  'u-type': ['lui', 'auipc'],
+  'no-operands': ['fence', 'ecall', 'ebreak'],
+  jal: ['jal'],
+  jalr: ['jalr'],
+};
+
+const CLASS_OF: ReadonlyMap<string, SyntaxClass> = new Map(
+  Object.entries(CLASS_MEMBERS).flatMap(([cls, mnemonics]) =>
+    mnemonics.map((m) => [m, cls as SyntaxClass] as const),
+  ),
+);
+
+/**
+ * The operand grammar of each class, as a reader sees it — the forms {@link handlerFor}'s
+ * handler for that class accepts, written the way you would type them.
+ *
+ * A list rather than a string because `jalr` genuinely accepts four forms by lookahead, and
+ * the shorthands are exactly what a learner reaches for. The `Record` over the closed union
+ * makes exhaustiveness the type-checker's job: a new class cannot be added without one.
+ *
+ * These strings describe the handlers below and are checked against them only indirectly —
+ * what pins them is that every reference-panel example assembles (`isa-reference.test.ts`).
+ */
+export const SYNTAX_FORMS: Readonly<Record<SyntaxClass, readonly string[]>> = {
+  'r-type': ['rd, rs1, rs2'],
+  'i-alu': ['rd, rs1, imm'],
+  'i-shift': ['rd, rs1, shamt'],
+  'i-load': ['rd, offset(rs1)'],
+  's-store': ['rs2, offset(rs1)'],
+  'b-branch': ['rs1, rs2, label'],
+  'u-type': ['rd, imm20'],
+  'no-operands': [''],
+  jal: ['rd, label'],
+  jalr: ['rd, rs1, imm', 'rd, rs1', 'rd, offset(rs1)', 'rs1'],
+};
+
+/** The syntax class of a real mnemonic, or `undefined` if it is not one. */
+export function syntaxClassOf(mnemonic: string): SyntaxClass | undefined {
+  return CLASS_OF.get(mnemonic);
+}
+
+/** Every real mnemonic the assembler parses, grouped by the grammar it reads. */
+export const SYNTAX_CLASS_MEMBERS = CLASS_MEMBERS;
 
 function rType(mnemonic: string): Handler {
   return (r, line) => {
@@ -265,17 +320,36 @@ function noOperands(mnemonic: string): Handler {
   };
 }
 
-/** Resolve the operand-syntax handler for a real mnemonic, or `undefined`. */
+/**
+ * Resolve the operand-syntax handler for a real mnemonic, or `undefined`.
+ *
+ * Dispatches through {@link syntaxClassOf} rather than re-testing membership sets, so the
+ * class a mnemonic is *documented* under and the handler that *parses* it are chosen by one
+ * lookup. The `switch` over the closed union is exhaustive without a `default`.
+ */
 export function handlerFor(mnemonic: string): Handler | undefined {
-  if (REGS3.has(mnemonic)) return rType(mnemonic);
-  if (I_ALU.has(mnemonic)) return iAlu(mnemonic);
-  if (I_SHIFT.has(mnemonic)) return iShift(mnemonic);
-  if (I_LOAD.has(mnemonic)) return iLoad(mnemonic);
-  if (S_STORE.has(mnemonic)) return sStore(mnemonic);
-  if (B_BRANCH.has(mnemonic)) return bBranch(mnemonic);
-  if (U_TYPE.has(mnemonic)) return uType(mnemonic);
-  if (NO_OPERANDS.has(mnemonic)) return noOperands(mnemonic);
-  if (mnemonic === 'jal') return jal;
-  if (mnemonic === 'jalr') return jalr;
-  return undefined;
+  const cls = syntaxClassOf(mnemonic);
+  if (!cls) return undefined;
+  switch (cls) {
+    case 'r-type':
+      return rType(mnemonic);
+    case 'i-alu':
+      return iAlu(mnemonic);
+    case 'i-shift':
+      return iShift(mnemonic);
+    case 'i-load':
+      return iLoad(mnemonic);
+    case 's-store':
+      return sStore(mnemonic);
+    case 'b-branch':
+      return bBranch(mnemonic);
+    case 'u-type':
+      return uType(mnemonic);
+    case 'no-operands':
+      return noOperands(mnemonic);
+    case 'jal':
+      return jal;
+    case 'jalr':
+      return jalr;
+  }
 }

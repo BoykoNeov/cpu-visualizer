@@ -9,7 +9,15 @@
 import { fail } from './diagnostics';
 import type { Token } from './tokenizer';
 
-const ABI: Readonly<Record<string, number>> = {
+/**
+ * The ABI name → register number map the assembler accepts. Exported because it is the only
+ * correct answer to "which names may I type", which the ISA reference panel asks: `resolveRegister`
+ * reads this table, so a name listed here is a name that assembles, by construction.
+ *
+ * Not a bijection — `fp` and `s0` are both x8 — so a number → name display list (as the register
+ * panel wants) is a lossy projection of it and stays the view's own choice.
+ */
+export const ABI_REGISTERS: Readonly<Record<string, number>> = {
   zero: 0,
   ra: 1,
   sp: 2,
@@ -57,7 +65,7 @@ export function resolveRegister(tok: Token): number {
     return num;
   }
 
-  const abi = ABI[name];
+  const abi = ABI_REGISTERS[name];
   if (abi !== undefined) return abi;
 
   fail(`unknown register ${JSON.stringify(name)}`, tok.line, tok.col);

@@ -1,9 +1,10 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import type { InstructionInstance } from '@cpu-viz/trace';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
+import { IsaReference } from './IsaReference';
 import { LESSONS } from './lessons';
 import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
@@ -644,6 +645,33 @@ function ProgramEditor(props: {
   originName: string | null;
 }): React.JSX.Element {
   const { open, onToggle, draft, setDraft, onRun, onRevert, canRevert, originName } = props;
+  const textarea = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Drop a reference example into the program where the caret is. Insert-at-caret rather than
+   * append, because the line a learner wants is almost never wanted at the end of the file — and
+   * a reference that only tells you things is still a blank page if you cannot act on it.
+   *
+   * Falls back to appending when the textarea has never been focused (no caret to insert at).
+   */
+  const insertAtCursor = (text: string): void => {
+    const el = textarea.current;
+    if (!el) {
+      setDraft(`${draft}\n${text}`);
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const line = `    ${text}\n`;
+    setDraft(draft.slice(0, start) + line + draft.slice(end));
+    // Restore focus and park the caret after the inserted line, so several clicks in a row
+    // stack up into a program instead of each overwriting the last one's position.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.selectionStart = el.selectionEnd = start + line.length;
+    });
+  };
+
   return (
     <div style={{ marginTop: '0.75rem' }}>
       <button
@@ -660,6 +688,7 @@ function ProgramEditor(props: {
             any other, and any active lesson detaches.
           </p>
           <textarea
+            ref={textarea}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             spellCheck={false}
@@ -693,6 +722,7 @@ function ProgramEditor(props: {
               ↩ Revert{originName ? ` to ${originName}` : ''}
             </button>
           </div>
+          <IsaReference onInsert={insertAtCursor} />
         </div>
       ) : null}
     </div>

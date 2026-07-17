@@ -156,6 +156,76 @@ function handleInstruction(
   return pc;
 }
 
+type DirectiveHandler = (
+  head: Token,
+  rest: Token[],
+  section: Section,
+  dataBytes: number[],
+) => Section;
+
+/**
+ * `.globl` / `.global` — recorded for completeness; our flat model has a single namespace so it
+ * has no effect on output beyond requiring a symbol operand.
+ */
+const globlDirective: DirectiveHandler = (head, rest, section) => {
+  const sym = rest[0];
+  if (!sym || sym.type !== 'ident') fail(`${head.text} expects a symbol name`, head.line, head.col);
+  if (rest.length > 1)
+    fail(`unexpected operand after ${head.text} ${sym.text}`, rest[1]!.line, rest[1]!.col);
+  return section;
+};
+
+/** `.asciz` / `.asciiz` / `.string` — a NUL-terminated byte string in `.data`. */
+const ascizDirective: DirectiveHandler = (head, rest, section, dataBytes) => {
+  requireData(head, section);
+  const str = rest[0];
+  if (!str || str.type !== 'string')
+    fail(`${head.text} expects a quoted string`, head.line, head.col);
+  if (rest.length > 1) fail(`unexpected operand after ${head.text}`, rest[1]!.line, rest[1]!.col);
+  pushAsciz(dataBytes, str);
+  return section;
+};
+
+/**
+ * The directive table. A record rather than a `switch` so {@link DIRECTIVES} can be *derived*
+ * from the dispatch: a directive is listed in the ISA reference exactly when it is implemented,
+ * in both directions. A `switch` could only be paired with a hand-copied list, and a list that
+ * cannot disagree with the code beats a list checked by a test someone has to remember to write.
+ *
+ * Aliases (`.globl`/`.global`, `.asciz`/`.asciiz`/`.string`) are distinct keys sharing one handler:
+ * they are separate spellings the assembler accepts, so they are separate answers to "what may I
+ * type". Grouping them for display is the reference's own concern.
+ */
+const DIRECTIVE_HANDLERS: Readonly<Record<string, DirectiveHandler>> = {
+  '.text': (head, rest) => {
+    expectNoOperands(head, rest);
+    return 'text';
+  },
+  '.data': (head, rest) => {
+    expectNoOperands(head, rest);
+    return 'data';
+  },
+  '.globl': globlDirective,
+  '.global': globlDirective,
+  '.word': (head, rest, section, dataBytes) => {
+    requireData(head, section);
+    for (const v of readNumberList(head, rest, (val, t) => check32(val, t))) pushWord(dataBytes, v);
+    return section;
+  },
+  '.byte': (head, rest, section, dataBytes) => {
+    requireData(head, section);
+    for (const v of readNumberList(head, rest, (val, t) => checkByte(val, t)))
+      dataBytes.push(v & 0xff);
+    return section;
+  },
+  '.asciz': ascizDirective,
+  '.asciiz': ascizDirective,
+  '.string': ascizDirective,
+};
+
+/** Every directive the assembler accepts, derived from the dispatch table above. */
+export const DIRECTIVES: readonly string[] = Object.keys(DIRECTIVE_HANDLERS);
+
 /** Apply a directive; returns the (possibly switched) current section. */
 function handleDirective(
   head: Token,
@@ -163,48 +233,9 @@ function handleDirective(
   section: Section,
   dataBytes: number[],
 ): Section {
-  const name = head.text;
-  switch (name) {
-    case '.text':
-      expectNoOperands(head, rest);
-      return 'text';
-    case '.data':
-      expectNoOperands(head, rest);
-      return 'data';
-    case '.globl':
-    case '.global': {
-      // Recorded for completeness; our flat model has a single namespace so it has
-      // no effect on output beyond requiring a symbol operand.
-      const sym = rest[0];
-      if (!sym || sym.type !== 'ident') fail(`${name} expects a symbol name`, head.line, head.col);
-      if (rest.length > 1)
-        fail(`unexpected operand after ${name} ${sym.text}`, rest[1]!.line, rest[1]!.col);
-      return section;
-    }
-    case '.word':
-      requireData(head, section);
-      for (const v of readNumberList(head, rest, (val, t) => check32(val, t)))
-        pushWord(dataBytes, v);
-      return section;
-    case '.byte':
-      requireData(head, section);
-      for (const v of readNumberList(head, rest, (val, t) => checkByte(val, t)))
-        dataBytes.push(v & 0xff);
-      return section;
-    case '.asciz':
-    case '.asciiz':
-    case '.string': {
-      requireData(head, section);
-      const str = rest[0];
-      if (!str || str.type !== 'string')
-        fail(`${name} expects a quoted string`, head.line, head.col);
-      if (rest.length > 1) fail(`unexpected operand after ${name}`, rest[1]!.line, rest[1]!.col);
-      pushAsciz(dataBytes, str);
-      return section;
-    }
-    default:
-      fail(`unknown directive '${name}'`, head.line, head.col);
-  }
+  const handler = DIRECTIVE_HANDLERS[head.text];
+  if (!handler) fail(`unknown directive '${head.text}'`, head.line, head.col);
+  return handler(head, rest, section, dataBytes);
 }
 
 function resolveReloc(

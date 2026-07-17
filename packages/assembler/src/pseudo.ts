@@ -137,6 +137,16 @@ function branchZero(real: string, r: OperandReader, line: number): InstrUnit[] {
   return [{ mnemonic: real, fields: { rs1: rs, rs2: 0, imm: t.value }, line }];
 }
 
+/**
+ * Every pseudo-instruction the assembler expands, derived from the handler table itself so
+ * a new pseudo appears in the ISA reference by being implemented, not by being remembered.
+ *
+ * Unlike the real mnemonics there is no syntax-class layer here: each pseudo's grammar is
+ * one bespoke handler above, so the reference declares each form and pins it by assembling
+ * the example (`isa-reference.test.ts`).
+ */
+export const PSEUDO_MNEMONICS: readonly string[] = Object.keys(PSEUDOS);
+
 export function isPseudo(mnemonic: string): boolean {
   return mnemonic in PSEUDOS;
 }
