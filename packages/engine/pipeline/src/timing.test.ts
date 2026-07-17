@@ -244,6 +244,36 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 9 retires. The corpus's only program with one branch of EACH outcome on the same operands:
+   * `blt` at 12 is taken (signed -1 < 1) and `bltu` at 24 is not (unsigned 4294967295 is not < 1).
+   *    0 addi t0,x0,-1   4 addi t1,x0,1   8 addi a0,t0,0   12 blt t0,t1,20
+   *   16 addi a0,t1,0  ← FLUSHED: the taken `blt` kills it, so it is the corpus's clearest case of
+   *                      an instruction that is fetched and never retires (N counts 9, not 10).
+   *   20 addi a1,t0,0  24 bltu t0,t1,32  28 addi a1,t1,0  32 addi a7,x0,10  36 ecall
+   *
+   * OFF: d = 1, 2, 4, 5 | 8, 9, 10, 11, 12 → cycles = 12 + 4 = 16. Only `mv a0, t0` at 8 interlocks,
+   *      and only for ONE cycle: it reads t0 from the `li` two ahead of it (d=1), so it needs d≥4
+   *      against a baseline of 3. Every later reader of t0/t1 is far enough back to be free — the
+   *      `blt` at 12 wants d≥5 and the baseline already gives it 5. S = 1.
+   *      Note the `blt`'s +2 does NOT appear here: the mispredict pushes d(20) from 6 to 8, but that
+   *      is P's term, not the interlock's, and the engine emits no stall for it.
+   * ON:  no loads anywhere ⇒ S = 0. cycles = 9 + 4 + 0 + 2 = 15.
+   */
+  'branch-flavors.s': {
+    retires: 9,
+    // **The second program that punishes a taken-bet, and it needs only two branches to do it.**
+    // `blt` is PC-relative and goes (a bet ID wins, 2 → 1); `bltu` is the same comparison read
+    // unsigned and NEVER goes (predict-not-taken is right; a taken-bet is wrong, 0 → 2). No `jalr`.
+    // P: not-taken 2·1 = 2; taken 1·1 + 2·1 = 3 — so this program, like `call-return.s`, is one
+    // cycle SLOWER under static-taken. Which is a neater statement of M4's thesis than the corpus
+    // had: the two branches here differ by a single letter and bet in opposite directions, so no
+    // static scheme can be right about both. Pinned by the MATRIX below rather than restated.
+    transfers: { takenPredictable: 1, notTaken: 1, takenUnpredictable: 0 },
+    flushes: { branchTaken: 1, halt: 0 }, // `ecall` is the last word of text — nothing behind it
+    stalls: { off: { 8: 1 }, on: {} },
+  },
+
+  /**
    * 6 retires, no branches at all.
    *    0 lui t0    4 addi t0,t0    8 lb t1,0(t0)    12 lbu t2,0(t0)    16 addi a7,x0,10   20 ecall
    *
@@ -612,7 +642,7 @@ describe('stall and flush placement across the corpus', () => {
         // ...and the casualties are REAL, which is the whole content of the pinned rule: the trace
         // says an instruction died in each named stage, so the map has that many rows to cut and a
         // lesson triggering on a bare `{ event: 'flush' }` never announces a bubble that didn't
-        // happen. Three of the five corpus programs end with `ecall` as their last word and emit no
+        // happen. Four of the six corpus programs end with `ecall` as their last word and emit no
         // halt flush at all for exactly this reason.
         const cycle = ts.find((t) => t.events.includes(flush))!;
         for (const stage of flush.stages) {

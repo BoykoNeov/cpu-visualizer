@@ -118,6 +118,10 @@ const RESULT_ORACLES: Record<
   'call-return.s': { regs: { 10: 42, 8: 42 } },
   // byte 0x80: lb → -128 in t1 (x6), lbu → +128 in t2 (x7).
   'byte-loads.s': { regs: { 6: -128, 7: 128 } },
+  // min(0xFFFFFFFF, 1) computed twice over the SAME bits: signed (blt) → -1 in a0 (x10),
+  // unsigned (bltu) → 1 in a1 (x11). Both are non-zero, so neither can pass by matching the
+  // reset value — the trap this program exists for is that the two answers disagree.
+  'branch-flavors.s': { regs: { 10: -1, 11: 1 } },
 };
 
 const PROGRAMS = readdirSync(PROGRAMS_DIR)

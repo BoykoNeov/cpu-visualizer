@@ -1,8 +1,10 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
-**Status: STEPS 0–2 DONE 2026-07-17 (919 tests) — the order spine is in, the picker's alphabetical
-order is gone, `first-program` is the front door, and `sign-and-zero` teaches the load-extension trap
-on the corpus's last orphan. Steps 3–5 not started. The prerequisite shipped —
+**Status: STEPS 0–3 DONE 2026-07-17 (950 tests) — the order spine is in, the picker's alphabetical
+order is gone, `first-program` is the front door, `sign-and-zero` teaches the load-extension trap on
+the corpus's last orphan, and `which-is-smaller` teaches the same law in the comparator (the one step
+that needed a new corpus program, and the argument for it is the measurement in its log). Steps 4–5
+not started. The prerequisite shipped —
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
@@ -301,14 +303,117 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       (which is the only tier the validator resolves), and dark was reached with the REAL toggle —
       step 1's note that forcing `data-theme` via CDP renders a fake half-dark page still holds.
 
-- [ ] **3. Branches as a decision (scope question — resolve before building).** `sum-loop-tour`
-      already shows a _backward_ branch as a loop. What is missing is a branch as an **if**: taken
-      vs not-taken, and signed vs unsigned as a trap. `call-return`'s `bge a0, a1, done` is a
-      forward conditional that is **not** taken (17 ≥ 42 is false) — possibly enough, and reusing
-      it costs no corpus. A dedicated `branch-flavors.s` would teach `bltu` vs `blt` on a negative
-      number (the second classic trap) but adds a permanent corpus citizen every model must run
-      (INV-7). **Recommendation: try `call-return` first; only add a program if the lesson cannot
-      be told without one, and say so in the step's log.**
+- [x] **3. Branches as a decision — DONE 2026-07-17 (950 tests).** `content/lessons/which-is-smaller.json`,
+      "When -1 is not less than 1", four steps on single-cycle, fourth in `index.json` (right after
+      `sign-and-zero` — same law, second surface; step 4 is still the real sequencing pass). It ships
+      with a new corpus program, `branch-flavors.s`, and **zero new lesson-format fields, zero engine
+      changes, zero renderer changes**. Browser-verified on the shipped bundle, all three tiers, both
+      themes, dark via the real toggle.
+
+      **THE SCOPE QUESTION FLIPPED THE RECOMMENDATION, AND THE MEASUREMENT IS THE FINDING.** The plan
+      said try `call-return` first and only add a program if the lesson cannot be told without one.
+      Tried, and it cannot — for three reasons, none of them preference:
+
+      - **`call-return`'s branch is already taught.** `function-call`'s third step anchors
+        `{event: 'alu-op', where: {op: 'bge'}}` and already narrates "17 is not >= 42, so the branch
+        is not taken and the function falls through". A lesson there is a near-verbatim duplicate.
+      - **Taken-vs-not-taken is already taught too**, and not where the plan looked: `sum-loop-tour`'s
+        step 4 says "while it is non-zero the branch is taken" and step 5 says "the counter has reached
+        zero, so the branch falls through". Both sides, already shipped. So the plan's framing of the
+        gap was **already closed**, and the only non-duplicative content left in step 3 is the OTHER
+        half of its own sentence — the signed/unsigned trap.
+      - **And that half was _definitionally invisible_ on the old corpus.** It held exactly three
+        conditional branches — `bnez` twice (against zero) and one `bge` on 17 vs 42 — spelling two
+        mnemonics. **For every operand the corpus ever compared, `blt` and `bltu` return the same
+        answer.** Four of RV32I's six branches (`beq`, `blt`, `bltu`, `bgeu`) executed nowhere in the
+        product, while the ISA panel asserted in prose what each one means. Not untaught: unreachable.
+
+      That is the bar to clear before adding a corpus citizen, and it is now written into
+      `content/programs/README.md`: **name what the existing corpus makes unreachable, not what a new
+      program would make nicer.** Adding one turned out to be cheap by design — `conformance.ts` reads
+      the corpus from disk, so `branch-flavors.s` joined the INV-8 net across every model and config
+      automatically, and all four models agreed on it first run (they already unit-test
+      `branchTaken('bltu', -1, 1) === false` in isolation; nothing had ever run it as a program).
+
+      **THE HEADLINE: THIS IS THE MIRROR OF STEP 2, NOT A REPEAT OF IT.** Step 2 is "looks different,
+      is same" — the datapath shows the Data-Memory block emitting −128 then 128 while the trace's two
+      `mem-read`s are byte-identical, so the narration must prove SAMENESS. Step 3 is the exact
+      opposite. Browser-measured on the shipped bundle, the ALU's operand wires at the two branches are
+      **`["-1","1","1","8"]` and `["-1","1","1","8"]` — identical** — and the machine decides opposite.
+      "Looks same, is different", so the narration must prove DIFFERENCE, and the only evidence on
+      screen is the mnemonic.
+
+      Step 3 is the cleaner case, because **nothing here disagrees**: trace (`a: -1`), the
+      `regfile-rs1` wire, the register panel (`0xffffffff` / `-1`) and the verdict are all consistent.
+      There is no debatable view choice to defend — the datapath is simply correct.
+
+      **And nothing is lost, which is where the first draft of this log was wrong.** -1 and 4294967295
+      are the same 32 bits; the engines record operands in signed int32 spelling throughout (`alu` does
+      `a: a | 0` in all three tracing models) and `>>> 0` recovers the unsigned reading at will. The
+      honest statement is **"there is no wire to show it on"**: the unsigned reading is applied _inside
+      the comparator_, exactly as sign-extension is applied _inside the load unit_, and the datapath
+      draws neither as a box — the same structural gap, found from the other side. The only wire that
+      could carry 4294967295 is `regfile-rs1`, sourced from `reg-read` — the register file's own output
+      — and a register file that re-spelled its contents by the signedness of whoever was reading would
+      **appear to transform its output**. That is step 2's argument for leaving `dmem-wb` alone, arrived
+      at backwards. **Two steps, two directions, one law: an interpretation never belongs on a wire.**
+
+      (A curiosity that explains why the "obvious fix" looks available and is not: `u(rs1)` in the
+      engines' `bltu`/`bgeu` arms does not survive `| 0` into the recorded operand, so
+      `alu('bltu', u(..), ..)` and `alu('bltu', s(..), ..)` emit the same event. Harmless — the bits are
+      the bits — and deliberately left alone.)
+
+      **Both halves mutation-checked, and the first number is the interesting one.** Dropping the `| 0`
+      reddens **exactly one test out of 121** — this lesson's oracle — so the operand convention was
+      **entirely unguarded** until now; the oracle is now a deliberate tripwire that drags the next
+      person back to the lesson before the datapath starts spelling registers per reader. And claiming
+      the `bltu` was taken (`result: 1` in its `where`) reddens **six** tests across single-cycle,
+      multi-cycle and both pipeline positions — `result` in a `where` pins control flow on every model
+      at once, not just the declared one.
+
+      **THREE NARRATION DEFECTS, ALL FOUND BY LOOKING, NONE VISIBLE TO 950 GREEN TESTS.**
+
+      - **The unsigned guess reads `-1` on the panel.** `mv a1, t0` seeds the unsigned side with
+        `0xffffffff`, which the register panel prints as **-1** — so calling that guess "-1" invites the
+        reader's signed intuition (−1 < 1, so why is it corrected?) and the step reads false off the
+        screen. The unsigned half is narrated in unsigned terms throughout: the guess is 4294967295, it
+        is not less than 1, the fall-through fixes it. Note the two branches also run in **opposite
+        directions** — signed taken and skipping its correction, unsigned not-taken and running it — so
+        no single sentence describes "the branch".
+      - **Narration named a lesson by its `id`.** The expert tier said "the same law `sign-and-zero`
+        shows on loads"; the picker shows **titles**, so a reader would scan for "sign-and-zero" and
+        find only "One byte, two answers". A new instance of step 2's rule — an id is a key for
+        `index.json` and the suite, never a thing the reader has seen. Now points at `lb`/`lbu`, the
+        instructions, instead: **cross-reference through the machine two lessons share, not through the
+        library's filenames.**
+      - **"the machine runs the line its twin skipped"** was literally false: the `blt` skips
+        `mv a0, t1` at pc16, while the `bltu` falls into `mv a1, t1` at pc28. Mirror lines, not the same
+        line — now says so.
+
+      **The eyeball's own checks went vacuous twice more, in both directions.** Reading narration as
+      "the longest paragraph on screen" grabbed the TOOLBAR, because essentials narration is short — the
+      exact shape of step 2's `-128`-matched-a-source-comment find, and green while proving nothing. A
+      second try anchored on `/^LESSON/` and matched the toolbar CHIP, printing the title four times. But
+      the mirror error is real too: the FIRST wire check compared **whole** wire lists and reported "not
+      identical", a false alarm — the pc/encoding/target wires must differ, since these are different
+      instructions at different addresses. A check can be too broad as easily as too narrow; what settled
+      it was isolating the operands and then **reading the screenshot**.
+
+      **An exhaustiveness guard did its job, and the derivation held.** `timing.test.ts` pins a
+      cycle-count table for every corpus program and reddened the moment the program landed — by design
+      ("a cycle count copied from a passing run is not a pin"). Hand-derived from the recurrence: N = 9,
+      S_off = 1 (only `mv a0, t0` at pc8, needing `d0+3` against a baseline of 3), S_on = 0 (no loads),
+      T = 1, flushes 1/0; 16 cycles off, 15 on. Every number matched the engine first try. It also makes
+      `branch-flavors.s` the corpus's **second** program that a taken-bet makes slower (P: 2 → 3, so −1)
+      — and a neater statement of M4's thesis than `call-return` manages, because it needs only two
+      branches to do it, differing by one letter and betting in opposite directions.
+
+      Two smaller notes. **The dev server would not render** (`#root` empty, no exception, Vite
+      connected — the cross-talk symptom the browser memory describes); the shipped-bundle path that
+      steps 1 and 2 used works, and is the precedent to keep. And **out of scope but logged**:
+      `EXAMPLE_PROGRAMS` in `programs.ts` still ends `.sort((a, b) => a.name.localeCompare(b.name))` —
+      step 0's defect one surface up, still live. It opens on `add` today by alphabetical luck, which is
+      exactly the kind of accident step 0 said a picker should not run on. A candidate for step 4.
 
 - [ ] **4. Sequence + naming pass.** With 0–3 landed, order the whole set: language track first
       (`first-program` → `sum-loop-tour` → `sign-and-zero` → `array-in-memory` → `function-call`),
@@ -330,9 +435,15 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       (Steps 1 and 2. The second orphan turned out to be hiding a VIEW decision as well as a missing
       lesson — see step 2's log: it is the only program where the datapath's Data-Memory output wire
       and the trace's `mem-read` can disagree.)
-- [ ] **Zero new lesson-format fields, zero engine changes, zero renderer changes.** If any of the
-      three is needed, that is the milestone's real finding and belongs in its log — the same bar
-      M3 step 8 and M4 step 7 met.
+- [x] **Zero new lesson-format fields, zero engine changes, zero renderer changes.** Held through step
+      3, which is where it was most tempting: `bltu`'s operands are recorded through `u()` and then
+      re-signed by `alu`'s `a: a | 0`, so "just drop the `| 0`" presents itself as a one-character fix.
+      It is not one — see step 3's log. The bits are not lost (`>>> 0` recovers them); there is simply
+      **no wire to show the unsigned reading on**, because the reading happens inside the comparator,
+      and the only candidate wire leaves the register file, which cannot re-spell its own output
+      without appearing to transform it. That is step 2's `dmem-wb` argument reached from the opposite
+      direction, and the pair is the milestone's best finding: **an interpretation never belongs on a
+      wire.** (One corpus program was added — a different bar, met in step 3's log.)
 - [ ] Every new lesson anchors under its declared model in every config it honors (the existing
       validator, unchanged and unweakened).
 - [ ] Narration obeys the rules the lessons README already states, which exist because each was

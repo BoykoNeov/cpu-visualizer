@@ -177,6 +177,53 @@ are visibly constant (the data-memory panel's `0x00000080`, unchanged across all
 `0x10000000` arriving at Data Memory on both loads) and then names the extension-inside-the-block as
 the reason the outputs differ. The contradiction becomes the actual lesson — _where_ extension happens.
 
+### "Looks different, is same" has a mirror: "looks same, is different"
+
+M5 step 3's finding, and it is the note above turned inside out — worth reading directly after it,
+because the pair is the point.
+
+`sign-and-zero` shows the datapath emitting **−128 then 128** while the trace's two `mem-read`s are
+byte-identical: the view looks different where the machine is the same, and the narration's job is to
+prove sameness (the constant `0x00000080`, the shared `0x10000000`). `which-is-smaller` is the exact
+opposite. Its two branch compares record **identical operands** — `{op: 'blt', a: -1, b: 1, result:
+1}` and `{op: 'bltu', a: -1, b: 1, result: 0}` — so trace, wires and register panel all agree, and the
+reader watches one comparison get answered two ways with **nothing on screen to explain it**. Here the
+narration's job is to prove _difference_, and the only evidence it has is the mnemonic.
+
+**Nothing is broken, and nothing is lost.** −1 and 4294967295 are the same 32 bits; the engines record
+operands in their signed int32 spelling throughout (`alu` does `a: a | 0` in all three tracing
+models), and `>>> 0` recovers the unsigned reading whenever anyone wants it. So this is not the trace
+failing to carry something.
+
+**There is simply no wire to show it on.** The unsigned reading is applied _inside the comparator_,
+exactly as sign-extension is applied _inside the load unit_, and the datapath draws neither as a box —
+the same structural gap, found from the opposite direction. The only wire that could carry 4294967295
+is `regfile-rs1`, sourced from `reg-read`, i.e. the register file's own output; a register file that
+re-spelled its contents according to the signedness of whoever was reading would **appear to transform
+its output**. That is precisely the argument step 2 used to leave `dmem-wb` alone. Two steps, two
+directions, one law: **an interpretation never belongs on a wire.** Hence zero engine and zero
+renderer changes, again.
+
+Two authoring consequences, both load-bearing:
+
+- **Never claim the reader can see 4294967295** — it appears nowhere. The lesson grounds itself in the
+  `0xffffffff` the register panel visibly shows, and supplies the unsigned reading in prose. The panel
+  itself is an instance of the lesson: it prints `-1` beside those bits because it had to pick a
+  spelling, and it picked signed.
+- **Narrate an unsigned comparison in unsigned terms throughout.** `branch-flavors.s` seeds its
+  unsigned guess with `mv a1, t0`, which the panel shows as **-1**; calling that guess "-1" invites the
+  reader's signed intuition (−1 < 1 — so why is it corrected?) and the step reads false off the screen.
+  The guess is 4294967295, which is not less than 1, so the fall-through fixes it. Note the two
+  branches also run in **opposite directions** — the signed one is taken and skips its correction, the
+  unsigned one is not taken and runs it — so there is no single sentence that describes "the branch".
+
+The oracle pins the collision itself (identical `a`/`b`, differing `result`) as a deliberate tripwire:
+drop the `| 0` and it reddens, which drags the next person back to this note before the datapath starts
+spelling registers differently per reader. Measured, both ways — dropping the `| 0` reddens **only**
+this test out of 121, so the operand convention was entirely unguarded until this lesson; and claiming
+the `bltu` was taken reddens **six** tests across single-cycle, multi-cycle and both pipeline
+positions, because `result` in a `where` pins control flow on every model at once.
+
 ### Narration may name an instruction the anchor cannot see
 
 M5 step 2's sharpest find, and the cheapest mistake to make. Its expert tier said `la` expands to
@@ -186,6 +233,15 @@ in one sentence: the mnemonic, and "PC-relative".) **919 tests were green**, and
 be: the step anchors to a `reg-write`, which is agnostic about WHICH instruction wrote the register.
 Anchor, value, order, narration-resolves — all correct, over prose naming an instruction that is not
 in the program.
+
+**The same rule bites when narration names a LESSON, and M5 step 3 shipped that draft too.** Its expert
+tier read "the same law `sign-and-zero` shows on loads" — an **id**, and the picker shows **titles**, so
+a reader who went looking would scan the list for "sign-and-zero" and find only "One byte, two answers".
+Caught by the browser, again, and by reading the rendered panel rather than the DOM. An id is a key for
+`index.json` and the test suite; it is not a thing the reader has ever seen. The fix was to point at
+`lb`/`lbu` — the instructions, which the reader HAS seen — rather than at the lesson wrapped around them.
+Cross-references between lessons are best made through the machine they share, not through the library's
+filenames.
 
 The rule: an anchor pins a **transaction**, never the sentence wrapped around it. Anything narration
 asserts beyond the anchored event — a mnemonic, an expansion, a cycle count, a claim about another
@@ -254,12 +310,26 @@ Listed in `index.json`'s teaching order — the language track first, then the �
   screen at once (the register panel lists them side by side), so step 1 bridges them in one clause
   rather than picking a side.
 
+- **`which-is-smaller`** — "When -1 is not less than 1" (`branch-flavors`): `min(t0, t1)` computed
+  twice over the same bits, once with `blt` and once with `bltu`, and the two answers disagree
+  (a0 = -1, a1 = 1). Placed directly after `sign-and-zero` because it is **the same law one surface
+  over, and the sharper half**: `lb`/`lbu` disagree about a byte arriving from memory, which leaves a
+  reader free to conclude the load settled the question; `blt`/`bltu` disagree about a word already
+  sitting in a register, which shows it never did. Signedness is a property of the instruction, and a
+  register's contents carry none for a later instruction to inherit.
+
+  It is also the one lesson whose subject is **invisible on screen** — see the mirror note above. The
+  two branches show identical operands and decide opposite, and the only on-screen difference is the
+  `u`. Its program is the corpus's first branch whose signed and unsigned readings differ at all, and
+  its first use of any branch but `bne`/`bge` — which is why M5 step 3 had to add a program rather
+  than reuse `call-return` (whose `bge` `function-call` already both anchors and narrates).
+
 - **`array-in-memory`** — walking an array in `.data` (`array-sum`): the first `lw`, a negative
   element, the summed total (120), and the `sw` that writes it back.
 - **`function-call`** — call/return linkage (`call-return`): argument setup, `jal` saving the
   return address, the in-function compare, and the result saved after `ret`.
 
-The three above target **single-cycle** (M1) and anchor only to architectural events, so they play
+The lessons above target **single-cycle** (M1) and anchor only to architectural events, so they play
 against any model unchanged (INV-6).
 
 - **`forwarding-bubble`** — the flagship experiment (M3, spec §12.2), on the **pipeline**, opening

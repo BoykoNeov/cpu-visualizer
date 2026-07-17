@@ -1,0 +1,41 @@
+{
+  "id": "which-is-smaller",
+  "title": "When -1 is not less than 1",
+  "program": "branch-flavors",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 5 } },
+      "narration": {
+        "essentials": "`li t0, -1` fills t0 with 32 one-bits. The register panel spells that `0xffffffff`, and beside it prints `-1`.",
+        "detailed": "One value, and everything in this lesson turns on how you read it. `li t0, -1` writes `0xffffffff` into t0 — thirty-two 1 bits. Find t0 on the register panel and look at its row: the hex `0xffffffff` is what is actually in the register, and the `-1` printed beside it is the panel's reading of those bits, not a second thing stored with them. Nothing in a register records whether it is supposed to be negative. The panel had to pick a spelling and it picked signed; keep that in mind, because it is about to matter twice. One more bit of housekeeping: the source calls this register `t0` while the disassembly beside the transport calls it `x5` — one register, a number and an ABI nickname, which the panel lists side by side.",
+        "expert": "`li t0, -1` lowers to a single `addi t0, x0, -1`: -1 fits the signed 12-bit I-type immediate, so `materialize32` collapses to the bare `addi` rather than emitting the `lui`+`addi` pair it needs for a wide constant. The register now holds 0xFFFFFFFF, which is -1 read as two's-complement and 4294967295 read as unsigned. Both readings are of the identical 32 bits; neither is recorded anywhere. The panel shows both spellings on the t0 row precisely because the machine does not choose between them."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "blt", "result": 1 } },
+      "narration": {
+        "essentials": "`blt` compares t0 and t1 as signed. -1 is less than 1, so the branch is taken.",
+        "detailed": "`blt t0, t1, signed_done` — branch if less than — asks whether t0 is below t1, reading both as signed. That reads t0 as -1 and t1 as 1, and -1 is less than 1, so the answer is yes and the branch is taken. Watch what taking it does: the PC jumps over the `mv a0, t1` on the very next line. That skip is the whole point. A cycle ago `mv a0, t0` guessed that t0 was the smaller of the two, and the skipped line was the correction standing by in case the guess was wrong. The branch was taken, so the correction never runs and a0 keeps -1 — the smaller of the two, read as signed.",
+        "expert": "The ALU evaluates the signed comparison and the branch unit selects PC + immediate over PC + 4. The trace records `alu-op` with op `blt`, a = -1, b = 1, result = 1, where result is the taken flag rather than a computed value. This is the ordinary compiled shape of `min`: move the guess, branch over the correction when the guess holds. `mv a0, t0` is `addi a0, t0, 0` — the disassembly beside the transport spells it that way, since `mv` is a pseudo-instruction and RV32I has no move."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "bltu", "result": 0 } },
+      "narration": {
+        "essentials": "`bltu` asks the same question about the same two registers, reading them as unsigned — and the answer comes back no.",
+        "detailed": "Here is the trap. `bltu t0, t1, unsigned_done` — branch if less than, unsigned — asks the same question about the same two registers, and nothing has touched either of them since the `blt`. But `bltu` reads those bits as unsigned, and read that way t0 is not -1: it is 4294967295, the largest number a 32-bit register can hold. 4294967295 is not less than 1, so this branch is not taken and the machine falls straight through instead of jumping. Now look at the datapath while you are here, because it is telling the truth in a way that is easy to misread: the wires into the ALU carry -1 and 1, exactly the two numbers they carried at the `blt`. They have to — they are the same bits, and the diagram spells them the way the panel does. The comparison reads them differently inside the ALU, and there is no wire the picture could put that on. The only thing on screen that says which reading is in force is the `u` on the end of the mnemonic.",
+        "expert": "The trace records `alu-op` with op `bltu`, a = -1, b = 1, result = 0 — operands identical to the `blt` two cycles earlier, and only op and result differ. That is not the trace losing information: -1 and 4294967295 are the same 32 bits, and the engine records operands in their signed int32 spelling throughout. The unsigned reading is applied inside the comparator, exactly as sign-extension is applied inside the load unit, and the datapath draws neither as a box — which is why the difference has nowhere to appear except in the mnemonic. In real hardware the subtractor is the same subtractor; signed and unsigned comparison differ only in which flags the branch unit consults."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 2, "where": { "reg": 11 } },
+      "narration": {
+        "essentials": "The fall-through runs the correction: a1 becomes 1. So a0 holds -1 and a1 holds 1 — two answers, same bits.",
+        "detailed": "Because `bltu` was not taken, the machine falls straight into the correction — the mirror of the line the `blt` jumped over, one register across: `mv a1, t1` overwrites the guess, and a1 becomes 1. That is the unsigned answer, and it is correct — of 4294967295 and 1, the smaller is 1. Now read the two results side by side on the register panel: a0 holds -1 and a1 holds 1. The program asked which of two registers is smaller, twice, about bits that never changed between the asking, and got two different answers. Neither is a bug and neither overrides the other: a0 is right if `0xffffffff` means -1, and a1 is right if it means 4294967295. The bits themselves never said. One letter in the mnemonic did.",
+        "expert": "Final state: a0 = -1 from the taken `blt`, a1 = 1 from the fall-through after the untaken `bltu`. The two are min(t0, t1) computed over identical operands under the two orderings RV32I offers, and both are correct under their own reading. This is the same law `lb` and `lbu` show on loads, one surface over: there the two disagree about a byte arriving from memory; here `blt` and `bltu` disagree about a word already sitting in a register — which is the sharper half, because it shows the load never settled the question. A register's contents carry no signedness for a later instruction to inherit. It is why RV32I ships both flavors of every comparison, and why `bltu` is the correct choice for comparing addresses, which are unsigned and routinely have the top bit set."
+      }
+    }
+  ]
+}

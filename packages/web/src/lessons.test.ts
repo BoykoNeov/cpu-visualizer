@@ -407,8 +407,8 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
 
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
-    // Five single-cycle tours (M1's "2–3 lessons" target, plus M5's front door and its
-    // sign-extension lesson) and the two
+    // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
+    // lesson, and the comparison lesson that is the same law one surface over) and the two
     // pipeline flagships — one
     // per toggle the pipeline honors, which is the shape the library has converged on rather than a
     // coincidence: a config knob nobody can see the point of is a knob that should not ship.
@@ -416,7 +416,7 @@ describe('authored lessons (INV-6)', () => {
     // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
     // under them (pinned by the cross-model suite below). The pipeline is the first model whose
     // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
-    expect(LESSONS.length).toBe(7);
+    expect(LESSONS.length).toBe(8);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP — "one lesson per
     // microarchitecture" — and `LESSONS` is no longer in a sorted order for it to borrow. Written
     // as a bare `toEqual` it passed only because the picker was alphabetical, so M5 step 0 reddened
@@ -727,6 +727,99 @@ describe('authored lessons (INV-6)', () => {
     expect(reads).toEqual([
       { addr: 0x10000000, value: 128 },
       { addr: 0x10000000, value: 128 },
+    ]);
+  });
+
+  /**
+   * `which-is-smaller`'s oracle (M5 step 3) — the mirror of `sign-and-zero`, and the reason step 3
+   * needed a new corpus program at all.
+   *
+   * **Why `call-return` could not carry this.** The plan recommended trying it first. Its `bge a0,
+   * a1, done` is already anchored AND narrated by `function-call`'s third step ("17 is not >= 42, so
+   * the branch is not taken"), and taken-vs-not-taken is already narrated by `sum-loop-tour`'s steps
+   * 4 and 5. So the only non-duplicative content left in "branches as a decision" is the signed/
+   * unsigned trap — and that is not tellable on the old corpus for a reason stronger than preference:
+   * its three conditional branches are `bnez` twice (against zero) and one `bge` on 17 vs 42, so for
+   * every operand the corpus ever compared, `blt` and `bltu` return the SAME answer. The trap was
+   * definitionally invisible. `branch-flavors.s` is the corpus's first branch whose two readings
+   * disagree, and its first use of any branch but `bne`/`bge`.
+   *
+   * **The thesis, and the mirror.** `sign-and-zero` is "looks different, is same": the datapath shows
+   * the Data-Memory block emitting −128 then 128 while the trace's two `mem-read`s are byte-identical.
+   * This lesson is the opposite shape — "looks same, is different". The two branch events below carry
+   * IDENTICAL operands and opposite results, so the reader sees one comparison answered two ways with
+   * nothing on screen to explain it. That is not a defect anywhere: trace, wires and panel all agree.
+   * -1 and 4294967295 are the same 32 bits, and the engines record operands in their signed int32
+   * spelling throughout (`alu` does `a: a | 0` in all three tracing models) — so nothing is lost, and
+   * `>>> 0` recovers the unsigned reading at any time.
+   *
+   * **There is simply no wire to show it on.** The unsigned reading is applied inside the comparator,
+   * exactly as sign-extension is applied inside the load unit, and the datapath draws neither as a
+   * box. The only wire that could carry 4294967295 is `regfile-rs1`, which is sourced from `reg-read`
+   * — the register file's own output — and a register file that re-spelled its contents by the
+   * signedness of whoever was reading would appear to TRANSFORM its output. That is the identical
+   * argument step 2 used to leave `dmem-wb` alone, arrived at from the opposite direction, and it is
+   * why this step ships zero engine and zero renderer changes. The narration reconciles instead: it
+   * grounds the claim in the `0xffffffff` the register panel visibly shows and names the mnemonic as
+   * the only thing on screen that differs. (Note `u(rs1)` in the engines' `bltu`/`bgeu` arms does not
+   * survive `| 0` into the recorded operand — so `alu('bltu', u(..), ..)` and `alu('bltu', s(..), ..)`
+   * emit the same event. Harmless, since the bits are the bits, but it is why the "obvious" fix of
+   * dropping the `| 0` looks available and is not: it would put a reading on a wire.)
+   *
+   * The pin below is deliberately a tripwire. If anyone ever drops that `| 0`, the operands stop
+   * matching and this reddens — dragging them back to this lesson, which is exactly the conversation
+   * that should happen before the datapath starts spelling registers differently per reader.
+   */
+  it('which-is-smaller: the SAME operands, compared two ways, decide opposite', () => {
+    const lesson = byId('which-is-smaller');
+    const trace = recordProgram(lesson.program);
+    const anchored = anchorLesson(lesson, trace);
+
+    // The bits, arriving. The panel prints `0xffffffff` and `-1` on this row; the lesson's first
+    // step is about that pair, so pin the value the panel is spelling.
+    expect(anchoredEvent(trace, anchored[0]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 5,
+      value: -1,
+    });
+
+    // THE THESIS, as an assertion: two branch compares, identical operands, opposite verdicts.
+    // `result` is the taken flag (cf. sum-loop-tour's `bne` oracle), so this pins the control flow
+    // too: the signed branch goes, the unsigned one does not.
+    const signed = anchoredEvent(trace, anchored[1]!);
+    const unsigned = anchoredEvent(trace, anchored[2]!);
+    expect(signed).toMatchObject({ type: 'alu-op', op: 'blt', a: -1, b: 1, result: 1 });
+    expect(unsigned).toMatchObject({ type: 'alu-op', op: 'bltu', a: -1, b: 1, result: 0 });
+    // Narrowed rather than asserted-through: `anchoredEvent` returns the union, and the operand
+    // arithmetic below is the point of this test, so it should be typed rather than cast.
+    if (signed.type !== 'alu-op' || unsigned.type !== 'alu-op') {
+      throw new Error('both branch steps must anchor to an alu-op');
+    }
+
+    // ...and said as the one claim the narration actually makes: the operands are indistinguishable,
+    // and ONLY the mnemonic and the verdict differ. Written as a whole-object compare rather than
+    // field-by-field so a new operand field could not quietly slip between the two.
+    expect({ a: signed.a, b: signed.b }).toEqual({ a: unsigned.a, b: unsigned.b });
+    expect(signed.result).not.toBe(unsigned.result);
+
+    // The unsigned reading the narration supplies, and the reason the verdict is lawful: the same
+    // bits the panel spells `-1` are 4294967295 unsigned, which is NOT less than 1. Recovered with
+    // `>>> 0` — the trace is lossless here, which is the half of the finding that says the engines
+    // need no change.
+    expect(unsigned.a >>> 0).toBe(4294967295);
+    expect(unsigned.a >>> 0 < unsigned.b >>> 0, 'unsigned: 4294967295 < 1 is false').toBe(false);
+    expect(signed.a < signed.b, 'signed: -1 < 1 is true').toBe(true);
+
+    // The payoff: the fall-through corrects the guess, so the two answers end up side by side in the
+    // register panel. Both are min(t0, t1) — under different readings of the same bits.
+    expect(anchoredEvent(trace, anchored[3]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 11,
+      value: 1,
+    });
+    const final = trace.at(-1)!.state;
+    expect([final.registers[10], final.registers[11]], 'signed min, then unsigned min').toEqual([
+      -1, 1,
     ]);
   });
 
