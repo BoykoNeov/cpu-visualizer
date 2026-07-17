@@ -60,6 +60,15 @@ toggle back and forth and watch the total stay put while the cycle count moves")
 does ("the 42 never budges, and the count sits one cycle higher on the side that bets"). A both-
 positions step should name the sides, never say "flip it and watch X happen".
 
+The same root cause has a quieter second form: **presupposing what the reader has just seen**. The
+same closing step also said "add up what the bet actually did here" — read on predict-not-taken, where
+the lesson opens and where a reader who never flips stays, **no bet was placed at all**, and the map
+correctly shows no `?` to prove it. Every comparison in the sentence was true; only its premise was
+wrong. The tell is the tense: a both-positions step is describing **all** the machines at once, so it
+wants the present comparative ("betting wins a cycle on `jal`, loses two on `bge`") over the past
+reportive ("the bet won a cycle here"). The rule in one line: **a step alive in N positions is prose
+about the experiment, not about the run in front of you.**
+
 This is stated rather than guarded, deliberately: which way a sentence faces is semantics, and a test
 that pattern-matched imperatives would be a style rule wearing a test's clothes. It is here because it
 is the third time a lesson's closing narration went wrong in a way only the browser could see.
