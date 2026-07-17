@@ -1,0 +1,120 @@
+{
+  "id": "branch-bet",
+  "title": "The bet, and what it costs when it's wrong",
+  "program": "call-return",
+  "model": "pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "Nine instructions, three of which jump. Every jump is a guess about what to fetch next.",
+        "detailed": "This program calls a function: `jal ra, max` goes to it, `ret` comes back, and `bge a0, a1, done` picks a path inside it. Three transfers of control in nine instructions — and here is the problem they create. The pipeline fetches a new instruction every cycle, so the cycle after it fetches a branch it must fetch something else, and nobody knows yet where the branch goes. The machine cannot wait for the answer. It guesses.",
+        "expert": "Three transfers, one of each kind the machine can face: `jal` is PC-relative and always goes; `bge a0, a1, done` is conditional; `ret` is a `jalr` whose target lives in a register. Branches resolve in EX, two stages downstream of IF, so fetch necessarily runs ahead of the answer on a guess."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 24,
+          "predicted": false
+        }
+      },
+      "narration": {
+        "essentials": "The machine guessed `jal` would fall through. A `jal` never does. Two instructions thrown away.",
+        "detailed": "This machine has exactly one guess and always makes it: the branch will not be taken, so keep fetching the next instruction in line. For `jal ra, max` that guess is always wrong — a `jal` is an unconditional jump, it always goes. By the time EX works this out, two instructions from the abandoned path are already inside the pipeline, and both are thrown away. On the map, two rows end in a cross. Those two cycles are the cost of guessing wrong.",
+        "expert": "`predicted: false`, `actual: true` — a misprediction, and the redirect fires from EX. The branch resolves at the end of its EX cycle, by which point IF and ID both hold wrong-path instructions; the flush names both stages. A 2-cycle penalty, and under this scheme it is paid on every taken transfer in the program."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-predicted",
+        "where": {
+          "target": 24
+        }
+      },
+      "narration": {
+        "essentials": "Now the machine bets the other way — taken — and it can act one stage earlier.",
+        "detailed": "Same instruction, a different guess. This machine bets that a branch is taken, and it can act on that bet in Decode rather than waiting for Execute: the target of `jal ra, max` is `pc + imm`, and Decode holds both halves. So it adds them, redirects fetch to `0x18`, and only one wrong instruction is ever fetched instead of two. A cycle later EX resolves the `jal` and finds the guess was right, so there is nothing to correct. The bet won: one cycle instead of two.",
+        "expert": "The bet is placed in ID, one stage before the answer exists, by an adder on `pc + imm`. It is an ACTION — the pc is redirected and the fetch behind it dies — which is why it is its own event rather than a field on the resolution. A correct taken bet still costs 1: reaching 0 needs a branch-target buffer predicting from the pc in IF, which this machine deliberately does not have."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 28,
+          "predicted": false
+        }
+      },
+      "narration": {
+        "essentials": "Here the fall-through guess is right — and being right is free.",
+        "detailed": "`bge a0, a1, done` asks whether 17 is greater than or equal to 42. It is not, so the branch falls through to `mv a0, a1` — which is exactly the instruction the machine had already fetched. The guess was right, nothing is thrown away, and the branch costs nothing at all: no cross on the map, no lost cycle. This is what the not-taken machine is good at, and it is worth seeing before you flip the toggle.",
+        "expert": "`predicted: false`, `actual: false`. A correct not-taken prediction is the only genuinely free case in this machine — no redirect, no flush, no penalty. Note there is no event for the prediction itself, only for the resolution: a not-taken bet is the absence of an action, so there is no action to report."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-predicted",
+        "where": {
+          "target": 32
+        }
+      },
+      "narration": {
+        "essentials": "The taken machine bets on `bge` too. It bets on every branch it can.",
+        "detailed": "The bet is not judgement, it is a rule. This machine bets taken on every branch whose target it can compute, so it bets on `bge a0, a1, done` exactly as it bet on the `jal`: redirect fetch to `done` at `0x20`, kill the instruction behind it. It has no way to know that this particular comparison is false. Watch the map — the branch's own row is marked where the bet goes in.",
+        "expert": "The bet is placed on the TARGET, `0x20` — not on where the branch will turn out to resolve. A static scheme carries no history and no state, so `bge` and `jal` are indistinguishable to it: both are PC-relative transfers with a target computable in ID."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 28,
+          "predicted": true
+        }
+      },
+      "narration": {
+        "essentials": "Wrong. It falls through after all — and now costs two cycles where it cost none.",
+        "detailed": "Here is the bet going wrong. EX compares 17 against 42, finds the branch not taken, and has to undo the guess: redirect fetch back to `0x1C`, the fall-through, and kill what the bet had fetched. Count the cost on this one branch — one cycle lost placing the bet, one more taking it back. Under the other scheme this exact branch cost zero. The map marks both halves on the branch's own row: where it bet, and where it was found out.",
+        "expert": "`predicted: true`, `actual: false` — a misprediction, and the redirect fires because `predicted !== actual`, not because the branch was taken. This is the case that proves those are different conditions rather than two spellings of one: the branch is NOT taken here, and it redirects anyway."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 12
+        }
+      },
+      "narration": {
+        "essentials": "`ret` beats both machines — its target sits in a register neither has read yet.",
+        "detailed": "And now the one neither scheme can win. `ret` is `jalr x0, 0(ra)`: its target is not `pc` plus anything, it is whatever happens to be in the register `ra`. Decode has not read that register, so there is nothing to compute and no bet is placed — both machines simply keep fetching the next instruction, both are wrong, and both pay two cycles. Notice what is missing, though: nothing is crossed out. `ret` is the last instruction in the program, so the wrong path it fetched was never anything at all. It cost two cycles and killed nobody.",
+        "expert": "`jalr` is absent from the predictable set, so `predicted: false` under every scheme and the full EX penalty always applies — the asymmetry that makes this program the counterexample. Predicting it needs a return-address stack. The absent flush is the general lesson: a flush reports CASUALTIES, so a penalty that kills nobody is invisible in it. That is why a misprediction is marked on the branch itself rather than on what it destroyed."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 8,
+          "value": 42
+        }
+      },
+      "narration": {
+        "essentials": "Same answer, 42 — and here the guessing machine was the slower one.",
+        "detailed": "Both machines save the same 42 into s0. A guess never changes what a program computes, only how long it takes to compute it. So add up what the bet actually did here: on `jal` it won a cycle, on `bge` it lost two, and on `ret` it could not be placed at all. That is 17 cycles guessing fall-through against 18 guessing taken — the toggle made this program slower. Flip it and watch the total move the wrong way. Then load `sum-loop`, a loop that goes the same way nine times out of ten, and try the same toggle there: the bet is right nearly every pass and the program finishes sooner. No scheme wins everywhere. That is why this is a toggle and not a fix.",
+        "expert": "Signed per transfer and never averaged: −1 on the predictable taken jump, +2 on the not-taken conditional, 0 on the unpredictable return — summing to +1. The other half is the architectural guarantee the whole mechanism rests on: speculation never commits. s0 is 42 under both schemes because every wrong-path instruction is killed before it reaches WB, so a guess can cost you cycles and can never cost you correctness."
+      }
+    }
+  ]
+}

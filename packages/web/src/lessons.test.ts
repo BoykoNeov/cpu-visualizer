@@ -205,6 +205,31 @@ function anchoredEvent(trace: readonly CycleTrace[], anchored: AnchoredStep): Tr
   return cycle!.events[anchored.eventIndex!]!;
 }
 
+/**
+ * Map instruction id → the pc it was fetched from, for THIS recording. Ids are minted per fetch, so
+ * they are meaningless across two recordings; the pc is what identifies an event as "that source
+ * line", and it is the difference between pinning a lesson's SUBJECT and pinning its arithmetic.
+ */
+function pcById(trace: readonly CycleTrace[]): Map<string, number> {
+  const pcs = new Map<string, number>();
+  for (const cycle of trace) {
+    for (const event of cycle.events) {
+      if (event.type === 'instr-fetch') pcs.set(event.instr, event.pc);
+    }
+  }
+  return pcs;
+}
+
+/** The pc of the instruction a step's anchored event names, or `null` if the step is dead. */
+function anchoredPc(trace: readonly CycleTrace[], anchored: AnchoredStep): number | null {
+  if (anchored.cycle === null) return null;
+  const event = anchoredEvent(trace, anchored) as TraceEvent & { instr?: string };
+  expect(event.instr, `${event.type} carries no instr id`).toBeDefined();
+  const pc = pcById(trace).get(event.instr!);
+  expect(pc, `no instr-fetch for ${event.instr}`).toBeDefined();
+  return pc!;
+}
+
 const byId = (id: string): Lesson => {
   const lesson = LESSONS.find((l) => l.id === id);
   if (!lesson) throw new Error(`lesson "${id}" not found — the value oracle is stale`);
@@ -300,13 +325,16 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
 
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
-    // Three single-cycle tours (M1's "2–3 lessons" target) plus M3's flagship pipeline lesson.
+    // Three single-cycle tours (M1's "2–3 lessons" target) plus the two pipeline flagships — one
+    // per toggle the pipeline honors, which is the shape the library has converged on rather than a
+    // coincidence: a config knob nobody can see the point of is a knob that should not ship.
     // Multi-cycle deliberately has none: its story is "one instruction, phases spread over
     // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
     // under them (pinned by the cross-model suite below). The pipeline is the first model whose
-    // lesson could NOT be borrowed that way — nothing else stalls.
-    expect(LESSONS.length).toBe(4);
+    // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
+    expect(LESSONS.length).toBe(5);
     expect(LESSONS.filter((l) => l.model === 'pipeline').map((l) => l.id)).toEqual([
+      'branch-bet',
       'forwarding-bubble',
     ]);
   });
@@ -723,27 +751,6 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
   const LOAD_USE_PC = 20; // `add a0, a0, t2` — reads the t2 that `lw t2, 0(t0)` is still fetching
   const BRANCH_RAW_PC = 32; // `bnez t1, loop` — reads the t1 that `addi t1, t1, -1` just wrote
 
-  /** Map instruction id → the pc it was fetched from, for THIS recording. */
-  function pcById(trace: readonly CycleTrace[]): Map<string, number> {
-    const pcs = new Map<string, number>();
-    for (const cycle of trace) {
-      for (const event of cycle.events) {
-        if (event.type === 'instr-fetch') pcs.set(event.instr, event.pc);
-      }
-    }
-    return pcs;
-  }
-
-  /** The pc of the instruction a step's anchored event names, or `null` if the step is dead. */
-  function anchoredPc(trace: readonly CycleTrace[], anchored: AnchoredStep): number | null {
-    if (anchored.cycle === null) return null;
-    const event = anchoredEvent(trace, anchored) as TraceEvent & { instr?: string };
-    expect(event.instr, `${event.type} carries no instr id`).toBeDefined();
-    const pc = pcById(trace).get(event.instr!);
-    expect(pc, `no instr-fetch for ${event.instr}`).toBeDefined();
-    return pc!;
-  }
-
   const lesson = (): Lesson => byId('forwarding-bubble');
 
   /**
@@ -852,5 +859,257 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
     // so these two numbers and the shipped prose cannot drift apart without this line going red.
     expect(off.length).toBe(72);
     expect(on.length).toBe(51);
+  });
+});
+
+/**
+ * `branch-bet`'s own oracle — the M4 flagship (step 7), and the milestone's thesis made guided.
+ *
+ * The lesson is `forwarding-bubble`'s structure one knob over: its steps are CONFIG-EXCLUSIVE, and
+ * that is the lesson. `branch-predicted` fires only under `static-taken` (a not-taken machine places
+ * no bet — the fall-through IS the not-taken path, so there is no action to report), so a lesson
+ * about a bet MUST have steps dead in one position. Nothing here needed a new lesson-format field,
+ * an engine change, or a renderer change; the generic sweep above covered the new prediction axis
+ * with **no special case**, which was step 7's acceptance line and which held on the first run.
+ *
+ * ## Why `call-return`, and why it is forced
+ *
+ * The same test M3 applied to `array-sum`: it is the only corpus program that carries the whole
+ * story on source-visible lines. `transfers: { takenPredictable: 1, notTaken: 1, takenUnpredictable:
+ * 1 }` — one of each kind the machine can face, three lines, nine instructions:
+ *
+ *   - `jal ra, max` (pc 8) — PC-relative and always taken. The bet WINS: 2 cycles → 1.
+ *   - `bge a0, a1, done` (pc 24) — `17 >= 42` is false, so it never goes. The bet LOSES: 0 → 2.
+ *   - `ret` (pc 32) — a `jalr`, target in a register ID has not read. NO scheme can bet: 2 → 2.
+ *
+ * Signed, that is −1 + 2 + 0 = **+1**, and it is step 3's pinned `call-return` regression (17 → 18)
+ * decomposed onto the three lines that produce it. The lesson is the only surface where the thesis
+ * "no scheme dominates" is a claim about instructions rather than about a total.
+ *
+ * ## What this oracle sees that the sweep cannot — measured, and not what was predicted
+ *
+ * The natural trigger SLIDES, exactly as M3's `nth: 3 → 1` did: `where: { predicted: false, actual:
+ * true }` lands on the `jal` under not-taken and on the `ret` under `static-taken` — alive in both,
+ * narrated, about a different instruction in each. `predicted` is a property of the SCHEME, so any
+ * trigger keyed on it means something different in each position. So each step is keyed on `target`
+ * instead — the branch unit's own answer, which is architectural and therefore scheme-independent.
+ *
+ * **But the claim that the sweep is blind to that slide was FALSE, and it was worth measuring rather
+ * than asserting.** Run as a mutation, it fails three tests: the oracle below, and the sweep's ORDER
+ * check in both taken positions (`expected [2, 4, 5] to deeply equal []`). The reason is a property
+ * of this lesson rather than of the validator — its config-exclusive steps INTERLEAVE in trace order
+ * (the not-taken beat about a branch sits between the taken beats about the same branch), so a slid
+ * step overshoots its neighbours and trips the order guard. `forwarding-bubble`'s slide stayed in
+ * order and was invisible. Structure, not vigilance, caught this one.
+ *
+ * **The mutation the sweep genuinely cannot see is a different one, and it is the sharper finding.**
+ * Weaken the `ret` step (index 6) from `{ target: 12 }` to `nth: 2, { predicted: false, actual: true
+ * }`. Under not-taken that is exactly right — the `jal` mispredicts first, the `ret` second. Under
+ * `static-taken` the `jal` is predicted correctly, so the `ret` becomes the FIRST such event, `nth:
+ * 2` matches nothing, and the step silently DIES — deleting "no scheme can bet on a `ret`" from the
+ * rail in precisely the position where it is the punchline. The whole sweep stays green: the step is
+ * alive under not-taken, which is all "fires in at least one position" asks. Exactly one test fails,
+ * the one below, with `step 6 never fired`.
+ *
+ * That is the price of the config-exclusive licence, stated plainly: once "a step may lawfully be
+ * dead in a position" is legal (M3 step 8, and this lesson needs it more than that one did), DEAD
+ * and LAWFULLY DEAD stop being distinguishable to a generic rule. Nothing derivable can close that
+ * gap — which position a step is *meant* to be dead in is pedagogy, and pedagogy is not in the
+ * trace. It has to be asserted by name, per scheme, which is what this block is.
+ *
+ * Each step is therefore keyed on `target` — architectural and
+ * therefore scheme-independent, unlike `predicted`. **And the two targets on one branch are not
+ * interchangeable, which is the trap worth recording:** `bge` BETS on `0x20` (`done`, its taken
+ * target) and RESOLVES to `0x1C` (its fall-through). One instruction, two events, two different
+ * targets — a step keyed on the wrong one is dead, and a `where` naming both is unsatisfiable. Each
+ * step is filtered on the target belonging to the event it anchors to.
+ */
+describe('branch-bet — the milestone’s thesis, guided (M4 step 7)', () => {
+  const JAL_PC = 8; // `jal ra, max` — always taken, and PC-relative, so ID can bet on it
+  const BGE_PC = 24; // `bge a0, a1, done` — 17 >= 42 is false, so it never goes
+  const RET_PC = 32; // `ret` = `jalr x0, 0(ra)` — target in a register; unpredictable by construction
+
+  const lesson = (): Lesson => byId('branch-bet');
+
+  /**
+   * The lesson's own declared machine with the one knob it is ABOUT varied — program, model and the
+   * other knobs derived from the declaration rather than restated (M4 step 4's finding: a lesson's
+   * numbers are properties of a whole machine, so a helper that quietly substitutes `defaultConfig()`
+   * pins the prose under a machine nothing ties to the lesson).
+   */
+  const record = (scheme: 'static-not-taken' | 'static-taken'): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('branch-bet must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, branchPrediction: scheme });
+  };
+
+  it('opens on the pipeline predicting NOT-taken — the baseline, before the bet', () => {
+    // The experiment only reads as an experiment if the user sees the machine WITHOUT the idea
+    // first (M3 step 8's reasoning for opening forwarding-off). Not-taken is also `defaultConfig()`
+    // and the machine M3 shipped, so the lesson starts from what the user already has.
+    expect(lesson().model).toBe('pipeline');
+    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+  });
+
+  it('THE BET WINS: jal mispredicts under not-taken, and is bet on correctly under taken', () => {
+    const [nt, taken] = [record('static-not-taken'), record('static-taken')];
+    const [aNt, aTaken] = [anchorLesson(lesson(), nt), anchorLesson(lesson(), taken)];
+
+    // Step 1 — the fall-through guess, wrong on a jump that always goes. Alive not-taken, and on
+    // the JAL: `{ predicted: false, actual: true }` alone would slide onto the `ret` under the
+    // other scheme, which is why the trigger keys on the target instead.
+    expect(anchoredEvent(nt, aNt[1]!)).toMatchObject({
+      type: 'branch-resolved',
+      predicted: false,
+      actual: true,
+    });
+    expect(anchoredPc(nt, aNt[1]!)).toBe(JAL_PC);
+    expect(aTaken[1]!.cycle, 'the jal still mispredicts under static-taken').toBeNull();
+
+    // Step 2 — the BET, and it is an ACTION in ID, not a field on the resolution. Dead under
+    // not-taken because no bet is placed there at all: the fall-through IS the not-taken path.
+    expect(aNt[2]!.cycle, 'a bet was placed by a machine that predicts not-taken').toBeNull();
+    expect(anchoredEvent(taken, aTaken[2]!)).toMatchObject({
+      type: 'branch-predicted',
+      target: 24, // `max:` — pc + imm, computed in ID
+    });
+    expect(anchoredPc(taken, aTaken[2]!)).toBe(JAL_PC);
+
+    // The payoff the narration claims: the bet is placed BEFORE the answer exists, so it costs one
+    // cycle where the same jump cost two. Asserted as the gap between the two events, not as a
+    // number read off a run: EX resolves the jal in the same cycle under both schemes.
+    const resolveCycle = (trace: readonly CycleTrace[]): number =>
+      trace.find((c) => c.events.some((e) => e.type === 'branch-resolved' && e.target === 24))!
+        .cycle;
+    expect(aTaken[2]!.cycle, 'the bet lands one cycle before EX resolves it').toBe(
+      resolveCycle(taken) - 1,
+    );
+    expect(resolveCycle(nt)).toBe(resolveCycle(taken));
+  });
+
+  it('THE BET LOSES: bge is free under not-taken and costs two cycles under taken', () => {
+    const [nt, taken] = [record('static-not-taken'), record('static-taken')];
+    const [aNt, aTaken] = [anchorLesson(lesson(), nt), anchorLesson(lesson(), taken)];
+
+    // Step 3 — being right is FREE, and it is the beat that makes the regression legible: this is
+    // the branch the taken machine is about to lose two cycles on. `predicted: false, actual: false`
+    // is the only case in the machine with no redirect and no flush.
+    const free = aNt[3]!;
+    expect(anchoredEvent(nt, free)).toMatchObject({
+      type: 'branch-resolved',
+      predicted: false,
+      actual: false,
+    });
+    expect(anchoredPc(nt, free)).toBe(BGE_PC);
+    expect(
+      nt.find((c) => c.cycle === free.cycle)!.events.some((e) => e.type === 'flush'),
+      'a correct not-taken prediction cost something',
+    ).toBe(false);
+    expect(aTaken[3]!.cycle, 'the taken machine also guessed bge would fall through').toBeNull();
+
+    // Steps 4 and 5 — the bet, then the correction. Both dead under not-taken.
+    for (const index of [4, 5]) {
+      expect(aNt[index]!.cycle, `step ${index} fired on a machine that places no bets`).toBeNull();
+    }
+
+    // Step 4 bets on the TARGET — `done` at 0x20. A static scheme has no history: `bge` and `jal`
+    // are the same thing to it, a PC-relative transfer with a computable target.
+    const bet = aTaken[4]!;
+    expect(anchoredEvent(taken, bet)).toMatchObject({ type: 'branch-predicted', target: 32 });
+    expect(anchoredPc(taken, bet)).toBe(BGE_PC);
+
+    // Step 5 RESOLVES to a different address than step 4 bet on — the trap this oracle exists to
+    // pin. The bet's target is `done` (0x20); the resolution's is the fall-through (0x1C). Same
+    // instruction, same lesson, two events, two targets: a step keyed on the wrong one is dead.
+    const wrong = aTaken[5]!;
+    expect(anchoredEvent(taken, wrong)).toMatchObject({
+      type: 'branch-resolved',
+      predicted: true,
+      actual: false,
+      target: 28,
+    });
+    expect(anchoredPc(taken, wrong)).toBe(BGE_PC);
+
+    // ...and the redirect fires because `predicted !== actual`, NOT because the branch was taken —
+    // this branch is NOT taken and corrects anyway. The two conditions coincide exactly while
+    // nothing predicts taken, which is why they read as interchangeable and are not (M4 step 5).
+    expect(
+      taken.find((c) => c.cycle === wrong.cycle)!.events.some((e) => e.type === 'flush'),
+      'a lost bet killed nothing',
+    ).toBe(true);
+  });
+
+  it('THE BET THAT CANNOT BE PLACED: ret mispredicts under BOTH schemes, and kills nobody', () => {
+    // Step 6 is the lesson's load-bearing half — the reason no scheme dominates is not that taken is
+    // a bad guess, it is that one transfer admits no guess at all. Alive in both positions, and it
+    // must be: `jalr` is absent from the predictable set, so `predicted: false` under every scheme.
+    for (const scheme of ['static-not-taken', 'static-taken'] as const) {
+      const trace = record(scheme);
+      const anchored = anchorLesson(lesson(), trace);
+      const ret = anchored[6]!;
+      expect(anchoredEvent(trace, ret), `[${scheme}]`).toMatchObject({
+        type: 'branch-resolved',
+        predicted: false,
+        actual: true,
+        target: 12, // back to `mv s0, a0`, the instruction after the `jal`
+      });
+      expect(anchoredPc(trace, ret), `[${scheme}]`).toBe(RET_PC);
+
+      // The narration's "it cost two cycles and killed nobody", asserted — and it is the reason the
+      // map marks the BRANCH rather than colouring its victims (step 6). `ret` is the last word of
+      // `.text`, so the wrong path it fetched was never anything: a penalty with no casualty, which
+      // a flush structurally cannot report.
+      expect(
+        trace.find((c) => c.cycle === ret.cycle)!.events.some((e) => e.type === 'flush'),
+        `[${scheme}] the ret's misprediction flushed someone`,
+      ).toBe(false);
+    }
+  });
+
+  it('same answer, MORE cycles: s0 = 42 either way, 17 under not-taken and 18 under taken', () => {
+    const [nt, taken] = [record('static-not-taken'), record('static-taken')];
+
+    // The closing step, alive in both — it is what the program computed, not how it ran. This is
+    // INV-8 at the lesson layer: speculation never commits, so every wrong-path instruction above
+    // died before WB and the answer is untouched by the guessing.
+    for (const trace of [nt, taken]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 8, value: 42 });
+    }
+
+    // ...and step 3's pinned regression, which the closing narration quotes to the reader as fact.
+    // Asserted here rather than trusted — M4 step 4 shipped prose reading "51 cycles" over a
+    // transport reading 49, and a narration oracle is the only thing that can see that.
+    expect(nt.length).toBe(17);
+    expect(taken.length).toBe(18);
+  });
+
+  /**
+   * The lesson's numbers are true in BOTH forwarding positions, and that is a fact about this
+   * program rather than a licence to leave the knob undeclared. `call-return` is the corpus's
+   * S = 0 program — every RAW in it already sits behind a flush gap — so forwarding buys it nothing
+   * and the closing prose holds either way.
+   *
+   * Which is the sharpest available answer to the `Partial` question M4 step 4 declined (the 4th
+   * declined field). Here is a knob a lesson provably has "no opinion" about — the exact category
+   * `Partial` was invented to express — and declaring it is STILL right, because the only way to
+   * know it does not matter is to measure it, and the measurement is this test rather than the
+   * type. A lesson is a controlled experiment: `forwarding` is a control here, and a control you
+   * have verified is inert is still a control you pinned. Drop the declaration and the shell parks
+   * the user wherever they last were; nothing goes red until the program changes, and then the
+   * prose is wrong with no test watching.
+   */
+  it('pins forwarding as a CONTROL, and this program proves the control inert', () => {
+    const declared = lesson().config!;
+    const under = (forwarding: boolean, scheme: 'static-not-taken' | 'static-taken'): number =>
+      recordLesson(lesson(), { ...declared, forwarding, branchPrediction: scheme }).length;
+
+    for (const scheme of ['static-not-taken', 'static-taken'] as const) {
+      expect(under(false, scheme), `[${scheme}] forwarding changed call-return`).toBe(
+        under(true, scheme),
+      );
+    }
+    // The declaration is present regardless — the point of the test above, not a contradiction of it.
+    expect(declared.forwarding).toBe(true);
   });
 });
