@@ -1,7 +1,8 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
-**Status: STEPS 0–1 DONE 2026-07-17 (907 tests) — the order spine is in, the picker's alphabetical
-order is gone, and `first-program` is the front door. Steps 2–5 not started. The prerequisite shipped —
+**Status: STEPS 0–2 DONE 2026-07-17 (919 tests) — the order spine is in, the picker's alphabetical
+order is gone, `first-program` is the front door, and `sign-and-zero` teaches the load-extension trap
+on the corpus's last orphan. Steps 3–5 not started. The prerequisite shipped —
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
@@ -216,12 +217,89 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       other two are authored-but-unproven until something looks — M1's lesson panel set the
       precedent by toggling to Essentials.)
 
-- [ ] **2. `sign-and-zero` on `byte-loads.s`.** The corpus's orphaned teaching program, finally
-      taught with: one byte, `0x80`, read as −128 by `lb` and +128 by `lbu`. Anchors: `mem-read`
-      ×2 + the two `reg-write`s that differ. This is the single highest-value lesson in the track
-      because it is the one place the ISA is genuinely _counter-intuitive_, and the panel can only
-      assert it — a run can show it. Acceptance: both `reg-write`s anchored and their values
-      pinned (−128 / +128) by an oracle, not just "the step fires".
+- [x] **2. `sign-and-zero` on `byte-loads.s` — DONE 2026-07-17 (919 tests).** The corpus's orphaned
+      teaching program, finally taught with: `content/lessons/sign-and-zero.json`, "One byte, two
+      answers", three steps on single-cycle, third in `index.json` (after `sum-loop-tour`, before
+      `array-in-memory` — step 4's target order; step 4 is still the real sequencing pass). No new
+      format fields, no engine change, **no renderer change** — the last of those was a decision, not
+      a default, and is the finding below. Browser-verified on the shipped bundle in both themes.
+
+      **THIS STEP'S ANCHOR LIST WAS ALSO UNBUILDABLE — AND FOR A DIFFERENT REASON THAN STEP 1'S.**
+      The plan asked for `mem-read` ×2 + the two `reg-write`s. Measured as a mutation, adding the
+      `mem-read` step gives `steps share a cycle and can't be reached independently by the cursor:
+      [[2,[1,2]]]`. Worth stating precisely, because "the pigeonhole again" is the wrong diagnosis:
+      step 1 hit a **count** ceiling (four steps over a three-instruction program), and `byte-loads.s`
+      is **six** instructions, so counting was never binding here. The rule that bit is narrower — on
+      single-cycle a load's `mem-read` and its `reg-write` are **one cycle**, so the raw byte and the
+      extended value cannot be two steps. It bites an authoring the count permits, which is what makes
+      it a second finding rather than a repeat.
+
+      The collapse is a gift: the contrast axis moves from read-vs-write to **`lb`-vs-`lbu`**, which is
+      the lesson the program's header always claimed, and the reader loses nothing — the cursor sits on
+      a whole cycle, so the step showing −128 shows the load that produced it.
+
+      **THE DATAPATH DISAGREES WITH THE TRACE, AND ONLY THE BROWSER SAID SO.** The trace's two
+      `mem-read` events are byte-identical (`{addr: 0x10000000, value: 128}` for both `lb` and `lbu`) —
+      the lesson's whole thesis, and now pinned by its oracle. But `datapath.ts` drives the
+      Data-Memory output wire from `regWrite.value`, not `memRead.value` (`if (isLoad) w('dmem-wb',
+      regWrite.value, 'dec')`), so **on screen that block emits −128 for `lb` and 128 for `lbu`**. The
+      first draft's narration said "the two memory reads are identical" and told the reader to "watch
+      what memory hands back: `0x80`" — contradicted on the centerpiece view, at the **default** tier,
+      with every test green. Exactly the class the eyeball exists for, and note that relocating the
+      pointer would NOT have fixed it: the contradiction is visual, so it had to be reconciled, not
+      dodged.
+
+      **The renderer was left alone, and that is a decision with a reason.** The diagram has no
+      extender box, so the Data-Memory block **is** the load unit (Patterson & Hennessy's convention)
+      and its output is legitimately the instruction's answer. Sourcing that wire from `memRead.value`
+      would show 128 into the write-back mux and −128 out of it — a selector that appears to TRANSFORM
+      its input, which is a worse lie and an always-on one, for every load in the corpus. The honest
+      fix is to DRAW the extender, which is a real change across three datapath files
+      (`datapath.ts`, `-multi`, `-pipeline`) and a µarch-view question rather than a content one. So
+      the narration reconciles the surfaces: it grounds "same byte, same address" in the two things
+      that are visibly constant — the data-memory panel's `0x00000080` (unchanged across all three
+      steps) and the `0x10000000` arriving at Data Memory on both loads, both browser-verified — and
+      then names the extension-inside-the-block as the reason the outputs differ. The contradiction
+      becomes the actual lesson: *where* extension happens.
+
+      **`byte-loads.s` is the only corpus program where `mem-read.value` and `reg-write.value` disagree
+      at all** — every other load is an `lw`, so the two are equal and the wire's source is invisible.
+      That is why nothing ever had to decide this, and why only a lesson on this program could surface
+      it. The orphan was hiding a view decision, not just a lesson.
+
+      **THE EXPERT TIER NAMED THE WRONG INSTRUCTION, AND 919 GREEN TESTS COULD NOT SEE IT.** The
+      draft said `la` expands to `auipc t0, 0x10000` + `addi`; the transport, directly above the
+      lesson panel, disassembles that very instruction as **`lui x5, 0x10000`**. `pseudo.ts` settles
+      it — `la` lowers to `lui` (hi reloc) + `addi` (lo reloc), absolute rather than PC-relative — so
+      the draft was wrong twice in one sentence (the mnemonic, and "PC-relative"). Nothing could
+      catch it: the step anchors to a `reg-write`, which is agnostic about WHICH instruction wrote
+      the register, so the anchor, the value, the order and the narration-resolves checks were all
+      green over prose naming an instruction that is not in the program. The eyeball is what saw it,
+      by reading the screenshot rather than the DOM.
+
+      Now pinned: the oracle resolves the anchored instruction's mnemonic through the recording's own
+      in-flight list and asserts `lui` (mutation-checked — asserting `auipc` fails with `expected
+      'lui' to be 'auipc'`). Worth noting what the pin costs and buys: a lesson's narration can name
+      any fact about the machine, and only the facts it names get pinned. This one is pinned because
+      the browser caught it, which is the honest description of every narration oracle in this file.
+      Also learned in passing, and now in the expert tier: `la` emits the `lui`+`addi` pair even when
+      the low 12 bits are zero, unlike `li` (whose `materialize32` collapses to a bare `lui` when
+      `lo === 0`) — which is exactly why the reader sees a second write to t0 that changes nothing.
+
+      Two smaller finds. **The first eyeball's checks were vacuous and the second caught it**: regexes
+      for `-128`/`0x80` over `document.body.innerText` match the SOURCE panel's own comments
+      (`# t1 = -128 (sign-extended)`), so they were green while proving nothing. Reading the real
+      Registers table rows instead (`t1` → `0xffffff80`/−128 highlighted on its cycle, `t2` →
+      `0x00000080`/128 on the next) is what actually verified the claim — a check whose case list
+      cannot reach the defect is not a check, one layer down from where the project keeps finding it.
+      And **the transport disassembles to `xN` while the source writes ABI names**: the reader sees
+      `lb x6, 0(x5)` directly above prose saying `t1`. The mirror of step 1's `ra`/`sp` mismatch and
+      much milder — both spellings are on screen at once, since the register panel lists them side by
+      side — so step 1 bridges them in one clause rather than picking a side.
+
+      Both the essentials and expert tiers were rendered in the browser too, not just `detailed`
+      (which is the only tier the validator resolves), and dark was reached with the REAL toggle —
+      step 1's note that forcing `data-theme` via CDP renders a fake half-dark page still holds.
 
 - [ ] **3. Branches as a decision (scope question — resolve before building).** `sum-loop-tour`
       already shows a _backward_ branch as a loop. What is missing is a branch as an **if**: taken
@@ -248,7 +326,10 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
 - [x] The lesson picker's order is authored, not alphabetical, and the index is exhaustive both ways.
       (Step 0. Note the second clause is the weaker one — see the step's log: exhaustiveness cannot
       see an alphabetical index. "Authored, not alphabetical" is carried by named content claims.)
-- [ ] `add.s` and `byte-loads.s` — the two orphaned corpus programs — each carry a lesson.
+- [x] `add.s` and `byte-loads.s` — the two orphaned corpus programs — each carry a lesson.
+      (Steps 1 and 2. The second orphan turned out to be hiding a VIEW decision as well as a missing
+      lesson — see step 2's log: it is the only program where the datapath's Data-Memory output wire
+      and the trace's `mem-read` can disagree.)
 - [ ] **Zero new lesson-format fields, zero engine changes, zero renderer changes.** If any of the
       three is needed, that is the milestone's real finding and belongs in its log — the same bar
       M3 step 8 and M4 step 7 met.

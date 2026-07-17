@@ -407,7 +407,8 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
 
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
-    // Four single-cycle tours (M1's "2–3 lessons" target, plus M5 step 1's front door) and the two
+    // Five single-cycle tours (M1's "2–3 lessons" target, plus M5's front door and its
+    // sign-extension lesson) and the two
     // pipeline flagships — one
     // per toggle the pipeline honors, which is the shape the library has converged on rather than a
     // coincidence: a config knob nobody can see the point of is a knob that should not ship.
@@ -415,7 +416,7 @@ describe('authored lessons (INV-6)', () => {
     // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
     // under them (pinned by the cross-model suite below). The pipeline is the first model whose
     // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
-    expect(LESSONS.length).toBe(6);
+    expect(LESSONS.length).toBe(7);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP — "one lesson per
     // microarchitecture" — and `LESSONS` is no longer in a sorted order for it to borrow. Written
     // as a bare `toEqual` it passed only because the picker was alphabetical, so M5 step 0 reddened
@@ -625,6 +626,108 @@ describe('authored lessons (INV-6)', () => {
 
     const total = anchoredEvent(trace, anchored[4]!);
     expect(total).toMatchObject({ type: 'reg-write', reg: 10, value: 55 });
+  });
+
+  /**
+   * `sign-and-zero`'s oracle (M5 step 2) — the corpus's orphaned teaching program, finally taught
+   * with, and the one place the ISA is genuinely counter-intuitive rather than merely unfamiliar.
+   *
+   * The three anchored values are the step's acceptance line: −128 and +128 pinned by an oracle
+   * rather than by "the step fires". The block under them is the lesson's actual THESIS, and the
+   * interesting thing about it is that it could not be a step.
+   *
+   * **The plan's own anchor sketch was unbuildable, and the reason is this step's finding.** It
+   * asked for "`mem-read` ×2 + the two `reg-write`s that differ" — four steps contrasting the raw
+   * byte against the extended value. But on single-cycle a load's `mem-read` and its `reg-write`
+   * land in the SAME cycle, and the validator forbids two steps sharing one (the cursor addresses a
+   * cycle, so they are not independently reachable). Note this is NOT M5 step 1's pigeonhole: that
+   * was a COUNT ceiling (four steps over a three-instruction program), and this program has six
+   * instructions, so counting was never the binding constraint. It is the narrower rule — the read
+   * and the extension are one beat on this machine — and it bites an authoring the count permits.
+   *
+   * The collapse is a gift rather than a loss. The contrast axis moves from read-vs-write to
+   * lb-vs-lbu, which is the lesson the program's own header always claimed to teach, and the reader
+   * loses nothing: the cursor sits on a whole cycle, so the step showing −128 shows the `0x80` that
+   * came out of memory right beside it.
+   *
+   * So the thesis — the difference is NOT in memory — lives in narration, where nothing guards it,
+   * and is asserted here against the recording instead. This is `forwarding-bubble`'s oracle shape
+   * (pin the pcs to prove the lesson points at the right hazard) aimed at the one claim this lesson
+   * exists to make.
+   */
+  it('sign-and-zero: the same byte lands as −128 through lb and +128 through lbu', () => {
+    const lesson = byId('sign-and-zero');
+    const trace = recordProgram(lesson.program);
+    const anchored = anchorLesson(lesson, trace);
+
+    // The address, from `la`'s first half. `la` lowers to `lui` + `addi` (hi/lo relocs on the
+    // symbol — `pseudo.ts`), hence `nth: 1`, and hence the two writes to t0 that the lesson's first
+    // step has to explain. Note `la` emits the pair even when the low 12 bits are zero, unlike `li`
+    // (`materialize32` collapses to a bare `lui` when `lo === 0`) — so the second write genuinely
+    // adds nothing, and the value below is already final after the FIRST one.
+    //
+    // The mnemonic is load-bearing and was wrong in the first draft: the lesson's expert tier said
+    // `auipc` (PC-relative), and the transport disassembles this instruction as `lui x5, 0x10000`.
+    // Every test here was green either way — the anchor is a `reg-write` and does not care which
+    // instruction wrote it — so only the browser could see it. `.data` is based at 0x10000000 and
+    // `b` sits at its start, which is why the low half is zero.
+    expect(anchoredEvent(trace, anchored[0]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 5,
+      value: 0x10000000,
+    });
+    // ...and the mnemonic the expert tier NAMES, pinned. Nothing above can see it: the anchor is a
+    // `reg-write`, which is agnostic about who wrote it, so the draft's `auipc` claim sat green over
+    // a transport reading `lui x5, 0x10000` until someone looked at the screen. Resolved through the
+    // recording's own in-flight list rather than by decoding an opcode by hand.
+    const mnemonicAt = (cycle: number, pc: number): string | undefined =>
+      trace.find((c) => c.cycle === cycle)?.instructions.find((i) => i.pc === pc)?.decoded.mnemonic;
+    expect(mnemonicAt(anchored[0]!.cycle!, 0), '`la` lowers to lui + addi, not auipc + addi').toBe(
+      'lui',
+    );
+
+    // The payoff, and the whole program: 0x80 sign-extends to 0xFFFFFF80 = −128 through `lb`, and
+    // zero-extends to 0x00000080 = 128 through `lbu`. Same address, same byte, two answers.
+    expect(anchoredEvent(trace, anchored[1]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 6,
+      value: -128,
+    });
+    expect(anchoredEvent(trace, anchored[2]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 7,
+      value: 128,
+    });
+
+    // THE THESIS, and the assertion the acceptance line did not ask for: the two loads issue the
+    // IDENTICAL memory read. Same address, same value, and the value is the raw unextended byte —
+    // so the −128 above is manufactured on the way to the register file, not fetched. Compared as a
+    // whole list rather than pairwise: that also pins there are exactly TWO reads, so a corpus edit
+    // adding a third load reddens here instead of quietly sliding a `where`-less trigger.
+    //
+    // **This is a claim about the TRACE, and the browser showed it is not a claim about the VIEW.**
+    // `datapath.ts` drives the Data-Memory output wire from `regWrite.value`, not `memRead.value`
+    // (`if (isLoad) w('dmem-wb', regWrite.value, 'dec')`), so on screen that block emits −128 for
+    // `lb` and 128 for `lbu` — the two reads look DIFFERENT on the centerpiece view while being
+    // identical here. That is lawful rather than a bug: the diagram has no extender box, so the
+    // Data-Memory block is the load unit (the Patterson & Hennessy convention) and its output is
+    // the instruction's answer. Sourcing the wire from `memRead.value` instead would show 128 into
+    // the write-back mux and −128 out of it — a selector that appears to TRANSFORM its input, which
+    // is a worse lie, and an always-on one. So the renderer is left alone (the step's "zero renderer
+    // changes" bar holds) and the narration reconciles the two surfaces instead: it grounds "same
+    // byte, same address" in the two things that ARE visibly constant — the data-memory panel
+    // (`0x00000080`, unchanged across all three steps) and the address arriving at Data Memory
+    // (`0x10000000` on both loads) — and then names the extension-inside-the-block as the reason the
+    // outputs differ. `byte-loads.s` is the only corpus program where `mem-read.value` and
+    // `reg-write.value` disagree at all (every other load is an `lw`), which is why nothing has ever
+    // had to decide this, and why only a lesson ON THIS PROGRAM could surface it.
+    const reads = trace
+      .flatMap((c) => c.events)
+      .flatMap((e) => (e.type === 'mem-read' ? [{ addr: e.addr, value: e.value }] : []));
+    expect(reads).toEqual([
+      { addr: 0x10000000, value: 128 },
+      { addr: 0x10000000, value: 128 },
+    ]);
   });
 
   it('array-in-memory: loads a negative element and stores the total 120', () => {

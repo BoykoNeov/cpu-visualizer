@@ -147,6 +147,64 @@ Two machines reject the same authoring for two unrelated reasons, which is the a
 rule rather than for the fix: on single-cycle the add and its write-back are one beat because they
 are one cycle, and saying so IS the teaching.
 
+### On single-cycle a load's READ and its EXTENSION are one beat — and the view says so louder
+
+The step-budget note above is about a COUNT. This is the narrower rule beside it, and M5 step 2 hit it
+on a program the count left plenty of room for: `byte-loads.s` is six instructions, and its lesson
+still could not be authored the way the plan sketched it. A load's `mem-read` and its `reg-write` land
+in the **same cycle** on single-cycle, so "the raw byte comes out" and "the extended value lands"
+cannot be two steps — the cursor addresses a cycle. Measured, because the plan asked for exactly that
+authoring: adding the `mem-read` step gives `steps share a cycle and can't be reached independently by
+the cursor: [[2,[1,2]]]`.
+
+That is a gift rather than a loss. The contrast axis moves from read-vs-write to **`lb`-vs-`lbu`** —
+the lesson the program's own header always claimed — and the reader loses nothing, because the cursor
+sits on a whole cycle and the step showing −128 shows the load that produced it.
+
+**But the datapath does not agree with the trace here, and only the browser said so.** `datapath.ts`
+drives the Data-Memory output wire from `regWrite.value`, not `memRead.value` (`if (isLoad)
+w('dmem-wb', regWrite.value, 'dec')`). So the trace's two `mem-read` events are byte-identical
+(`value: 128` both) while the diagram shows that block emitting **−128** for `lb` and **128** for
+`lbu`. A narration claiming "the two memory reads are identical" is therefore contradicted on the
+centerpiece view, at the default tier — every test green, and the thesis undercut on screen.
+
+The renderer was left alone, deliberately: the diagram has no extender box, so the Data-Memory block
+**is** the load unit (the Patterson & Hennessy convention) and its output is the instruction's answer.
+Sourcing that wire from `memRead.value` would show 128 into the write-back mux and −128 out of it — a
+selector that appears to TRANSFORM its input, which is a worse lie and an always-on one. So the
+narration reconciles the surfaces instead: it grounds "same byte, same address" in the two things that
+are visibly constant (the data-memory panel's `0x00000080`, unchanged across all three steps, and the
+`0x10000000` arriving at Data Memory on both loads) and then names the extension-inside-the-block as
+the reason the outputs differ. The contradiction becomes the actual lesson — _where_ extension happens.
+
+### Narration may name an instruction the anchor cannot see
+
+M5 step 2's sharpest find, and the cheapest mistake to make. Its expert tier said `la` expands to
+`auipc t0, 0x10000`; the transport, directly above the lesson panel, disassembles that instruction as
+**`lui x5, 0x10000`**. (`la` lowers to `lui` + `addi` — see `pseudo.ts` — so the draft was wrong twice
+in one sentence: the mnemonic, and "PC-relative".) **919 tests were green**, and structurally had to
+be: the step anchors to a `reg-write`, which is agnostic about WHICH instruction wrote the register.
+Anchor, value, order, narration-resolves — all correct, over prose naming an instruction that is not
+in the program.
+
+The rule: an anchor pins a **transaction**, never the sentence wrapped around it. Anything narration
+asserts beyond the anchored event — a mnemonic, an expansion, a cycle count, a claim about another
+panel — is unguarded by construction, and gets a line in the oracle only if someone thinks to write
+one. `sign-and-zero`'s oracle now resolves the anchored instruction's mnemonic through the recording's
+in-flight list and asserts `lui`, mutation-checked. That is the pattern to copy when a step names
+something the event does not carry.
+
+(Two facts worth keeping, both learned here: `la` emits the `lui`+`addi` pair even when the low 12
+bits are zero — unlike `li`, whose `materialize32` collapses to a bare `lui` when `lo === 0` — which
+is why the reader sees a second write to t0 that changes nothing. And the transport disassembles to
+`xN` while the corpus writes ABI names, so a lesson saying "t1" sits above a line reading `lb x6,
+0(x5)`; the register panel lists both spellings side by side, which is what makes one bridging clause
+enough.)
+
+`byte-loads.s` is the **only** corpus program where `mem-read.value` and `reg-write.value` disagree at
+all; every other load is an `lw`. That is why nothing ever had to decide this, and why only a lesson on
+this program could surface it.
+
 ### The halt is STATE, not an event — so it cannot be a step
 
 `TraceEvent` has no `halt` arm (`schema.ts`), and `pc-out-of-range` is not an instruction the
@@ -183,6 +241,19 @@ Listed in `index.json`'s teaching order — the language track first, then the �
 
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
   branch → the final total (55).
+- **`sign-and-zero`** — one byte, two answers (`byte-loads`): `0x80` read as −128 by `lb` and +128 by
+  `lbu`. The corpus's orphaned teaching program — its header always said it existed to show "the
+  classic load-extension trap", and until M5 step 2 nothing taught with it. Three steps: the address,
+  then each load. It is the one place the ISA is genuinely counter-intuitive rather than merely
+  unfamiliar, and the one place the panel can only assert what a run can show. See the two notes above
+  for why it is three steps and not the plan's four, and why its narration points at the data-memory
+  panel rather than at the Data-Memory block's output wire.
+
+  It is also the mirror of `first-program`'s ABI mismatch: this program writes `t0`/`t1`/`t2` in
+  source, and the disassembly beside the transport writes `x5`/`x6`/`x7`. Both spellings are on
+  screen at once (the register panel lists them side by side), so step 1 bridges them in one clause
+  rather than picking a side.
+
 - **`array-in-memory`** — walking an array in `.data` (`array-sum`): the first `lw`, a negative
   element, the summed total (120), and the `sw` that writes it back.
 - **`function-call`** — call/return linkage (`call-return`): argument setup, `jal` saving the

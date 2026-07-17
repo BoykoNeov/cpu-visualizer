@@ -1,0 +1,33 @@
+{
+  "id": "sign-and-zero",
+  "title": "One byte, two answers",
+  "program": "byte-loads",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 5 } },
+      "narration": {
+        "essentials": "First the program works out where the byte lives: `la t0, b` puts the address of `b` into t0.",
+        "detailed": "Before you can load a byte you need its address, and that is all this first instruction does: `la t0, b` — load address — puts the address of the byte labelled `b` into t0. The source calls that register `t0` and the disassembly beside the transport calls it `x5`: one register, a number and an ABI nickname, which the register panel lists side by side. `la` is a pseudo-instruction, so the assembler expands it into two real instructions, which is why you will see t0 written twice before the first load runs. The byte waiting at that address is `0x80`: the data memory panel shows it as `0x00000080`, and it will still be sitting there unchanged when the program ends. Everything interesting here is about how those eight bits get read.",
+        "expert": "`la` expands to `lui t0, 0x10000` followed by `addi t0, t0, 0` — the upper 20 bits of the address, then the signed low 12 — which is how RV32I builds a 32-bit address out of instruction formats whose immediate field is never wider than 20 bits. This `la` is absolute rather than PC-relative: `.data` is based at 0x10000000 and `b` sits at its start, so the low 12 bits are zero and the `addi` adds nothing. The assembler emits the pair anyway instead of collapsing to the bare `lui`, because it splits a symbol's address the same way whatever the linker turns out to make it — which is why you see a write to t0 that changes nothing."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 6 } },
+      "narration": {
+        "essentials": "`lb t1, 0(t0)` reads the byte at that address, and t1 comes out holding -128.",
+        "detailed": "`lb` — load byte — reads the single byte sitting at the address in t0. The byte is `0x80`, which as a plain number is 128, and the data memory panel still reads `0x00000080`. Yet t1 ends up holding -128. `lb` reads the byte as a signed number, so it copies the byte's top bit into all 24 bits above it; `0x80` has its top bit set, so the register fills with ones and the value reads as negative. In the diagram the Data Memory block does that extending as it loads, which is why the value leaving it is already -128 rather than the raw byte.",
+        "expert": "The byte 0x80 is sign-extended to 0xFFFFFF80, which as a two's-complement 32-bit value is -128 — the register panel shows both spellings on the t1 row. The read itself is 8 bits wide and lands on the same cycle as the write-back, because that is what single-cycle means: fetch, address, read and write-back are one beat. The trace records the raw byte the memory array returned (128) separately from the extended value written to t1; the diagram folds the extension into the Data Memory block rather than drawing a separate extender beside it."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 7 } },
+      "narration": {
+        "essentials": "`lbu t2, 0(t0)` reads that very same byte, and this time the answer is +128.",
+        "detailed": "Same address, same byte, read a second time — and a different answer comes out. Look at what is identical: the address arriving at Data Memory is `0x10000000` for both loads, and the data memory panel still reads `0x00000080`, untouched. The eight bits never moved, and neither load changed them. What differs is what each instruction does with those bits on the way to a register: `lb` copies the top bit into the 24 bits above it, `lbu` fills them with zeros. So one byte is -128 or +128 depending only on which instruction you chose to read it with, and nothing in memory records which one is right.",
+        "expert": "The byte is zero-extended to 0x00000080 = 128. Both loads issue the same 8-bit read at the same address, and the trace records the same 128 coming back from the memory array each time; `lb` and `lbu` differ only in the extension applied on the way to the register file. This is the precise sense in which a byte in memory has no signedness of its own: signedness is a property of the instruction that reads the bits, never of the bits themselves. It is also why `lbu` exists at all — without it there would be no way to read a byte as the 0..255 value it often is."
+      }
+    }
+  ]
+}
