@@ -36,6 +36,12 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       '**/*.tsbuildinfo',
+      // `tools/` holds standalone scripts for the double-click launcher, which run outside
+      // the app on a machine where nothing may be installed. They are deliberately outside
+      // the compiled/tested codebase - not in tsconfig's references, not matched by vitest's
+      // `packages/**/src/**/*.test.ts` - and linting them would only assert node globals that
+      // this config does not declare. Keep them invisible to tooling, consistently.
+      'tools/**',
     ],
   },
   js.configs.recommended,

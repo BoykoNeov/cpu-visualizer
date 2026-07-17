@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <!--
+      This title is load-bearing beyond the browser tab: `tools/find-dev-server.mjs` fetches
+      the candidate ports and identifies OUR dev server by matching this exact string, which
+      is how the launcher reuses a running server instead of stacking a new one behind it.
+      Renaming it here alone silently sends the launcher back to stacking — no error, it just
+      looks like no server was running. Change both ends together.
+    -->
     <title>CPU Visualizer</title>
     <script>
       // Apply the persisted theme stamp before first paint (theme.ts owns the toggle after boot).

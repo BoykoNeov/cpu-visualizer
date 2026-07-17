@@ -2,6 +2,16 @@
 # platforms and matches .editorconfig and the Linux CI. Binary files are auto-detected.
 * text=auto eol=lf
 
+# ...except Windows batch files, which cmd.exe must receive as CRLF. This is not cosmetic:
+# under the blanket eol=lf above, cmd tolerates LF for plain sequential lines but MIS-PARSES
+# `for /f` loops and parenthesized `if (...)` blocks - it runs REM lines as commands and
+# expands %VARS% set inside them to nothing. "Start CPU Visualizer.bat" needs both constructs
+# to reuse a running dev server, so with LF it silently fails open and starts a duplicate
+# server instead. The old launcher survived on LF only because its single block (the
+# node_modules install) is skipped whenever node_modules already exists.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # Explicit binaries (none yet, but keep the convention obvious for future assets).
 *.png binary
 *.jpg binary
