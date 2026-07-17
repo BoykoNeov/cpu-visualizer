@@ -47,9 +47,13 @@ order and the index/lesson-set test stays **green** — the code faithfully read
 picker ships the exact defect step 0 existed to fix. `LESSONS` follows the index, so _every_ index
 is self-consistent, and no derivable rule can rank one order above another. What catches it is the
 handful of named claims in `lessons.test.ts` that assert this file's **content** is sane — the
-first lesson is `sum-loop-tour`, and every language lesson precedes every µarch one. Those are
-pedagogy, and pedagogy is not derivable — the same reason M4 step 7 had to assert by name which
-position a step is _meant_ to be dead in.
+first lesson is `first-program`, `sum-loop-tour` still precedes `array-in-memory`, and every
+language lesson precedes every µarch one. Those are pedagogy, and pedagogy is not derivable — the
+same reason M4 step 7 had to assert by name which position a step is _meant_ to be dead in.
+
+Both order claims are kept rather than the older one being retargeted when M5 step 1 moved the front
+door: "a loop before an array" and "an add before a loop" are separate opinions, and the first is
+still the one that was live-wrong in the shipped product.
 
 ### `model` and `config` are honored, not decorative
 
@@ -120,9 +124,55 @@ gated: it takes a deliberate downgrade to reach, and a picker that locked itself
 would be a worse trade than a lesson that reads oddly if you insist. Noted because "the lesson still
 anchors" is exactly the reassurance that hides it — see `lessonOpening`: anchoring is not truth.
 
+### On single-cycle, the STEP BUDGET is the instruction count
+
+Not a style note — an arithmetic ceiling, and M5 step 1 hit it on its first lesson. Single-cycle
+runs one instruction per cycle, the play-through cursor addresses a **cycle**, and the validator
+forbids two steps sharing one (they would not be independently reachable). So a single-cycle lesson
+has **at most as many steps as its program has instructions**. `add.s` is three instructions, so
+`first-program` is three steps, and the M5 plan's own four-anchor sketch — which gave the `add` its
+own beat, separate from the `42` landing — is unbuildable by pigeonhole rather than by preference.
+
+Measured, both halves, because the second was not predicted:
+
+- On single-cycle the fourth anchor collides: `steps share a cycle and can't be reached
+independently by the cursor: [[2,[2,3]]]`. The ALU result and its write-back are the same cycle,
+  which is not an accident of this program — it is what single-cycle **means**.
+- On the pipeline with forwarding **on** it is also out of ORDER (`expected [ 2 ] to deeply equal
+[]`): the ALU computes 42 in cycle 4, while `x2 = 37` is not written back until cycle 5. A step
+  reading "now the ALU adds", placed between "37 arrives" and "42 lands", is therefore **false** on
+  a forwarding machine — the add takes 37 from the forwarding network, not from the register file.
+
+Two machines reject the same authoring for two unrelated reasons, which is the argument for the
+rule rather than for the fix: on single-cycle the add and its write-back are one beat because they
+are one cycle, and saying so IS the teaching.
+
+### The halt is STATE, not an event — so it cannot be a step
+
+`TraceEvent` has no `halt` arm (`schema.ts`), and `pc-out-of-range` is not an instruction the
+machine executes — it is where the PC ends up. A lesson step anchors to an event (INV-6), so
+"and here it stops" has nothing to anchor to and must ride on the narration of the step that
+happens to be last.
+
+That is a constraint, and on `add.s` it is free: the halt lands on **the same cycle as the payoff**
+in all four machines (single-cycle 2, multi-cycle 11, pipeline 8 / 6). So `first-program`'s closing
+step is the `reg-write` of 42, and the transport beside it reads `— halted` at that very cycle —
+browser-verified, because that is the only place the claim can be checked against what the reader
+sees. `lessons.test.ts` pins it as state (`{ halted: true, pc: 12 }`), and the `pc` is the
+load-bearing half: it says the machine ran off the END of `.text`, which an `ecall` halt would not
+do — it would leave the PC on the `ecall`.
+
 ## Authored lessons
 
 Listed in `index.json`'s teaching order — the language track first, then the µarch flagships.
+
+- **`first-program`** — the track's front door (`add`), and the smallest program that computes
+  anything: 5 arrives in a register, 37 arrives in another, `add` makes 42. Three instructions,
+  three cycles, three steps (see the step-budget note above). It is also the only place the corpus
+  can teach **halting**, because `add.s` is its only program with no `ecall` — so it runs off the
+  end of `.text` and stops, which the closing step's narration names and the transport corroborates.
+  That is why `add.s` keeps its ending (INV-7: changing it changes it for every model and every
+  differential test, and would delete this lesson's last beat).
 
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
   branch → the final total (55).

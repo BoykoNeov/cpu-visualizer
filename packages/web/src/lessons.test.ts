@@ -380,7 +380,15 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
   it('opens on the natural first lesson, not on whatever sorts first', () => {
     // The defect, pinned by name rather than by the general rule above — this is the pair a reader
     // can check against the picker in one glance, and the one that was wrong in the product.
-    expect(LESSONS[0]!.id).toBe('sum-loop-tour');
+    //
+    // M5 step 1 moved the front door: `first-program` (5 + 37 = 42) is the smallest program that
+    // computes anything, so it precedes the loop that step 0 promoted. Both claims are kept rather
+    // than the first being retargeted — "a loop before an array" is a separate opinion from "an add
+    // before a loop", and it is still the one that was live-wrong in the product.
+    expect(LESSONS[0]!.id).toBe('first-program');
+    expect(LESSON_ORDER.indexOf('first-program')).toBeLessThan(
+      LESSON_ORDER.indexOf('sum-loop-tour'),
+    );
     expect(LESSON_ORDER.indexOf('sum-loop-tour')).toBeLessThan(
       LESSON_ORDER.indexOf('array-in-memory'),
     );
@@ -399,14 +407,15 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
 
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
-    // Three single-cycle tours (M1's "2–3 lessons" target) plus the two pipeline flagships — one
+    // Four single-cycle tours (M1's "2–3 lessons" target, plus M5 step 1's front door) and the two
+    // pipeline flagships — one
     // per toggle the pipeline honors, which is the shape the library has converged on rather than a
     // coincidence: a config knob nobody can see the point of is a knob that should not ship.
     // Multi-cycle deliberately has none: its story is "one instruction, phases spread over
     // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
     // under them (pinned by the cross-model suite below). The pipeline is the first model whose
     // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
-    expect(LESSONS.length).toBe(5);
+    expect(LESSONS.length).toBe(6);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP — "one lesson per
     // microarchitecture" — and `LESSONS` is no longer in a sorted order for it to borrow. Written
     // as a bare `toEqual` it passed only because the picker was alphabetical, so M5 step 0 reddened
@@ -562,6 +571,47 @@ describe('authored lessons (INV-6)', () => {
 
   // Payload oracles: pin the hand-computed values so a right-type/wrong-occurrence anchor
   // (which still anchors non-null) can't pass. Keyed to the specific authored lessons.
+  /**
+   * `first-program`'s oracle (M5 step 1) — the track's front door.
+   *
+   * The three values are the ordinary half. The last two lines are the interesting one: this lesson's
+   * closing beat is "there is no `ecall`, so it stops right here", and that claim lives in narration,
+   * where nothing guards it. `add.s` is the corpus's only program without an `ecall` — which is
+   * exactly why it can carry this beat and why it must not be "fixed" (INV-7: changing it changes it
+   * for every model and every differential test).
+   *
+   * So the halt is pinned as STATE, because it is not an event: the `TraceEvent` union has no `halt`
+   * arm, and `pc-out-of-range` is not an instruction the machine executes — it is where the PC ends
+   * up. That is why this beat could not be its own step and had to ride on the payoff's narration.
+   * `pc: 12` rather than merely `halted: true` is the load-bearing half: it pins that the machine ran
+   * OFF THE END of `.text` (3 instructions × 4 bytes), which an `ecall` halt would not do — it leaves
+   * the PC on the `ecall` itself. Without the pc, a corpus edit that gave `add.s` an exit would keep
+   * this test green while deleting the lesson's subject.
+   */
+  it('first-program: 5 and 37 arrive, 42 lands in x5 — and it halts on that very cycle', () => {
+    const lesson = byId('first-program');
+    const trace = recordProgram(lesson.program);
+    const anchored = anchorLesson(lesson, trace);
+
+    expect(anchoredEvent(trace, anchored[0]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 1,
+      value: 5,
+    });
+    expect(anchoredEvent(trace, anchored[1]!)).toMatchObject({
+      type: 'reg-write',
+      reg: 2,
+      value: 37,
+    });
+    const sum = anchored[2]!;
+    expect(anchoredEvent(trace, sum)).toMatchObject({ type: 'reg-write', reg: 5, value: 42 });
+
+    // The halt lands on the SAME cycle as the payoff — which is what makes "the processor stops
+    // right here" something the reader WATCHES rather than something the narration asserts.
+    expect(trace.find((c) => c.cycle === sum.cycle)!.state).toMatchObject({ halted: true, pc: 12 });
+    expect(trace.at(-1)!.cycle, 'the payoff is not the last cycle').toBe(sum.cycle);
+  });
+
   it('sum-loop-tour: loops on bne and a0 ends at 55', () => {
     const lesson = byId('sum-loop-tour');
     const trace = recordProgram(lesson.program);

@@ -1,0 +1,33 @@
+{
+  "id": "first-program",
+  "title": "The smallest program that computes something",
+  "program": "add",
+  "model": "single-cycle",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 1 } },
+      "narration": {
+        "essentials": "The first instruction puts the number 5 into a register, x1.",
+        "detailed": "Registers are the handful of named slots the processor computes in, and this is how a number gets into one: `addi x1, x0, 5` adds 5 to x0 and writes the result to x1. x0 is hardwired to zero, so adding to it is simply a way of saying \"the constant 5\" — the assembler's `li` pseudo-instruction is exactly this for a small number.",
+        "expert": "I-type: the 12-bit immediate is sign-extended to 32 bits, added to the value read from x0 (always 0), and the sum is written back to x1 in this same cycle."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 2 } },
+      "narration": {
+        "essentials": "The second instruction puts 37 into another register, x2.",
+        "detailed": "The same move again, with a different constant and a different destination: `addi x2, x0, 37`. Both of the numbers this program needs are now sitting in registers, which is where arithmetic insists its operands live — `add` cannot reach into memory for them.",
+        "expert": "The same encoding as the first instruction but for the immediate field and rd. Nothing has been read from memory yet; this program never touches `.data` at all."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 5 } },
+      "narration": {
+        "essentials": "`add x5, x1, x2` adds the two registers together and 42 lands in x5. That is the whole program, and the processor stops right here.",
+        "detailed": "The payoff: `add x5, x1, x2` reads 5 from x1 and 37 from x2, the ALU adds them, and 42 is written to x5 — all in this one cycle. Then notice how the program ends. It has no `ecall`, so nothing ever asks the processor to exit: it runs off the end of the code and halts there, with 42 sitting in x5.",
+        "expert": "The register file's two read ports supply x1 and x2, the ALU adds, and the result is written back in the same cycle. The halt is not an instruction — the PC advances to 0x0000000C, past the end of `.text`, and a PC out of range is where this machine stops."
+      }
+    }
+  ]
+}

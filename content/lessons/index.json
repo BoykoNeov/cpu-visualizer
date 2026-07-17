@@ -1,1 +1,8 @@
-["sum-loop-tour", "array-in-memory", "function-call", "forwarding-bubble", "branch-bet"]
+[
+  "first-program",
+  "sum-loop-tour",
+  "array-in-memory",
+  "function-call",
+  "forwarding-bubble",
+  "branch-bet"
+]

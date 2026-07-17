@@ -1,7 +1,7 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
-**Status: STEP 0 DONE 2026-07-17 (895 tests) — the order spine is in and the picker's alphabetical
-order is gone. Steps 1–5 not started. The prerequisite shipped —
+**Status: STEPS 0–1 DONE 2026-07-17 (907 tests) — the order spine is in, the picker's alphabetical
+order is gone, and `first-program` is the front door. Steps 2–5 not started. The prerequisite shipped —
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
@@ -143,14 +143,59 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       MEMBERSHIP, so it now sorts before comparing — order is pinned exhaustively once, against the
       index, rather than copied into a second file that would redden again at step 4's reorder.
 
-- [ ] **1. `first-program` on `add.s`.** The arithmetic/registers intro, and the track's front
-      door — the smallest program that computes something (5 + 37 = 42). Anchors: `reg-write` ×2
-      (constants arriving), `alu-op` (the add), `reg-write` (42 landing in x5). **Also the honest
-      place to teach halting**: `add.s` has no `ecall`, so it halts `pc-out-of-range` — the panel
-      says this in prose and here it is a thing you watch. Decide during the step whether that is
-      the lesson's closing beat or a reason to reconsider the program's ending (INV-7: changing
-      `add.s` changes it for every model and every differential test — do not do it lightly).
-      Acceptance: anchors under its declared model; validator green; no new format fields.
+- [x] **1. `first-program` on `add.s` — DONE 2026-07-17 (907 tests).** The track's front door ships:
+      `content/lessons/first-program.json`, "The smallest program that computes something", three
+      steps on single-cycle, first in `index.json`. `add.s` unchanged, no new format fields, no
+      engine or renderer change. Browser-verified on the shipped bundle in both themes: the picker
+      opens with it, the rail is three dots, and step 3's transport reads `cycle 2 / 2 — halted`.
+
+      **THIS STEP'S OWN ANCHOR LIST WAS UNBUILDABLE, AND THE PIGEONHOLE IS THE FINDING.** The plan
+      above asked for four anchors — two constants, the `alu-op`, then 42 landing. `add.s` is three
+      instructions and single-cycle runs one per cycle; the cursor addresses a **cycle** and the
+      validator forbids two steps sharing one. So a single-cycle lesson has **at most as many steps
+      as its program has instructions**, and the fourth anchor cannot exist. Not a preference — an
+      arithmetic ceiling, and the first time this project has hit one in authoring rather than in
+      code.
+
+      Measured as two mutations, and the second was not predicted:
+
+      - Single-cycle: the `alu-op` step collides with the payoff — `steps share a cycle and can't be
+        reached independently by the cursor: [[2,[2,3]]]`. The ALU result and its write-back are one
+        cycle because that is what single-cycle **means**.
+      - Pipeline, forwarding **on**: it is also out of ORDER (`expected [ 2 ] to deeply equal []`).
+        The ALU computes 42 in cycle 4 while `x2 = 37` is not written back until cycle 5, so a step
+        reading "now the ALU adds", sitting between "37 arrives" and "42 lands", is **false** on a
+        forwarding machine — the add takes 37 from the forwarding network, never from the register
+        file.
+
+      Two machines reject the same authoring for two unrelated reasons, which is what makes it a
+      rule rather than a workaround: on single-cycle the add and its write-back are one beat because
+      they are one cycle, and saying so is the teaching. The temptation worth naming is that the
+      fourth step IS buildable — on multi-cycle, where the phases spread out. Declaring multi-cycle
+      to buy a step back would be the tail wagging the dog: the language track is single-cycle
+      because the machine is not its subject.
+
+      **Halting: closing beat, and `add.s` keeps its ending.** The plan left this open; the answer is
+      forced by the schema. `TraceEvent` has **no `halt` arm** — `halted` is machine STATE, and
+      `pc-out-of-range` is not an instruction, it is where the PC ends up. Steps anchor to events
+      (INV-6), so the halt cannot be a step; it rides on the last one's narration. That costs
+      nothing here, because the halt lands on **the same cycle as the payoff in all four machines**
+      (single-cycle 2, multi-cycle 11, pipeline 8/6) — so "the processor stops right here" is
+      something the reader watches, and the transport says `— halted` beside it. Pinned as state
+      (`{ halted: true, pc: 12 }`) rather than as prose; the `pc` is the load-bearing half, since it
+      says the machine ran off the END of `.text`, which an `ecall` halt would not — it leaves the
+      PC on the `ecall`. Which is also the answer to "reconsider the program's ending": **no.**
+      `add.s` is the corpus's only `ecall`-free program, so giving it an exit would delete the one
+      place the track can teach halting, and change every model and differential test (INV-7) to do it.
+
+      Two smaller finds. **`addi` emits `alu-op` with `op: "add"`**, not `"addi"` — so the
+      "obvious" `{ event: 'alu-op', where: { op: 'add' } }` trigger matches the FIRST `addi`, not the
+      `add`; the reg-write triggers sidestep it entirely. And the browser eyeball's own trap: forcing
+      `data-theme` via CDP renders a **half-dark page** that reads exactly like a theme defect and is
+      not one — the shell's inline styles read a React-held theme object that the attribute never
+      touches. Click the real toggle. (The recipe's `taskkill //IM chrome.exe` also closed the user's
+      own browser; a fresh `--user-data-dir` per run is the actual fix for the stale-profile lock it
+      was working around.)
 
 - [ ] **2. `sign-and-zero` on `byte-loads.s`.** The corpus's orphaned teaching program, finally
       taught with: one byte, `0x80`, read as −128 by `lb` and +128 by `lbu`. Anchors: `mem-read`
