@@ -1,5 +1,19 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
+**Status: COMPLETE 2026-07-17 (957 tests).** All six steps shipped. The language track reads
+`first-program` → `sum-loop-tour` → `array-in-memory` → `sign-and-zero` → `which-is-smaller` →
+`function-call`, declared as a track in `index.json`, and its closing beat hands the reader to the
+editor — where the ISA panel is already waiting, which is where the two halves of the original
+request rejoin. **The whole milestone held its hardest line: zero new lesson-format fields, zero
+engine changes, zero renderer changes.** One corpus program was added (`branch-flavors.s`, step 3,
+against a stated bar). The milestone's best finding is a law it reached from two directions — **an
+interpretation never belongs on a wire** (steps 2 and 3) — and its most uncomfortable one is that
+**an order can be authored, exhaustive, self-consistent and fully pinned and still teach the
+exception before the rule** (step 4), which it did, in the shipped product, for three steps.
+
+<details>
+<summary>Historical status line (steps 0–4)</summary>
+
 **Status: STEPS 0–4 DONE 2026-07-17 (956 tests) — the order spine is in, the picker's alphabetical
 order is gone, `first-program` is the front door, `sign-and-zero` teaches the load-extension trap on
 the corpus's last orphan, `which-is-smaller` teaches the same law in the comparator (the one step
@@ -9,6 +23,8 @@ the track taught the load trap before the load. Step 5 not started. The prerequi
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
+
+</details>
 
 Source of truth for scope: `cpu-visualizer-spec.md` §13 (curriculum). The load-bearing
 constraints are INV-6 (lessons anchor to trace events), INV-7 (one example-program library) and
@@ -510,10 +526,118 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       *groups* a learner reads, `sort((a,b) => a.number - b.number)` for the register *lookup* table).
       Step 0's conclusion does not transfer just because the code rhymes.
 
-- [ ] **5. The hand-off the panel cannot make.** The track's closing beat should send the reader
-      to the editor — "now change the 37 and watch 42 move". Nothing in the lesson format expresses
-      "go edit"; check whether prose alone is enough (it probably is) **before** proposing a field.
-      Acceptance: a reader finishing the track has edited a program, and no field was added.
+- [x] **5. The hand-off the panel cannot make — DONE 2026-07-17 (957 tests).** The language track's
+      closing beat now sends the reader to the editor with a concrete experiment, in
+      `function-call`'s fourth step (`essentials` + `detailed`; `expert` authors none and so falls
+      back to `detailed`, which is what covers all three tiers). **Prose alone, exactly as the plan
+      guessed: zero new lesson-format fields, zero engine changes, zero renderer changes** — one
+      JSON file and one oracle. Browser-verified on the shipped bundle: all three tiers, both
+      themes, dark via the real toggle, and the acceptance itself DRIVEN (the edit made, the fork
+      taken, `s0` read as 99 in the register panel).
+
+      **THE PLAN'S OWN EXAMPLE SENTENCE POINTED AT THE WRONG LESSON.** "Now change the 37 and watch
+      42 move" is `add.s`'s number — `first-program`, the FRONT DOOR. But step 4's reorder made
+      `function-call` the track's last lesson, and this step's own acceptance says "a reader
+      _finishing the track_". The two halves of the plan's own sentence disagreed, and the fork cost
+      does not break the tie: both are their lesson's last step, so editing at either loses no
+      downstream narration. What breaks it is that **a front-door beginner cannot READ the result of
+      their edit.** They have seen three instructions and the lesson has detached; a track-finisher
+      has just watched `bge a0, a1` fall through and can see why raising the 17 flips it. Placement
+      is forced by what the reader can interpret, not by where the invitation fits.
+
+      It also fixes which "track" this is: **the LANGUAGE track**, which ends at `function-call` —
+      not the picker, which ends at `branch-bet`. "Go write some assembly" at the end of a
+      branch-prediction lesson is off-topic, so the closing beat belongs to the track whose subject
+      is the ISA. Stated rather than assumed, because the two readings were both available.
+
+      **THE DIRECTION WAS WRONG, AND ONLY GEOMETRY SAID SO.** The natural sentence — the one the
+      plan's framing invites, and the one this step drafted — is "open the Edit program panel
+      **below**". It is false. `ProgramEditor` renders at `App.tsx:265` and `NarrationPanel` at
+      `:293`, with no flex/grid reordering on `main`, so the editor sits **above** the lesson panel.
+      Measured on the shipped bundle rather than argued from the DOM: button top **199**, panel top
+      **325**, `buttonIsAbovePanel: true`. This is the README's "directions are the one that survives
+      review" note in a form it had not seen — that note is about CONFIG directions (`branch-bet`'s
+      "flip it and watch the total move the wrong way", true from one position and false from the
+      other); this one is SPATIAL, and it fails for the same root reason. A sentence can be true,
+      checkable, and still wrong from where the reader is sitting. Nothing in the suite can see
+      either kind, since both are claims about a page rather than about a trace.
+
+      The payoff of getting it right is visible in the screenshot: the `✎ Edit program ▼` button is
+      **in the same viewport** as the sentence pointing at it, so the reader never hunts. The editor
+      is collapsed by default (`editorOpen` starts `false`), which is what made naming it load-bearing
+      rather than decorative — "go edit" with no pointer is a dead end.
+
+      **THE PROMISE IS A COUNTERFACTUAL — THE FIRST NARRATION IN THE CORPUS TO DESCRIBE A RUN THE
+      READER HAS TO MAKE.** Every other narration in the library describes the run on screen. This one
+      asserts what happens to a program **the corpus does not contain**: make the 17 bigger than 42 and
+      `max` returns your number, because the `bge` is taken instead and `mv a0, a1` never runs. That is
+      a new unguarded class, one step beyond the README's existing rule. The rule said narration may
+      name an INSTRUCTION the anchor cannot see (step 2's `auipc`-over-`lui`); this is narration
+      promising a RUN no anchor could ever reach, because the step anchors the `reg-write` of 42 — the
+      un-edited run — and is structurally agnostic about the edited one.
+
+      So it is pinned by replaying the reader's edit through `loadSource`, which is the exact path
+      `loadEdited` takes on the fork (`useSimulator`) — the reader's edit, not a simulation of it. All
+      three clauses asserted separately (`s0` = 99, the `bge` flips `result` 0 → 1, and no `reg-write`
+      of 42 into `a0`, which is `mv a0, a1` never running). Mutation-checked: a number **below** 42
+      (41) reddens exactly this test and nothing else. Deliberately NOT asserted on pcs — 99 keeps `li`
+      a single word so the layout happens to survive, but the reader is invited to type any number
+      above 42, and a big one expands `li` to `lui`+`addi` and shifts every pc by 4. The narration
+      promises nothing about addresses, so neither does the oracle: **pin the sentence, not the
+      coincidence.**
+
+      **NO FIELD, AND THE ARGUMENT IS THAT THE SHELL ALREADY SAYS IT.** The fork is legible without
+      adding anything, at both moments that matter: the ProgramEditor's own blurb sits directly above
+      the Run button ("Running an edit forks into a sandbox… any active lesson detaches"), and the
+      ModeChip after the fork reads "Sandbox editing “call-return” — lesson annotations detached. Pick
+      the lesson again to resume it on the original program" (both browser-confirmed verbatim). A field
+      would invent a channel for information the shell already delivers, at a worse moment. So the
+      narration does **not** re-explain the fork — which also keeps the closing beat a graduation
+      rather than ending it on what the reader is about to lose.
+
+      That said, the fork is **one-way in the moment**, and it shapes the sentence: running an edit
+      detaches the steps, so the narration vanishes the instant it is obeyed. Hence a complete
+      imperative-plus-payoff readable BEFORE acting ("change the 17… and `max` returns your number"),
+      never "do X, then watch for Y next". The track's last step is the only safe home for that, since
+      nothing downstream is lost — the same constraint that put the halt on `first-program`'s last step,
+      arrived at from the other end.
+
+      **THE SEAM: THE TWO HALVES OF THE ORIGINAL REQUEST MEET AT THIS BUTTON, AND ONLY THE SCREENSHOT
+      SHOWS IT.** The request was "the user has the option to edit the program, but may not know what
+      instructions he can use; we need lessons and a panel for that." Decision 1 split those — panel owns
+      GRAMMAR, track owns BEHAVIOUR-OVER-TIME — and this step is where they rejoin: taking the hand-off
+      lands the reader in the editor, where **`What can I write? ▼`** (the ISA reference panel, the
+      milestone's prerequisite) is sitting right there. The narrative half delivers the reader to the
+      reference half with no field, no link, and no coordination between them.
+
+      Deliberately NOT named in the prose, and the reason is the layering: the closing beat asks for
+      exactly ONE edit — change the 17 — which needs no vocabulary at all. The panel answers the
+      question _after_ that ("now what else can I write?"), and by then the reader is already looking at
+      it. Naming it would answer a question the reader has not asked yet, in a sentence that disappears
+      when they act.
+
+      **THE EYEBALL'S OWN CHECKS WENT WRONG FOUR TIMES, AND TWO ARE NEW CLASSES.** The recurring pair
+      first: "buttons with a `title`" counted the prev/next scrub controls as steps, so a 4-step lesson
+      reported **6** and "the last dot" clicked **Next** — landing on step 1 and reading its narration
+      while reporting success (the fix is `[role="tab"]` in the `Lesson steps` tablist, which the rail
+      already declares). And the `s0` regex over `<tr>`s matched the **source panel's own comment**
+      (`# (42) is saved in s0`), i.e. source line 4 — step 2's `-128`-matched-a-comment trap verbatim,
+      fifth step running. Anchoring on the Registers panel heading and an exact cell match is what
+      actually read a register.
+
+      The two new ones are about the DRIVER's own environment, and the first is the serious one.
+      **The drive attached to a stranger's browser**: port 9333 was already taken, so the CDP client
+      fetched `/json/list` from an unrelated Chrome and a `find(t => t.type === 'page')` fallback
+      happily returned its tab — `document.title` read **"Physical Synthesis — viewer"**, one of the
+      user's other projects. The browser memory's law ("a port never tells you whose server it is —
+      identify by served `<title>`") applies to the **debug port**, not just the dev-server port, and
+      the `<title>` check is what caught it. The driver now demands `localhost:8347` with no fallback,
+      and takes a random high port. Second: **`chrome.kill()` kills the launcher, not the browser** —
+      it left **21** live processes across runs, and a later run attached to an earlier one's state,
+      finding the editor already open, toggling it CLOSED, and reporting "no textarea" as though the
+      product were broken. Fixed by `taskkill /PID <pid> /T` (never `/IM chrome.exe`, which closes the
+      user's own browser — the step-1 log's warning) and by making the editor step OPEN rather than
+      TOGGLE. Both present as product defects; neither was one, for the fifth step running.
 
 ## Acceptance criteria
 
@@ -539,15 +663,26 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       step 4, where the temptation was different in kind: the picker needed a `track`, and the plan
       had pre-declined it as a lesson field. It became a grouped `index.json` instead — content, one
       place — so the `Lesson` type is still exactly what M1 shipped.
-- [ ] Every new lesson anchors under its declared model in every config it honors (the existing
-      validator, unchanged and unweakened).
-- [ ] Narration obeys the rules the lessons README already states, which exist because each was
+- [x] Every new lesson anchors under its declared model in every config it honors (the existing
+      validator, unchanged and unweakened). (Held through step 5, which added no step and no lesson —
+      the hand-off rides on an existing anchor, because "go edit" has no trace event, exactly as the
+      halt does not.)
+- [x] Narration obeys the rules the lessons README already states, which exist because each was
       shipped broken once: plain text plus backtick code spans only (no Markdown); a step alive in
-      N positions is prose about the experiment, not the run in front of you.
-- [ ] **Browser eyeball.** Non-negotiable and stated with the reason: nine of the last ten view
+      N positions is prose about the experiment, not the run in front of you. **Step 5 added a rule
+      to that list rather than only obeying it** — the closing beat's direction ("above this panel")
+      is a SPATIAL claim, and the existing note covers only config directions. Both fail the same
+      way: true, checkable, and wrong from where the reader sits. Measured, not argued (button top
+      199 vs panel top 325).
+- [x] **Browser eyeball.** Non-negotiable and stated with the reason: nine of the last ten view
       steps shipped a defect no green suite could see, and the reference panel made it ten of
-      eleven (four defects, 80 tests green). A lesson is a view surface.
-- [ ] `npm test` / `typecheck` / `lint` green; INV-8 differential unaffected (no engine change).
+      eleven (four defects, 80 tests green). A lesson is a view surface. **For step 5 the eyeball
+      IS the acceptance** — "a reader has edited a program" is a claim about a click, and no
+      headless test in this repo can see one. Driven end to end on the shipped bundle: lesson
+      opened, scrubbed to step 4, editor opened, the 17 changed to 99, Run clicked, Sandbox chip
+      up, lesson panel gone, `s0` = `0x00000063` = 99 in the Registers table.
+- [x] `npm test` / `typecheck` / `lint` green; INV-8 differential unaffected (no engine change).
+      957 tests (956 + the counterfactual oracle).
 
 ## Deliberate non-goals
 

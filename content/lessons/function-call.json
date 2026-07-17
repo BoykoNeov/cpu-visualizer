@@ -31,8 +31,8 @@
     {
       "trigger": { "event": "reg-write", "nth": 1, "where": { "reg": 8 } },
       "narration": {
-        "essentials": "The function returns 42, and the caller saves it.",
-        "detailed": "`ret` jumped back through ra to the caller, which now saves the returned result (42) into s0. The call is complete."
+        "essentials": "The function returns 42, and the caller saves it. That is the end of the language track — now make it yours: click the Edit program button above this panel, change the 17 to a number bigger than 42, and run it. `max` hands back your number instead.",
+        "detailed": "`ret` jumped back through ra to the caller, which now saves the returned result (42) into s0. The call is complete, and so is the language track: registers, arithmetic, loads, branches and a call are the whole vocabulary these programs are written in. The way to trust any of it is to change it and watch. Click the Edit program button above this panel, make the 17 a number bigger than 42, and run it — this time `max` returns your number, because the `bge` you just watched fall through is taken instead, and the `mv a0, a1` never runs."
       }
     }
   ]

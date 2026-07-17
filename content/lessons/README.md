@@ -311,6 +311,53 @@ enough.)
 all; every other load is an `lw`. That is why nothing ever had to decide this, and why only a lesson on
 this program could surface it.
 
+### Narration may promise a RUN the corpus does not contain
+
+M5 step 5's finding, and one step beyond the note above. That note is about narration naming an
+INSTRUCTION the anchor cannot see; this is narration describing a **program that does not exist**.
+
+`function-call`'s closing step hands the reader to the editor with a concrete experiment: make the
+17 bigger than 42 and `max` returns your number, because the `bge` is taken instead and `mv a0, a1`
+never runs. **No anchor can ever reach that claim** — the step anchors the `reg-write` of 42, which
+is the UN-edited run, and every other oracle in `lessons.test.ts` drives `EXAMPLE_PROGRAMS`. It is
+the first narration in the library whose subject is a run the READER has to make.
+
+So it is pinned by replaying the reader's edit through `loadSource`, which is the same path
+`loadEdited` takes on the fork (`useSimulator`) — the reader's edit, not a simulation of it. Each
+clause the sentence makes is asserted on its own (`s0` = 99; the `bge`'s `result` flips 0 → 1; no
+`reg-write` of 42 into `a0`, which is `mv a0, a1` not running). Mutation-checked: a number **below**
+42 reddens exactly this test.
+
+**Pin the sentence, not the coincidence.** 99 keeps `li` a single word (it fits the 12-bit
+immediate), so the pcs happen to survive the edit — but the reader is invited to type ANY number
+above 42, and a big one expands `li` to `lui`+`addi` and shifts every pc by 4. The narration
+promises nothing about addresses, so the oracle asserts nothing about them either.
+
+### An invitation to EDIT is one-way in the moment, and the direction is a claim
+
+Two rules for a hand-off step, both from M5 step 5.
+
+**It must read complete BEFORE it is obeyed.** Running an edit forks into a sandbox and DETACHES the
+lesson (`session.ts`), so the narration vanishes the instant the reader acts on it. Write a single
+imperative-plus-payoff ("change the 17 to a number above 42 and run it — `max` returns your number"),
+never "do X, then watch for Y next". That is also why a hand-off belongs on a track's LAST step:
+nothing downstream is lost. Same constraint that put the halt on `first-program`'s last step, reached
+from the other end.
+
+**Do not re-explain the fork.** The shell already says it at both moments that matter — the
+ProgramEditor's blurb sits directly above the Run button ("any active lesson detaches"), and the
+ModeChip afterwards reads "lesson annotations detached. Pick the lesson again to resume it". Narration
+repeating it would duplicate the shell at a worse moment and end a graduation beat on a loss. This is
+also the argument against a lesson-format field for "go edit": the channel already exists.
+
+**And check the direction against the PAGE, not the DOM.** The natural sentence is "the Edit program
+panel **below**", and it is false: `ProgramEditor` renders at `App.tsx:265`, `NarrationPanel` at
+`:293`, so the editor is **above** the lesson panel (measured on the shipped bundle: button top 199,
+panel top 325). This is the "directions are the one that survives review" note above in its SPATIAL
+form — that note is about config positions, this is about pixels, and both are sentences that are
+true, checkable, and wrong from where the reader is sitting. The editor is also collapsed by default,
+so naming it is load-bearing rather than decorative: "go edit" with no pointer is a dead end.
+
 ### The halt is STATE, not an event — so it cannot be a step
 
 `TraceEvent` has no `halt` arm (`schema.ts`), and `pc-out-of-range` is not an instruction the
@@ -382,6 +429,16 @@ Listed in `index.json`'s teaching order — the language track first, then the �
 - **`function-call`** — call/return linkage (`call-return`): argument setup, `jal` saving the
   return address, the in-function compare, and the result saved after `ret`. Last in the track: it is
   the only lesson that needs a **convention** rather than only instructions.
+
+  Being last, it carries the track's **hand-off** (M5 step 5): its closing step sends the reader to
+  the editor to make the 17 bigger than 42 and watch `max` return their number. Placed here rather
+  than at the front door — where the plan's own example sentence ("change the 37 and watch 42 move")
+  pointed, since 37 is `add.s`'s number — because a beginner three instructions in **cannot read the
+  result of their own edit**, while a reader who has just watched `bge a0, a1` fall through can see
+  exactly why raising the 17 flips it. Note "the track" here is **the language track**, which ends
+  here; the picker ends at `branch-bet`, and "go write some assembly" is not how a branch-prediction
+  lesson should close. See the two hand-off notes above for why it is prose rather than a field, and
+  why its promise needed an oracle of its own.
 
 The lessons above are **`The language`** track, and they target **single-cycle** (M1) and anchor only
 to architectural events, so they play against any model unchanged (INV-6). That coincidence — every

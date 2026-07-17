@@ -951,6 +951,56 @@ describe('authored lessons (INV-6)', () => {
       value: 42,
     });
   });
+
+  /**
+   * The hand-off's promise, replayed (M5 step 5) — the language track's closing beat sends the
+   * reader to the editor with a CONCRETE claim: make the 17 bigger than 42 and `max` returns your
+   * number instead of 42, because the `bge` the reader just watched fall through is taken instead
+   * and `mv a0, a1` never runs.
+   *
+   * **Nothing else in this file can see that claim, and the reason is the README's rule.** An
+   * anchor pins a TRANSACTION, never the sentence wrapped around it: the step above anchors the
+   * `reg-write` of 42 — the UN-edited run — and is agnostic about a program that does not exist.
+   * Every other oracle here drives `EXAMPLE_PROGRAMS`, and this claim is a COUNTERFACTUAL, the
+   * first narration in the corpus to promise something about a run the reader has to make. So it
+   * is unguarded by construction and gets a line here only because someone thought to write one —
+   * exactly the case `sign-and-zero`'s mnemonic oracle was the pattern for.
+   *
+   * Driven the way the READER will drive it: `loadSource` over edited text is the same path
+   * `loadEdited` takes on the fork (`useSimulator`), so this is the reader's edit, not a
+   * simulation of it.
+   *
+   * Asserted on the three clauses the narration actually makes, and NOT on the pcs. 99 keeps
+   * `li` a single word (it fits the 12-bit immediate), so the layout happens to survive — but a
+   * reader is invited to type ANY number above 42, and a big one expands `li` to `lui`+`addi` and
+   * shifts every pc by 4. The narration promises nothing about addresses, so neither does this.
+   */
+  it('function-call hand-off: a number above 42 comes back instead of 42', () => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'call-return');
+    expect(program, 'call-return is in the corpus').toBeDefined();
+    // The reader's edit, on the one line the narration names.
+    const edited = program!.source.replace('li   a0, 17', 'li   a0, 99');
+    expect(edited, 'the narrated line still exists to edit').not.toBe(program!.source);
+
+    const result = loadSource(edited);
+    expect(result.ok, 'the edited program should assemble').toBe(true);
+    if (!result.ok) throw new Error('unreachable: assembly failed');
+    result.loaded.recorder.runToEnd();
+    const events = result.loaded.recorder.recorded.flatMap((c) => c.events);
+
+    // "max returns your number": s0 (x8) is the reader's 99, not the shipped 42.
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'reg-write', reg: 8, value: 99 }),
+    );
+    // "the bge you just watched fall through is taken instead": result flips 0 -> 1.
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'alu-op', op: 'bge', result: 1 }),
+    );
+    // "and the mv a0, a1 never runs": that line, and only that line, writes 42 into a0 (x10).
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'reg-write', reg: 10, value: 42 }),
+    );
+  });
 });
 
 /**
