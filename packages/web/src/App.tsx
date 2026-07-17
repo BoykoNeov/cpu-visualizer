@@ -411,6 +411,35 @@ function NarrationPanel(props: {
   const { title, view, onSeek } = props;
   const total = view.steps.length;
   const current = view.activeIndex; // -1 before the first step fires
+
+  // Every state the narration paragraph below can be in, as a list: the pre-start prompt, then one
+  // entry per playable step. All of them are rendered and only `shown` is visible — see the stack's
+  // comment for why. Built here rather than inline so the list is one thing: the reserved height is
+  // the max over THIS array, so anything that can appear in that paragraph has to be in it, and a
+  // state that got its text from somewhere else would be the one that jumps.
+  const slots: { key: string; body: React.ReactNode }[] = [
+    {
+      key: 'prompt',
+      body: (
+        <span style={{ color: T.ink2 }}>
+          Press <strong>Next step ▶</strong> or scrub the timeline to walk through the lesson.
+        </span>
+      ),
+    },
+    ...view.steps.map((s) => ({
+      key: `step${s.index}`,
+      body:
+        s.narration !== undefined ? (
+          renderNarration(s.narration)
+        ) : (
+          <span style={{ color: T.ink2 }}>
+            This step has no narration at the current depth — raise the depth dial for more.
+          </span>
+        ),
+    })),
+  ];
+  const shown = current + 1; // the prompt occupies slot 0, so `current === -1` lands on it
+
   const btn: React.CSSProperties = {
     fontSize: '0.85rem',
     padding: '0.3rem 0.7rem',
@@ -509,21 +538,46 @@ function NarrationPanel(props: {
         </div>
       </div>
 
-      {/* The active step's narration, or a prompt when the lesson hasn't started / has no text
-          at this depth. */}
-      <p style={{ margin: '0.75rem 0 0', lineHeight: 1.55, color: T.ink }}>
-        {current < 0 ? (
-          <span style={{ color: T.ink2 }}>
-            Press <strong>Next step ▶</strong> or scrub the timeline to walk through the lesson.
-          </span>
-        ) : view.narration !== undefined ? (
-          renderNarration(view.narration)
-        ) : (
-          <span style={{ color: T.ink2 }}>
-            This step has no narration at the current depth — raise the depth dial for more.
-          </span>
-        )}
-      </p>
+      {/* The active step's narration, or a prompt when the lesson hasn't started / has no text at
+          this depth — and EVERY OTHER STEP'S, stacked invisibly behind it in the same grid cell.
+
+          The stack is the whole point, and it is the fix for the one defect the browser found here:
+          the steps are prose, so they are one to five lines long, and rendering only the active one
+          made this paragraph 128px on step 1 and 228px on step 5. Everything below it — the pipeline
+          map, the datapath, the register and memory panels — is laid out after it in normal flow, so
+          each Next-step JUMPED the page by up to 100px. Measured, because this is exactly the kind of
+          claim that reads as taste: the map's own height is CONSTANT across a lesson (its grid is a
+          pure function of the recording), and it still moved 469→570px down the page. It was a
+          passenger, not a cause. A reader walking a lesson is comparing pictures between steps, and a
+          surface that relocates under them each time is the surface failing at the one thing this
+          milestone shipped it for.
+
+          Grid, not a `min-height`: the reserved height is then DERIVED — the tallest step at the
+          current tier, at the current window width, with the current fonts — rather than a magic
+          number that some future lesson's longer prose silently outgrows. Nothing here counts lines
+          or knows what a line is. The cost is honest and bounded: a short step sits above the
+          whitespace its lesson's longest one needs, and the panel resizes when you switch lesson or
+          move the depth dial, which are deliberate acts rather than jitter.
+
+          `visibility: hidden` and not `display: none`: hidden is what makes it occupy the cell (the
+          reserve IS the mechanism), and it takes the ghosts out of the accessibility tree on the way,
+          so a screen reader still reads exactly one narration. */}
+      <div style={{ display: 'grid', margin: '0.75rem 0 0' }}>
+        {slots.map((slot, i) => (
+          <p
+            key={slot.key}
+            style={{
+              gridArea: '1 / 1',
+              margin: 0,
+              lineHeight: 1.55,
+              color: T.ink,
+              visibility: i === shown ? 'visible' : 'hidden',
+            }}
+          >
+            {slot.body}
+          </p>
+        ))}
+      </div>
     </section>
   );
 }
