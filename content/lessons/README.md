@@ -24,11 +24,32 @@ These files are **untrusted at compile time** — a mistyped `event`, `where`, o
 silently. That type-safety is bought back by `packages/web/src/lessons.test.ts`, which anchors
 every lesson against the real engine **it declares** and asserts no step is dead.
 
-### `index.json` is the teaching ORDER, and it is content
+### `index.json` is the teaching ORDER **and the TRACKS**, and both are content
 
-`index.json` lists lesson ids, first-taught first. It is the **only** source of the order the
-picker offers, and it lives here rather than in the view because there is no source for
-pedagogical order — it has to be declared by whoever is doing the teaching.
+`index.json` lists **tracks**, each a picker heading plus its lesson ids, first-taught first:
+
+```json
+[
+  { "track": "The language", "lessons": ["first-program", "..."] },
+  { "track": "The machine", "lessons": ["forwarding-bubble", "branch-bet"] }
+]
+```
+
+It is the **only** source of the order and the grouping the picker offers, and it lives here rather
+than in the view because there is no source for pedagogical order — it has to be declared by
+whoever is doing the teaching.
+
+The order is **derived from the tracks by flattening** (`lessons.ts`), which is the point of the
+grouped shape rather than a flat list beside a group map: order and grouping are one declaration
+read two ways, so they cannot contradict each other, and no third test is needed to pin that they
+agree.
+
+**Track is not derived from `model`, and that was the M5 step 4 decision.** All six language lessons
+happen to be `single-cycle` and both µarch flagships `pipeline`, so the split looks free. It is a
+coincidence, not a law: `model` says which microarchitecture a lesson RUNS ON, a track says what it
+is ABOUT, and a language lesson taught on the pipeline is perfectly lawful. Deriving the group from
+`model` would file that lesson under "The machine" and stay green — `id.localeCompare` again, one
+surface up. (Nor is it a `track` field on the lesson: same decision, one place.)
 
 Until M5 step 0 `lessons.ts` ended `.sort((a, b) => a.id.localeCompare(b.id))`, so a beginner was
 offered `array-in-memory` first — a memory lesson — and `sum-loop-tour`, the natural first lesson,
@@ -37,23 +58,52 @@ determinism as a disguise.** (The ISA reference panel shipped and fixed the same
 down: its groups inherited the ISA table's _opcode_ order, so "Arithmetic" opened with `addi` above
 `add`.)
 
-To add a lesson: drop the JSON in this directory **and** add its id here. The two are checked
-against each other in both directions, so an unlisted lesson fails the suite rather than being
-quietly placed. Order-only, though — `lessons.ts` sorts by this file and never filters by it, so a
-missing id cannot make a lesson vanish from the product, only misplace it at the end.
+To add a lesson: drop the JSON in this directory **and** add its id to a track here. The two are
+checked against each other in both directions, so an unlisted lesson fails the suite rather than
+being quietly placed. Order-only, though — `lessons.ts` sorts by this file and never filters by it,
+so a missing id cannot make a lesson vanish from the product, only misplace it at the end. The
+grouped picker re-earns that: a lesson in no track is shown under a **`Not in a track`** heading
+rather than dropped, because a picker that renders only the authored tracks would trade a misplaced
+lesson for an invisible one.
 
 **What the exhaustiveness check cannot see, measured:** re-author this file into pure alphabetical
 order and the index/lesson-set test stays **green** — the code faithfully reads the index, and the
 picker ships the exact defect step 0 existed to fix. `LESSONS` follows the index, so _every_ index
-is self-consistent, and no derivable rule can rank one order above another. What catches it is the
-handful of named claims in `lessons.test.ts` that assert this file's **content** is sane — the
-first lesson is `first-program`, `sum-loop-tour` still precedes `array-in-memory`, and every
-language lesson precedes every µarch one. Those are pedagogy, and pedagogy is not derivable — the
-same reason M4 step 7 had to assert by name which position a step is _meant_ to be dead in.
+is self-consistent, and no derivable rule can rank one order above another. Step 4 measured the
+same blindness for tracks: file `branch-bet` under "The language" and **exactly one test of 125
+reddens** — the by-name one. Every structural check stays green, and so does the `model` proxy the
+old test used, because the mis-filing is still self-consistent.
 
-Both order claims are kept rather than the older one being retargeted when M5 step 1 moved the front
-door: "a loop before an array" and "an add before a loop" are separate opinions, and the first is
-still the one that was live-wrong in the shipped product.
+So what catches it is the handful of named claims in `lessons.test.ts` that assert this file's
+**content** is sane. Those are pedagogy, and pedagogy is not derivable — the same reason M4 step 7
+had to assert by name which position a step is _meant_ to be dead in:
+
+- the first lesson is `first-program`, and `sum-loop-tour` precedes `array-in-memory`;
+- the tracks are `The language` then `The machine`, and the machine track is exactly
+  `forwarding-bubble` + `branch-bet`;
+- **`array-in-memory` precedes `sign-and-zero`** — the rule before the exception (below);
+- `sign-and-zero` and `which-is-smaller` stay adjacent, in that order.
+
+Order claims are **kept rather than retargeted** when a lesson moves: "a loop before an array" and
+"an add before a loop" are separate opinions, and the first is still the one that was live-wrong in
+the shipped product.
+
+### The order teaches the RULE before the EXCEPTION
+
+M5 step 4's sequencing pass found the track teaching `lb`/`lbu` (position 3) before `lw` (position 5) — the load trap before the load. Steps 2 and 3 had each parked their lesson at the slot the plan
+guessed, both writing "step 4 is still the real sequencing pass"; nobody had read the six as a
+sequence until step 4 did.
+
+The fix is forced by the lessons' own prose rather than by taste, which is why it is assertable:
+`array-in-memory`'s first step **introduces** the concept ("`lw t2, 0(t0)` reads a word from data
+memory into a register"), while `sign-and-zero`'s first step already **spends** addresses, loads
+and the data-memory panel ("Before you can load a byte you need its address"). One lesson defines
+what the other assumes. Likewise `which-is-smaller`'s expert tier calls back to "the same law `lb`
+and `lbu` show on loads", so it must follow `sign-and-zero` — a callback to a lesson the reader has
+not had is not a callback.
+
+**When you add a lesson, read the whole track top to bottom, not just its own slot.** That is the
+only check that can see this class, and the suite is downstream of it.
 
 ### `model` and `config` are honored, not decorative
 
@@ -297,6 +347,11 @@ Listed in `index.json`'s teaching order — the language track first, then the �
 
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
   branch → the final total (55).
+- **`array-in-memory`** — walking an array in `.data` (`array-sum`): the first `lw`, a negative
+  element, the summed total (120), and the `sw` that writes it back. **It comes before
+  `sign-and-zero` because it is where a load is introduced at all** — "reads a word from data memory
+  into a register" — and the byte-load trap is an exception to a rule the reader has to have met
+  first. M5 step 4 moved it here from position 5; see the rule-before-exception note above.
 - **`sign-and-zero`** — one byte, two answers (`byte-loads`): `0x80` read as −128 by `lb` and +128 by
   `lbu`. The corpus's orphaned teaching program — its header always said it existed to show "the
   classic load-extension trap", and until M5 step 2 nothing taught with it. Three steps: the address,
@@ -324,13 +379,16 @@ Listed in `index.json`'s teaching order — the language track first, then the �
   its first use of any branch but `bne`/`bge` — which is why M5 step 3 had to add a program rather
   than reuse `call-return` (whose `bge` `function-call` already both anchors and narrates).
 
-- **`array-in-memory`** — walking an array in `.data` (`array-sum`): the first `lw`, a negative
-  element, the summed total (120), and the `sw` that writes it back.
 - **`function-call`** — call/return linkage (`call-return`): argument setup, `jal` saving the
-  return address, the in-function compare, and the result saved after `ret`.
+  return address, the in-function compare, and the result saved after `ret`. Last in the track: it is
+  the only lesson that needs a **convention** rather than only instructions.
 
-The lessons above target **single-cycle** (M1) and anchor only to architectural events, so they play
-against any model unchanged (INV-6).
+The lessons above are **`The language`** track, and they target **single-cycle** (M1) and anchor only
+to architectural events, so they play against any model unchanged (INV-6). That coincidence — every
+language lesson being single-cycle — is exactly what the track must NOT be derived from; see the
+`index.json` note above.
+
+The two below are **`The machine`** track: their subject is a µarch rather than the ISA.
 
 - **`forwarding-bubble`** — the flagship experiment (M3, spec §12.2), on the **pipeline**, opening
   with **forwarding off**. `array-sum` is the only corpus program that can carry it: it holds both

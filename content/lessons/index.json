@@ -1,10 +1,17 @@
 [
-  "first-program",
-  "sum-loop-tour",
-  "sign-and-zero",
-  "which-is-smaller",
-  "array-in-memory",
-  "function-call",
-  "forwarding-bubble",
-  "branch-bet"
+  {
+    "track": "The language",
+    "lessons": [
+      "first-program",
+      "sum-loop-tour",
+      "array-in-memory",
+      "sign-and-zero",
+      "which-is-smaller",
+      "function-call"
+    ]
+  },
+  {
+    "track": "The machine",
+    "lessons": ["forwarding-bubble", "branch-bet"]
+  }
 ]

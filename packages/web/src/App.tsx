@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { IsaReference } from './IsaReference';
-import { LESSONS } from './lessons';
+import { LESSONS, lessonSections } from './lessons';
 import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
@@ -190,10 +190,19 @@ export function App(): React.JSX.Element {
               }}
             >
               <option value="">— none —</option>
-              {LESSONS.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.title}
-                </option>
+              {/* Grouped by the authored track (M5 step 4). The headings are not decoration: a
+                  flat list of eight titles gives a beginner no signal that the last two are about
+                  a microarchitecture and presuppose the language the first six teach. The groups
+                  and their order are content (`content/lessons/index.json`) — this picker, like
+                  the order before it, is forbidden from inventing either. */}
+              {lessonSections().map((section) => (
+                <optgroup key={section.track} label={section.track}>
+                  {section.lessons.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.title}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>

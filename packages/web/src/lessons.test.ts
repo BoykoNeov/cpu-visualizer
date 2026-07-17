@@ -21,7 +21,14 @@ import {
 } from '@cpu-viz/trace';
 import { MODELS, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
-import { LESSON_ORDER, LESSONS, orderLessons } from './lessons';
+import {
+  LESSON_ORDER,
+  LESSON_TRACKS,
+  LESSONS,
+  UNTRACKED_HEADING,
+  lessonSections,
+  orderLessons,
+} from './lessons';
 import { predictsTaken } from './session';
 import { loadSource } from './simulator';
 
@@ -394,14 +401,93 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     );
   });
 
+  it('teaches the RULE before the EXCEPTION — a load before the load trap', () => {
+    // **The sequencing pass's actual find (M5 step 4), and it was live in the product.** Steps 2
+    // and 3 each parked their lesson at the slot the plan guessed and wrote "step 4 is still the
+    // real sequencing pass" in their logs. Read as a sequence for the first time, the track taught
+    // `lb`/`lbu` at position 3 and `lw` at position 5: the exception before the rule.
+    //
+    // It is not a matter of taste, which is what makes it assertable. `array-in-memory`'s first
+    // step INTRODUCES the concept ("`lw t2, 0(t0)` reads a word from data memory into a register");
+    // `sign-and-zero`'s first step already spends addresses, loads and the data-memory panel
+    // ("Before you can load a byte you need its address"). One lesson defines what the other
+    // assumes, so their order is forced by their own prose.
+    expect(LESSON_ORDER.indexOf('array-in-memory')).toBeLessThan(
+      LESSON_ORDER.indexOf('sign-and-zero'),
+    );
+  });
+
+  it('keeps the mirrored pair adjacent, and in the order their narration cross-references', () => {
+    // `which-is-smaller`'s expert tier says "the same law `lb` and `lbu` show on loads, one surface
+    // over" — so it reads as a callback only if `sign-and-zero` has already run. The direction is
+    // pinned by that sentence, not by preference, and the pair is step 3's "looks different, is
+    // same" / "looks same, is different" mirror: adjacency is the point of it.
+    const a = LESSON_ORDER.indexOf('sign-and-zero');
+    const b = LESSON_ORDER.indexOf('which-is-smaller');
+    expect(b - a).toBe(1);
+  });
+
   it('teaches the LANGUAGE before the MACHINE', () => {
-    // The track's shape as an ordering claim rather than as a comment: every single-cycle lesson
-    // (the language track — a loop, an array, a call) precedes both pipeline flagships (whose
-    // subject is a µarch, and which presuppose the language). This is the claim M5 step 4 extends
-    // when `first-program` and `sign-and-zero` land, and it is why the authored order is not
-    // alphabetical in either direction — `array-in-memory` sorts first, `sum-loop-tour` sorts last.
-    const models = LESSONS.map((l) => l.model);
-    expect(models.lastIndexOf('single-cycle')).toBeLessThan(models.indexOf('pipeline'));
+    // The track's shape as an ordering claim rather than as a comment: the language track is
+    // taught first, and the µarch flagships — whose subject is a machine, and which presuppose the
+    // language — come after.
+    //
+    // **This test used to read the claim off `model`** (`lastIndexOf('single-cycle') <
+    // indexOf('pipeline')`) and M5 step 4 retired that, which is the step's finding. The proxy is
+    // true today — all six language lessons are single-cycle, both µarch ones are pipeline — but
+    // true by COINCIDENCE. `model` says which microarchitecture a lesson runs on; a track says what
+    // the lesson is ABOUT. A language lesson authored on the pipeline is lawful, and the proxy
+    // would file it under the machine and stay green: a case list that cannot reach the defect,
+    // for the third milestone running. So the track is declared in `index.json` and read here.
+    expect(LESSON_TRACKS.map((t) => t.track)).toEqual(['The language', 'The machine']);
+  });
+
+  it('files each lesson under the track its SUBJECT belongs to — asserted by name', () => {
+    // What the grouped index buys in structure it must pay for here, and the payment is the same
+    // coin the project keeps spending: **track membership is pedagogy, so it is not derivable.**
+    // Nothing in the trace, the lesson, or the engine can prove `branch-bet` is about a machine
+    // rather than about the language — an author could file it under "The language" and every
+    // structural check would stay green, exactly as an alphabetical index stays green (step 0) and
+    // as a step dead in the wrong position stays green (M4 step 7).
+    //
+    // Deliberately NOT cross-checked against `model`. That would re-impose the coincidence above as
+    // a law and redden the day someone lawfully teaches `lw` on the pipeline. This test names the
+    // two lessons whose subject is a µarch; if that stops being true, a human should be the one to
+    // say so.
+    const machine = LESSON_TRACKS.find((t) => t.track === 'The machine');
+    expect([...(machine?.lessons ?? [])].sort()).toEqual(['branch-bet', 'forwarding-bubble']);
+  });
+
+  it('shows every lesson in the picker, even one the index forgot', () => {
+    // Step 0's totality rule, re-earned for the grouped picker rather than inherited from it: the
+    // flat list could not drop an unlisted lesson (it sorted last), a group-only render can, and
+    // "content that exists and nobody can reach" is what the index exists to end. The trailing
+    // heading is the second net — the suite fails first — but it is the one visible in the product.
+    const lessons = [
+      { id: 'a', title: 'A' },
+      { id: 'ghost', title: 'Ghost' },
+    ] as unknown as Lesson[];
+    const sections = lessonSections(lessons, [{ track: 'The language', lessons: ['a'] }]);
+    expect(sections.map((s) => s.track)).toEqual(['The language', UNTRACKED_HEADING]);
+    expect(sections[1]!.lessons.map((l) => l.id)).toEqual(['ghost']);
+  });
+
+  it('drops an empty track rather than showing a heading with nothing under it', () => {
+    const lessons = [{ id: 'a', title: 'A' }] as unknown as Lesson[];
+    const sections = lessonSections(lessons, [
+      { track: 'The language', lessons: ['a'] },
+      { track: 'The machine', lessons: [] },
+    ]);
+    expect(sections.map((s) => s.track)).toEqual(['The language']);
+  });
+
+  it('the shipped picker groups every lesson and invents no heading', () => {
+    // The shipped counterpart to the synthetic checks above: with the real index, `UNTRACKED_HEADING`
+    // must NOT appear, and the sections flattened must be exactly the picker's order — the property
+    // that makes grouping and order one declaration rather than two that can drift.
+    const sections = lessonSections();
+    expect(sections.map((s) => s.track)).toEqual(['The language', 'The machine']);
+    expect(sections.flatMap((s) => s.lessons.map((l) => l.id))).toEqual(LESSONS.map((l) => l.id));
   });
 });
 

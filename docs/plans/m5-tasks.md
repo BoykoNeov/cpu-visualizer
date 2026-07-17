@@ -1,10 +1,11 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
-**Status: STEPS 0–3 DONE 2026-07-17 (950 tests) — the order spine is in, the picker's alphabetical
+**Status: STEPS 0–4 DONE 2026-07-17 (956 tests) — the order spine is in, the picker's alphabetical
 order is gone, `first-program` is the front door, `sign-and-zero` teaches the load-extension trap on
-the corpus's last orphan, and `which-is-smaller` teaches the same law in the comparator (the one step
-that needed a new corpus program, and the argument for it is the measurement in its log). Steps 4–5
-not started. The prerequisite shipped —
+the corpus's last orphan, `which-is-smaller` teaches the same law in the comparator (the one step
+that needed a new corpus program, and the argument for it is the measurement in its log), and step 4
+declared the TRACKS and fixed a real sequencing defect the plan's own target order had blessed —
+the track taught the load trap before the load. Step 5 not started. The prerequisite shipped —
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
@@ -415,11 +416,99 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       step 0's defect one surface up, still live. It opens on `add` today by alphabetical luck, which is
       exactly the kind of accident step 0 said a picker should not run on. A candidate for step 4.
 
-- [ ] **4. Sequence + naming pass.** With 0–3 landed, order the whole set: language track first
-      (`first-program` → `sum-loop-tour` → `sign-and-zero` → `array-in-memory` → `function-call`),
-      µarch lessons after (`forwarding-bubble`, `branch-bet`). Consider whether the picker should
-      _show_ the two groups. Acceptance: a reviewer who has never seen the app can pick the top
-      lesson and be taught in the intended order.
+- [x] **4. Sequence + naming pass — DONE 2026-07-17 (956 tests).** `index.json` now declares
+      **tracks** (`The language` → `The machine`), the picker shows them as `<optgroup>`s, and the
+      language track was **reordered**. Zero new lesson-format fields, zero engine changes, zero
+      renderer changes; no lesson title was renamed and no lesson JSON was touched. Browser-verified
+      on the shipped bundle, both themes, dark via the real toggle.
+
+      **THE PLAN'S OWN TARGET ORDER WAS WRONG, AND READING THE TRACK AS A SEQUENCE IS THE FINDING.**
+      This step was supposed to be a no-op on order: steps 1–3 each inserted their lesson at the slot
+      the plan named, so `index.json` already matched the target line above. It matched, and it was
+      **defective in the shipped product**. The track taught `lb`/`lbu` at position 3 and `lw` at
+      position 5 — **the load trap before the load, the exception before the rule.**
+
+      It is forced by the lessons' own prose, not by taste, which is why it became a test rather than
+      an opinion:
+
+      - `array-in-memory` step 1 **introduces** the concept: "`lw t2, 0(t0)` reads a word from data
+        memory into a register."
+      - `sign-and-zero` step 1, two lessons **earlier**, already **spends** it: "Before you can load a
+        byte you need its address", plus the data-memory panel and `0x10000000`.
+
+      One lesson defines what the other assumes. Authored order is now `first-program` →
+      `sum-loop-tour` → **`array-in-memory`** → `sign-and-zero` → `which-is-smaller` →
+      `function-call`. The mirrored pair stays adjacent and in its cross-reference direction:
+      `which-is-smaller`'s expert tier calls back to "the same law `lb` and `lbu` show on loads", and
+      **a callback to a lesson the reader has not had is not a callback**. Both pinned by name
+      (mutation-checked: restoring the shipped order reddens exactly the rule-before-exception test;
+      splitting the pair reddens exactly the adjacency test).
+
+      **Why nobody caught it for three steps, and it is not carelessness.** Steps 2 and 3 each wrote
+      *"step 4 is still the real sequencing pass"* in their own logs and parked their lesson at the
+      guessed slot — correctly, because a lesson is authored against its program and its anchors, and
+      **nothing in that work ever reads the other five**. The plan's order line was written before
+      four of the six lessons existed. So the defect is structural: incremental insertion cannot see
+      a sequence, and the only instrument that can is a person reading the track top to bottom. That
+      is now the README's instruction, stated as the reason the suite is downstream of it.
+
+      **HEADLINE DECISION: TRACK IS DECLARED CONTENT, NOT DERIVED FROM `model`.** The picker shows
+      the two groups (the plan left this open). The tempting source was `model` — all six language
+      lessons are `single-cycle`, both µarch flagships are `pipeline`, so the split falls out free.
+      **That is step 0's defect a third time.** `model` says which microarchitecture a lesson RUNS ON;
+      a track says what it is ABOUT. They coincide by coincidence, not by law — a language lesson on
+      the pipeline is lawful, and a group derived from `model` would file it under "The machine" and
+      stay green. Same shape as `id.localeCompare` (step 0) and the ISA panel's opcode order.
+
+      Measured, and the number is the point: **file `branch-bet` under "The language" and exactly one
+      test of 125 reddens** — the by-name one. Every structural check stays green, because the
+      mis-filing is still self-consistent; and the retired `model` proxy stays green too (probed
+      directly: it returns `true` under the mutation). So the old test could not have caught this, and
+      the new one is the whole net. Third milestone running for "pedagogy is not derivable, assert it
+      by name" (M4 step 7: which position a step is *meant* to be dead in; M5 step 0: that the index
+      *teaches*).
+
+      Note what track is NOT: a `track` field on `Lesson`. That is pre-declined by decision 2, and for
+      the reason that applies here — one decision, one place. It is a grouped `index.json`, so the
+      order is **derived from the tracks by flattening**: order and grouping are one declaration read
+      two ways and cannot contradict each other. A sibling group-map beside a flat order would have
+      needed a third test to pin that the two agree.
+
+      **The grouped picker had to re-earn step 0's totality rule, and this is the trap worth naming.**
+      `orderLessons` keeps an unlisted lesson (sorted last) on purpose: "content that exists and nobody
+      can reach" is the failure the index exists to end. **Rendering only the authored tracks silently
+      drops a lesson in none of them** — trading a misplaced lesson for an invisible one, the exact
+      trade step 0 refused, reintroduced by the feature that reads the same file. So `lessonSections`
+      emits a trailing `Not in a track` heading, which renders only when authoring is wrong. Grouping
+      then makes the omission *louder* than the flat list could: an unlisted lesson used to sit last,
+      indistinguishable from one authored to be last.
+
+      **Naming: reviewed as a set, and nothing renamed — a decision, not a default.** Read top to
+      bottom in the real picker, four of six titles name their subject plainly ("Anatomy of a loop",
+      "Walking an array in memory") and two are riddles ("One byte, two answers", "When -1 is not less
+      than 1"). The riddles are the two lessons whose subject **is** a trap, so the title promising a
+      surprise is telling the truth; "Loads and sign extension" would scan better and teach less. What
+      the riddles lacked was a frame, and the group heading is now it — "The language" says all six are
+      about the ISA. **The reorder also fixed their reading for free:** they now follow "Walking an
+      array in memory" rather than preceding it, so the reader meets the concrete case first. The two
+      track names are this step's actual naming output.
+
+      **The step-3 log's `EXAMPLE_PROGRAMS` claim was FALSE, and the check that found it was vacuous
+      first.** Step 3 logged that the program picker "opens on `add` today by alphabetical luck" and
+      nominated it for this step. It does not: `useSimulator.ts:369` explicitly prefers `sum-loop`,
+      with a comment giving the reason (`add` sorts first but halts off text-end, so its final pc reads
+      as odd). Browser-confirmed on a fresh load — `program: sum-loop`, free play. The first attempt to
+      check this read the picker **after** driving a lesson and reported `call-return`: a check
+      measuring its own leftover state, the eyeball's recurring failure mode for the fourth step
+      running. Only a fresh navigation answers the question.
+
+      Half the claim survives: the picker's **list** is still alphabetical (`add, array-sum,
+      branch-flavors, byte-loads, call-return, sum-loop`). Left alone, with a reason: a lesson picker's
+      order **is** the teaching, so alphabetical there is the absence of an opinion — but the program
+      picker is a **lookup** surface reached in free play, where alphabetical is what a reader can
+      predict, and the ISA panel already settled the same distinction (editorial order for the
+      *groups* a learner reads, `sort((a,b) => a.number - b.number)` for the register *lookup* table).
+      Step 0's conclusion does not transfer just because the code rhymes.
 
 - [ ] **5. The hand-off the panel cannot make.** The track's closing beat should send the reader
       to the editor — "now change the 37 and watch 42 move". Nothing in the lesson format expresses
@@ -431,6 +520,9 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
 - [x] The lesson picker's order is authored, not alphabetical, and the index is exhaustive both ways.
       (Step 0. Note the second clause is the weaker one — see the step's log: exhaustiveness cannot
       see an alphabetical index. "Authored, not alphabetical" is carried by named content claims.)
+      **Step 4 found the sharper version: an order can be authored, exhaustive, self-consistent, fully
+      pinned — and still teach the exception before the rule.** It was, for three steps. The index
+      being _declared_ only moves the decision to where a human can make it; nothing makes them read it.
 - [x] `add.s` and `byte-loads.s` — the two orphaned corpus programs — each carry a lesson.
       (Steps 1 and 2. The second orphan turned out to be hiding a VIEW decision as well as a missing
       lesson — see step 2's log: it is the only program where the datapath's Data-Memory output wire
@@ -443,7 +535,10 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
       and the only candidate wire leaves the register file, which cannot re-spell its own output
       without appearing to transform it. That is step 2's `dmem-wb` argument reached from the opposite
       direction, and the pair is the milestone's best finding: **an interpretation never belongs on a
-      wire.** (One corpus program was added — a different bar, met in step 3's log.)
+      wire.** (One corpus program was added — a different bar, met in step 3's log.) Held through
+      step 4, where the temptation was different in kind: the picker needed a `track`, and the plan
+      had pre-declined it as a lesson field. It became a grouped `index.json` instead — content, one
+      place — so the `Lesson` type is still exactly what M1 shipped.
 - [ ] Every new lesson anchors under its declared model in every config it honors (the existing
       validator, unchanged and unweakened).
 - [ ] Narration obeys the rules the lessons README already states, which exist because each was

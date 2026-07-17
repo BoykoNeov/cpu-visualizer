@@ -26,6 +26,22 @@
  * exactly, which is why this file changed rather than the picker: **there is no source for
  * pedagogical order, so it must be DECLARED — and declared in content, not computed in the view.**
  * `content/lessons/index.json` is that declaration. This module only reads it.
+ *
+ * ## The TRACK is declared too, for the same reason (M5 step 4)
+ *
+ * The index groups its ids into tracks — the language, then the machine — and the picker shows
+ * them. The tempting alternative was to derive the group from each lesson's `model`: today all six
+ * language lessons are `single-cycle` and both µarch flagships are `pipeline`, so the split falls
+ * out for free. **That is step 0's defect a third time.** `model` is a declaration about which
+ * microarchitecture a lesson RUNS ON; "is this lesson about the language or about the machine" is a
+ * claim about its SUBJECT. They coincide in today's library by coincidence, not by law — a language
+ * lesson on the pipeline is perfectly lawful, and the day someone authors one, a group derived from
+ * `model` files it under "The machine" and stays green. Same shape as `id.localeCompare` and as the
+ * panel's opcode order: a view inventing pedagogy from a key whose job is something else.
+ *
+ * So track is content. Note what it is NOT: a `track` field on the `Lesson` type — that field is
+ * pre-declined by the M5 plan's decision 2, and for the reason that applies here, one decision
+ * belongs in one place rather than smeared across eight files.
  */
 
 import type { Lesson } from '@cpu-viz/curriculum';
@@ -45,9 +61,29 @@ const modules = import.meta.glob('../../../content/lessons/*.json', {
 
 const isOrderFile = (path: string): boolean => path.endsWith('/index.json');
 
-/** The authored teaching order — lesson ids, first-taught first (`content/lessons/index.json`). */
-export const LESSON_ORDER: readonly string[] =
-  (Object.entries(modules).find(([path]) => isOrderFile(path))?.[1] as string[] | undefined) ?? [];
+/** One authored track: a picker heading and the lesson ids it teaches, first-taught first. */
+export interface LessonTrack {
+  /** The heading the picker shows, e.g. `The language`. */
+  track: string;
+  /** Lesson ids, in teaching order. */
+  lessons: readonly string[];
+}
+
+/** The authored tracks, in teaching order (`content/lessons/index.json`). */
+export const LESSON_TRACKS: readonly LessonTrack[] =
+  (Object.entries(modules).find(([path]) => isOrderFile(path))?.[1] as LessonTrack[] | undefined) ??
+  [];
+
+/**
+ * The authored teaching order — lesson ids, first-taught first.
+ *
+ * **Derived from the tracks by flattening, and that is the point of the grouped shape.** The order
+ * and the grouping are one declaration read two ways, so they cannot contradict each other: there
+ * is no way to author a lesson into "The machine" and have it sort among the language lessons. A
+ * sibling file listing groups beside a flat order would have needed a third test to pin that the
+ * two agree — a decision spread across two files is the shape decision 2 declines.
+ */
+export const LESSON_ORDER: readonly string[] = LESSON_TRACKS.flatMap((t) => [...t.lessons]);
 
 /**
  * Sort lessons into the authored order.
@@ -85,3 +121,46 @@ export const LESSONS: readonly Lesson[] = orderLessons(
     .map(([, lesson]) => lesson as Lesson),
   LESSON_ORDER,
 );
+
+/**
+ * The heading an unlisted lesson is shown under — see {@link lessonSections}.
+ *
+ * It renders only when the index is wrong, which is the whole idea: a heading a reviewer was not
+ * expecting is louder than a lesson quietly sitting last.
+ */
+export const UNTRACKED_HEADING = 'Not in a track';
+
+/**
+ * The lessons grouped for the picker: each authored track with its lessons resolved, empty tracks
+ * dropped, **plus a trailing group for any lesson the index forgot.**
+ *
+ * That last clause is the load-bearing one, and it is step 0's totality rule re-earned rather than
+ * inherited. `orderLessons` deliberately keeps an unlisted lesson (sorted last) because "content
+ * that exists and nobody can reach" is the exact failure the index exists to end. Grouping breaks
+ * that guarantee unless it is rebuilt HERE: a picker that renders only the authored tracks drops
+ * a lesson belonging to none of them, silently and in the product — trading a misplaced lesson for
+ * an invisible one, which is the trade step 0 refused.
+ *
+ * So the omission is surfaced instead of swallowed, and grouping makes it *louder* than the flat
+ * list could: the flat picker showed an unlisted lesson last, indistinguishable from a lesson that
+ * was authored to be last. Under a heading it is unmistakable. The suite still fails first — this
+ * is the second net, not the first.
+ */
+export function lessonSections(
+  lessons: readonly Lesson[] = LESSONS,
+  tracks: readonly LessonTrack[] = LESSON_TRACKS,
+): { track: string; lessons: Lesson[] }[] {
+  const byId = new Map(lessons.map((l) => [l.id, l]));
+  const sections = tracks.map(({ track, lessons: ids }) => ({
+    track,
+    // An id with no lesson behind it is skipped rather than fabricated, matching `orderLessons`
+    // and the ISA panel's `instructionSections`: the suite is where that failure gets named.
+    lessons: ids.flatMap((id) => (byId.get(id) ? [byId.get(id)!] : [])),
+  }));
+  const tracked = new Set(tracks.flatMap((t) => [...t.lessons]));
+  const untracked = lessons.filter((l) => !tracked.has(l.id));
+  return [
+    ...sections,
+    ...(untracked.length ? [{ track: UNTRACKED_HEADING, lessons: untracked }] : []),
+  ].filter((s) => s.lessons.length > 0);
+}
