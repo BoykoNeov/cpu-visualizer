@@ -415,18 +415,25 @@ export function formsFor(mnemonic: string): readonly string[] {
 }
 
 /**
- * The instruction rows, grouped for display. Membership and order come from `INSTRUCTIONS`;
- * a mnemonic with no note is omitted rather than shown blank — the test makes that state
- * unreachable, so this is a fallback that should never fire in a shipped build.
+ * The instruction rows, grouped for display.
+ *
+ * **Membership is derived, ORDER is editorial, and the split is the point.** Iterating
+ * `INSTRUCTIONS` (as this first did) inherits the ISA table's order, which is by *opcode* —
+ * so "Arithmetic" opened with `addi` ahead of `add`, because 0x13 sorts before 0x33. That is
+ * a true fact about the encoding and a meaningless one to a learner reading a group this file
+ * invented. There is no source for pedagogical order, so the notes' own key order IS it.
+ *
+ * Membership stays underivable-from-drift anyway: a note for a mnemonic the ISA does not define
+ * is skipped here (never rendered) and fails the exhaustiveness test there.
  */
 export function instructionSections(): { group: InstrGroup; entries: RefEntry[] }[] {
+  const real = new Set(INSTRUCTIONS.map((d) => d.mnemonic));
   const byGroup = new Map<InstrGroup, RefEntry[]>(INSTR_GROUPS.map((g) => [g, []]));
-  for (const def of INSTRUCTIONS) {
-    const note = INSTRUCTION_NOTES[def.mnemonic];
-    if (!note) continue;
+  for (const [mnemonic, note] of Object.entries(INSTRUCTION_NOTES)) {
+    if (!real.has(mnemonic)) continue;
     byGroup.get(note.group)?.push({
-      name: def.mnemonic,
-      forms: formsFor(def.mnemonic),
+      name: mnemonic,
+      forms: formsFor(mnemonic),
       summary: note.summary,
       example: note.example,
     });
@@ -487,11 +494,24 @@ function roleOf(name: string, num: number): string {
   return 'Temporary — free to clobber.';
 }
 
-/** Every register name the assembler accepts, ordered by number (aliases adjacent). */
+/**
+ * Every register name the assembler accepts, ordered by number.
+ *
+ * Ties (x8 is both `s0` and `fp`) are broken by the assembler's own declaration order, which
+ * lists the canonical name first — hence a stable sort on the number ALONE. Sorting names
+ * alphabetically within a tie put `fp` above `s0`, so the alias came first and its role text
+ * ("another name for s0") pointed at a row underneath it. The fix is to delete the tiebreak,
+ * not to write one: `registers.ts` already knows which name is the real one.
+ */
 export function registerEntries(): RegisterEntry[] {
   return Object.entries(ABI_REGISTERS)
     .map(([name, number]) => ({ name, number, role: roleOf(name, number) }))
-    .sort((a, b) => a.number - b.number || a.name.localeCompare(b.name));
+    .sort((a, b) => a.number - b.number);
+}
+
+/** How many registers there are (32) — distinct from how many NAMES resolve to one (33, with `fp`). */
+export function registerCount(): number {
+  return new Set(registerEntries().map((r) => r.number)).size;
 }
 
 /**

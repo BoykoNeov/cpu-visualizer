@@ -32,6 +32,7 @@ import {
   formsFor,
   instructionSections,
   pseudoEntries,
+  registerCount,
   registerEntries,
 } from './isa-reference';
 
@@ -146,6 +147,29 @@ describe('isa-reference: every example is real assembly', () => {
     for (const { name } of registerEntries()) {
       expect(assembleOk(`.text\naddi t0, ${name}, 0\n`).errors, name).toEqual([]);
     }
+  });
+});
+
+describe('isa-reference: display order is editorial, and that is deliberate', () => {
+  it('opens Arithmetic with add, not addi', () => {
+    // The ISA table is ordered by OPCODE, so iterating it put `addi` (0x13) above `add` (0x33) in
+    // a group this file invented for learners. True about the encoding, meaningless to a reader.
+    // Caught in the browser with the whole suite green — order was nobody's assertion until now.
+    const arithmetic = instructionSections().find((s) => s.group === 'Arithmetic');
+    expect(arithmetic?.entries.map((e) => e.name)).toEqual(['add', 'sub', 'addi']);
+  });
+
+  it('lists the canonical name before its alias (s0 above fp)', () => {
+    // Both are x8. Sorting names alphabetically within the tie put the ALIAS first, so its role
+    // ("another name for s0") pointed at a row below it. `registers.ts` declares s0 first; a
+    // stable sort on the number alone inherits that, which is why the tiebreak is absent.
+    const names = registerEntries().map((r) => r.name);
+    expect(names.indexOf('s0')).toBeLessThan(names.indexOf('fp'));
+  });
+
+  it('counts registers (32), not register names (33 — fp aliases s0)', () => {
+    expect(registerCount()).toBe(32);
+    expect(registerEntries()).toHaveLength(33);
   });
 });
 
