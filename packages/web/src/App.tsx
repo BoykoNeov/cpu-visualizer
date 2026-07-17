@@ -159,14 +159,6 @@ export function App(): React.JSX.Element {
               ))}
             </select>
           </label>
-          {/* Only for a model that actually honors the config — absent, not disabled, elsewhere:
-              a control that cannot move anything is worse than no control. */}
-          {activeModel.capabilities.configurableForwarding ? (
-            <ForwardingToggle on={sim.forwarding} setOn={sim.setForwarding} />
-          ) : null}
-          {activeModel.capabilities.configurableBranchPrediction ? (
-            <PredictionToggle scheme={sim.branchPrediction} setScheme={sim.setBranchPrediction} />
-          ) : null}
           <label>
             Program:{' '}
             <select
@@ -208,7 +200,57 @@ export function App(): React.JSX.Element {
         </div>
       </header>
 
-      <ModeChip sim={sim} />
+      {/* The session chip and the machine's config knobs share one row — and the knobs live HERE
+          rather than in the header beside the Model picker because the header cannot hold them.
+
+          Measured, in a real browser at the 1200px content width, because this is exactly the kind
+          of claim that reads as taste: the five universal controls plus these two want ~1450px of a
+          1200px row, so picking the pipeline made `flex-wrap` do the only thing it can — `Lesson`
+          and the theme toggle were thrown onto a second line, `Lesson` moving 712px left and 50px
+          down, and every surface below the header falling 51px. A reader picking a new model expects
+          the PICTURE to change; they do not expect the control they just used to leave the place
+          they left it. The seven do not fit and no arrangement of them does, so the honest fix is
+          for the model-dependent pair to stop competing for that row at all.
+
+          This row is the right home because it already exists on every model — the chip is never
+          absent (free play, lesson, and sandbox all render one) — so the knobs appear in space that
+          was already there and reserved for nothing: no new row, and nothing below moves. Which is
+          the whole ask. It reads as a bar, too: what session you are in, and what machine you are in
+          it with.
+
+          Right-anchored (`marginLeft: auto`) so the CHIP's width cannot jitter them either — it
+          genuinely varies, the sandbox chip being a full sentence where free-play is two words. The
+          same trick the header already uses on its own control group, and the reason the header
+          survives the model description changing width underneath it. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1rem',
+          flexWrap: 'wrap',
+          marginTop: '0.75rem',
+        }}
+      >
+        <ModeChip sim={sim} />
+        {/* Only for a model that actually honors the config — absent, not disabled, elsewhere:
+            a control that cannot move anything is worse than no control. */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            gap: '1.25rem',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          {activeModel.capabilities.configurableForwarding ? (
+            <ForwardingToggle on={sim.forwarding} setOn={sim.setForwarding} />
+          ) : null}
+          {activeModel.capabilities.configurableBranchPrediction ? (
+            <PredictionToggle scheme={sim.branchPrediction} setScheme={sim.setBranchPrediction} />
+          ) : null}
+        </div>
+      </div>
 
       <ProgramEditor
         open={showEditor}
@@ -328,6 +370,9 @@ export function App(): React.JSX.Element {
  * following a lesson (its annotations attached), or a sandbox (a user-edited program with the
  * lesson detached). This is the minimal visible surface that makes the mid-lesson → edit →
  * fork transition legible; full step-by-step narration playback is a later piece.
+ *
+ * Owns no vertical margin: it is a flex item in the status row (see the call site), which sits the
+ * machine's config knobs beside it and so owns the spacing for the pair.
  */
 function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.Element | null {
   const { sim } = props;
@@ -335,7 +380,6 @@ function ModeChip(props: { sim: ReturnType<typeof useSimulator> }): React.JSX.El
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
-    marginTop: '0.75rem',
     fontSize: '0.82rem',
     padding: '0.2rem 0.6rem',
     borderRadius: 999,
