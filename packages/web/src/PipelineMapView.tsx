@@ -169,27 +169,43 @@ export function PipelineMap(props: {
             cycles {view.lo}–{view.hi - 1} of {map.cycles} · scrub to page
           </span>
         ) : null}
-        {followedRow ? (
-          <div
-            style={{
-              marginLeft: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontSize: '0.78rem',
-            }}
-          >
-            <span style={{ color: T.ink2 }}>
-              Following{' '}
-              <code style={{ fontFamily: MONO, color: T.ink }}>
-                {formatInstruction(followedRow.decoded)}
-              </code>
-            </span>
-            <button className="btn" style={{ fontSize: '0.75rem' }} onClick={() => onFollow(null)}>
-              ✕ clear
-            </button>
-          </div>
-        ) : null}
+        {/* The follow readout, ALWAYS rendered and merely hidden when nothing is followed — the one
+            way this map changes its own size, and it took a browser probe to find because no test
+            can see a height.
+
+            `✕ clear` is a button, and a button is ~12px taller than the text line beside it. Drawn
+            conditionally, the header was 17px until you clicked a cell and 29px after, so the act of
+            following an instruction grew the WHOLE MAP 315→327px and shoved the datapath and the
+            panels down the page — at the exact moment the reader's eye is on the row they just
+            picked. Reserving the space costs a strip of empty header; the alternative charges a jump
+            for using the feature.
+
+            Same mechanism as the narration stack in App: `visibility: hidden` holds the layout open
+            and takes the control out of the tab order and the a11y tree on the way, so there is no
+            unreachable button to tab into. Kept in flow rather than height-pinned with a magic number
+            so the reserve stays derived — if the button's padding ever changes, the header follows.
+            The label needs a placeholder for the hidden state; it is never read, only measured, and
+            the BUTTON is what sets the height either way. */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.78rem',
+            visibility: followedRow ? 'visible' : 'hidden',
+          }}
+        >
+          <span style={{ color: T.ink2 }}>
+            Following{' '}
+            <code style={{ fontFamily: MONO, color: T.ink }}>
+              {followedRow ? formatInstruction(followedRow.decoded) : '—'}
+            </code>
+          </span>
+          <button className="btn" style={{ fontSize: '0.75rem' }} onClick={() => onFollow(null)}>
+            ✕ clear
+          </button>
+        </div>
       </div>
 
       <div className="pmap-scroll" ref={scrollRef}>
