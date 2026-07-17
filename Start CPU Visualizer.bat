@@ -29,15 +29,19 @@ if not exist "node_modules" (
 )
 
 echo   Starting the dev server...
-echo   When it says "Local: http://localhost:5173", the app is ready.
+echo   Your browser will open by itself once the server is ready.
 echo.
 
-REM Open the browser shortly after the server has had time to boot.
-REM (Vite's default port is 5173.)
-start "" cmd /c "timeout /t 4 /nobreak >nul & start "" http://localhost:5173"
-
 REM Hand the window over to the dev server (stays running until you close it).
-call npm run dev
+REM
+REM `npm start` passes --open, so VITE opens the browser, on the URL it actually bound. Do not
+REM hardcode a port here: 5173 is Vite's PREFERRED port, not a promise. If anything else already
+REM holds it (another copy of this app, or an unrelated dev server), Vite quietly moves to the next
+REM free one — 5174, 5175, ... — and a hardcoded 5173 then sends the user to whatever OTHER program
+REM owns that port, or to a blank page. Only the server knows where it landed, so only the server
+REM should open the browser. This also drops the old "wait 4 seconds and hope" timer: --open fires
+REM when the server is actually listening, not when a guess expires.
+call npm start
 
 echo.
 echo   Dev server stopped.

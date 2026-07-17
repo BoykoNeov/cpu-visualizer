@@ -30,6 +30,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "npm run dev --workspace @cpu-viz/web",
+    "start": "npm run dev --workspace @cpu-viz/web -- --open",
     "clean": "tsc -b --clean",
     "prepare": "husky"
   },
