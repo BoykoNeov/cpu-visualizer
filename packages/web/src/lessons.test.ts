@@ -21,7 +21,7 @@ import {
 } from '@cpu-viz/trace';
 import { MODELS, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
-import { LESSONS } from './lessons';
+import { LESSON_ORDER, LESSONS, orderLessons } from './lessons';
 import { predictsTaken } from './session';
 import { loadSource } from './simulator';
 
@@ -323,6 +323,80 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
   });
 });
 
+/**
+ * The order spine (M5 step 0) — the picker teaches in the AUTHORED order.
+ *
+ * The defect this replaces was live in the shipped product and is worth stating as more than a
+ * changelog line, because it is the second instance of one class in a week: `lessons.ts` sorted by
+ * `id.localeCompare`, so a beginner opening the picker was offered `array-in-memory` — a memory
+ * lesson — ahead of `sum-loop-tour`. The ISA reference panel had just fixed the same shape one
+ * surface down (groups inheriting the ISA table's *opcode* order, putting `addi` above `add`).
+ * Both are a view inventing a pedagogical order from a key whose job is something else entirely.
+ *
+ * So the order moved into content, and what is tested here is the reading of it, in two blocks
+ * that fail for different reasons: the sort itself against synthetic input (which is where a
+ * mistake would otherwise go *quiet* rather than red), and the shipped index against the shipped
+ * lessons (which is where an authoring omission goes red).
+ */
+describe('orderLessons — the sort a mistake in would not fail, only re-invent an order', () => {
+  const ids = (lessons: { id: string }[]): string[] => lessons.map((l) => l.id);
+  const of = (...names: string[]): { id: string }[] => names.map((id) => ({ id }));
+
+  it('sorts into the index’s order, not the glob’s', () => {
+    // The input is deliberately alphabetical — that is what the glob hands over, and what this
+    // module used to ship as the answer.
+    expect(ids(orderLessons(of('a', 'b', 'c'), ['c', 'a', 'b']))).toEqual(['c', 'a', 'b']);
+  });
+
+  it('KEEPS an unlisted lesson — last, and deterministically', () => {
+    // The claim the picker's totality rests on: the index controls order, never membership. A
+    // lesson missing from the index is misplaced; a lesson dropped by the view is unreachable, and
+    // only the second is invisible to the person looking at the product.
+    //
+    // Two unlisted lessons rather than one, on purpose: it is what pins the comparator's rank for
+    // "unlisted" as a finite number. With `Infinity` the pair compares `Infinity - Infinity = NaN`
+    // and their order becomes unspecified — a test with one unlisted lesson cannot see that.
+    expect(ids(orderLessons(of('zz', 'b', 'aa'), ['b']))).toEqual(['b', 'aa', 'zz']);
+  });
+
+  it('ignores an id with no lesson behind it rather than fabricating one', () => {
+    expect(ids(orderLessons(of('a'), ['ghost', 'a']))).toEqual(['a']);
+  });
+});
+
+describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
+  it('LESSONS is exactly the index, in the index’s order — exhaustive in BOTH directions', () => {
+    // One assertion, three claims, because an array `toEqual` checks membership and order at once:
+    // a globbed-but-unlisted lesson sorts past the end and lengthens the left, a listed-but-missing
+    // id lengthens the right, and a lesson in the wrong place differs in place. This is the test the
+    // step's mutation check aims at — drop an id from `index.json` and this is what reddens, alone.
+    //
+    // It is not tautological, which is the thing to check about a test comparing a list to its own
+    // source: `LESSONS` is derived from the GLOB and merely *sorted* by the index, so the index
+    // cannot conjure or suppress a member. Membership disagreeing is exactly what shows up here.
+    expect(LESSONS.map((l) => l.id)).toEqual(LESSON_ORDER);
+  });
+
+  it('opens on the natural first lesson, not on whatever sorts first', () => {
+    // The defect, pinned by name rather than by the general rule above — this is the pair a reader
+    // can check against the picker in one glance, and the one that was wrong in the product.
+    expect(LESSONS[0]!.id).toBe('sum-loop-tour');
+    expect(LESSON_ORDER.indexOf('sum-loop-tour')).toBeLessThan(
+      LESSON_ORDER.indexOf('array-in-memory'),
+    );
+  });
+
+  it('teaches the LANGUAGE before the MACHINE', () => {
+    // The track's shape as an ordering claim rather than as a comment: every single-cycle lesson
+    // (the language track — a loop, an array, a call) precedes both pipeline flagships (whose
+    // subject is a µarch, and which presuppose the language). This is the claim M5 step 4 extends
+    // when `first-program` and `sign-and-zero` land, and it is why the authored order is not
+    // alphabetical in either direction — `array-in-memory` sorts first, `sum-loop-tour` sorts last.
+    const models = LESSONS.map((l) => l.model);
+    expect(models.lastIndexOf('single-cycle')).toBeLessThan(models.indexOf('pipeline'));
+  });
+});
+
 describe('authored lessons (INV-6)', () => {
   it('ships one lesson per shipped microarchitecture that has something to teach', () => {
     // Three single-cycle tours (M1's "2–3 lessons" target) plus the two pipeline flagships — one
@@ -333,10 +407,18 @@ describe('authored lessons (INV-6)', () => {
     // under them (pinned by the cross-model suite below). The pipeline is the first model whose
     // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
     expect(LESSONS.length).toBe(5);
-    expect(LESSONS.filter((l) => l.model === 'pipeline').map((l) => l.id)).toEqual([
-      'branch-bet',
-      'forwarding-bubble',
-    ]);
+    // Sorted, because the claim in this test's own sentence is MEMBERSHIP — "one lesson per
+    // microarchitecture" — and `LESSONS` is no longer in a sorted order for it to borrow. Written
+    // as a bare `toEqual` it passed only because the picker was alphabetical, so M5 step 0 reddened
+    // it by putting `forwarding-bubble` (M3) ahead of `branch-bet` (M4): a real change in the
+    // product, and nothing this test means to be about. Order is pinned exhaustively, once, against
+    // `index.json` above; a second copy here would just be a decision spread across two files —
+    // the shape decision 2 of the M5 plan declines — and would redden twice at step 4's reorder.
+    expect(
+      LESSONS.filter((l) => l.model === 'pipeline')
+        .map((l) => l.id)
+        .sort(),
+    ).toEqual(['branch-bet', 'forwarding-bubble']);
   });
 
   // The validator: every lesson, every step, against the real engine it declares.

@@ -24,6 +24,33 @@ These files are **untrusted at compile time** — a mistyped `event`, `where`, o
 silently. That type-safety is bought back by `packages/web/src/lessons.test.ts`, which anchors
 every lesson against the real engine **it declares** and asserts no step is dead.
 
+### `index.json` is the teaching ORDER, and it is content
+
+`index.json` lists lesson ids, first-taught first. It is the **only** source of the order the
+picker offers, and it lives here rather than in the view because there is no source for
+pedagogical order — it has to be declared by whoever is doing the teaching.
+
+Until M5 step 0 `lessons.ts` ended `.sort((a, b) => a.id.localeCompare(b.id))`, so a beginner was
+offered `array-in-memory` first — a memory lesson — and `sum-loop-tour`, the natural first lesson,
+last. **A `localeCompare` is not an opinion about teaching; it is the absence of one, wearing
+determinism as a disguise.** (The ISA reference panel shipped and fixed the same shape one surface
+down: its groups inherited the ISA table's _opcode_ order, so "Arithmetic" opened with `addi` above
+`add`.)
+
+To add a lesson: drop the JSON in this directory **and** add its id here. The two are checked
+against each other in both directions, so an unlisted lesson fails the suite rather than being
+quietly placed. Order-only, though — `lessons.ts` sorts by this file and never filters by it, so a
+missing id cannot make a lesson vanish from the product, only misplace it at the end.
+
+**What the exhaustiveness check cannot see, measured:** re-author this file into pure alphabetical
+order and the index/lesson-set test stays **green** — the code faithfully reads the index, and the
+picker ships the exact defect step 0 existed to fix. `LESSONS` follows the index, so _every_ index
+is self-consistent, and no derivable rule can rank one order above another. What catches it is the
+handful of named claims in `lessons.test.ts` that assert this file's **content** is sane — the
+first lesson is `sum-loop-tour`, and every language lesson precedes every µarch one. Those are
+pedagogy, and pedagogy is not derivable — the same reason M4 step 7 had to assert by name which
+position a step is _meant_ to be dead in.
+
 ### `model` and `config` are honored, not decorative
 
 Starting a lesson switches the shell to the lesson's `model` and, when the lesson declares one,
@@ -94,6 +121,8 @@ would be a worse trade than a lesson that reads oddly if you insist. Noted becau
 anchors" is exactly the reassurance that hides it — see `lessonOpening`: anchoring is not truth.
 
 ## Authored lessons
+
+Listed in `index.json`'s teaching order — the language track first, then the µarch flagships.
 
 - **`sum-loop-tour`** — anatomy of a counting loop (`sum-loop`): fetch → loop body → backward
   branch → the final total (55).

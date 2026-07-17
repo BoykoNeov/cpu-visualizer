@@ -1,6 +1,7 @@
 # Milestone 5 — the ISA track: teaching the LANGUAGE, not the machine
 
-**Status: NOT STARTED (plan only), 2026-07-17. Nothing built. The prerequisite shipped —
+**Status: STEP 0 DONE 2026-07-17 (895 tests) — the order spine is in and the picker's alphabetical
+order is gone. Steps 1–5 not started. The prerequisite shipped —
 the ISA reference panel (`579a244`, 890 tests) — and this plan is the second half of the same
 request: "the user has the option to edit the program, but may not know what instructions he can
 use; we need lessons and a panel for that."**
@@ -105,12 +106,42 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. The order spine.** Add `content/lessons/index.json` (ordered ids) and read it in
-      `lessons.ts` instead of `localeCompare`. Pin: index ≡ the globbed set in both directions
-      (an unlisted lesson fails; a listed-but-missing id fails). Mutation-check by removing an id.
-      Do this **first**: it is the only step with machinery, every later step lands into it, and
-      it fixes a defect that is live today independent of any new lesson. Acceptance: picker order
-      is the authored order; `npm test` green; dropping an id reddens exactly the index test.
+- [x] **0. The order spine — DONE 2026-07-17 (895 tests).** `content/lessons/index.json` (ordered
+      ids) is now the only source of picker order; `lessons.ts` reads it instead of
+      `localeCompare`. Authored order: `sum-loop-tour` → `array-in-memory` → `function-call` →
+      `forwarding-bubble` → `branch-bet` — step 4's target order minus the two unbuilt lessons.
+      Browser-verified on the shipped bundle: the picker reads "Anatomy of a loop" first (was
+      "Walking an array in memory"), five options, and the promoted lesson opens correctly.
+
+      **THE ACCEPTANCE LINE WAS BACKWARDS, AND MEASURING IT IS THE FINDING.** It asked that
+      "dropping an id reddens exactly the index test", which treats index ≡ set as the net. Run as
+      two mutations, it is the weaker half:
+
+      - Drop an id → **three** tests redden, not one, and all three are true consequences (the
+        unlisted lesson sorts last, so a memory lesson leads *and* a language lesson trails the
+        µarch ones).
+      - Re-author the index into pure alphabetical order — exhaustive, self-consistent, and the
+        exact defect this step exists to fix — → the index test stays **GREEN**.
+
+      `LESSONS` is *derived from* the index, so **every index is self-consistent** and the
+      exhaustiveness check is structurally blind to a badly-authored order: it pins that the CODE
+      reads the index, never that the INDEX teaches. Following the plan's acceptance literally
+      would have shipped machinery that faithfully implements `localeCompare`. What catches it is
+      the two claims asserted **by name** about the index's content (first lesson is
+      `sum-loop-tour`; every language lesson precedes every µarch one) — pedagogy, which is not
+      derivable, exactly as M4 step 7 found for "which position a step is *meant* to be dead in".
+      This is the "guard whose case list cannot reach the defect is not a guard" shape for the
+      third milestone running.
+
+      Two smaller finds. **The glob would have eaten the index**: `import.meta.glob('*.json')` sits
+      on the lessons' own directory, so `index.json` would be cast to a `Lesson` and shipped as a
+      step-less sixth entry — solved by one glob partitioned by path (a direct `import` would have
+      needed the same exclusion anyway, so partitioning removes the problem rather than moving it).
+      And **one existing test passed only because it was alphabetical**: `lessons.test.ts`'s
+      pipeline-membership assertion read `toEqual(['branch-bet', 'forwarding-bubble'])`, which the
+      authored order (M3's flagship before M4's) reddens. Its own sentence is a claim about
+      MEMBERSHIP, so it now sorts before comparing — order is pinned exhaustively once, against the
+      index, rather than copied into a second file that would redden again at step 4's reorder.
 
 - [ ] **1. `first-program` on `add.s`.** The arithmetic/registers intro, and the track's front
       door — the smallest program that computes something (5 + 37 = 42). Anchors: `reg-write` ×2
@@ -150,7 +181,9 @@ same exhaustiveness shape the panel's notes now use, for the same reason.
 
 ## Acceptance criteria
 
-- [ ] The lesson picker's order is authored, not alphabetical, and the index is exhaustive both ways.
+- [x] The lesson picker's order is authored, not alphabetical, and the index is exhaustive both ways.
+      (Step 0. Note the second clause is the weaker one — see the step's log: exhaustiveness cannot
+      see an alphabetical index. "Authored, not alphabetical" is carried by named content claims.)
 - [ ] `add.s` and `byte-loads.s` — the two orphaned corpus programs — each carry a lesson.
 - [ ] **Zero new lesson-format fields, zero engine changes, zero renderer changes.** If any of the
       three is needed, that is the milestone's real finding and belongs in its log — the same bar
