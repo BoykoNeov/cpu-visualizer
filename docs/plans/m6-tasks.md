@@ -1,11 +1,13 @@
 # Milestone 6 — caches (the third toggle on the pipeline)
 
-**Status: STEPS 0–2 DONE, 2026-07-18 (999 tests). The corpus straddler ships, the pure timing-shadow
-model is proven against the real engine's address stream, and the pipeline now HONORS `config.cache`:
-a miss freezes IF/ID/EX for `missPenalty` cycles via the `missCyclesRemaining` countdown — the machine's
-first variable-latency stage. Cache-off runs are byte-identical to M4. Remaining: the config-matrix
-conformance clause (step 3), the per-term timing suite + "no size dominates" thesis (step 4), the web
-toggle (step 5), the cache grid view (step 6), and the lesson track (step 7).
+**Status: STEPS 0–3 DONE, 2026-07-18 (1087 tests). The corpus straddler ships, the pure timing-shadow
+model is proven against the real engine's address stream, the pipeline HONORS `config.cache` (a miss
+freezes IF/ID/EX for `missPenalty` cycles via the `missCyclesRemaining` countdown — the machine's
+first variable-latency stage), and the INV-8 differential now runs the corpus across the full
+forwarding × predict × cache cross product, green by construction (the value-less cache cannot move
+architectural state) with a deep-compare `configLabel` cache clause naming which config broke.
+Cache-off runs are byte-identical to M4. Remaining: the per-term timing suite + "no size dominates"
+thesis (step 4), the web toggle (step 5), the cache grid view (step 6), and the lesson track (step 7).
 Remaining numbers in this plan are DERIVATIONS to be confirmed, not measurements. Deliberately deferred and named:
 set-associativity + a replacement policy (the only future user of `config.seed`), a second level
 (the `cache-access.level` field already anticipates it), an I-cache, and write-back. The one
@@ -222,12 +224,33 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       decomposition + "no size dominates" is **step 4** — deliberately NOT built here. **Zero new trace
       fields.**
 
-- [ ] **3. Conformance matrix + the `configLabel` cache clause.** Extend the differential list to the
-      cache axis and write the deep-compare clause `configLabel` reserved. **Acceptance:** matrix
-      green; a cache-on and cache-off config produce _distinct_ labels (so a red cell names which
-      config broke); the multi-axis list is a case in the label helper's own suite, so its guard can
-      reach the collision it guards (M4 step 2's rule — a guard whose case list can't reach the
-      collision is not a guard).
+- [x] **3. Conformance matrix + the `configLabel` cache clause. DONE 2026-07-18 (999 → 1087 tests).**
+      The pipeline differential grew to the full **forwarding × predict × cache** cross product
+      (2 × 3 × 3 = 18 configs; cache ∈ {off, `CACHE_SMALL`, `CACHE_LARGE`}, imported from `./cache`
+      since the test lives in the pipeline package), and every cache cell is green **by
+      construction** — the timing shadow holds no values, so cache-off / SMALL / LARGE all agree with
+      the value-less golden reference. That turns the "INV-8 green by construction" claim from an
+      argument into a mechanical net: a cache bug that LEAKED into state (stale value, eviction
+      corrupting a word) is caught here and nowhere else — the timing suite would see a wrong cycle
+      count, never a wrong answer. `CACHE_SMALL` is the load-bearing value (2 lines ⇒ the only config
+      exercising eviction). **The `configLabel` clause** is the reserved deep-compare, written to one
+      invariant: **`cacheLabel` renders exactly the fields `cacheEquals` distinguishes**, so
+      `cacheEquals(a,b) === false ⟹ cacheLabel(a) !== cacheLabel(b)` — two configs differing only in
+      cache share their forwarding/predict labels, so the cache label is the ONLY thing left to tell
+      their titles apart; a label that collapsed distinct caches could not name which config broke
+      (M4's defect one axis down). Chose Option A (deep-equal all three geometry fields + render all
+      three, `cache 2×16B/p10`) over a "name only the sub-fields that vary" render, which would
+      REOPEN the gap: equality would call two configs distinct while the label called them the same.
+      **Harness suite (`conformance.test.ts`):** added a THREE-axis case list (its distinctness guard
+      can now reach a cache-label collision — the case list must vary the cache, exactly as M4's had
+      to vary prediction) **without touching `MULTI_AXIS`** (its "varies TWO knobs" comment and
+      `6 * corpusSize` length assertion stay accurate), plus the load-bearing **silence-when-all-off**
+      assertion — a matrix where every config leaves the cache off must not mention it, which is what
+      keeps the single/multi-cycle suites and the M3/M4 guards byte-identical (they all pass
+      `cache: null`). Inline `{lineSize,numLines,missPenalty}` objects there, NOT the pipeline
+      constants (conformance sits below pipeline in the DAG — importing would invert it). **No
+      `RESULT_ORACLES` / `checkProgram` change** (cache is architecturally invisible). Typecheck +
+      lint clean; all green first run.
 
 - [ ] **4. Timing — the closed form gains a miss term, and bigger is not always better.**
       `cycles = N + 4 + S + P + M`, where `M = Σ (misses × missPenalty)`, derived per program from a
