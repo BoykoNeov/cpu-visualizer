@@ -5,11 +5,13 @@ import { assemble, type AssembledProgram } from '@cpu-viz/assembler';
 import { toProgramImage } from '@cpu-viz/engine-common';
 import {
   defaultConfig,
+  type CacheConfig,
   type CycleTrace,
   type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
 import { PipelineProcessor } from './index';
+import { CACHE_LARGE, CACHE_SMALL } from './cache';
 
 /**
  * The pinned timing table — the net for INV-8's blind spot (M3 step 3).
@@ -111,6 +113,36 @@ const withScheme = (config: ProcessorConfig, branchPrediction: Scheme): Processo
 });
 
 /**
+ * The three cache positions (M6). `off` is the M3/M4 machine unchanged; `small` (2 lines) and
+ * `large` (4 lines) are the flagship straddle's two sizes, sharing the same 16-byte line and the
+ * default `missPenalty` 10 (`cache.ts`). Every cache-off assertion above is the `off` position,
+ * unmoved — the cache is a third, orthogonal toggle, not a rewrite.
+ */
+type CacheSize = 'off' | 'small' | 'large';
+const CACHE: Record<CacheSize, CacheConfig | null> = {
+  off: null,
+  small: CACHE_SMALL,
+  large: CACHE_LARGE,
+};
+const MISS_PENALTY = 10; // CACHE_SMALL / CACHE_LARGE default (cache.ts); step 4 owns the final value.
+const withCache = (config: ProcessorConfig, cache: CacheConfig | null): ProcessorConfig => ({
+  ...config,
+  cache,
+});
+
+/** The pinned miss count at a given size — `off` has none (no cache ⇒ no access). */
+const missesAt = (pinned: Timing, cache: CacheSize): number =>
+  cache === 'off' ? 0 : pinned.misses[cache];
+
+/**
+ * `M`'s raw material as the ENGINE served it: `cache-access` events whose verdict is a miss. The
+ * measured route to `M`, the way {@link penaltyFromEvents} is the measured route to `P` — checked
+ * against the hand-derived {@link Timing.misses} so a disagreement names the access that drifted.
+ */
+const missCount = (ts: CycleTrace[]): number =>
+  eventsOf(ts, 'cache-access').filter((e) => !e.hit).length;
+
+/**
  * Where stalls land: the pc of the stalling instruction → how many cycles it spent stalled,
  * summed across the whole run. A histogram rather than a bare count, because a model that stalls
  * the right NUMBER of times in the wrong PLACES is wrong, and because it keeps count and
@@ -149,6 +181,15 @@ interface Timing {
   readonly flushes: { readonly branchTaken: number; readonly halt: number };
   /** The only term the FORWARDING toggle moves. */
   readonly stalls: Readonly<Record<Position, StallSites>>;
+  /**
+   * Misses served under each cache geometry (M6) — the `M` term, `M = misses × missPenalty`. A
+   * property of `(program × cache)` and of NOTHING else: the address stream is INV-8 cache-oblivious,
+   * so neither forwarding nor prediction can move it (unlike `stalls`, which the forwarding toggle
+   * owns). `off` is implicit — no cache configured ⇒ no miss. Each value is hand-derived from the
+   * program's block structure and pinned as a verdict SEQUENCE in `cache.test.ts` (never a bare
+   * total); the `+M` cycle counts below rest on those.
+   */
+  readonly misses: { readonly small: number; readonly large: number };
 }
 
 /** `T` — taken control transfers, derived. Stating it beside its own parts would invite drift. */
@@ -214,6 +255,10 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
     flushes: { branchTaken: 0, halt: 0 },
     stalls: { off: { 8: 2 }, on: {} },
+    // No memory ops ⇒ no cache access ⇒ M = 0 at every size. A control for the whole cache table:
+    // flipping the cache must not move a program with nothing to cache, exactly as prediction must
+    // not move a program with nothing to predict.
+    misses: { small: 0, large: 0 },
   },
 
   /**
@@ -241,6 +286,12 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 4, notTaken: 1, takenUnpredictable: 0 },
     flushes: { branchTaken: 4, halt: 0 },
     stalls: { off: { 4: 2, 20: 10, 32: 10, 40: 2, 44: 2 }, on: { 20: 5 } },
+    // The LOCALITY-PUNISHER (step 4's "a bigger cache buys nothing"). One pass over 5 words: block 0
+    // = arr[0..3] (the `arr[0]` load misses, arr[1..3] hit — spatial locality), block 1 = arr[4]
+    // (a second compulsory miss); the `sw` to `total` lands in the resident block 1 and hits. Every
+    // block is touched exactly once, so there is NO reuse for a bigger cache to capture — 2 misses at
+    // BOTH sizes. Same block structure as `array-sum-twice`, minus the repeat that would reward size.
+    misses: { small: 2, large: 2 },
   },
 
   /**
@@ -272,6 +323,11 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 23, notTaken: 3, takenUnpredictable: 0 },
     flushes: { branchTaken: 23, halt: 0 }, // every taken branch has live code behind it; ecall is last
     stalls: { off: { 12: 4, 20: 2, 24: 48, 36: 48, 44: 4 }, on: { 24: 24 } },
+    // The SIZE-STRADDLER, this milestone's flagship — 3 blocks the 4-line cache fits and the 2-line
+    // overflows. Pinned as full verdict SEQUENCES in `cache.test.ts`: pass 1 is 3 compulsory misses
+    // either way; pass 2 all-hits under 4 lines but re-misses blocks 0 and 2 under 2 lines (block 2
+    // aliases block 0 on line 0 and evicts it late in pass 1). 5 misses small, 3 large — the flip.
+    misses: { small: 5, large: 3 },
   },
 
   /**
@@ -302,6 +358,8 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 1, notTaken: 1, takenUnpredictable: 0 },
     flushes: { branchTaken: 1, halt: 0 }, // `ecall` is the last word of text — nothing behind it
     stalls: { off: { 8: 1 }, on: {} },
+    // No loads or stores (`mv`/`blt`/`bltu` touch registers only) ⇒ M = 0 at every size.
+    misses: { small: 0, large: 0 },
   },
 
   /**
@@ -319,6 +377,9 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
     flushes: { branchTaken: 0, halt: 0 },
     stalls: { off: { 4: 2, 8: 2 }, on: {} },
+    // Two loads at the SAME address (`0(t0)` twice) ⇒ one block: the `lb` compulsory-misses, the
+    // `lbu` hits the resident line. One miss at BOTH sizes — a single-block program is size-immune.
+    misses: { small: 1, large: 1 },
   },
 
   /**
@@ -349,6 +410,7 @@ const TIMING: Readonly<Record<string, Timing>> = {
     //
     // P: not-taken 2·(1+1) = 4; taken 1·1 + 2·1 + 2·1 = 5. **The bet costs a cycle here** — the one
     // corpus program that gets SLOWER under static-taken.
+    misses: { small: 0, large: 0 }, // no loads or stores ⇒ M = 0 at every size
     transfers: { takenPredictable: 1, notTaken: 1, takenUnpredictable: 1 },
     flushes: { branchTaken: 1, halt: 1 }, // jal flushes; ret has nothing behind it to kill
     stalls: { off: {}, on: {} },
@@ -377,6 +439,8 @@ const TIMING: Readonly<Record<string, Timing>> = {
     transfers: { takenPredictable: 9, notTaken: 1, takenUnpredictable: 0 },
     flushes: { branchTaken: 9, halt: 0 },
     stalls: { off: { 8: 2, 16: 20 }, on: {} },
+    // A register-only accumulator: no loads or stores ⇒ M = 0 at every size.
+    misses: { small: 0, large: 0 },
   },
 };
 
@@ -806,4 +870,141 @@ describe('P — the speculation penalty (the term 2·T was hiding)', () => {
     expect(casualties('static-not-taken')).toBe(penaltyOf(pinned, 'static-not-taken'));
     expect(casualties('static-taken')).toBe(penaltyOf(pinned, 'static-taken'));
   });
+});
+
+/**
+ * M6 step 4 — the closed form gains its fifth and last in-order term, and the flagship cache thesis.
+ *
+ * Everything above pins the pipeline cache-OFF: `cycles = N + 4 + S + P`. A configured cache makes
+ * the MEM stage variable-latency — a miss holds it `missPenalty` cycles — so the count grows by one
+ * more term:
+ *
+ * > **cycles = N + 4 + S + P + M**,  where **M = misses × missPenalty**.
+ *
+ * `M` is the third config term, and the cleanest of the three. `S` belongs to the forwarding toggle,
+ * `P` to the prediction toggle, and `M` to the cache toggle — and where `P` shares the cycle count
+ * with `S`, `M` is orthogonal to BOTH: a cache is a timing shadow that holds no values, so it cannot
+ * change which instructions run (`N`), where they interlock (`S`), or what they predict (`P`). It can
+ * only add miss cycles. So a program's whole cache effect is one number per size, invariant across
+ * the entire forwarding × prediction matrix — pinned as such below.
+ *
+ * **Additivity is structural, not arithmetic luck** (the claim `cache-stall.test.ts` proved for the
+ * straddler, here corpus-wide): a miss freezes the whole front of the pipe for `missPenalty` cycles,
+ * and this corpus's loads sit clear of every branch resolve, so a miss stall overlaps no load-use
+ * bubble (decided in EX one cycle before the miss is seen in MEM) and no speculation penalty. The
+ * `expect(...).toHaveLength(N + 4 + S + P + M)` cell is the net that confirms it.
+ *
+ * Nothing here is a snapshot. `M` comes from {@link Timing.misses} — hand-derived from each program's
+ * block structure and pinned as verdict SEQUENCES in `cache.test.ts` — times the penalty, and is
+ * cross-checked against the engine's own miss verdicts.
+ */
+const CACHE_MATRIX = Object.keys(TIMING).flatMap((file) =>
+  (['off', 'on'] as const).flatMap((position) =>
+    SCHEMES.flatMap((scheme) =>
+      (['off', 'small', 'large'] as const).map((cache) => ({ file, position, scheme, cache })),
+    ),
+  ),
+);
+
+describe('M — the miss term (cycles = N + 4 + S + P + M)', () => {
+  it.each(CACHE_MATRIX)(
+    '$file [forwarding $position, predict $scheme, cache $cache]',
+    ({ file, position, scheme, cache }) => {
+      const pinned = TIMING[file]!;
+      const ts = run(file, withCache(withScheme(CONFIG[position], scheme), CACHE[cache]));
+      const sites = pinned.stalls[position];
+
+      // N, S, T, P are the cache-oblivious terms — NONE of them may move when the cache axis is
+      // added, because a timing shadow changes latency and nothing else. Re-asserting all four in
+      // every cache cell is what makes `M` attributable: a cache that "helped" by dropping a stall,
+      // a retire, or a mispredict is caught right here, not swallowed by a total that still balances.
+      expect(eventsOf(ts, 'instr-retire'), 'N — the cache cannot change it').toHaveLength(
+        pinned.retires,
+      );
+      expect(takenTransfers(ts), 'T — the cache cannot change it').toBe(T(pinned.transfers));
+      expect(stallSites(ts), 'S — the forwarding toggle, untouched by the cache').toEqual(sites);
+      const P = penaltyOf(pinned.transfers, scheme);
+      expect(penaltyFromEvents(ts), 'P — the prediction toggle, untouched by the cache').toBe(P);
+
+      // `M`, by two independent routes — the discipline `P` uses. The pinned route: the hand-counted
+      // miss breakdown. The measured route: the engine's own miss verdicts. If the engine missed on
+      // an access the derivation calls a hit (or vice versa) they disagree, localizing the fault to
+      // that access — which no cycle total could, since a compensating over/under pair balances it.
+      const misses = missesAt(pinned, cache);
+      expect(missCount(ts), 'M — misses the engine actually served').toBe(misses);
+      const M = misses * MISS_PENALTY;
+      // `off` must emit no cache-access at all — the cache-off machine is byte-identical to M3/M4.
+      if (cache === 'off') expect(eventsOf(ts, 'cache-access'), 'cache-off is inert').toEqual([]);
+
+      // ...and only then the closed form, all five terms.
+      expect(ts).toHaveLength(pinned.retires + 4 + total(sites) + P + M);
+    },
+  );
+});
+
+describe('the crown jewel, cache edition — the same program, the same answer, more cycles', () => {
+  // The spec's flagship §12 interaction on the cache axis: the SAME source running a DIFFERENT cycle
+  // count under two cache sizes — and, the sharper half, a program where it does NOT. Asserted as
+  // signed per-program deltas rather than an average, because the average is exactly the claim that
+  // would let "buys nothing" hide (the mirror of M4's "no scheme dominates", where an average would
+  // have hidden call-return's regression). Stated WITHOUT reference to the formula above: even were
+  // every derived term wrong, this comparison is still the milestone's claim.
+  //
+  //   delta = cycles(small cache) − cycles(large cache);  POSITIVE = the bigger cache buys back cycles.
+  const FW_SCHEME = (['off', 'on'] as const).flatMap((position) =>
+    SCHEMES.map((scheme) => ({ position, scheme })),
+  );
+
+  it.each(FW_SCHEME)(
+    'no size dominates [forwarding $position, predict $scheme]',
+    ({ position, scheme }) => {
+      const base = withScheme(CONFIG[position], scheme);
+      const delta = (file: string): number =>
+        run(file, withCache(base, CACHE_SMALL)).length -
+        run(file, withCache(base, CACHE_LARGE)).length;
+
+      // The STRADDLER wins: 3 blocks the 4-line fits and the 2-line overflows, so its repeat pass hits
+      // large and re-misses small — 2 fewer misses × penalty 10 = 20 cycles the bigger cache buys back.
+      expect(delta('array-sum-twice.s'), 'the straddler: bigger cache buys back 2 misses').toBe(20);
+      // The PUNISHER buys nothing, and it is the whole "a cache is a bet on locality" point: array-sum
+      // walks its array ONCE, so every block is compulsory-missed exactly once at ANY size — there is
+      // no reuse for capacity to capture. It and the straddler are the same program bar the repeat.
+      expect(delta('array-sum.s'), 'no revisit ⇒ no reuse ⇒ size buys nothing').toBe(0);
+      expect(delta('byte-loads.s'), 'one block ⇒ size buys nothing').toBe(0);
+      // Programs with nothing to cache cannot move at all — the controls.
+      expect(delta('add.s'), 'no memory ⇒ no miss ⇒ no effect').toBe(0);
+      expect(delta('sum-loop.s'), 'register-only accumulator').toBe(0);
+      expect(delta('branch-flavors.s'), 'register-only').toBe(0);
+      expect(delta('call-return.s'), 'no loads or stores').toBe(0);
+    },
+  );
+});
+
+describe('M is orthogonal to both other axes — the size-delta is the program, not the config', () => {
+  // The `M`-term's version of "N and T are the program; S is the microarchitecture". `M` depends
+  // only on the address stream, which no toggle can move, so a program's cache size-delta is a single
+  // constant across the ENTIRE forwarding × prediction matrix — a sharper orthogonality than `P` had
+  // (P shares the cycle count with S). If flipping forwarding or the predictor ever changed a cache
+  // delta, the cache would be leaking into a stage it has no business touching.
+  it.each(Object.keys(TIMING))(
+    '%s: one small−large delta across all four forwarding×scheme cells',
+    (file) => {
+      const deltas = (['off', 'on'] as const).flatMap((position) =>
+        SCHEMES.map((scheme) => {
+          const base = withScheme(CONFIG[position], scheme);
+          return (
+            run(file, withCache(base, CACHE_SMALL)).length -
+            run(file, withCache(base, CACHE_LARGE)).length
+          );
+        }),
+      );
+      // Every cell agrees: the delta is a property of the program's locality, full stop.
+      expect(new Set(deltas).size, 'one delta whatever the other two toggles do').toBe(1);
+      // ...and it equals the pinned miss difference × penalty — the delta IS `(M_small − M_large)`.
+      const pinned = TIMING[file]!;
+      expect(deltas[0], 'delta = (misses_small − misses_large) × penalty').toBe(
+        (pinned.misses.small - pinned.misses.large) * MISS_PENALTY,
+      );
+    },
+  );
 });

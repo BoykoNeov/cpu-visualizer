@@ -118,6 +118,42 @@ describe('array-sum-twice straddles the cache size — the flagship, from the re
   });
 });
 
+/**
+ * The straddle's FLIP SIDE — the corpus's no-reuse walks, and the locality-PUNISHER step 0 deferred
+ * to step 4. `array-sum.s` and `byte-loads.s` each touch every block EXACTLY ONCE (no revisit), so
+ * every miss is compulsory and a bigger cache captures nothing extra: the verdict sequence — and
+ * therefore the miss count — is IDENTICAL at 2 and 4 lines. This is why no new program or stride was
+ * needed for "a bigger cache buys nothing" (step 0's open item): `array-sum.s` already IS it. It and
+ * `array-sum-twice.s` are a matched pair, differing ONLY in whether the walk repeats — spatial
+ * locality lives in the LINE (the 3 hits after each block's first touch, both programs), while
+ * temporal locality is what SIZE buys, and a single pass has none. The verdict sequences are pinned
+ * here (M3 step 3's "assert the sequence, not the total" rule); `timing.test.ts` composes their miss
+ * counts into the `+M` cycle term.
+ */
+describe('the no-reuse walks miss identically at any size — a bigger cache buys nothing', () => {
+  it('array-sum.s: one miss per block, both sizes (5 loads, 2 misses)', () => {
+    // Loads only. The `sw a0, 0(t3)` to `total` lands in block 1, resident from the `arr[4]` load, so
+    // it HITS and installs no miss — a fact the timing suite's engine-level miss count confirms end
+    // to end; here we pin the load walk that carries the reuse story.
+    const addrs = memReadAddrs('array-sum.s');
+    expect(addrs).toHaveLength(5);
+    expect(addrs[0]).toBe(0x10000000); // arr @ DATA_BASE, so block 0 = arr[0..3], block 1 = arr[4]
+    // prettier-ignore
+    const seq = ['M', 'H', 'H', 'H', 'M']; // block 0 miss + 3 spatial hits, then block 1 miss
+    expect(replay(CACHE_SMALL, addrs)).toEqual(seq);
+    expect(replay(CACHE_LARGE, addrs)).toEqual(seq);
+  });
+
+  it('byte-loads.s: the same byte twice, one block, both sizes (1 miss)', () => {
+    // `lb` then `lbu`, both `0(t0)` — one address, one block: compulsory miss then a hit on the
+    // resident line. No size can change a single-block program.
+    const addrs = memReadAddrs('byte-loads.s');
+    expect(addrs).toHaveLength(2);
+    expect(replay(CACHE_SMALL, addrs)).toEqual(['M', 'H']);
+    expect(replay(CACHE_LARGE, addrs)).toEqual(['M', 'H']);
+  });
+});
+
 describe('access — the direct-mapped mechanism', () => {
   const cfg = directMapped(2); // 16-byte line, 2 lines, so blocks 0 and 2 collide on line 0.
 

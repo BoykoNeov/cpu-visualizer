@@ -1,13 +1,17 @@
 # Milestone 6 — caches (the third toggle on the pipeline)
 
-**Status: STEPS 0–3 DONE, 2026-07-18 (1087 tests). The corpus straddler ships, the pure timing-shadow
+**Status: STEPS 0–4 DONE, 2026-07-18 (1184 tests). The corpus straddler ships, the pure timing-shadow
 model is proven against the real engine's address stream, the pipeline HONORS `config.cache` (a miss
 freezes IF/ID/EX for `missPenalty` cycles via the `missCyclesRemaining` countdown — the machine's
-first variable-latency stage), and the INV-8 differential now runs the corpus across the full
-forwarding × predict × cache cross product, green by construction (the value-less cache cannot move
-architectural state) with a deep-compare `configLabel` cache clause naming which config broke.
-Cache-off runs are byte-identical to M4. Remaining: the per-term timing suite + "no size dominates"
-thesis (step 4), the web toggle (step 5), the cache grid view (step 6), and the lesson track (step 7).
+first variable-latency stage), the INV-8 differential runs the corpus across the full
+forwarding × predict × cache cross product (green by construction, the value-less cache cannot move
+architectural state) with a deep-compare `configLabel` cache clause naming which config broke, and
+the timing suite's closed form now carries its fifth and last in-order term — `cycles = N + 4 + S + P + M`,
+`M = misses × missPenalty` — per-term and mutation-checked across the full fwd × predict × cache
+matrix, with the "no size dominates" thesis asserted as signed deltas (the straddler buys back 20
+cycles under a bigger cache; the single-pass `array-sum.s` — the corpus's locality-punisher, no new
+program needed — buys nothing). Cache-off runs are byte-identical to M4. Remaining: the web toggle
+(step 5), the cache grid view (step 6), and the lesson track (step 7).
 Remaining numbers in this plan are DERIVATIONS to be confirmed, not measurements. Deliberately deferred and named:
 set-associativity + a replacement policy (the only future user of `config.seed`), a second level
 (the `cache-access.level` field already anticipates it), an I-cache, and write-back. The one
@@ -252,15 +256,39 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       `RESULT_ORACLES` / `checkProgram` change** (cache is architecturally invisible). Typecheck +
       lint clean; all green first run.
 
-- [ ] **4. Timing — the closed form gains a miss term, and bigger is not always better.**
-      `cycles = N + 4 + S + P + M`, where `M = Σ (misses × missPenalty)`, derived per program from a
-      hand-counted miss/hit breakdown (never a total copied from a passing run — M3 step 3's rule).
-      Assert the **flagship thesis**, not just arithmetic: the size-straddler runs a _different cycle
-      count under two cache sizes_, and there is a program (or a stride) where a bigger cache buys
-      **nothing** — a cache is a bet on locality, and the corpus must contain a program that punishes
-      it, exactly as M4's corpus punishes each prediction scheme. **Acceptance:** per-term assertions
-      (never an opaque total — a compensating pair of errors passes a total and says nothing);
-      each mutation-checked; the "no size dominates" claim asserted as signed per-program deltas.
+- [x] **4. Timing — the closed form gains a miss term, and bigger is not always better. DONE
+      2026-07-18 (1087 → 1184 tests, +97).** Extended `timing.test.ts` (the exact parallel to M4 step
+      3's `P`-term extension) with the cache axis: `cycles = N + 4 + S + P + M`, `M = misses × missPenalty`.
+      Added a hand-derived `misses: { small, large }` to every `TIMING` entry and a THREE-new-axis
+      `CACHE_MATRIX` (fwd × predict × cache = 7 × 2 × 2 × 3 = 84 cells) asserting all five terms
+      SEPARATELY per cell — N, T, S, P re-checked (a timing shadow may move none of them) and `M` by
+      two routes (pinned `misses × penalty` vs the engine's own miss verdicts, {@link missCount}),
+      then the closed form. Cache-off cells assert `cache-access` is empty (byte-identical to M4). Zero
+      engine change — a pure test extension, like M4 step 3. **The flagship thesis, as signed deltas**
+      (`delta = cycles(small) − cycles(large)`, positive = bigger buys back cycles): `array-sum-twice.s`
+      **+20** (the straddler — a bigger cache captures the repeat pass's reuse), `array-sum.s` **0**,
+      `byte-loads.s` **0** (the punishers — no reuse for size to capture), the four register-only
+      programs **0**. Plus an orthogonality pin: `M` depends only on the address stream, so a program's
+      size-delta is a SINGLE constant across the whole fwd × predict matrix (`new Set(deltas).size === 1`)
+      — a sharper orthogonality than `P` (which shares the count with `S`). **Findings, hand-verified:**
+      (1) **No new program or stride was needed for "a bigger cache buys nothing" — step 0's deferred
+      punisher was already in the corpus.** `array-sum.s` walks its array ONCE, so every block is
+      compulsory-missed exactly once at any size (2 misses, both sizes); it and `array-sum-twice.s` are
+      a matched pair differing ONLY in whether the walk repeats. Spatial locality lives in the LINE (the
+      3 hits per block, both programs); temporal locality is what SIZE buys, and a single pass has none.
+      (2) **`array-sum.s`'s `sw a0, 0(total)` HITS** — `total` sits in block 1, resident from the
+      `arr[4]` load — so the store adds no miss; the engine-level `missCount` confirms this end to end
+      (a store miss would make it 3, not 2, and redden the closed form). Store misses DO stall in the
+      engine (a deliberate MVP choice, `consultCache`), but this corpus never takes one. (3) **Additivity
+      is structural corpus-wide, not just for the straddler** — `array-sum.s`'s two misses fall on
+      iterations whose `lw`→`add` also carries the load-use bubble (decided in EX one cycle before the
+      miss is seen in MEM), and they compose sequentially; the `toHaveLength(N+4+S+P+M)` cell is the net.
+      **Also pinned the verdict SEQUENCES for the two new load programs in `cache.test.ts`** (M3 step 3's
+      "assert the sequence, not the total" rule): `array-sum.s` → `M,H,H,H,M`, `byte-loads.s` → `M,H`,
+      identical at both sizes — so the timing suite's miss counts rest on a pinned breakdown, not a bare
+      total. `missPenalty` stays 10 (step 4 owned the final value; the default holds under both the 400
+      map / 500 timing caps). All green first run; the `M` term is mutation-checked (small 2→3 on
+      `array-sum` reddens exactly the 4 small cells + the delta pin).
 
 - [ ] **5. Web: the third toggle.** A cache control (size / on-off), capability-gated on
       `configurableCache`, riding the config seam with no widening — forwarding's and prediction's
@@ -301,10 +329,11 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       **every** (forwarding × prediction × cache) config (INV-8) — green by construction, because the
       cache holds no values (the timing-shadow design). A cache that stalls wrongly but corrupts no
       state still passes this; timing is its net.
-- [ ] The **same program** runs a **different number of cycles** under two cache sizes, on the live
-      scrub bar, matching the step-4 pinned derivation.
-- [ ] **No cache size dominates:** a program where a bigger cache pays off, and one (or a stride)
-      where it buys nothing — both demonstrable, asserted as signed deltas, never averaged.
+- [~] The **same program** runs a **different number of cycles** under two cache sizes, matching the
+  step-4 pinned derivation (pinned in `timing.test.ts`; the LIVE SCRUB BAR half awaits step 5).
+- [x] **No cache size dominates:** a program where a bigger cache pays off (`array-sum-twice.s`, +20),
+      and one where it buys nothing (`array-sum.s`, `byte-loads.s`, 0) — asserted as signed
+      per-program deltas, never averaged (step 4).
 - [ ] A **miss** is followable: the access, the hit/miss verdict, any eviction, and the MEM stall it
       causes — as `cache-access` + `stall` trace events (INV-3) and on the cache grid + pipeline map.
 - [ ] `engine/pipeline` still has **zero** imports from `web`/`curriculum`; the cache is honored via
