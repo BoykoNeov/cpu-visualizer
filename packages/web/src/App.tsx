@@ -962,8 +962,10 @@ function CacheToggle(props: {
       <div className="seg">
         {positions.map((position) => {
           // Identity, not a deep compare — sound because `cache` is only ever one of the three
-          // constants below (see {@link Simulator.setCache} for the same guard, and the step-7
-          // caveat there: a lesson declaring a JSON cache geometry would need a value compare here).
+          // constants below. A lesson declaring a JSON cache geometry (M6 step 7) would be a fresh
+          // object that lights no position here — which is why `canonicalCache` (lessons.ts) maps a
+          // declared geometry back to its shipped constant at load, keeping this `===` correct rather
+          // than switching it to a value compare (see {@link Simulator.setCache}).
           const on = position.value === cache;
           return (
             <button

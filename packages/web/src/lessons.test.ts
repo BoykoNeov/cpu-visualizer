@@ -466,7 +466,38 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // the lesson is ABOUT. A language lesson authored on the pipeline is lawful, and the proxy
     // would file it under the machine and stay green: a case list that cannot reach the defect,
     // for the third milestone running. So the track is declared in `index.json` and read here.
-    expect(LESSON_TRACKS.map((t) => t.track)).toEqual(['The language', 'The machine']);
+    expect(LESSON_TRACKS.map((t) => t.track)).toEqual(['The language', 'The machine', 'The cache']);
+  });
+
+  it('teaches the MACHINE before the CACHE', () => {
+    // The cache track is the third — its subject presupposes the pipeline the machine track
+    // introduces. A cache lesson opens forwarding-on and speaks of the pipeline freezing on a miss;
+    // a reader who has not met stalls and forwarding (the machine track) has no frame for it. Same
+    // shape as language-before-machine above: declared in `index.json`, read here rather than derived
+    // from `model` (all three cache lessons are `pipeline`, exactly like the machine track — which is
+    // why `model` cannot tell the two µarch tracks apart, and the track is content).
+    expect(LESSON_TRACKS.map((t) => t.track).indexOf('The machine')).toBeLessThan(
+      LESSON_TRACKS.map((t) => t.track).indexOf('The cache'),
+    );
+  });
+
+  it('teaches the cache track in its authored SEQUENCE: spatial → temporal → conflict', () => {
+    // The plan fixed this order BEFORE any lesson was written and asked for it to be reviewed as a
+    // SEQUENCE — M5 step 4's finding (a track shipped in the wrong order because authoring a lesson
+    // never reads the other five, and incremental insertion cannot see a sequence) applied up front.
+    // Only a by-name test can see order-pedagogy; the generic sweep cannot.
+    //
+    // The order is forced by the prose, not by taste, which is what makes it assertable. `cache-spatial`
+    // INTRODUCES the line-fill ("it fetches a whole line, four words wide"); `cache-temporal` ASSUMES
+    // it ("the first pass fills the cache line by line, exactly as the last lesson showed") and adds
+    // reuse; `cache-conflict` ASSUMES that reuse ("the reuse the last lesson made free") and takes it
+    // away by shrinking the cache. Each lesson defines what the next spends.
+    expect(LESSON_ORDER.indexOf('cache-spatial')).toBeLessThan(
+      LESSON_ORDER.indexOf('cache-temporal'),
+    );
+    expect(LESSON_ORDER.indexOf('cache-temporal')).toBeLessThan(
+      LESSON_ORDER.indexOf('cache-conflict'),
+    );
   });
 
   it('files each lesson under the track its SUBJECT belongs to — asserted by name', () => {
@@ -483,6 +514,16 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // say so.
     const machine = LESSON_TRACKS.find((t) => t.track === 'The machine');
     expect([...(machine?.lessons ?? [])].sort()).toEqual(['branch-bet', 'forwarding-bubble']);
+
+    // The cache track's membership, by name for the same reason: "is this lesson about the memory
+    // hierarchy" is pedagogy, not derivable. All three are `pipeline` (like the machine track), so
+    // `model` cannot distinguish them; the track says so, and this pins which lessons it claims.
+    const cache = LESSON_TRACKS.find((t) => t.track === 'The cache');
+    expect([...(cache?.lessons ?? [])].sort()).toEqual([
+      'cache-conflict',
+      'cache-spatial',
+      'cache-temporal',
+    ]);
   });
 
   it('shows every lesson in the picker, even one the index forgot', () => {
@@ -513,35 +554,68 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // must NOT appear, and the sections flattened must be exactly the picker's order — the property
     // that makes grouping and order one declaration rather than two that can drift.
     const sections = lessonSections();
-    expect(sections.map((s) => s.track)).toEqual(['The language', 'The machine']);
+    expect(sections.map((s) => s.track)).toEqual(['The language', 'The machine', 'The cache']);
     expect(sections.flatMap((s) => s.lessons.map((l) => l.id))).toEqual(LESSONS.map((l) => l.id));
   });
 });
 
 describe('authored lessons (INV-6)', () => {
-  it('ships one lesson per shipped microarchitecture that has something to teach', () => {
+  it('ships the language tours, the two µarch flagships, and the three-lesson cache track', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
-    // lesson, and the comparison lesson that is the same law one surface over) and the two
-    // pipeline flagships — one
-    // per toggle the pipeline honors, which is the shape the library has converged on rather than a
-    // coincidence: a config knob nobody can see the point of is a knob that should not ship.
-    // Multi-cycle deliberately has none: its story is "one instruction, phases spread over
-    // cycles", which the single-cycle lessons already narrate correctly when the model is swapped
-    // under them (pinned by the cross-model suite below). The pipeline is the first model whose
-    // lesson could NOT be borrowed that way — nothing else stalls, and nothing else speculates.
-    expect(LESSONS.length).toBe(8);
-    // Sorted, because the claim in this test's own sentence is MEMBERSHIP — "one lesson per
-    // microarchitecture" — and `LESSONS` is no longer in a sorted order for it to borrow. Written
-    // as a bare `toEqual` it passed only because the picker was alphabetical, so M5 step 0 reddened
-    // it by putting `forwarding-bubble` (M3) ahead of `branch-bet` (M4): a real change in the
-    // product, and nothing this test means to be about. Order is pinned exhaustively, once, against
-    // `index.json` above; a second copy here would just be a decision spread across two files —
-    // the shape decision 2 of the M5 plan declines — and would redden twice at step 4's reorder.
+    // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
+    // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); and the
+    // three-lesson cache track (M6 step 7). Multi-cycle deliberately has none: its story is "one
+    // instruction, phases spread over cycles", which the single-cycle lessons already narrate
+    // correctly when the model is swapped under them (pinned by the cross-model suite below).
+    //
+    // **The cache is where "one lesson per toggle" stops being the shape, and that is honest.** The
+    // cache toggle is three positions, not two, and it is not one behavior to demonstrate but three
+    // teachable phenomena — spatial locality (the line), temporal locality (reuse across a pass), and
+    // capacity/conflict (the size flip) — no one of which subsumes the others. So it earns a track,
+    // like the language, rather than a single flagship like forwarding and prediction. A config knob
+    // nobody can see the point of should not ship; a knob with three distinct points earns three.
+    expect(LESSONS.length).toBe(11);
+    // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
+    // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
+    // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
+    // cache tracks, which is the set whose narration could NOT be borrowed onto another model
+    // (nothing else stalls, speculates, or caches).
     expect(
       LESSONS.filter((l) => l.model === 'pipeline')
         .map((l) => l.id)
         .sort(),
-    ).toEqual(['branch-bet', 'forwarding-bubble']);
+    ).toEqual([
+      'branch-bet',
+      'cache-conflict',
+      'cache-spatial',
+      'cache-temporal',
+      'forwarding-bubble',
+    ]);
+  });
+
+  it('canonicalizes every declared cache to a shipped constant (M6 step 7 reconcile)', () => {
+    // The reconcile's own guard. `lessons.ts` maps a lesson's JSON-declared `config.cache` back to
+    // one of the shipped `CACHE_SMALL` / `CACHE_LARGE` constants at load, so the shell's cache toggle
+    // and `setCache` can keep lighting/guarding by plain IDENTITY. This asserts the mapping actually
+    // fired: every shipped lesson that declares a non-null cache carries a value that is `===` a
+    // shipped constant — not merely field-equal. A future author who writes a geometry matching
+    // neither constant (a typo, or a size the toggle has no position for) reddens here rather than
+    // shipping a lesson that silently lights no toggle position.
+    const declared = LESSONS.flatMap((l) =>
+      l.config && l.config.cache !== null ? [{ id: l.id, cache: l.config.cache }] : [],
+    );
+    // Non-vacuity: the cache track means there ARE such lessons, so this is not asserting over [].
+    expect(declared.map((d) => d.id).sort()).toEqual([
+      'cache-conflict',
+      'cache-spatial',
+      'cache-temporal',
+    ]);
+    for (const { id, cache } of declared) {
+      expect(
+        cache === CACHE_SMALL || cache === CACHE_LARGE,
+        `${id} declares a cache that is not a shipped constant by identity`,
+      ).toBe(true);
+    }
   });
 
   // The validator: every lesson, every step, against the real engine it declares.
@@ -1602,5 +1676,194 @@ describe('branch-bet — the milestone’s thesis, guided (M4 step 7)', () => {
     }
     // The declaration is present regardless — the point of the test above, not a contradiction of it.
     expect(declared.forwarding).toBe(true);
+  });
+});
+
+/**
+ * The cache track's oracles (M6 step 7) — the assertions the generic sweep cannot make, in the
+ * shape the two flagships established. The sweep proves each step fires SOMEWHERE and reads in
+ * order; it cannot prove a step points at the RIGHT access, and for the cache that matters twice
+ * over: the anchors key on `addr`/`hit`/`evicted` (a `cache-access` event carries NO `instr`, so
+ * there is no pc to pin the way the hazard oracles do), and the crux of two of the three lessons is
+ * a step that is SIZE-EXCLUSIVE — alive under the declared geometry, dead under the other. That is
+ * `branch-bet`'s config-exclusive structure one knob over, and it is pinned the same way: by name,
+ * per size.
+ *
+ * Every `addr`/`evicted` is a magic decimal in the lesson JSON (`where` has no comment channel);
+ * here, in TS, they are written as `DATA_BASE + offset` so the number is documented where it can be.
+ * They are grounded in `cache.test.ts`'s hand-derived streams: `array-sum` is `M,H,H,H,M` over its
+ * loads (plus a store hit); `array-sum-twice` re-reads its 12 addresses, all-hits on pass two at
+ * four lines and re-missing arr[0]/arr[8] at two.
+ */
+const DATA_BASE = 0x10000000; // .data base — arr[0]; blocks are 16 bytes, so arr[4] = +16, arr[8] = +32
+
+describe('cache-spatial — a line brings its neighbors (M6 step 7)', () => {
+  const lesson = (): Lesson => byId('cache-spatial');
+  const record = (): readonly CycleTrace[] => recordLesson(lesson(), lesson().config!);
+
+  it('opens on the pipeline with a cache on — the subject needs one to exist', () => {
+    expect(lesson().model).toBe('pipeline');
+    expect(lesson().config?.cache).not.toBeNull();
+  });
+
+  it('the line-fill miss, then the neighbor hit, then the next-line miss', () => {
+    const trace = record();
+    const anchored = anchorLesson(lesson(), trace);
+    // Step 1 — the first load misses at arr[0]: a compulsory miss on a cold line.
+    expect(anchoredEvent(trace, anchored[1]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE,
+    });
+    // Step 2 — the next load HITS at arr[1], one word into the line the miss just filled. This is
+    // spatial locality, and pinning the addr is what proves the step points at the neighbor rather
+    // than at some later hit: `{hit:true}` alone would satisfy on any of them.
+    expect(anchoredEvent(trace, anchored[2]!)).toMatchObject({
+      type: 'cache-access',
+      hit: true,
+      addr: DATA_BASE + 4,
+    });
+    // Step 3 — arr[4] misses: the fifth word falls in the NEXT line (block boundary at +16).
+    expect(anchoredEvent(trace, anchored[3]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE + 16,
+    });
+  });
+
+  it('two misses over five loads — the number the payoff quotes, counted right', () => {
+    // The closing narration says "five loads, of which only two missed". Pinned from the event
+    // stream so prose and machine cannot drift — and counted as LOADS, which is the trap the dump
+    // caught: the `sw a0, 0(total)` ALSO emits a `cache-access` (a hit, `total` sharing arr[4]'s
+    // line), so there are SIX accesses, not five. Miss count is 2 either way.
+    const trace = record();
+    const accesses = trace
+      .flatMap((c) => c.events)
+      .filter((e): e is Extract<TraceEvent, { type: 'cache-access' }> => e.type === 'cache-access');
+    expect(accesses.length).toBe(6); // 5 loads + the store to `total`
+    expect(accesses.filter((e) => !e.hit).length).toBe(2); // one per line the 5-word array spans
+    // The payoff is architectural and cache-invisible: a0 = 120 with or without a cache.
+    const last = anchorLesson(lesson(), trace).at(-1)!;
+    expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 10, value: 120 });
+  });
+});
+
+describe('cache-temporal — reuse across a pass (M6 step 7)', () => {
+  const lesson = (): Lesson => byId('cache-temporal');
+  const record = (): readonly CycleTrace[] => recordLesson(lesson(), lesson().config!);
+
+  it('opens on the pipeline with the LARGE cache — the one that fits the working set', () => {
+    expect(lesson().model).toBe('pipeline');
+    expect(lesson().config?.cache).toMatchObject({ numLines: 4 });
+  });
+
+  it('pass one compulsory-misses each line; pass two revisits arr[0] and HITS', () => {
+    const trace = record();
+    const a = anchorLesson(lesson(), trace);
+    // Step 1 — pass-1 first miss, at arr[0].
+    expect(anchoredEvent(trace, a[1]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE,
+    });
+    // Step 2 — pass-1's THIRD (last) miss: the third line, at arr[8] = base + two blocks.
+    expect(anchoredEvent(trace, a[2]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE + 32,
+    });
+    // Step 3 — pass TWO returns to arr[0] (the same address as step 1) and now HITS. The crux, and
+    // it is size-exclusive: on the small cache arr[0] was evicted, so this exact trigger
+    // (`{addr: arr[0], hit: true}`) is dead there — pinned below.
+    expect(anchoredEvent(trace, a[3]!)).toMatchObject({
+      type: 'cache-access',
+      hit: true,
+      addr: DATA_BASE,
+    });
+  });
+
+  it('the whole second pass hits — three misses for the program, and a0 = 156', () => {
+    const trace = record();
+    const accesses = trace
+      .flatMap((c) => c.events)
+      .filter((e): e is Extract<TraceEvent, { type: 'cache-access' }> => e.type === 'cache-access');
+    expect(accesses.length).toBe(24); // 12 loads × 2 passes; array-sum-twice has no store
+    expect(accesses.filter((e) => !e.hit).length).toBe(3); // all compulsory, all in pass one
+    // Pass two — the second twelve accesses — is entirely hits: temporal reuse, total.
+    expect(accesses.slice(12).every((e) => e.hit)).toBe(true);
+    const last = anchorLesson(lesson(), trace).at(-1)!;
+    expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 10, value: 156 });
+  });
+
+  it('the revisit hit is DEAD on the small cache — reuse needs capacity, not just a line', () => {
+    // The lesson's crux, size-proofed. Record the SAME lesson under the small geometry: pass-2 arr[0]
+    // is a MISS there (it was evicted mid-pass-one), so the `{addr: arr[0], hit: true}` trigger
+    // anchors nothing. This is what separates this lesson from cache-spatial — the line brought
+    // neighbors, but only CAPACITY keeps arr[0] alive across a pass, which is what a bigger cache buys.
+    const small = recordLesson(lesson(), { ...lesson().config!, cache: CACHE_SMALL });
+    expect(
+      anchorLesson(lesson(), small)[3]!.cycle,
+      'the revisit hit fired on a cache too small to keep arr[0]',
+    ).toBeNull();
+  });
+});
+
+describe('cache-conflict — the size flip, guided (M6 step 7)', () => {
+  const lesson = (): Lesson => byId('cache-conflict');
+  const record = (): readonly CycleTrace[] => recordLesson(lesson(), lesson().config!);
+  const missCount = (cache: ProcessorConfig['cache']): number =>
+    recordLesson(lesson(), { ...lesson().config!, cache })
+      .flatMap((c) => c.events)
+      .filter((e) => e.type === 'cache-access' && !e.hit).length;
+
+  it('opens on the pipeline with the SMALL cache — the one too small for the working set', () => {
+    expect(lesson().model).toBe('pipeline');
+    expect(lesson().config?.cache).toMatchObject({ numLines: 2 });
+  });
+
+  it('a conflict eviction in pass one, then arr[0] re-misses in pass two', () => {
+    const trace = record();
+    const a = anchorLesson(lesson(), trace);
+    // Step 1 — block 2 (arr[8]) arrives and EVICTS block 0 (arr[0], base DATA_BASE): they collide on
+    // line 0 (2 mod 2 = 0). The evicted block's BASE names it. `evicted: DATA_BASE` occurs twice
+    // under the small cache (pass-1 conflict and pass-2), so the lesson's `nth: 1` takes the first —
+    // the pass-one eviction. Under the large cache there is no eviction at all (pinned dead below).
+    expect(anchoredEvent(trace, a[1]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE + 32,
+      evicted: DATA_BASE,
+    });
+    // Step 2 — pass two returns to arr[0] and MISSES: it was the block just evicted. The same address
+    // that HIT in cache-temporal, a miss here because this cache could not keep it. `{addr: arr[0],
+    // hit: false}` with `nth: 2` — the first such is pass one's compulsory miss, the second is this
+    // re-miss.
+    expect(anchoredEvent(trace, a[2]!)).toMatchObject({
+      type: 'cache-access',
+      hit: false,
+      addr: DATA_BASE,
+    });
+  });
+
+  it('five misses on small against three on large — the flip, and the same 156 either way', () => {
+    expect(missCount(CACHE_SMALL)).toBe(5); // the declared machine: two extra re-misses (arr[0], arr[8])
+    expect(missCount(CACHE_LARGE)).toBe(3); // bigger cache captures the reuse — two fewer misses
+    // Same answer on both, because the cache holds no values (INV-8): the flip moves cycles, never
+    // the result. The payoff step is alive on both sizes.
+    for (const cache of [CACHE_SMALL, CACHE_LARGE]) {
+      const trace = recordLesson(lesson(), { ...lesson().config!, cache });
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 10, value: 156 });
+    }
+  });
+
+  it('the eviction and re-miss are DEAD on the large cache — the flip made concrete', () => {
+    // The flagship "flip the size and watch the same program change", pinned at the lesson layer: the
+    // two steps that ARE the conflict vanish on a cache with room to spare. No eviction, no re-miss,
+    // so both anchor nothing — the exact inverse of the small run above.
+    const large = recordLesson(lesson(), { ...lesson().config!, cache: CACHE_LARGE });
+    const a = anchorLesson(lesson(), large);
+    expect(a[1]!.cycle, 'an eviction fired on a cache with room to spare').toBeNull();
+    expect(a[2]!.cycle, 'arr[0] re-missed on a cache large enough to keep it').toBeNull();
   });
 });

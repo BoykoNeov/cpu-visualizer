@@ -99,6 +99,26 @@ export function predictsTaken(scheme: BranchPrediction): boolean {
 }
 
 /**
+ * Deep value-equality of two cache geometries (M6 step 7). The cache is the shell's first
+ * OBJECT-valued knob, so "is this the same machine" cannot be a `===`: a geometry that arrives
+ * JSON-parsed (a lesson's declared `config.cache`) is a fresh object, referentially unequal to the
+ * shipped `CACHE_SMALL` / `CACHE_LARGE` constants even when its fields are identical.
+ *
+ * **Why this exists rather than just deep-comparing everywhere.** The shell's identity contract —
+ * "`cache` is always one of the three shipped constants, so a lit toggle position and
+ * {@link Simulator.setCache}'s no-op guard are plain `===`" — is worth KEEPING, not abandoning. So
+ * a declared geometry is mapped back to its canonical constant at the one boundary a foreign object
+ * can enter, when a lesson is loaded (`canonicalCache` in `lessons.ts`). This predicate is the
+ * comparison that mapping uses; it mirrors conformance's `cacheEquals` (M6 step 3), which is the
+ * differential harness's and lives below the web layer, so re-declaring the three-field compare here
+ * is cheaper than importing a test package. Pure and engine-free like the rest of this module.
+ */
+export function cacheEquals(a: ProcessorConfig['cache'], b: ProcessorConfig['cache']): boolean {
+  if (a === null || b === null) return a === b;
+  return a.lineSize === b.lineSize && a.numLines === b.numLines && a.missPenalty === b.missPenalty;
+}
+
+/**
  * What starting a lesson does to the shell's model + config (M3 step 8). Extracted here as pure
  * data — no React, no engine — for the same reason the rest of this module is: `useSimulator` is a
  * thin imperative wrapper, and this is a real decision that deserves a test rather than an inline

@@ -1,0 +1,69 @@
+{
+  "id": "cache-conflict",
+  "title": "Too small to hold it all",
+  "program": "array-sum-twice",
+  "model": "pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": { "lineSize": 16, "numLines": 2, "missPenalty": 10 }
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The same twice-walked array — but now on a cache too small to hold it.",
+        "detailed": "This is the last lesson's program, unchanged: walk twelve words, then walk them again. What changed is the cache. This one holds only two lines, and the array spans three, so it cannot keep the whole array resident. This lesson is about what gives.",
+        "expert": "The same nested walk, now against a two-line cache. Three blocks contend for two lines: block 0 and block 2 both map to line 0 (direct-mapped, index = block number mod two), so they cannot both be resident. The working set no longer fits — the capacity the last lesson's reuse depended on is gone."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 1,
+        "where": {
+          "hit": false,
+          "evicted": 268435456
+        }
+      },
+      "narration": {
+        "essentials": "Late in pass one, a third block arrives and evicts the first — there is no room for both.",
+        "detailed": "The third line's data maps to the same slot the first line is using, and on this small cache they cannot both stay: bringing the third in throws the first out. The cache grid shows the line change hands with an `EVICT`, and the block it held is gone. Pass one still finishes correctly — memory always has the real data — but the cache no longer remembers arr[0].",
+        "expert": "A conflict eviction: block 2 indexes to line 0, which block 0 already holds, so installing block 2 evicts block 0. Under the large cache this never happened — there was a line to spare. Here the collision is forced by capacity, and direct-mapped makes it sharp: there is exactly one line block 2 can live in, and block 0 is in it."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 2,
+        "where": {
+          "addr": 268435456,
+          "hit": false
+        }
+      },
+      "narration": {
+        "essentials": "Pass two asks for arr[0] again — and it is gone, so it misses.",
+        "detailed": "Here is the cost. The second pass returns to arr[0] — which hit on the larger cache — but here it was evicted, so it misses and the pipeline freezes again. And because the cache is full, bringing arr[0] back now evicts the block that had replaced it: the two collide on one line and take turns throwing each other out, so the grid reads `EVICT` again and the reuse the last lesson made free is gone.",
+        "expert": "The re-miss: the same address that hit on the four-line cache misses on the two-line one, because it was evicted mid-pass-one — and re-installing it evicts block 2 in turn, which is why the grid badges this `EVICT` rather than a bare miss. This is capacity thrashing, not a compulsory miss: the block was loaded before and would still be resident on a big enough cache. It is the exact hit the last lesson celebrated, undone by shrinking the cache below the working set."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 156
+        }
+      },
+      "narration": {
+        "essentials": "Same answer, 156 — but five misses here against three on the large cache.",
+        "detailed": "The total is 156 on either cache, because a cache never changes what a program computes. What it changes is the waiting: this small cache misses five times, the large one three, over the very same twelve-times-two loads. Flip the cache between small and large and watch the cycle count sit higher on the smaller one — the same program, slower, because it is too small to hold what the program comes back to. Size pays only where there is reuse to keep, which is what this program has and a single walk does not.",
+        "expert": "Five misses against three: the two extra are arr[0] and arr[8], each evicted in pass one and re-fetched in pass two. Value-free and speculation-free, the cache leaves 156 untouched on both sizes — the difference is purely the miss penalty paid twice more. A larger cache weakly dominates here: never worse, and strictly better exactly when a working set outlives one pass. It is not a two-way bet the way branch prediction is — no program in this corpus runs faster on the smaller cache — but the win is real only when there is reuse to keep resident."
+      }
+    }
+  ]
+}

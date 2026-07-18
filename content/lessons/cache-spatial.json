@@ -1,0 +1,81 @@
+{
+  "id": "cache-spatial",
+  "title": "A line, not a word",
+  "program": "array-sum",
+  "model": "pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": { "lineSize": 16, "numLines": 4, "missPenalty": 10 }
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "This program reads a five-word array. Turn the cache on and watch the very first load.",
+        "detailed": "The cache sits between the pipeline and memory, and it does not fetch one word at a time — it fetches a whole line, four words wide. So the first time the program touches the array it pays for a trip to memory, but it brings back arr[0] and its three neighbors together. Scrub forward and watch what each load costs.",
+        "expert": "A direct-mapped D-cache with 16-byte lines. Memory stays the sole source of truth — the cache holds tags, not values — so the only thing a line-fill changes is latency: four words arrive on one miss, and the next three accesses that land in that line are free."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 1,
+        "where": {
+          "hit": false
+        }
+      },
+      "narration": {
+        "essentials": "The first load misses — the cache is empty — but it drags in a whole line.",
+        "detailed": "arr[0] is not in the cache yet, so this load misses and the pipeline freezes while the line is fetched: the map shows `MEM` repeating and the cache grid counts down `FILLING`. When it lands, the line holds arr[0] through arr[3] — four words for the price of one miss.",
+        "expert": "A compulsory miss: this line has never been touched. The miss freezes IF/ID/EX for the miss penalty while the block is installed, which the cache grid draws as the line filling and then holding its block as a byte range. No word is copied into the cache — the tag is — but all four words of the block are warm now."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 1,
+        "where": {
+          "hit": true
+        }
+      },
+      "narration": {
+        "essentials": "The next load hits — arr[1] rode in on arr[0]'s line, for free.",
+        "detailed": "arr[1] sits right after arr[0], inside the same line the miss just brought in, so this load hits: no trip to memory, no freeze, one cycle. That is spatial locality — touch one word and its neighbors come along, because a program that reads arr[0] usually reads arr[1] next.",
+        "expert": "A hit into the resident line. This address differs from the last only in its offset within the block, so the tag already matches — the value was current in memory the whole time; the cache only decided the pipeline need not wait for it. This is a wide line paying off: one miss amortized across the block."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 2,
+        "where": {
+          "hit": false
+        }
+      },
+      "narration": {
+        "essentials": "arr[4] misses — it lives past the first line, in the next one.",
+        "detailed": "Three hits in a row, then arr[4] misses. A line is only four words wide and arr[4] is the fifth word, so it falls in the next line, which is still cold. Another miss, another line filled — and arr[4]'s own neighbors are warm now too.",
+        "expert": "The block boundary. arr[0..3] shared one 16-byte line; arr[4] maps to the next line, still cold, so it compulsory-misses. Spatial locality helps within a line and stops at its edge — a wider line would push the edge further out, at the cost of fetching words a shorter walk might never reach."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 120
+        }
+      },
+      "narration": {
+        "essentials": "The total is 120, and the five-word walk cost only two misses.",
+        "detailed": "The same answer a cacheless run would give — 120 — because the cache never changes what a program computes, only how long it waits. Count the loads: five, of which only two missed. The other three were free hits, handed over by the lines those misses filled. Spatial locality is the cache's first win; the next lesson shows its second — what a program saves when it returns to data it has already loaded.",
+        "expert": "Five loads, two misses — one per line the array spans — and three hits. The cache is architecturally invisible: memory was always current, so the sum is 120 with or without it, and the whole payoff is timing, two memory trips instead of five. What a wide line cannot buy is reuse across time; that is capacity, and the next lesson is about it."
+      }
+    }
+  ]
+}

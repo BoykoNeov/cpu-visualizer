@@ -195,14 +195,16 @@ export interface Simulator {
    * equality already answers "is this the machine we are running". (Deep-comparing geometry is
    * conformance's job, where two configs can be built independently; here they cannot.)
    *
-   * **Step-7 caveat.** This identity assumption breaks the moment a lesson DECLARES a non-null cache:
-   * `lesson.config.cache` arrives JSON-parsed — a fresh `{lineSize,numLines,missPenalty}` object that
-   * is `===`-unequal to both constants — so it would light no toggle position and could misfire this
-   * guard. That is the same trap prediction dodged by comparing BEHAVIOR (`predictsTaken`) not the
-   * value. Step 7 must reconcile it: either map a declared geometry back to its canonical constant on
-   * the way in, or switch this guard and {@link CacheToggle}'s lit-detection to a value/deep compare
-   * (`cacheEquals` from the step-3 `configLabel` work already exists). Unreachable until then — both
-   * shipped pipeline lessons declare `cache: null`.
+   * **Step 7 kept this identity guard by RESTORING its precondition, not by weakening it.** A lesson
+   * that declares a non-null cache would break the assumption — `lesson.config.cache` arrives
+   * JSON-parsed, a fresh `{lineSize,numLines,missPenalty}` object `===`-unequal to both constants — so
+   * it would light no toggle position and misfire this guard (the same trap prediction dodged by
+   * comparing BEHAVIOR, not the value). The reconcile takes the caveat's first option: `canonicalCache`
+   * (`lessons.ts`) maps a declared geometry back to its shipped constant at lesson LOAD, so by the time
+   * a value reaches here it is once again one of the three constants and this `===` is sound. The other
+   * option — a `cacheEquals` deep compare here and in {@link CacheToggle} — was declined precisely to
+   * keep the "always one of three constants" contract true everywhere rather than paying for it at
+   * every comparison.
    */
   setCache: (geometry: CacheConfig | null) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */

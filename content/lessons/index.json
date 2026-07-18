@@ -13,5 +13,9 @@
   {
     "track": "The machine",
     "lessons": ["forwarding-bubble", "branch-bet"]
+  },
+  {
+    "track": "The cache",
+    "lessons": ["cache-spatial", "cache-temporal", "cache-conflict"]
   }
 ]

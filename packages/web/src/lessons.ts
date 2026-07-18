@@ -45,6 +45,9 @@
  */
 
 import type { Lesson } from '@cpu-viz/curriculum';
+import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-pipeline';
+import type { CacheConfig } from '@cpu-viz/trace';
+import { cacheEquals } from './session';
 
 /**
  * One glob, split by path. `index.json` sits in the lessons' own directory, so the `*.json`
@@ -114,11 +117,39 @@ export function orderLessons<T extends { id: string }>(
   return [...lessons].sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id));
 }
 
+/**
+ * The three shipped cache geometries the shell's cache toggle can be in (`null` = off). The toggle
+ * lights a position and {@link Simulator.setCache} guards its no-op by plain IDENTITY, both sound
+ * only because the shell never holds a cache value that is not one of these. A lesson's declared
+ * `config.cache`, though, arrives JSON-parsed — a fresh object equal in FIELDS but not by reference —
+ * so it would light no position and misfire the guard (the M6 step-5 caveat pinned at `setCache`).
+ */
+const SHIPPED_CACHES: readonly (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
+
+/**
+ * Map a lesson's declared cache geometry back to the shipped CONSTANT it equals (M6 step 7's
+ * reconcile). This is the "map a declared geometry to its canonical constant on the way in" option
+ * the step-5 caveat named, done at the earliest boundary — lesson load — so the shell's identity
+ * contract stays TRUE everywhere downstream rather than being swapped for a deep compare at every
+ * `===`. A geometry matching no shipped constant is left as-is (it would light no toggle position,
+ * which is the honest outcome for a geometry the shell has no control for — `lessons.test.ts` pins
+ * that no SHIPPED lesson has one).
+ */
+function canonicalCache(cache: CacheConfig | null): CacheConfig | null {
+  return SHIPPED_CACHES.find((known) => cacheEquals(known, cache)) ?? cache;
+}
+
+/** Replace a lesson's declared cache with its canonical constant (see {@link canonicalCache}). */
+function canonicalize(lesson: Lesson): Lesson {
+  if (lesson.config === undefined) return lesson;
+  return { ...lesson, config: { ...lesson.config, cache: canonicalCache(lesson.config.cache) } };
+}
+
 /** The authored lessons, in the order `content/lessons/index.json` teaches them. */
 export const LESSONS: readonly Lesson[] = orderLessons(
   Object.entries(modules)
     .filter(([path]) => !isOrderFile(path))
-    .map(([, lesson]) => lesson as Lesson),
+    .map(([, lesson]) => canonicalize(lesson as Lesson)),
   LESSON_ORDER,
 );
 

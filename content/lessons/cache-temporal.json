@@ -1,0 +1,82 @@
+{
+  "id": "cache-temporal",
+  "title": "Come back and it is still there",
+  "program": "array-sum-twice",
+  "model": "pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": { "lineSize": 16, "numLines": 4, "missPenalty": 10 }
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "This program walks a twelve-word array, then walks it again. Watch the second pass.",
+        "detailed": "Twelve words, summed twice — the outer loop resets to arr[0] and does the whole walk over. The first pass fills the cache line by line, exactly as the last lesson showed. The question this lesson asks is what the second pass costs, when every address it wants was already loaded once.",
+        "expert": "A nested loop: a twelve-word inner walk run twice. Twelve words against a 16-byte line is three lines, and this cache has four — so the whole working set fits, which is what makes the second pass the lesson. Pass two's address stream is pass one's, verbatim."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 1,
+        "where": {
+          "hit": false
+        }
+      },
+      "narration": {
+        "essentials": "Pass one starts cold — the first load of each line misses, just like before.",
+        "detailed": "The first pass has never seen this data, so it pays the compulsory misses: one per line, three in all, each dragging in its four words. This is the last lesson's spatial story playing out three times over. Keep scrubbing toward the end of the first pass.",
+        "expert": "The first of three compulsory misses in pass one — one per block, the other three accesses into each block hitting on spatial locality. Nothing here is new: the first pass of a repeated walk looks exactly like a single walk."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 3,
+        "where": {
+          "hit": false
+        }
+      },
+      "narration": {
+        "essentials": "By the end of pass one, all three lines the array needs are resident.",
+        "detailed": "The third and last compulsory miss. After this, every word of the array is sitting in the cache — three lines, all valid — and the first pass has done all the paying. Now watch what the second pass does with a cache that already holds everything it is about to ask for.",
+        "expert": "The third block installed. The working set — three lines — now fits entirely in the four-line cache, with a line to spare, so nothing has been evicted. That is the precondition for temporal reuse: the data outlives its first use because nothing displaced it."
+      }
+    },
+    {
+      "trigger": {
+        "event": "cache-access",
+        "nth": 1,
+        "where": {
+          "addr": 268435456,
+          "hit": true
+        }
+      },
+      "narration": {
+        "essentials": "Pass two asks for arr[0] again — and this time it hits.",
+        "detailed": "The second pass starts over at arr[0], the exact address the whole program began with. Back then it missed; now it hits. The line never left the cache, so revisiting it costs nothing — no trip to memory, no freeze. That is temporal locality: data you have used once is cheap to use again.",
+        "expert": "The same address as the very first access, now a hit — the block stayed resident across the entire first pass because the cache was large enough to hold the whole working set. Temporal locality is what capacity buys and a wide line cannot: the line brought arr[0]'s neighbors along, but only room kept arr[0] itself alive long enough to be reused."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 156
+        }
+      },
+      "narration": {
+        "essentials": "The total is 156, and the whole second pass hit.",
+        "detailed": "Two passes, the same 156 either way — but the second pass paid nothing to memory: every one of its twelve loads hit, because the first pass had already loaded them and the cache was big enough to keep them. Spatial locality made the first pass cheaper; temporal locality made the second pass nearly free. The next lesson asks what happens when the cache is not big enough to hold it all.",
+        "expert": "Twelve hits in pass two: the reuse is total because the working set fit. Three misses for the whole program where a cacheless run pays twenty-four. The catch — and the next lesson — is that this rested on capacity: shrink the cache below the working set and the reuse you just watched turns back into misses."
+      }
+    }
+  ]
+}
