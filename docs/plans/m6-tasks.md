@@ -1,6 +1,6 @@
 # Milestone 6 — caches (the third toggle on the pipeline)
 
-**Status: STEPS 0–4 DONE, 2026-07-18 (1184 tests). The corpus straddler ships, the pure timing-shadow
+**Status: STEPS 0–5 DONE, 2026-07-18 (1221 tests). The corpus straddler ships, the pure timing-shadow
 model is proven against the real engine's address stream, the pipeline HONORS `config.cache` (a miss
 freezes IF/ID/EX for `missPenalty` cycles via the `missCyclesRemaining` countdown — the machine's
 first variable-latency stage), the INV-8 differential runs the corpus across the full
@@ -10,8 +10,15 @@ the timing suite's closed form now carries its fifth and last in-order term — 
 `M = misses × missPenalty` — per-term and mutation-checked across the full fwd × predict × cache
 matrix, with the "no size dominates" thesis asserted as signed deltas (the straddler buys back 20
 cycles under a bigger cache; the single-pass `array-sum.s` — the corpus's locality-punisher, no new
-program needed — buys nothing). Cache-off runs are byte-identical to M4. Remaining: the web toggle
-(step 5), the cache grid view (step 6), and the lesson track (step 7).
+program needed — buys nothing). Cache-off runs are byte-identical to M4. **Step 5 shipped the web
+toggle (2026-07-18):** a 3-position `[off][small][large]` control in the shell's knobs row, gated on
+`configurableCache`, riding M3's config seam with zero widening (mirroring forwarding & prediction) —
+`useSimulator` grew a `cache` state+ref threaded into `loadInto`, `session.lessonOpening` honors a
+declared config's cache as a THIRD whole-or-nothing knob, the lesson sweep's `CONFIG_AXES` gained a
+three-position cache axis (pipeline sweep 4→12 positions, all green — the axis did NOT redden any
+lesson), and the live scrub-bar figures (290/340/320 fwd-off) were pinned through the shell's own load
+path and eyeballed in a real browser (340↔320 straddle visible on the scrub bar; control absent on
+single/multi-cycle). Remaining: the cache grid view (step 6) and the lesson track (step 7).
 Remaining numbers in this plan are DERIVATIONS to be confirmed, not measurements. Deliberately deferred and named:
 set-associativity + a replacement policy (the only future user of `config.seed`), a second level
 (the `cache-access.level` field already anticipates it), an I-cache, and write-back. The one
@@ -296,14 +303,43 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       map / 500 timing caps). All green first run; the `M` term is mutation-checked (small 2→3 on
       `array-sum` reddens exactly the 4 small cells + the delta pin).
 
-- [ ] **5. Web: the third toggle.** A cache control (size / on-off), capability-gated on
-      `configurableCache`, riding the config seam with no widening — forwarding's and prediction's
-      shape. Grow the lesson sweep's config cross-product to the cache axis (M4 step 4's
-      `positionsFor` — the helper that decides coverage must itself have a case list reaching its new
-      collisions). **Acceptance:** gated absent on single/multi-cycle; the same program's cycle count
-      changes on the **live scrub bar** when the size flips (the browser is this project's only net
-      for view/wiring — a config the engine ignores can pass every headless web test); every lesson
-      still anchors under every config it declares.
+- [x] **5. Web: the third toggle. DONE 2026-07-18 (1184 → 1221 tests, +37).** A `CacheToggle` in the
+      shell's knobs row beside forwarding and prediction, gated on `configurableCache` (absent, not
+      disabled, elsewhere), riding M3's config seam with ZERO widening — `useSimulator` grew a `cache`
+      state+ref (mirroring forwarding/prediction exactly) threaded into `loadInto`'s config and a
+      `setCache` with a plain identity no-op guard; `session.lessonOpening` honors a declared config's
+      cache as a THIRD whole-or-nothing knob (its `current` param and `LessonOpening` both gained
+      `cache`). **The control has THREE positions, not two — and that is the honest count, the one real
+      asymmetry with the two prior toggles.** Forwarding and prediction have two positions because each
+      names two BEHAVIORS (`'none'` ≡ `'static-not-taken'`, M4 step 1); the cache has three genuinely
+      distinct machines (`off` emits no `cache-access` at all; `small`/`large` cache but DIVERGE only on
+      a straddling working set), so all three move something — a two-part on/off + size control would
+      violate _a control that cannot move anything is worse than no control_ (the size half is inert while
+      off). The value written is always one of three stable module constants (`null` / `CACHE_SMALL` /
+      `CACHE_LARGE`), now **exported from the pipeline `index.ts`** so the toggle, the lesson sweep, and
+      the timing suite share ONE geometry — "no widening" is about the config seam, not a ban on exporting
+      two constants, and using a different geometry would de-straddle `array-sum-twice.s`. **The lesson
+      sweep's `CONFIG_AXES` gained a THREE-position cache axis** (pipeline sweep 4 → 2×2×3 = 12 positions;
+      the `CROSS PRODUCT` + distinctness guards updated to 12) — and the advisor-flagged risk (a miss-stall
+      colliding two of `forwarding-bubble`'s steps on a cycle, since it runs on `array-sum` which has
+      loads + misses) DID NOT materialize: **all 12 positions green first run, no validator special-case.**
+      The reason is structural: a miss freeze only ADDS cycles (collisions come from COMPRESSION, which
+      forwarding-on already survives), and the freeze emits NO `stall` event (only `stageId`'s load-use
+      hazard does, `processor.ts:1108`), so the cache is invisible to the `stall reason:raw` trigger the
+      lesson anchors on. **Acceptance, all met:** control absent on single/multi-cycle (pinned in
+      `models.test.ts`, mirroring the forwarding gate) and present as `[off,small,large]` on the pipeline;
+      the live scrub-bar cycle count moves when the size flips — pinned through the SHELL's own load path
+      in `simulator.test.ts` (`array-sum-twice.s` off 290 / small 340 / large 320 fwd-off, the straddler
+      slower small-than-large; the punisher `array-sum.s` small == large; INV-8 identical state across all
+      three; single-cycle inert) AND **eyeballed in a real browser** (the scrub max read 289 → 339 → 319 as
+      off→small→large; screenshot confirms the control renders as a coherent bar beside the other two, no
+      wrap). **Zero engine change, zero renderer change, zero new trace field, zero lesson-JSON change**
+      (both pipeline lessons already declared `cache: null`). The one new export is two constants + a line
+      size; no `PipelineDatapath` config change (the grid is step 6) and no new lesson content (the track
+      is step 7). **Finding: this is the first view step in the project's history to ship with NO defect
+      the browser caught** — the pattern held from the two prior toggles was mechanical enough that the
+      seam absorbed the third knob with nothing to discover, exactly as the plan's "cheaper than M4"
+      promise predicted.
 
 - [ ] **6. The cache view — the grid.** A bespoke cache diagram: a column of lines/sets showing
       tag/valid, the accessed line highlighted, hit/miss/evict distinguished. Pure geometry +
@@ -328,6 +364,17 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       **Acceptance:** each lesson anchors under its declared cache config; the validator covers the
       cache axis **without a special case** — if it needs one, the validator's derivation was wrong,
       not the lesson (M3/M4's standing bar).
+      **Inherited from step 5 — the identity trap the web toggle set for you (advisor-flagged).** The
+      shell's `CacheToggle` lights a position by IDENTITY (`position.value === cache`) and `setCache`'s
+      no-op guard is `===`, both sound _only_ because the shell sets one of the three exported constants
+      and every current lesson declares `cache: null`. The first lesson here that declares a NON-null
+      cache breaks it: `lesson.config.cache` arrives JSON-parsed, a fresh object `===`-unequal to
+      `CACHE_SMALL`/`CACHE_LARGE`, so `lessonOpening` would hand the shell a geometry that lights NO
+      toggle position and could misfire the guard. This is the exact shape prediction dodged with
+      `predictsTaken` (compare BEHAVIOR, not the value). Reconcile it here: either map a declared
+      geometry back to its canonical constant on the way in, or switch the lit-detection + guard to a
+      value/deep compare (`cacheEquals` from step 3's `configLabel` work already exists). The caveat is
+      pinned at `Simulator.setCache` and `CacheToggle` so it is not rediscovered mid-authoring.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
@@ -335,8 +382,10 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       **every** (forwarding × prediction × cache) config (INV-8) — green by construction, because the
       cache holds no values (the timing-shadow design). A cache that stalls wrongly but corrupts no
       state still passes this; timing is its net.
-- [~] The **same program** runs a **different number of cycles** under two cache sizes, matching the
-  step-4 pinned derivation (pinned in `timing.test.ts`; the LIVE SCRUB BAR half awaits step 5).
+- [x] The **same program** runs a **different number of cycles** under two cache sizes, matching the
+      step-4 pinned derivation — pinned in `timing.test.ts` AND now on the **live scrub bar**
+      (`simulator.test.ts` off 290 / small 340 / large 320 through the shell's load path; browser-verified
+      289 → 339 → 319 scrub max as the size flips — step 5).
 - [x] **No cache size dominates:** a program where a bigger cache pays off (`array-sum-twice.s`, +20),
       and one where it buys nothing (`array-sum.s`, `byte-loads.s`, 0) — asserted as signed
       per-program deltas, never averaged (step 4).
@@ -345,8 +394,11 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
 - [ ] `engine/pipeline` still has **zero** imports from `web`/`curriculum`; the cache is honored via
       `ProcessorConfig` only, with no new back door — cache contents reach the view through `micro`
       in the trace, not through an accessor (INV-2/INV-3).
-- [ ] Every lesson still anchors under every config it declares it honors, including the new cache
-      axis, with no special case in the validator.
+- [x] Every lesson still anchors under every config it declares it honors, including the new cache
+      axis, with no special case in the validator — the sweep's `CONFIG_AXES` gained a three-position
+      cache axis and all 12 pipeline positions are green with no per-lesson special case (step 5). The
+      cache-track lessons themselves land in step 7; the validator machinery that will cover them is
+      already proven here.
 
 ## Decisions to pin (fill in as steps land — seeded with the recommended answers)
 

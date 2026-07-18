@@ -1,5 +1,6 @@
 import type { Lesson } from '@cpu-viz/curriculum';
-import { defaultConfig } from '@cpu-viz/trace';
+import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
+import { defaultConfig, type ProcessorConfig } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import { LESSONS } from './lessons';
 import {
@@ -85,9 +86,15 @@ describe('a lesson opens on the model + config it declares', () => {
   const arrivingWith = (
     forwarding: boolean,
     branchPrediction: BranchPrediction = 'none',
-  ): { forwarding: boolean; branchPrediction: BranchPrediction } => ({
+    cache: ProcessorConfig['cache'] = null,
+  ): {
+    forwarding: boolean;
+    branchPrediction: BranchPrediction;
+    cache: ProcessorConfig['cache'];
+  } => ({
     forwarding,
     branchPrediction,
+    cache,
   });
 
   it('honors the declared model — a lesson is prose about ONE machine, not just anchors', () => {
@@ -107,6 +114,7 @@ describe('a lesson opens on the model + config it declares', () => {
       modelId: 'pipeline',
       forwarding: false,
       branchPrediction: 'none',
+      cache: null,
     });
   });
 
@@ -120,6 +128,11 @@ describe('a lesson opens on the model + config it declares', () => {
     expect(defaultConfig().forwarding).toBe(false); // the value a naive fallback would force
     expect(lessonOpening(LESSON, arrivingWith(true)).forwarding).toBe(true);
     expect(lessonOpening(LESSON, arrivingWith(false)).forwarding).toBe(false);
+    // The cache is the third knob under the same rule (M6 step 5): a no-config lesson must not
+    // clear a cache the user is running. `defaultConfig().cache` is `null`, so a naive fallback
+    // would silently switch off exactly the user who had turned a cache on.
+    expect(defaultConfig().cache).toBeNull(); // the value a naive fallback would force
+    expect(lessonOpening(LESSON, arrivingWith(false, 'none', CACHE_SMALL)).cache).toBe(CACHE_SMALL);
   });
 
   /**
@@ -144,10 +157,16 @@ describe('a lesson opens on the model + config it declares', () => {
         forwarding: false,
         branchPrediction: 'static-not-taken',
       }),
-      arrivingWith(true, 'static-taken'), // the user arrived with BOTH knobs against the lesson
+      // The user arrived with ALL THREE knobs against the lesson — including a cache the declared
+      // config (default, `cache: null`) must switch back off.
+      arrivingWith(true, 'static-taken', CACHE_SMALL),
     );
     expect(opening.forwarding, 'the subject knob is pinned').toBe(false);
     expect(opening.branchPrediction, 'the CONTROL knob is pinned too').toBe('static-not-taken');
+    expect(
+      opening.cache,
+      'the cache is a control knob too — reset to the declared null',
+    ).toBeNull();
   });
 
   it('honors a declared prediction scheme — the field is live the moment a lesson uses it', () => {
@@ -169,7 +188,7 @@ describe('a lesson opens on the model + config it declares', () => {
     // sweep can fail rather than one it can coincide with: every lesson that declares a config is
     // reset off `static-taken`, and the one lesson that declares forwarding is reset off ON.
     for (const lesson of LESSONS) {
-      const opening = lessonOpening(lesson, arrivingWith(true, 'static-taken'));
+      const opening = lessonOpening(lesson, arrivingWith(true, 'static-taken', CACHE_SMALL));
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
       if (lesson.config === undefined) continue;
       expect(opening.forwarding, `${lesson.id} opens in its declared forwarding position`).toBe(
@@ -178,6 +197,9 @@ describe('a lesson opens on the model + config it declares', () => {
       expect(opening.branchPrediction, `${lesson.id} opens in its declared scheme`).toBe(
         lesson.config.branchPrediction,
       );
+      // Arriving on a cache the lesson does not declare, so "honored" is failable: both shipped
+      // pipeline lessons declare `cache: null`, so a leaked session cache would redden here.
+      expect(opening.cache, `${lesson.id} opens in its declared cache`).toBe(lesson.config.cache);
     }
   });
 });

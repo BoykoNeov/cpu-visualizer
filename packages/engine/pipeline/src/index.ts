@@ -24,6 +24,17 @@ export {
   type MemWbLatch,
 } from './processor';
 
+/**
+ * The flagship cache geometry, re-exported for the web toggle (M6 step 5) and any other consumer
+ * above this package in the DAG. These are the SAME constants the timing suite (step 4) and the
+ * conformance differential (step 3) pin against — the straddle experiment's single source of truth
+ * (see `cache.ts`). The web control MUST build its `CacheConfig` from these rather than re-deriving
+ * a geometry, or the small↔large flip could de-straddle `array-sum-twice.s` and the live scrub bar
+ * would stop matching step 4's 340↔320. `CacheState`/`access` etc. stay package-private — the view
+ * derives its grid from `micro` + the trace (INV-3), never by consulting the live cache.
+ */
+export { CACHE_SMALL, CACHE_LARGE, LINE_SIZE_BYTES } from './cache';
+
 /** Stable id of this model within the model family (handoff §2). */
 export const PIPELINE_MODEL_ID = 'pipeline';
 

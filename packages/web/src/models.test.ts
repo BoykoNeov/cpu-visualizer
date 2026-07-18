@@ -62,6 +62,17 @@ describe('the model table', () => {
   });
 
   /**
+   * The cache toggle's gate (M6 step 5), mirroring forwarding above: this flag decides whether the
+   * control renders at all, so the interesting claim is again that exactly ONE model honors the
+   * cache today. A second model quietly arriving with `configurableCache` true (or the pipeline
+   * losing it) is what should redden here — the same shape that guards the other two knobs.
+   */
+  it('exactly one model honors ProcessorConfig.cache — the pipeline', () => {
+    const configurable = MODELS.filter((m) => m.capabilities.configurableCache);
+    expect(configurable.map((m) => m.id)).toEqual(['pipeline']);
+  });
+
+  /**
    * The datapath discriminator, which App dispatches on. Every model has its OWN hand-authored
    * geometry and none reuses a neighbour's: lit by the wrong model's trace, a diagram draws a
    * contradictory picture (INV-5) — multi-cycle's single shared memory and one-in-flight layout

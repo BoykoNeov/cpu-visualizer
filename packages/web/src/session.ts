@@ -64,6 +64,8 @@ export interface LessonOpening {
   forwarding: boolean;
   /** The branch-prediction scheme to record in (M4 step 4). */
   branchPrediction: BranchPrediction;
+  /** The cache geometry to record in, or `null` for no D-cache (M6 step 5). */
+  cache: ProcessorConfig['cache'];
 }
 
 /**
@@ -139,15 +141,23 @@ export function predictsTaken(scheme: BranchPrediction): boolean {
  */
 export function lessonOpening(
   lesson: Lesson,
-  current: { forwarding: boolean; branchPrediction: BranchPrediction },
+  current: {
+    forwarding: boolean;
+    branchPrediction: BranchPrediction;
+    cache: ProcessorConfig['cache'];
+  },
 ): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
   // behave like this one — the type makes a declared config total — which is the shape that hid the
-  // question until a second knob existed.
+  // question until a second knob existed. The cache joins as a THIRD knob under the same rule
+  // (M6 step 5): a lesson that declares a config controls its cache too, whole; one that declares
+  // none leaves whatever the user set — a single-cycle lesson must not silently clear a cache the
+  // user is running any more than it clears their forwarding position.
   if (lesson.config === undefined) return { modelId: lesson.model, ...current };
   return {
     modelId: lesson.model,
     forwarding: lesson.config.forwarding,
     branchPrediction: lesson.config.branchPrediction,
+    cache: lesson.config.cache,
   };
 }

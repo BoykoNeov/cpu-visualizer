@@ -1,6 +1,7 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
-import type { InstructionInstance } from '@cpu-viz/trace';
+import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-pipeline';
+import type { CacheConfig, InstructionInstance } from '@cpu-viz/trace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
@@ -258,6 +259,9 @@ export function App(): React.JSX.Element {
           ) : null}
           {activeModel.capabilities.configurableBranchPrediction ? (
             <PredictionToggle scheme={sim.branchPrediction} setScheme={sim.setBranchPrediction} />
+          ) : null}
+          {activeModel.capabilities.configurableCache ? (
+            <CacheToggle cache={sim.cache} setCache={sim.setCache} />
           ) : null}
         </div>
       </div>
@@ -874,6 +878,91 @@ export function PredictionToggle(props: {
             {position ? 'taken' : 'not taken'}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The cache toggle (M6 step 5) — the milestone's flagship experiment (§12.3), and the THIRD control
+ * to change the machine rather than the picture. It rides M3's config seam exactly as forwarding and
+ * prediction did, which is the finding again: a whole new feature needed no widening of the seam.
+ *
+ * **Three positions, not two — and that is the honest count, not a regression from the pattern.**
+ * The forwarding and prediction toggles have two positions because each names two BEHAVIORS (a
+ * predictor with no BTB and no predictor at all are one machine, M4 step 1). The cache has three
+ * genuinely distinct machines: `off` emits no `cache-access` at all and every MEM is one cycle;
+ * `small` (2 lines) and `large` (4 lines) both cache, and they DIVERGE — but only on a working set
+ * that straddles them (`array-sum-twice.s`, where the repeat pass all-hits at 4 lines and re-misses
+ * at 2). So all three positions move something, which is exactly the rule the toggles live by — *a
+ * control that cannot move anything is worse than no control.* A two-part on/off + size control would
+ * violate it: the size half moves nothing while off. One three-position control does not.
+ *
+ * The value written is always one of the three stable module constants (`null` / {@link CACHE_SMALL}
+ * / {@link CACHE_LARGE}), never a freshly-built object, so which position is lit is a plain identity
+ * check and {@link Simulator.setCache}'s no-op guard is plain `===` (see its docblock).
+ *
+ * The `title`s carry where the honesty budget goes: that flipping the size only changes anything for
+ * a program whose working set straddles the two sizes — the same program can be all-hits at both
+ * (`array-sum.s`, one pass, all compulsory misses) — so "bigger is better" is a claim about REUSE,
+ * not a law. Rendered only where `capabilities.configurableCache` is true (the pipeline).
+ */
+function CacheToggle(props: {
+  cache: CacheConfig | null;
+  setCache: (geometry: CacheConfig | null) => void;
+}): React.JSX.Element {
+  const { cache, setCache } = props;
+  // The three machines, as (label, geometry, title). Geometry is one of the two shipped constants or
+  // `null`; the lit position is decided by identity against `cache`, which the shell only ever sets
+  // to one of these three exact values.
+  const positions: { label: string; value: CacheConfig | null; title: string }[] = [
+    {
+      label: 'off',
+      value: null,
+      title:
+        'No D-cache — every load and store takes one MEM cycle. This is the pipeline as M4 left it; turn the cache on to watch memory accesses miss and stall.',
+    },
+    {
+      label: 'small',
+      value: CACHE_SMALL,
+      title: `Small direct-mapped D-cache — ${CACHE_SMALL.numLines} lines × ${CACHE_SMALL.lineSize} B. A miss costs ${CACHE_SMALL.missPenalty} extra cycles. Too small to hold a working set that spans 3 lines, so a repeated array walk re-misses.`,
+    },
+    {
+      label: 'large',
+      value: CACHE_LARGE,
+      title: `Large direct-mapped D-cache — ${CACHE_LARGE.numLines} lines × ${CACHE_LARGE.lineSize} B. Same ${CACHE_LARGE.missPenalty}-cycle miss penalty, but big enough to keep a 3-line working set resident, so a repeated walk hits on the second pass. This only helps a program with reuse to capture — a single pass misses the same either way.`,
+    },
+  ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        Cache
+      </span>
+      <div className="seg">
+        {positions.map((position) => {
+          // Identity, not a deep compare — sound because `cache` is only ever one of the three
+          // constants below (see {@link Simulator.setCache} for the same guard, and the step-7
+          // caveat there: a lesson declaring a JSON cache geometry would need a value compare here).
+          const on = position.value === cache;
+          return (
+            <button
+              key={position.label}
+              className={on ? 'seg-btn seg-btn--on' : 'seg-btn'}
+              onClick={() => setCache(position.value)}
+              aria-pressed={on}
+              title={position.title}
+            >
+              {position.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

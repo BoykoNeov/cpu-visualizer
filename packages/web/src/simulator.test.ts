@@ -1,5 +1,5 @@
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
-import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
 import {
   defaultConfig,
@@ -394,5 +394,105 @@ describe('the prediction control has two positions because the machine has two b
     // `ret` (a `jalr`) cannot be predicted by anyone and stays at 2. Net: +1, and a user can see it.
     expect(cyclesOf('call-return', 'static-not-taken')).toBe(17);
     expect(cyclesOf('call-return', 'static-taken')).toBe(18);
+  });
+});
+
+/**
+ * The cache toggle (M6 step 5) — the milestone's flagship interaction on the LIVE timeline the
+ * browser scrubs, the third knob to ride M3's config seam. This is the headless half of the step's
+ * acceptance ("the same program's cycle count changes on the live scrub bar when the size flips");
+ * the small↔large flip being visible on screen is the browser eyeball's job, since it is the only
+ * net that sees a config the engine ignores.
+ *
+ * The seam test is the same one forwarding and prediction already made: `loadSource`'s `config`
+ * reaches `recorder.load`, so if the `cache` field were dropped on the floor every position would
+ * silently run the neutral `cache: null` — identical recordings, a toggle that moves nothing while
+ * looking like it works. `recordedCycles` is literally the scrub bar's upper bound, so pinning it is
+ * pinning the number the user sees.
+ *
+ * The ABSOLUTE figures belong to the engine's `timing.test.ts`, which derives them in closed form
+ * (`cycles = N + 4 + S + P + M`, `M = misses × missPenalty`) — but this step's acceptance names the
+ * scrub bar specifically, so, exactly like the prediction figures above, they are pinned here as
+ * "what the user reads off the bar" through the shell's own load path, cross-referenced to step 4
+ * rather than re-derived. Forwarding OFF throughout, matching step 4's `array-sum-twice.s` row.
+ */
+describe('loadSource cache config — the size flip on the live scrub bar (M6 step 5)', () => {
+  const config = (cache: typeof CACHE_SMALL | null): ProcessorConfig => ({
+    ...defaultConfig(),
+    cache,
+  });
+
+  const cyclesOf = (name: string, cache: typeof CACHE_SMALL | null): number => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
+    const result = loadSource(program.source, () => new PipelineProcessor(), config(cache));
+    if (!result.ok) throw new Error(`unreachable: ${name} should assemble`);
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recordedCycles;
+  };
+
+  const stateOf = (name: string, cache: typeof CACHE_SMALL | null) => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
+    const result = loadSource(program.source, () => new PipelineProcessor(), config(cache));
+    if (!result.ok) throw new Error(`unreachable: ${name} should assemble`);
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.currentState();
+  };
+
+  it('the SAME program runs a different cycle count under two cache sizes — the straddler', () => {
+    // `array-sum-twice.s`, the size-straddler: 12 words × 2 passes, working set spanning 3 lines.
+    // Off pays no penalty (290). Small (2 lines) overflows and re-misses the repeat pass — 5 misses
+    // × 10 = 50 more (340). Large (4 lines) fits and the repeat pass all-hits — 3 misses × 10 = 30
+    // more (320). The 20-cycle gap between small and large IS the flip, pinned as a signed delta in
+    // step 4's `timing.test.ts`; here it is the number the scrub bar shows.
+    expect(cyclesOf('array-sum-twice', null)).toBe(290);
+    expect(cyclesOf('array-sum-twice', CACHE_SMALL)).toBe(340);
+    expect(cyclesOf('array-sum-twice', CACHE_LARGE)).toBe(320);
+    // The flagship, as the relationship the acceptance names: flipping the size alone, on one
+    // unchanged source, moves the scrub bar — and the smaller cache is the slower machine.
+    expect(cyclesOf('array-sum-twice', CACHE_SMALL)).toBeGreaterThan(
+      cyclesOf('array-sum-twice', CACHE_LARGE),
+    );
+  });
+
+  it('...but NOT every program — a single-pass walk buys nothing from a bigger cache', () => {
+    // `array-sum.s` is the same block structure minus the repeat, so every block is compulsory-
+    // missed exactly once at ANY size: 2 misses small AND large. The flip is a claim about REUSE,
+    // not a law — a program with none shows the size control moving the count NOWHERE. This is what
+    // keeps the toggle honest: "bigger is better" is false here, and the shell must be able to say so.
+    expect(cyclesOf('array-sum', CACHE_SMALL)).toBe(cyclesOf('array-sum', CACHE_LARGE));
+    // ...and turning the cache ON at all still costs those 2 compulsory misses vs. off.
+    expect(cyclesOf('array-sum', CACHE_SMALL)).toBeGreaterThan(cyclesOf('array-sum', null));
+  });
+
+  it('lands on the IDENTICAL final architectural state under every cache (INV-8 by construction)', () => {
+    // The timing shadow holds no values, so the cache cannot move a register or a byte — off, small,
+    // and large must agree on the whole result. `array-sum-twice` sums 2·(1+…+12) = 156 into a0.
+    const off = stateOf('array-sum-twice', null);
+    const small = stateOf('array-sum-twice', CACHE_SMALL);
+    const large = stateOf('array-sum-twice', CACHE_LARGE);
+    expect(off.registers[10]).toBe(156);
+    expect([...small.registers]).toEqual([...off.registers]);
+    expect([...large.registers]).toEqual([...off.registers]);
+    expect(small.memory.definedAddresses()).toEqual(off.memory.definedAddresses());
+    for (const addr of off.memory.definedAddresses()) {
+      expect(small.memory.readWord(addr)).toBe(off.memory.readWord(addr));
+      expect(large.memory.readWord(addr)).toBe(off.memory.readWord(addr));
+    }
+  });
+
+  it('is inert for a model that does not honor it (single-cycle ignores the cache)', () => {
+    // The same argument forwarding and prediction rest on, and the reason the cache could ride the
+    // seam without widening it: it is held at SESSION level and handed to every model, so a config-
+    // blind engine is simply unmoved by it. That is what makes gating the CONTROL on
+    // `capabilities.configurableCache` a pure view concern — the engine needs no defending.
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'array-sum-twice')!;
+    const cyclesSingleCycle = (cache: typeof CACHE_SMALL | null): number => {
+      const result = loadSource(program.source, () => new SingleCycleProcessor(), config(cache));
+      if (!result.ok) throw new Error('unreachable: array-sum-twice should assemble');
+      result.loaded.recorder.runToEnd();
+      return result.loaded.recorder.recordedCycles;
+    };
+    expect(cyclesSingleCycle(CACHE_SMALL)).toBe(cyclesSingleCycle(null));
+    expect(cyclesSingleCycle(CACHE_LARGE)).toBe(cyclesSingleCycle(null));
   });
 });

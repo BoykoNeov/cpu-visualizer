@@ -9,7 +9,12 @@
 
 import type { AssembledProgram, AssemblerError } from '@cpu-viz/assembler';
 import { anchorLesson, type AnchoredStep, type Lesson } from '@cpu-viz/curriculum';
-import { defaultConfig, type CycleTrace, type MachineState } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type CacheConfig,
+  type CycleTrace,
+  type MachineState,
+} from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_MODEL_ID, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -81,6 +86,20 @@ export interface Simulator {
    * control only ever writes the two behaviors by their explicit names.
    */
   branchPrediction: BranchPrediction;
+  /**
+   * The D-cache geometry the driving engine is configured with (`ProcessorConfig.cache`), or `null`
+   * for no cache — M6's toggle, the third to ride M3's config seam without widening it: session
+   * level, handed to every model, gated only as a CONTROL on `capabilities.configurableCache`.
+   *
+   * Unlike forwarding and prediction (two behaviors each), the cache has THREE distinct machines —
+   * off, small, and large all record differently (off emits no `cache-access` at all; small and
+   * large diverge only on a working set that straddles them). So the control has three positions,
+   * each a real move, and the value is one of the three stable geometries
+   * (`null` / `CACHE_SMALL` / `CACHE_LARGE`) rather than a freely-built object. Opens on
+   * `defaultConfig()`'s `null` — the pedagogically right first move is to watch the machine with no
+   * cache, then add one and watch the misses (and the size flip) appear.
+   */
+  cache: CacheConfig | null;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -165,6 +184,27 @@ export interface Simulator {
    * timeline.
    */
   setBranchPrediction: (scheme: BranchPrediction) => void;
+  /**
+   * Set `ProcessorConfig.cache` and re-record the current source under it — the same shape as
+   * {@link setForwarding}, for the same reason: the trace genuinely changes (a different geometry
+   * hits and misses differently, changing the cycle count), so a fresh recording IS the mechanism.
+   *
+   * The no-op guard is plain identity (`geometry === cacheRef.current`) rather than a deep compare,
+   * because the shell only ever sets one of the three stable module constants
+   * (`null` / `CACHE_SMALL` / `CACHE_LARGE`) — it never builds a fresh `CacheConfig`, so referential
+   * equality already answers "is this the machine we are running". (Deep-comparing geometry is
+   * conformance's job, where two configs can be built independently; here they cannot.)
+   *
+   * **Step-7 caveat.** This identity assumption breaks the moment a lesson DECLARES a non-null cache:
+   * `lesson.config.cache` arrives JSON-parsed — a fresh `{lineSize,numLines,missPenalty}` object that
+   * is `===`-unequal to both constants — so it would light no toggle position and could misfire this
+   * guard. That is the same trap prediction dodged by comparing BEHAVIOR (`predictsTaken`) not the
+   * value. Step 7 must reconcile it: either map a declared geometry back to its canonical constant on
+   * the way in, or switch this guard and {@link CacheToggle}'s lit-detection to a value/deep compare
+   * (`cacheEquals` from the step-3 `configLabel` work already exists). Unreachable until then — both
+   * shipped pipeline lessons declare `cache: null`.
+   */
+  setCache: (geometry: CacheConfig | null) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -215,6 +255,12 @@ export function useSimulator(): Simulator {
     defaultConfig().branchPrediction,
   );
   const branchPredictionRef = useRef(branchPrediction);
+  // The cache geometry, mirroring forwarding/prediction exactly (M6 step 5). Opens on
+  // `defaultConfig()`'s `null` (no cache) — the pedagogically right first move for the same reason
+  // forwarding starts off and prediction starts not-taken: watch the machine with no cache first,
+  // then add one and watch the misses appear, then flip the size and watch the straddler slow down.
+  const [cache, setCacheState] = useState<CacheConfig | null>(defaultConfig().cache);
+  const cacheRef = useRef(cache);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -229,6 +275,7 @@ export function useSimulator(): Simulator {
         ...defaultConfig(),
         forwarding: forwardingRef.current,
         branchPrediction: branchPredictionRef.current,
+        cache: cacheRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -289,6 +336,7 @@ export function useSimulator(): Simulator {
       const opening = lessonOpening(lesson, {
         forwarding: forwardingRef.current,
         branchPrediction: branchPredictionRef.current,
+        cache: cacheRef.current,
       });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
@@ -297,6 +345,8 @@ export function useSimulator(): Simulator {
       setForwardingState(opening.forwarding);
       branchPredictionRef.current = opening.branchPrediction;
       setBranchPredictionState(opening.branchPrediction);
+      cacheRef.current = opening.cache;
+      setCacheState(opening.cache);
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -362,6 +412,21 @@ export function useSimulator(): Simulator {
     [loadInto],
   );
 
+  const setCache = useCallback(
+    (geometry: CacheConfig | null) => {
+      if (geometry === cacheRef.current) return; // already there — keep the cursor where it is
+      cacheRef.current = geometry; // read by loadInto below (and every later load)
+      setCacheState(geometry);
+      // Re-record whatever is loaded under the new cache. Same shape as `setForwarding`: the source
+      // is the exact running text, so re-loading keeps the session and any active lesson intact
+      // while changing only the machine's cache. The lesson re-anchors against the new recording —
+      // its steps anchor to EVENTS, so they survive the cycle numbers moving underneath them (INV-6).
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
   // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
   // counting loop is the clearest first teaching example; `add` (which sorts first) halts
   // by running off text-end, so its final pc is an out-of-range value that reads as odd.
@@ -412,6 +477,7 @@ export function useSimulator(): Simulator {
     model,
     forwarding,
     branchPrediction,
+    cache,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -430,6 +496,7 @@ export function useSimulator(): Simulator {
     setModel,
     setForwarding,
     setBranchPrediction,
+    setCache,
     select,
     startLesson,
     loadEdited,

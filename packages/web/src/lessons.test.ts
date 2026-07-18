@@ -10,7 +10,7 @@ import {
   type LessonStep,
 } from '@cpu-viz/curriculum';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
-import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import {
   defaultConfig,
   type CycleTrace,
@@ -133,6 +133,20 @@ const CONFIG_AXES: readonly ConfigAxis[] = [
     positions: [
       { label: 'predict not-taken', set: (c) => ({ ...c, branchPrediction: 'static-not-taken' }) },
       { label: 'predict taken', set: (c) => ({ ...c, branchPrediction: 'static-taken' }) },
+    ],
+  },
+  {
+    // The cache contributes THREE positions, not two, and the asymmetry with prediction is the point
+    // (M6 step 5). Prediction's `'none'` collapsed into `'static-not-taken'` because they are one
+    // machine; the cache's three are three machines — off records no `cache-access`, and small/large
+    // diverge on a straddling working set. All three are reachable from the shell's control, so all
+    // three must be swept. These are the SAME constants the shell's toggle and the timing suite use,
+    // imported rather than re-declared, so the sweep and the UI cannot disagree about the geometry.
+    honored: (caps) => caps.configurableCache,
+    positions: [
+      { label: 'cache off', set: (c) => ({ ...c, cache: null }) },
+      { label: 'cache small', set: (c) => ({ ...c, cache: CACHE_SMALL }) },
+      { label: 'cache large', set: (c) => ({ ...c, cache: CACHE_LARGE }) },
     ],
   },
 ];
@@ -309,24 +323,37 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
     expect(positionsFor('multi-cycle').map((p) => p.label)).toEqual(['neutral config']);
   });
 
-  it('gives the pipeline the CROSS PRODUCT of both knobs it honors, not one knob', () => {
-    // The claim in one line: two honored knobs ⇒ four machines. This is what went stale when step 1
-    // flipped `configurableBranchPrediction` to true and this function still read one capability —
-    // the sweep would have kept passing at half coverage.
+  it('gives the pipeline the CROSS PRODUCT of ALL THREE knobs it honors, not two', () => {
+    // The claim in one line: three honored knobs ⇒ 2 × 2 × 3 = twelve machines. This is what went
+    // stale when step 1 flipped `configurableBranchPrediction` (four, not two) and again when M6
+    // flipped `configurableCache` (twelve, not four) — each time the sweep would have kept passing
+    // at a fraction of coverage while `positionsFor` still enumerated the old knobs. The cache axis
+    // is THREE positions because off/small/large are three machines, so it triples rather than
+    // doubles the count.
     expect(positionsFor('pipeline').map((p) => p.label)).toEqual([
-      'forwarding off, predict not-taken',
-      'forwarding off, predict taken',
-      'forwarding on, predict not-taken',
-      'forwarding on, predict taken',
+      'forwarding off, predict not-taken, cache off',
+      'forwarding off, predict not-taken, cache small',
+      'forwarding off, predict not-taken, cache large',
+      'forwarding off, predict taken, cache off',
+      'forwarding off, predict taken, cache small',
+      'forwarding off, predict taken, cache large',
+      'forwarding on, predict not-taken, cache off',
+      'forwarding on, predict not-taken, cache small',
+      'forwarding on, predict not-taken, cache large',
+      'forwarding on, predict taken, cache off',
+      'forwarding on, predict taken, cache small',
+      'forwarding on, predict taken, cache large',
     ]);
   });
 
-  it('the positions are DISTINCT configs, not four labels on one machine', () => {
-    // The non-vacuity, and the thing a label can lie about: four names over four identical configs
-    // would run the sweep four times and prove one position. Compared as configs rather than
-    // labels, because the labels are what would agree while the configs collapsed.
+  it('the positions are DISTINCT configs, not twelve labels on one machine', () => {
+    // The non-vacuity, and the thing a label can lie about: twelve names over identical configs
+    // would run the sweep twelve times and prove one position. Compared as configs rather than
+    // labels, because the labels are what would agree while the configs collapsed. `CACHE_SMALL`
+    // and `CACHE_LARGE` are distinct objects with distinct geometry, so the cache axis genuinely
+    // triples the distinct-config count rather than aliasing.
     const configs = positionsFor('pipeline').map((p) => JSON.stringify(p.config));
-    expect(new Set(configs).size).toBe(4);
+    expect(new Set(configs).size).toBe(12);
   });
 });
 
