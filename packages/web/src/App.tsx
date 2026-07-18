@@ -3,6 +3,7 @@ import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-pipeline';
 import type { CacheConfig, InstructionInstance } from '@cpu-viz/trace';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CacheGrid } from './CacheGridView';
 import { Datapath } from './DatapathView';
 import { formatInstruction } from './format';
 import { IsaReference } from './IsaReference';
@@ -351,6 +352,19 @@ export function App(): React.JSX.Element {
           ) : (
             <DatapathPlaceholder modelLabel={activeModel.label} />
           )}
+
+          {/* The cache grid (M6 step 6), directly under the datapath and above the memory panel it
+              shadows. Gated on a TRACE fact, not the model or the shell's config: the grid shows a
+              cache's state, so it appears exactly when the recording HAS a cache — without this file
+              naming the pipeline (INV-3), and a future model that honors `config.cache` gets it for
+              free. `some` over the whole recording keeps it stable across the timeline (a cache-off
+              run never shows it; a cache-on run shows it at every cursor, cold at cycle 0). The same
+              shape as the map's `hasOverlap` gate. */}
+          {sim.recorded.some(
+            (t) => (t.state.micro as { cache?: unknown } | undefined)?.cache != null,
+          ) ? (
+            <CacheGrid trace={sim.cycleTrace} cache={sim.cache} />
+          ) : null}
 
           {sim.state && sim.program ? (
             <div

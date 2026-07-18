@@ -1,6 +1,20 @@
 # Milestone 6 — caches (the third toggle on the pipeline)
 
-**Status: STEPS 0–5 DONE, 2026-07-18 (1221 tests). The corpus straddler ships, the pure timing-shadow
+**Status: STEPS 0–6 DONE, 2026-07-18 (1236 tests). Step 6 shipped the CACHE GRID VIEW — a state
+panel below the pipeline datapath, one row per line showing valid + the block it holds (as a byte
+range), the touched line called out hit/miss/evict/filling (hue AND word). Pure fold
+`buildCacheGrid` + HTML view (map's two-halves shape, not the SVG datapath's — the plan's "M3 step-6
+geometry litmus" citation was corrected to the map's fold+smoke-test shape). Zero new trace field,
+zero engine change: cache contents ride `micro`, the decode is re-exported from the pipeline
+`index.ts` (read surface public, `access`/`newCache` private). Three advisor-flagged calls pinned
+BEFORE any highlight logic — it is a STATE view (reads `micro`, post-install, NOT the datapath's
+one-cycle-ahead trap, verified against a real trace dump); the miss FREEZE is drawn (`filling` +
+countdown derived from `micro.exMem.missCyclesRemaining`, since the ~10 penalty cycles emit no event);
+and the size flip is visible on the structure (small evicts on line 0, large gives block 2 its own
+line — eviction gone). Browser-eyeballed both sizes + both themes with NO defect — the second view
+step in project history to ship clean (step 5 was the first). Remaining: the lesson track (step 7).**
+
+**Prior status: STEPS 0–5 DONE, 2026-07-18 (1221 tests). The corpus straddler ships, the pure timing-shadow
 model is proven against the real engine's address stream, the pipeline HONORS `config.cache` (a miss
 freezes IF/ID/EX for `missPenalty` cycles via the `missCyclesRemaining` countdown — the machine's
 first variable-latency stage), the INV-8 differential runs the corpus across the full
@@ -341,17 +355,50 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       seam absorbed the third knob with nothing to discover, exactly as the plan's "cheaper than M4"
       promise predicted.
 
-- [ ] **6. The cache view — the grid.** A bespoke cache diagram: a column of lines/sets showing
-      tag/valid, the accessed line highlighted, hit/miss/evict distinguished. Pure geometry +
-      activation module (tested), a wrapper view, a render smoke test, and the browser eyeball.
-      **Keep the add-or-decline-a-field thread open:** cache contents are in `micro`, the view
-      derives index/tag from `addr` + config (INV-3), and the `cache-access` transaction already
-      exists — so likely **no new field**; let this step force one only if it must (M4 declined 4,
-      accepted 1). **Note the cost-reducer:** the pipeline map already renders an instruction
-      lingering in a stage across cycles (the `IF ID ID ID` stall shape), so multi-cycle MEM
-      occupancy on the map probably falls out of existing machinery — the genuinely new drawing is
-      the grid. **Acceptance:** geometry invariants (the M3 step-6 suite); browser eyeball, budgeted
-      for a defect — view steps in this project have surfaced one nearly every time.
+- [x] **6. The cache view — the grid. DONE 2026-07-18 (1221 → 1236 tests, +15).** A `CacheGrid` panel
+      below the pipeline datapath, above the memory panel it shadows: **one row per line showing
+      valid + the block it holds (as a byte range, the human form of a huge tag), with the line
+      touched this cycle called out** — `hit` / `miss` / `evict` / `filling`, each a hue AND a word
+      (the relief rule). Two-halves shape like the map: pure fold `buildCacheGrid(trace, config)`
+      (`cache-grid.ts`, 8 tests against the REAL engine) + HTML view (`CacheGridView.tsx`, 7 render
+      tests). **Zero new trace field, zero engine change, zero renderer change** — the last decision
+      in the table lands NO. The one export change: the pipeline `index.ts` now re-exports the READ
+      surface (`CacheState`/`CacheLine` types + the pure decode `lineIndex`/`lineTag`/`blockBase`/
+      `blockBaseOf`), keeping the MUTATING `access`/`newCache` package-private — the comment there was
+      rewritten to draw the line at "read the cache = public, run it = private" (INV-3: the view
+      imports the decode rather than reimplementing it, so an off-by-one can't mis-highlight a line).
+      **Four decisions, three of them advisor-flagged before a line of highlight logic was written:**
+  - **It is a STATE view, not a dataflow view — so it reads `micro`, and that is NOT the datapath's
+    `micro` trap.** The datapath sources occupancy from `instructions[].location` (never `micro`,
+    which is a cycle ahead) because it draws transient mid-cycle dataflow. The cache grid draws the
+    cache's STATE at the cursor, exactly like the register/memory panels, and state panels show the
+    post-cycle-`i` result — so `micro.cache`'s post-install tags are precisely right. **Verified
+    against a real trace dump before designing:** on the fresh-miss cycle the `cache-access` event and
+    the post-install `micro.cache` share that cycle, so the touched line honestly reads "now holds
+    block X · MISS". Pinning the edge empirically is why step 6 is the SECOND view step in project
+    history with no browser-caught defect (step 5 was the first) — the trap that bit every datapath
+    step was designed around, not discovered.
+  - **The freeze is DRAWN, not skipped (the load-bearing call).** A miss freezes IF/ID/EX for
+    `missPenalty` cycles, and only the fresh-arrival cycle emits a `cache-access` — the ~10 penalty
+    cycles emit none. A grid keyed only on the event would light for one cycle then go dark for the
+    rest of the stall, blanking the cache panel at the exact moment the map above shows `MEM MEM MEM`
+    and the flagship "watch it stall on a miss" is happening. So when no event fires but
+    `micro.exMem.missCyclesRemaining > 0`, the served line is derived from the stalled load's address
+    (`micro.exMem.aluOut`) and shown `filling` with the countdown — **no new trace field, both facts
+    already ride `micro`.** Browser-confirmed live: the panel shows `FILLING · 6` mid-stall.
+  - **HTML, following the MAP (step 7), not the datapath (step 6).** The plan cited "geometry
+    invariants (the M3 step-6 suite)", which are the SVG datapath's polygon/wire litmuses — a cache
+    is a table of lines with none of that geometry, so acceptance is the map's shape instead: a pure
+    fold + an HTML view + a render smoke test. HTML for the map's own reasons (tabular, each line a
+    highlight target), not hand-rolled SVG. Deviation owned here, not silent.
+  - **The size flip is visible on the structure it happens in.** Under `CACHE_SMALL` (2 lines) block
+    2 aliases line 0 and evicts block 0 (`EVICT` badge, evicted range named); under `CACHE_LARGE`
+    (4 lines) all three blocks get their own line and the eviction is GONE — the flagship experiment
+    made concrete, pinned at the view layer (`small` shows `evict`, `large` never does across the
+    whole run) and eyeballed in a real browser both sizes + both themes. **Gated on a TRACE fact**
+    (`recorded.some(t => micro?.cache != null)`), mirroring the map's `hasOverlap` — the panel
+    appears exactly when the recording has a cache, without App naming the pipeline (INV-3), and a
+    future model that honors `config.cache` gets it free. Cache-off ⇒ panel absent (browser-confirmed).
 
 - [ ] **7. The cache track — a SEQUENCE fixed here, not discovered.** Author the lessons in a pinned
       pedagogical order — **spatial locality** (a line brings in neighbors: first touch misses, the
@@ -389,8 +436,12 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
 - [x] **No cache size dominates:** a program where a bigger cache pays off (`array-sum-twice.s`, +20),
       and one where it buys nothing (`array-sum.s`, `byte-loads.s`, 0) — asserted as signed
       per-program deltas, never averaged (step 4).
-- [ ] A **miss** is followable: the access, the hit/miss verdict, any eviction, and the MEM stall it
-      causes — as `cache-access` + `stall` trace events (INV-3) and on the cache grid + pipeline map.
+- [x] A **miss** is followable (step 6): the access, the hit/miss verdict, and any eviction come from
+      the `cache-access` event; the MEM stall it causes shows as the cache grid's `filling` countdown
+      and as the pipeline map's repeated `MEM` cells (INV-3). **Note the correction to this line's own
+      seed:** a miss-freeze emits NO `stall` event (only the load-use hazard does), so the stall is
+      read off `micro.exMem.missCyclesRemaining`, not a `stall` trace event — the grid derives
+      `filling` from it precisely because the event stream is silent through the penalty.
 - [ ] `engine/pipeline` still has **zero** imports from `web`/`curriculum`; the cache is honored via
       `ProcessorConfig` only, with no new back door — cache contents reach the view through `micro`
       in the trace, not through an accessor (INV-2/INV-3).

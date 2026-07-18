@@ -100,8 +100,13 @@ export function blockBase(config: CacheConfig, addr: number): number {
   return blockOf(config, addr) * config.lineSize;
 }
 
-/** Reconstruct a block's base byte address from its (index, tag) — the inverse used for `evicted`. */
-function blockBaseOf(config: CacheConfig, index: number, tag: number): number {
+/**
+ * Reconstruct a block's base byte address from its (index, tag) — the inverse of the decode above.
+ * Used internally for the `evicted` field and, from step 6, EXPORTED (via `index.ts`) so the grid
+ * view can turn a resident line's `(index, tag)` into the human range it holds ("line 0 · 0x…–0x…").
+ * A line's `tag` is a huge number on its own; the base address is the pedagogically meaningful thing.
+ */
+export function blockBaseOf(config: CacheConfig, index: number, tag: number): number {
   return (tag * config.numLines + index) * config.lineSize;
 }
 

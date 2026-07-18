@@ -529,3 +529,65 @@ input[type='range'] {
   border-top-width: 1.3px;
   border-top-color: var(--wire-idle);
 }
+
+/* The cache grid (M6 step 6): one row per line, the touched line called out. A small table, not a
+   scrolling one — the shipped caches are 2 or 4 lines — so no viewport wrapper, unlike `.pmap`. */
+.cache-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cache-line {
+  --line-hue: var(--line-2);
+  display: grid;
+  grid-template-columns: 4.5rem 1.2rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  /* The touched line changes its left rail and a faint wash; the transition makes scrubbing read as
+     one line lighting rather than the whole table repainting. */
+  transition:
+    border-left-color 0.12s ease,
+    background 0.12s ease;
+}
+/* A touched line takes its state hue on the left rail and a wash of it across the row — the hue is
+   never the SOLE carrier (the `.cache-line-tag` chip spells the state out), it just draws the eye. */
+.cache-line--hit,
+.cache-line--miss,
+.cache-line--evict,
+.cache-line--filling {
+  border-left-color: var(--line-hue);
+  background: color-mix(in srgb, var(--line-hue) 12%, var(--surface));
+}
+.cache-line-valid {
+  text-align: center;
+  color: var(--ink-2);
+}
+.cache-line-block {
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+/* The state chip: the word, in its hue, boxed so it reads as a badge and not as more address text. */
+.cache-line-tag {
+  justify-self: end;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+/* An idle line still reserves the chip's width, so the block address does not jump left/right as a
+   line lights and darkens while scrubbing — the same layout-reserve discipline as the map's header. */
+.cache-line-tag--idle {
+  min-width: 3.5rem;
+}
+.cache-legend {
+  margin-top: 0.5rem;
+}

@@ -30,10 +30,28 @@ export {
  * conformance differential (step 3) pin against — the straddle experiment's single source of truth
  * (see `cache.ts`). The web control MUST build its `CacheConfig` from these rather than re-deriving
  * a geometry, or the small↔large flip could de-straddle `array-sum-twice.s` and the live scrub bar
- * would stop matching step 4's 340↔320. `CacheState`/`access` etc. stay package-private — the view
- * derives its grid from `micro` + the trace (INV-3), never by consulting the live cache.
+ * would stop matching step 4's 340↔320.
  */
 export { CACHE_SMALL, CACHE_LARGE, LINE_SIZE_BYTES } from './cache';
+
+/**
+ * The cache grid view's decode toolkit (M6 step 6). The line here is between READING the cache and
+ * RUNNING it: the SHAPE of what `micro.cache` carries (`CacheState`/`CacheLine`) is trace data, and
+ * the address decode (`lineIndex`/`lineTag`/`blockBase`/`blockBaseOf`) is a set of PURE functions of
+ * `(config, addr)` — neither consults the live cache, so both are safe to expose (INV-3: the grid
+ * derives its picture from `micro` + the trace, never from the engine). The MUTATING machinery —
+ * `access`, `newCache` — stays package-private; nothing above this package may drive a cache, only
+ * render one. Importing the decode rather than reimplementing it keeps the view's geometry exactly
+ * the engine's — an off-by-one in `lineIndex` would silently mis-highlight a line.
+ */
+export {
+  type CacheState,
+  type CacheLine,
+  lineIndex,
+  lineTag,
+  blockBase,
+  blockBaseOf,
+} from './cache';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const PIPELINE_MODEL_ID = 'pipeline';
