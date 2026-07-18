@@ -114,6 +114,11 @@ const RESULT_ORACLES: Record<
   'sum-loop.s': { regs: { 10: 55, 5: 0 } },
   // 5+17-4+100+2 = 120 in a0 (x10) and stored back to `total`.
   'array-sum.s': { regs: { 10: 120 }, mem: { total: 120 } },
+  // (1+2+...+12) = 78, summed twice: 2*78 = 156 in a0 (x10); the outer pass
+  // counter t3 (x28) lands on 0. The repeat pass re-reads the same addresses
+  // (temporal reuse) — the cache-relevant fact this program adds, architecturally
+  // invisible here, so its net is M6's timing (step 4), not this equality.
+  'array-sum-twice.s': { regs: { 10: 156, 28: 0 } },
   // max(17, 42) = 42 in a0 (x10), saved to s0 (x8).
   'call-return.s': { regs: { 10: 42, 8: 42 } },
   // byte 0x80: lb → -128 in t1 (x6), lbu → +128 in t2 (x7).

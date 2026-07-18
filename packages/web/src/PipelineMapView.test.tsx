@@ -189,9 +189,9 @@ describe('the map’s render seam', () => {
  * That is not hypothetical: the grid declares explicit tracks, so its layout cost is cycles × rows
  * whether the cells are sparse or not, and a `li t0, 500` countdown — a trivial thing for a user to
  * type into the sandbox — is 3007 cycles × 2001 rows ≈ 6 MILLION grid areas and 2.2 MB of markup,
- * with the engine cap permitting 16× more again. Nothing in the corpus can reach this: `sum-loop`,
- * the longest program we ship, is 78 cycles. So it is the SANDBOX path that needs the net, and only
- * a program written here can test it.
+ * with the engine cap permitting 16× more again. Nothing in the corpus can reach this: the longest
+ * program we ship, `array-sum-twice`, is 290 cycles — deliberately under the page cap. So it is the
+ * SANDBOX path that needs the net, and only a program written here can test it.
  */
 describe('paging — the sandbox net', () => {
   /** A countdown loop: the cheapest way for a user to record far more cycles than can be drawn. */
@@ -219,7 +219,11 @@ describe('paging — the sandbox net', () => {
         return r.loaded.recorder.recordedCycles;
       }),
     );
-    expect(longest).toBe(78); // sum-loop, forwarding off — step 3's derived number
+    // `array-sum-twice`, forwarding off — its double walk of a 12-element array makes it the
+    // longest program the corpus ships (290 = timing.test.ts's derived N+4+S+P for it), displacing
+    // sum-loop's 78. It is sized to STAY under this page cap on purpose (the same reason it is 12
+    // words and not 24): paging must remain a sandbox-only affordance the teaching path never sees.
+    expect(longest).toBe(290);
     expect(longest).toBeLessThan(400);
   });
 

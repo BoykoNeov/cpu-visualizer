@@ -34,3 +34,16 @@ but "is the claim reachable at all on the corpus we have". It was not:
 
 That is the shape of the argument to make before adding one: name what the existing corpus makes
 **unreachable**, not what a new program would make **nicer**.
+
+`array-sum-twice.s` (M6 step 0) is the second worked example, and the same test decided it:
+
+- **What the corpus could not say.** `array-sum.s` walks its array **once**, so no address is ever
+  read twice. Every cache lesson that needs a _repeat_ visit — temporal reuse (the second touch
+  hits), eviction, and the flagship size-sensitivity (the same program runs a different cycle count
+  under two cache sizes) — was not merely untaught but unreachable: a single pass cannot exhibit a
+  cache filling and paying off. So `array-sum-twice.s` walks a 12-word array **twice**.
+- **What the corpus could already say.** `array-sum.s` already serves as the clean
+  **spatial-locality** walk (one line brings in neighbors: the first word of a line misses, the rest
+  hit), so no separate spatial program was added — that would have been the "nicer, not reachable"
+  trap. And the locality-**punisher** ("a bigger cache buys nothing") is a _stride_ over an existing
+  array, not a new program — deferred to where the cache exists to test it.

@@ -244,6 +244,37 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * The corpus's first NESTED loop: an outer loop of 2 passes over an inner 12-element walk, so
+   * the second pass re-reads the same addresses (the temporal-reuse fact this program exists for —
+   * architecturally invisible here, its net is M6's cache timing). 2 prologue + 2 × (3 header +
+   * 12 × 5 inner + 2 footer) + 2 epilogue = 134 retires. `outer` = pc 8, `inner` = pc 20.
+   *
+   * Expanded, with pcs:
+   *    0 addi a0,x0,0   4 addi t3,x0,2   8 lui t0        12 addi t0,t0    16 addi t1,x0,12
+   *   20 lw t2,0(t0)   24 add a0,a0,t2  28 addi t0,t0,4  32 addi t1,t1,-1  36 bne t1,x0,inner
+   *   40 addi t3,t3,-1 44 bne t3,x0,outer  48 addi a7,x0,10  52 ecall
+   *
+   * OFF: per inner iteration the `add` at 24 waits on the `lw` (2) and the `bne` at 36 waits on the
+   *      `addi t1` right before it (2) — 4 × 24 iterations = 96. The `la` addi at 12 stalls 2 per
+   *      pass (2). The outer `bne` at 44 waits on the `addi t3` before it (2) per pass. And the
+   *      NESTED shape adds one array-sum never had: the FIRST `lw` of each pass at 20 reads t0 from
+   *      the `la` two ahead of it (only `li t1` between) — a distance-2 RAW that stalls 1, once per
+   *      pass. Every later `lw` gets t0 from the `addi t0` at 28 across the taken-branch gap and is
+   *      free. S = 96 + 2·2(la) + 2·1(first lw) + 2·2(outer bne) = 106. Inner steady period = 11 =
+   *      N_iter(5) + S_iter(4) + 2·T(1), exactly array-sum's inner.
+   * ON:  only the load-use survives — `add` at 24, one cycle, every inner iteration. S = 24.
+   */
+  'array-sum-twice.s': {
+    retires: 134,
+    // Two `bnez`: the inner `bne t1` is PC-relative and goes 11 times per pass (t1 = 12…1) then
+    // declines (t1 = 0) — 22 taken, 2 declined across both passes; the outer `bne t3` goes once
+    // (t3 = 1) and declines once (t3 = 0). No `jalr`. P: not-taken 2·23 = 46; taken 23·1 + 3·2 = 29.
+    transfers: { takenPredictable: 23, notTaken: 3, takenUnpredictable: 0 },
+    flushes: { branchTaken: 23, halt: 0 }, // every taken branch has live code behind it; ecall is last
+    stalls: { off: { 12: 4, 20: 2, 24: 48, 36: 48, 44: 4 }, on: { 24: 24 } },
+  },
+
+  /**
    * 9 retires. The corpus's only program with one branch of EACH outcome on the same operands:
    * `blt` at 12 is taken (signed -1 < 1) and `bltu` at 24 is not (unsigned 4294967295 is not < 1).
    *    0 addi t0,x0,-1   4 addi t1,x0,1   8 addi a0,t0,0   12 blt t0,t1,20
