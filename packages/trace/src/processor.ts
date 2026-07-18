@@ -32,13 +32,33 @@ export interface ProgramImage {
 }
 
 /**
- * Cache configuration — a placeholder until the caches & branch-prediction tier (roadmap
- * §12.3). Shaped now only so {@link ProcessorConfig} matches handoff §6; fields land when
- * a model actually models a cache.
+ * D-cache configuration (roadmap §12.3, M6). A **direct-mapped, single-level, write-through /
+ * no-write-allocate** cache — the MVP fidelity the milestone pins. Deferred by design and NOT
+ * fields here: set-associativity + a replacement policy (the only future user of {@link
+ * ProcessorConfig.seed}), a second level (the trace's `cache-access.level` anticipates it), an
+ * I-cache, and write-back. See `docs/plans/m6-tasks.md`.
+ *
+ * The cache is a **timing shadow**: it holds tags + valid bits only, never values, so it changes
+ * *latency* and nothing else. Memory stays the sole source of truth, which is what makes INV-8
+ * green by construction (a value-less cache cannot corrupt architectural state). All three fields
+ * are geometry/latency; there is no value storage to describe.
  */
 export interface CacheConfig {
-  /** No fields yet — modeled at the cache tier (roadmap §12.3). */
-  readonly placeholder?: never;
+  /** Bytes per line (block). The shipped corpus geometry uses 16 (= 4 words). Power of two. */
+  readonly lineSize: number;
+  /**
+   * Number of lines. Direct-mapped, so this is also the number of sets: each address maps to
+   * exactly one line (`(addr / lineSize) mod numLines`), and there is no replacement choice to
+   * make — which is precisely why {@link ProcessorConfig.seed} stays unused at this tier. Power
+   * of two. The flagship experiment flips this 2 ↔ 4 over a fixed 16-byte line.
+   */
+  readonly numLines: number;
+  /**
+   * Extra cycles a MISS adds to the MEM stage — a fixed count, not a modeled memory hierarchy
+   * (that is the L2 tier's business; a flat penalty is a true fact about *this* machine, INV-5).
+   * A hit costs the ordinary single MEM cycle; a miss costs `1 + missPenalty`.
+   */
+  readonly missPenalty: number;
 }
 
 /** Feature toggles handed to {@link Processor.reset} (handoff §6). */
