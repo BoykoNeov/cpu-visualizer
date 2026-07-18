@@ -123,9 +123,11 @@ describe('capabilities', () => {
     // M4: the second honored knob. Was `false` through all of M3, with a comment naming this
     // milestone — the seam was cut before the pipeline existed and is finally filled.
     expect(PIPELINE_CAPABILITIES.configurableBranchPrediction).toBe(true);
-    // Still deferred: caches are the other half of §12.3 and their own milestone (they need
-    // array-walking programs before a hit or a miss means anything).
-    expect(PIPELINE_CAPABILITIES.configurableCache).toBe(false);
+    // M6: the third honored knob. `config.cache` now drives a variable-latency MEM — a miss holds
+    // the instruction and freezes the front of the pipe for `missPenalty` cycles, so the trace
+    // genuinely depends on it. Was `false` through M3–M5 (caches needed array-walking programs
+    // first). With no cache configured the machine is still byte-for-byte the cache-less pipeline.
+    expect(PIPELINE_CAPABILITIES.configurableCache).toBe(true);
   });
 });
 
@@ -187,6 +189,7 @@ describe('five stages, four latches', () => {
       idEx: null,
       exMem: null,
       memWb: null,
+      cache: null, // no cache configured (ADD_S runs cache-off): the timing shadow is absent
     });
     // Cycle 3 is the fullest this program gets (3 instructions): IF/ID empty (fetch has left
     // text), the other three loaded.

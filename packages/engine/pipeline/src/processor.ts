@@ -56,10 +56,12 @@
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
 import { speculativeTarget } from './predict';
+import { access, newCache, type CacheState } from './cache';
 import {
   defaultConfig,
   makeRegisters,
   SparseMemory,
+  type CacheConfig,
   type CycleTrace,
   type InstructionInstance,
   type MachineState,
@@ -139,6 +141,18 @@ export interface ExMemLatch extends IfIdLatch {
   readonly nextPc: number;
   /** An architectural halt (`ecall`/`ebreak`/unknown): pc does not advance past it. */
   readonly halt: boolean;
+  /**
+   * Penalty cycles this instruction still owes in MEM before it may advance to WB (M6). `0` for
+   * every instruction on a hit, when no cache is configured, and at the moment EX first hands the
+   * instruction to MEM — a fresh EX/MEM latch is always born with the counter at rest. It is set to
+   * `missPenalty` by MEM on the cycle it detects a miss and decremented each subsequent cycle; while
+   * it is non-zero the front of the pipe (IF/ID/EX) is frozen and WB bubbles. This is the milestone's
+   * one genuinely-new primitive: the load-use `stall` boolean is recomputed from scratch every cycle
+   * and so cannot remember "I am N cycles into a penalty", whereas a variable-latency MEM must. It
+   * rides the double-buffered latch (rebuilt immutably each cycle), so it lands in `micro` for the
+   * step-6 view for free and needs no manual reset.
+   */
+  readonly missCyclesRemaining: number;
 }
 
 /** MEM/WB — the final value on its way to the register file. */
@@ -171,13 +185,23 @@ export interface PipelineMicro {
   readonly idEx: IdExLatch | null;
   readonly exMem: ExMemLatch | null;
   readonly memWb: MemWbLatch | null;
+  /**
+   * The D-cache's tag/valid state (M6), or `null` when no cache is configured — the timing shadow
+   * the step-6 grid view renders (INV-3: the view reads this from the trace, never the engine). It
+   * is DEEP-COPIED into every snapshot because — unlike the four latches, which are immutable and
+   * rebuilt each cycle — the cache is single-buffered and mutated in place; a shallow copy would
+   * alias one final cache across every recorded cycle and replay as warm-from-the-start.
+   */
+  readonly cache: CacheState | null;
 }
 
 /**
- * The pipeline is the model whose behavior depends on its CONFIG — `forwarding` (M3) and now
- * `branchPrediction` (M4) both genuinely change the machine. Caches remain unmodeled: the other
- * half of §12.3, and a separate milestone, because they need array-walking programs before a
- * hit/miss means anything.
+ * The pipeline is the model whose behavior depends on its CONFIG — `forwarding` (M3),
+ * `branchPrediction` (M4), and now `cache` (M6) all genuinely change the machine. The cache is a
+ * **timing shadow** (see `cache.ts`): it holds tags, never values, so it changes MEM *latency* and
+ * nothing architectural (INV-8 stays green by construction). A hit costs the ordinary single MEM
+ * cycle; a miss freezes IF/ID/EX for `missPenalty` cycles while WB bubbles — the first stage in this
+ * model that takes more than one cycle.
  *
  * **`configurableBranchPrediction: true` is a claim about two schemes, not three.** `'none'` and
  * `'static-not-taken'` are the SAME MACHINE here, and that coincidence is a finding rather than a
@@ -195,7 +219,7 @@ export const PIPELINE_CAPABILITIES: ProcessorCapabilities = {
   hasHazards: true,
   configurableForwarding: true,
   configurableBranchPrediction: true,
-  configurableCache: false,
+  configurableCache: true,
 };
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
@@ -346,6 +370,16 @@ interface CycleCtx {
   readonly events: TraceEvent[];
   /** Raised by ID; read by IF, which then holds its instruction instead of handing it over. */
   stalled: boolean;
+  /**
+   * Raised by MEM on a cache miss (M6), read by the three stages younger than it in the reverse
+   * walk (EX, ID, IF), which then FREEZE their occupants in place rather than advancing them —
+   * while MEM re-presents the waiting instruction and WB bubbles. It reuses the load-use stall's
+   * signal-propagation shape (raise in a stage, read downstream in the same reverse walk) but
+   * freezes THREE stages instead of two and, unlike the one-shot `stalled`, persists across cycles
+   * via {@link ExMemLatch.missCyclesRemaining}. Highest priority: while it is set, EX/ID/IF do their
+   * freeze and none of them raise `stalled`/`squash`/`bet`, so it never coexists with those.
+   */
+  memStall: boolean;
   /** Raised by EX (taken transfer) or ID (architectural halt); read by the stages younger than it. */
   squash: Squash | null;
   /**
@@ -400,6 +434,14 @@ export class PipelineProcessor implements Processor {
    * is the honest encoding of that, rather than a `switch` with two identical arms.
    */
   private predictTaken = false;
+  /**
+   * The D-cache config (M6), or `null` for the cache-less machine that every prior milestone ran and
+   * that `defaultConfig()` still selects. When null, the entire cache path below is inert and MEM is
+   * byte-for-byte what M3 pinned — the M4-step-0 inertness contract, one milestone on.
+   */
+  private cacheConfig: CacheConfig | null = null;
+  /** The single-buffered tag/valid state, mutated in place by {@link access}; null iff no cache. */
+  private cache: CacheState | null = null;
   private latches: Latches = EMPTY_LATCHES();
   /** The instruction in the IF stage: fetched this cycle, or held over across a stall. */
   private ifSlot: Fetched | null = null;
@@ -409,6 +451,8 @@ export class PipelineProcessor implements Processor {
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
+    this.cacheConfig = config.cache;
+    this.cache = config.cache === null ? null : newCache(config.cache);
     this.registers = makeRegisters();
     this.memory = new SparseMemory();
     // Text loaded little-endian from entry; then initialized data. One flat space (§9).
@@ -452,6 +496,7 @@ export class PipelineProcessor implements Processor {
       next: EMPTY_LATCHES(),
       events: [],
       stalled: false,
+      memStall: false,
       squash: null,
       redirect: null,
       stopFetch: false,
@@ -587,11 +632,96 @@ export class PipelineProcessor implements Processor {
     }
   }
 
-  /** MEM — the one data-memory access, and where a load's datum finally exists. */
+  /**
+   * MEM — the one data-memory access, and where a load's datum finally exists. With a cache
+   * configured (M6) this is the pipeline's first VARIABLE-LATENCY stage: a hit costs one cycle
+   * exactly as before, but a miss holds the instruction here for `missPenalty` extra cycles,
+   * freezing the front of the pipe. The cycle splits three ways:
+   *
+   *   - **Mid-stall** (`em.missCyclesRemaining > 0`): a miss detected on an earlier cycle is still
+   *     being served. Decrement and keep holding; the memory access does NOT happen until release,
+   *     so no `mem-read`/`mem-write` re-fires and — decisively — {@link access} is NOT re-consulted
+   *     (it mutated the cache on detection; a second call would now spuriously hit).
+   *   - **Fresh arrival with a miss**: consult the cache once (which installs the tag and emits the
+   *     lone `cache-access`), then hold. The data access is deferred to the release cycle.
+   *   - **Fresh arrival with a hit, no cache, or the release cycle**: do the memory access and build
+   *     MEM/WB, exactly as the cache-less machine always has.
+   */
   private stageMem(ctx: CycleCtx): void {
     const em = ctx.prev.exMem;
     if (em === null) return;
 
+    // Mid-stall: a penalty already in progress. Decrement; hold until it lands on the release cycle.
+    if (em.missCyclesRemaining > 0) {
+      const remaining = em.missCyclesRemaining - 1;
+      if (remaining > 0) {
+        this.holdInMem(ctx, em, remaining);
+        return;
+      }
+      // remaining === 0 ⇒ this is the release cycle: fall through to the real access + MEM/WB build.
+    } else {
+      // Fresh arrival. Consult the cache (a no-op when none is configured); a miss starts the hold.
+      const penalty = this.consultCache(ctx, em);
+      if (penalty > 0) {
+        this.holdInMem(ctx, em, penalty);
+        return;
+      }
+    }
+
+    this.completeMem(ctx, em);
+  }
+
+  /**
+   * Hold the miss's instruction in MEM for one more cycle and freeze the pipe. Re-presenting `em`
+   * in `next.exMem` (rather than letting EX overwrite it) is what makes the structural stall work:
+   * EX/ID/IF read {@link CycleCtx.memStall} later in the reverse walk and hold their own occupants,
+   * and WB gets a bubble (`next.memWb` stays null) because nothing can retire out of MEM until the
+   * datum arrives. The counter rides the immutable, per-cycle-rebuilt latch, so each snapshot shows
+   * it ticking down.
+   */
+  private holdInMem(ctx: CycleCtx, em: ExMemLatch, remaining: number): void {
+    ctx.memStall = true;
+    ctx.next.exMem = { ...em, missCyclesRemaining: remaining };
+    // `next.memWb` deliberately left null — the WB bubble.
+  }
+
+  /**
+   * Consult the D-cache for a memory instruction's line, MUTATING the cache and emitting the single
+   * `cache-access`. Returns the miss penalty to serve (`0` for a hit, a non-memory instruction, or
+   * no configured cache). Loads allocate on a miss; stores do not (no-write-allocate) — the policy
+   * name lives here, at the call site, over `cache.ts`'s pure `allocate` mechanism.
+   *
+   * **Store misses stall too** (a deliberate MVP choice matching `CacheConfig`'s "a miss costs
+   * 1 + missPenalty"): with no write buffer modeled, the uniform rule is "every miss pays the
+   * penalty". A write-buffered machine that lets store misses proceed is a future refinement; the
+   * shipped corpus is loads-only, so no timing test pins either way yet.
+   */
+  private consultCache(ctx: CycleCtx, em: ExMemLatch): number {
+    if (this.cacheConfig === null || this.cache === null) return 0;
+    const mnemonic = em.decoded.mnemonic;
+    const load = isLoad(em.decoded);
+    if (!load && !STORES.has(mnemonic)) return 0; // not a memory access: the cache is untouched
+    if (em.aluOut === null) {
+      throw new Error(`pipeline: ${mnemonic} reaches the cache with no effective address latched`);
+    }
+    const addr = em.aluOut >>> 0;
+    const result = access(this.cache, this.cacheConfig, addr, load);
+    ctx.events.push({
+      type: 'cache-access',
+      level: 1,
+      addr,
+      hit: result.hit,
+      ...(result.evicted === undefined ? {} : { evicted: result.evicted }),
+    });
+    return result.hit ? 0 : this.cacheConfig.missPenalty;
+  }
+
+  /**
+   * The actual data-memory access and MEM/WB build — the cache-less machine's whole MEM stage,
+   * unchanged, now reached either directly (hit / no cache) or on a miss's release cycle. The cache
+   * verdict was already taken in {@link consultCache}; this touches only architectural memory.
+   */
+  private completeMem(ctx: CycleCtx, em: ExMemLatch): void {
     const mnemonic = em.decoded.mnemonic;
     let mdr: number | null = null;
     let writeValue = em.writeValue;
@@ -655,6 +785,15 @@ export class PipelineProcessor implements Processor {
   private stageEx(ctx: CycleCtx): void {
     const ie = ctx.prev.idEx;
     if (ie === null) return; // a bubble: nothing to execute
+
+    // A MEM miss freezes EX (M6): the occupant does NOT execute or advance — it holds in EX (so it
+    // executes exactly once, on release) while MEM re-presents its own waiting instruction. MEM ran
+    // earlier in the reverse walk and already owns `next.exMem`, so here we only re-present `ie` in
+    // EX and return before touching the ALU, the forwarding network, or control resolution.
+    if (ctx.memStall) {
+      ctx.next.idEx = ie;
+      return;
+    }
 
     const d = ie.decoded;
     const { rs1, rs2, imm, mnemonic } = d;
@@ -889,6 +1028,7 @@ export class PipelineProcessor implements Processor {
       storeData,
       nextPc,
       halt: isArchHalt(d),
+      missCyclesRemaining: 0, // at rest: MEM sets the penalty on the cycle it detects a miss
     };
   }
 
@@ -948,6 +1088,13 @@ export class PipelineProcessor implements Processor {
   private stageId(ctx: CycleCtx): void {
     const fd = ctx.prev.ifId;
     if (fd === null) return; // nothing in ID
+    // A MEM miss freezes ID (M6): hold the occupant here (EX ran earlier and is holding its own, so
+    // it did not consume ours) and do nothing else — no reads, no hazard detection, no bet. Highest
+    // priority, above the squash check below: while a miss is being served nothing younger moves.
+    if (ctx.memStall) {
+      ctx.next.ifId = fd;
+      return;
+    }
     // An older taken transfer killed everything younger. EX ran before us, so we simply never
     // execute: no reads, no hazard detection, no chance of a squashed shadow polluting the trace
     // with a phantom stall or a `forward` that step 3's timing assertions would read.
@@ -1094,9 +1241,12 @@ export class PipelineProcessor implements Processor {
       return slot;
     }
 
-    if (ctx.stalled) {
-      this.ifSlot = slot; // hold it in IF: ID could not accept it
-      // `ctx.next.ifId` was already set by the stalling ID stage, which stays put.
+    if (ctx.stalled || ctx.memStall) {
+      // Hold it in IF. `ctx.stalled` is the load-use case (ID could not accept it); `ctx.memStall`
+      // is the M6 miss (the whole front of the pipe is frozen). In both, `ctx.next.ifId` was already
+      // set by ID — to the held or fetched instruction on a load-use stall, to ID's own frozen
+      // occupant on a miss — so IF must not touch it, only keep its own occupant for next cycle.
+      this.ifSlot = slot;
     } else {
       this.ifSlot = null;
       ctx.next.ifId = slot === null ? null : toLatch(slot);
@@ -1127,7 +1277,10 @@ export class PipelineProcessor implements Processor {
   /**
    * An independent full-state snapshot — what each CycleTrace carries (handoff §6). The latch
    * objects are immutable and rebuilt each cycle, so copying the container is enough to keep
-   * every recorded cycle's `micro` genuinely its own.
+   * every recorded cycle's `micro` genuinely its own. The cache is the ONE exception: it is
+   * single-buffered and mutated in place by {@link access}, so it must be DEEP-COPIED here or
+   * every recorded snapshot would alias the final (fully warmed) state — the same reason
+   * `memory` is snapshotted rather than shared.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: PipelineMicro = {
@@ -1135,6 +1288,7 @@ export class PipelineProcessor implements Processor {
       idEx: latches.idEx,
       exMem: latches.exMem,
       memWb: latches.memWb,
+      cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
     };
     return {
       pc: this.pc,
