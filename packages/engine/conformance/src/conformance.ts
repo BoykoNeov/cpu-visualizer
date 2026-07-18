@@ -6,6 +6,7 @@ import { run, type ReferenceResult } from '@cpu-viz/engine-reference';
 import { toProgramImage } from '@cpu-viz/engine-common';
 import {
   defaultConfig,
+  type CacheConfig,
   type MachineState,
   type Processor,
   type ProcessorConfig,
@@ -188,10 +189,35 @@ export function checkProgram(
  * Naming what varies fixes that class rather than that instance. A list that varies only forwarding
  * gets exactly M3's titles back (so no existing suite moves); a list that varies both gets both;
  * and a knob every config shares is silent, since a label constant across the matrix distinguishes
- * nothing and only adds noise. `cache` joins by adding one clause here when a model honors it —
- * deliberately not written yet: it is an object, so it would need a deep compare to answer "does
- * this vary", and inventing that for a knob no model reads would be guessing at M5's shape.
+ * nothing and only adds noise. `cache` joins the same way (M6 step 3) — but it is the first
+ * OBJECT-valued knob, so "does it vary" is a {@link cacheEquals} deep compare rather than a `!==`,
+ * and its rendered value is a {@link cacheLabel} canonical string rather than a scalar.
+ *
+ * The load-bearing invariant across that pair: **`cacheLabel` renders exactly the fields
+ * `cacheEquals` distinguishes**, so `cacheEquals(a, b) === false ⟹ cacheLabel(a) !== cacheLabel(b)`.
+ * Two configs that differ ONLY in cache share their forwarding/predict labels, so the cache label is
+ * the only thing left to tell their titles apart — if it collapsed distinct caches to one string the
+ * report could not name which config broke, the exact defect M4 found one axis down. Rendering all
+ * three geometry fields (even the ones constant across the shipped matrix, e.g. `/p10`) is the price
+ * of that guarantee; a "name only the sub-fields that vary" cache render would re-open the very gap,
+ * since equality would call two configs distinct while the label called them the same.
  */
+function cacheEquals(a: CacheConfig | null, b: CacheConfig | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.lineSize === b.lineSize && a.numLines === b.numLines && a.missPenalty === b.missPenalty;
+}
+
+/**
+ * A cache config's canonical title fragment — injective over distinct configs (see {@link
+ * configLabel}). `null` (the timing shadow absent) reads `cache off`; a present cache renders all
+ * three geometry fields so no two distinct configs collide: `cache 2×16B/p10` is `numLines`,
+ * `lineSize`, `missPenalty`. Terse because it is a test title, not prose — injectivity beats prose.
+ */
+function cacheLabel(cache: CacheConfig | null): string {
+  if (cache === null) return 'cache off';
+  return `cache ${cache.numLines}×${cache.lineSize}B/p${cache.missPenalty}`;
+}
+
 function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[]): string {
   const first = among[0];
   if (first === undefined) return '';
@@ -201,6 +227,9 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   }
   if (among.some((c) => c.branchPrediction !== first.branchPrediction)) {
     parts.push(`predict ${config.branchPrediction}`);
+  }
+  if (among.some((c) => !cacheEquals(c.cache, first.cache))) {
+    parts.push(cacheLabel(config.cache));
   }
   return parts.join(', ');
 }

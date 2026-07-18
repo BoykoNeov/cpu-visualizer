@@ -1,5 +1,6 @@
 import { runConformance } from '@cpu-viz/engine-conformance';
-import { defaultConfig, type ProcessorConfig } from '@cpu-viz/trace';
+import { defaultConfig, type CacheConfig, type ProcessorConfig } from '@cpu-viz/trace';
+import { CACHE_LARGE, CACHE_SMALL } from './cache';
 import { PipelineProcessor } from './index';
 
 /**
@@ -34,10 +35,25 @@ import { PipelineProcessor } from './index';
  * predictor cannot move these numbers, **conformance says nothing whatever about whether
  * `branchPrediction` is honored at all.** A pipeline that ignored the knob entirely passes all 30.
  * The toggle's whole observable effect is timing, and `timing.test.ts` is the net for it.
+ *
+ * **M6 step 3 extends the cross product a third axis — the cache — and the invisibility argument
+ * gets STRONGER, not weaker.** The cache is a timing shadow (holds tags + valid bits, never values),
+ * so a correct cache cannot move a single register or byte: cache-off, `CACHE_SMALL`, and
+ * `CACHE_LARGE` must all agree with the value-less golden reference. That is the "INV-8 green by
+ * construction" claim (§acceptance) made mechanical rather than merely argued. What the axis buys
+ * over prediction's is that a cache bug LEAKING into state — a stale value returned, an eviction
+ * corrupting a word — is caught here and nowhere else; the timing suite (step 4) would see a wrong
+ * cycle count but not a wrong answer. `CACHE_SMALL` is the load-bearing value: with 2 lines,
+ * `array-sum-twice.s`'s 3 blocks conflict, so it is the only config exercising the eviction path.
+ * The prediction × cache cells are where a miss-stall and a branch flush contend for the same
+ * cycle — exactly where a leak would hide — so the full cross product, not a diagonal, is the net.
  */
 const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
+const CACHES: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
 const CONFIGS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
-  SCHEMES.map((branchPrediction) => ({ ...defaultConfig(), forwarding, branchPrediction })),
+  SCHEMES.flatMap((branchPrediction) =>
+    CACHES.map((cache) => ({ ...defaultConfig(), forwarding, branchPrediction, cache })),
+  ),
 );
 
 runConformance('pipeline', () => new PipelineProcessor(), CONFIGS);

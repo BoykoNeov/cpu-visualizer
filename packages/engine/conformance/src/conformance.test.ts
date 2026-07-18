@@ -3,6 +3,7 @@ import type { AssembledProgram } from '@cpu-viz/assembler';
 import { run } from '@cpu-viz/engine-reference';
 import {
   defaultConfig,
+  type CacheConfig,
   type CycleTrace,
   type MachineState,
   type Processor,
@@ -220,6 +221,81 @@ describe('the matrix enumerates the corpus once per config', () => {
     for (const c of conformanceCases([FORWARDING_OFF, FORWARDING_ON])) {
       expect(c.title).not.toContain('predict');
       expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
+    }
+  });
+
+  /**
+   * M6 step 3 — the cache axis. `cache` is the first OBJECT-valued knob, so `configLabel` decides
+   * "does it vary" with a deep compare (`cacheEquals`) and renders the value as a canonical string
+   * (`cacheLabel`) rather than a scalar. Two things need proving that the guards above cannot reach:
+   *
+   *  1. a cache-on and a cache-off config get DISTINCT labels, so a red cache cell names which
+   *     config broke — the whole reason the reserved clause needed a deep compare rather than a
+   *     silent skip;
+   *  2. a THREE-axis list (forwarding × predict × cache) keeps every title distinct — the same
+   *     lesson MULTI_AXIS pins one axis down: a distinctness guard parameterized by a list that
+   *     never varies the cache could not see a `cacheLabel` that collapsed distinct caches to one
+   *     string. So the case list must vary it, exactly as M4's had to vary prediction.
+   *
+   * The caches are built inline as plain trace objects, NOT imported from the pipeline's `./cache`:
+   * conformance sits BELOW the pipeline in the DAG, so importing its constants would invert it. The
+   * geometry mirrors the shipped `CACHE_SMALL` (2 lines) / `CACHE_LARGE` (4 lines) over a 16-byte
+   * line — but the harness test only cares that they are DISTINCT configs, not that they are those.
+   */
+  const CACHE_OFF: CacheConfig | null = null;
+  const CACHE_2: CacheConfig = { lineSize: 16, numLines: 2, missPenalty: 10 };
+  const CACHE_4: CacheConfig = { lineSize: 16, numLines: 4, missPenalty: 10 };
+
+  const THREE_AXIS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
+    (['none', 'static-not-taken', 'static-taken'] as const).flatMap((branchPrediction) =>
+      [CACHE_OFF, CACHE_2, CACHE_4].map((cache) => ({
+        ...defaultConfig(),
+        forwarding,
+        branchPrediction,
+        cache,
+      })),
+    ),
+  );
+
+  it('gives a cache-on and a cache-off config distinct labels, so a red cache cell names which broke', () => {
+    // Identical corpus, identical forwarding/predict — the cache label is the ONLY thing that can
+    // tell these two apart, so a deep compare that missed the difference would collide the titles.
+    const cases = conformanceCases([
+      { ...defaultConfig(), cache: CACHE_OFF },
+      { ...defaultConfig(), cache: CACHE_2 },
+    ]);
+    expect(cases).toHaveLength(2 * corpusSize);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+    for (const c of cases) {
+      expect(c.title).toContain(c.config.cache === null ? 'cache off' : 'cache 2×16B');
+    }
+  });
+
+  it('keeps every case distinct when the matrix varies THREE knobs, cache included', () => {
+    const cases = conformanceCases(THREE_AXIS);
+    // 2 forwarding × 3 predict × 3 cache = 18 configs.
+    expect(cases).toHaveLength(18 * corpusSize);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('names the varying cache in every title, so a failure says which cache broke', () => {
+    for (const c of conformanceCases(THREE_AXIS)) {
+      expect(c.title).toContain(
+        c.config.cache === null ? 'cache off' : `cache ${c.config.cache.numLines}×`,
+      );
+    }
+  });
+
+  /**
+   * The cache's half of "name only what varies", and the load-bearing one: a matrix where every
+   * config leaves the cache OFF must not mention it. This is what keeps the single/multi-cycle
+   * differential suites and the M3/M4 guards above byte-identical — they all pass `cache: null`, so
+   * a stray cache clause here would rename every one of their titles. MULTI_AXIS is all-`null`
+   * (it spreads `defaultConfig`), so it is exactly that constant-cache list.
+   */
+  it('stays silent about the cache when every config leaves it off, so cache-blind suites read unchanged', () => {
+    for (const c of conformanceCases(MULTI_AXIS)) {
+      expect(c.title).not.toContain('cache');
     }
   });
 });
