@@ -3,8 +3,12 @@
  * view-model is a fact about the trace, not a fixture. Same discipline as `cache.test.ts` one layer
  * down: drive `array-sum-twice.s` (the size-straddler) under `CACHE_SMALL` and read the grid off the
  * cursor's trace. The specific cycles below were confirmed against a full trace dump before this file
- * was written (the M6 method — derive, don't snapshot); they are the cache's whole vocabulary in one
- * run: cold → compulsory miss → the freeze that follows it → a spatial hit → a conflict eviction.
+ * was written (the M6 method — derive, don't snapshot); they are the CORPUS's whole cache vocabulary
+ * in one run: cold → compulsory miss → the freeze that follows it → a spatial hit → a conflict
+ * eviction. One `LineState` is deliberately NOT pinned here because the corpus cannot reach it: a
+ * STORE miss under no-write-allocate installs nothing, so it renders `miss` on a line that stays
+ * empty ("line X · empty · MISS") — faithful, but a sandbox-only path (the corpus's lone store,
+ * `array-sum.s`'s `sw`, HITS; `array-sum-twice.s` stores nothing). Its lesson lands in step 7.
  *
  * `CACHE_SMALL` (2 lines) is the load-bearing config: it is the only one that evicts, because
  * `array-sum-twice.s`'s three blocks overflow it. `CACHE_LARGE` (4 lines) fits them, so the same run

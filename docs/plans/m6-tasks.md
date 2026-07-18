@@ -399,6 +399,14 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
     (`recorded.some(t => micro?.cache != null)`), mirroring the map's `hasOverlap` — the panel
     appears exactly when the recording has a cache, without App naming the pipeline (INV-3), and a
     future model that honors `config.cache` gets it free. Cache-off ⇒ panel absent (browser-confirmed).
+  - **One rendering path is faithful-but-unclaimed, deferred to step 7 (advisor-flagged, not a defect):**
+    a STORE miss under no-write-allocate installs nothing, so the grid draws `miss` on a line that
+    stays empty — "line X · empty · MISS". That is honest (the store genuinely did not fill the line),
+    but it reads as confusing WITHOUT a lesson to explain no-write-allocate. **The corpus never reaches
+    it** — its lone store (`array-sum.s`'s `sw`) HITS (step 4), and `array-sum-twice.s` stores nothing —
+    so it is a sandbox-only path with no step-6 coverage, and the step-6 tests scope their claim to the
+    corpus's vocabulary accordingly. Step 7's write-policy lesson is where "MISS but empty" gets its
+    words; a `sw`-into-a-cold-line program would be its fixture if one is authored.
 
 - [ ] **7. The cache track — a SEQUENCE fixed here, not discovered.** Author the lessons in a pinned
       pedagogical order — **spatial locality** (a line brings in neighbors: first touch misses, the
