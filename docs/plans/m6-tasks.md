@@ -270,7 +270,13 @@ needing hand-counted hits/misses — materially more than prediction's per-progr
       `byte-loads.s` **0** (the punishers — no reuse for size to capture), the four register-only
       programs **0**. Plus an orthogonality pin: `M` depends only on the address stream, so a program's
       size-delta is a SINGLE constant across the whole fwd × predict matrix (`new Set(deltas).size === 1`)
-      — a sharper orthogonality than `P` (which shares the count with `S`). **Findings, hand-verified:**
+      — a sharper orthogonality than `P` (which shares the count with `S`). **One honest asymmetry vs
+      M4's mirror:** a bigger cache here **weakly** dominates — never worse, strictly better only where
+      there is reuse to capture — whereas M4's schemes were each strictly worse SOMEWHERE (`call-return`
+      −1). This corpus contains no bigger-is-worse program (direct-mapped with no pathological stride),
+      by design; the lesson is "size only pays when there's reuse," not "size is a two-way bet." A future
+      conflict-stride program could add the strict-loss case, but the plan did not call for it.
+      **Findings, hand-verified:**
       (1) **No new program or stride was needed for "a bigger cache buys nothing" — step 0's deferred
       punisher was already in the corpus.** `array-sum.s` walks its array ONCE, so every block is
       compulsory-missed exactly once at any size (2 misses, both sizes); it and `array-sum-twice.s` are
