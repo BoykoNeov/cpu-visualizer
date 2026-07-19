@@ -91,7 +91,15 @@ export function ReorderGroup(props: {
             onDrop={(e) => {
               e.preventDefault();
               const from = dragging ?? e.dataTransfer.getData('text/plain');
-              if (from) setOrder(movePanel(keys, from, key));
+              const next = from ? movePanel(keys, from, key) : keys;
+              // Only STORE an order the drop actually changed. A no-op drop (onto yourself, or from
+              // a panel this group does not hold) would otherwise persist `keys` — which is the
+              // panels present RIGHT NOW — and that is not harmless: on a one-panel stack it stores
+              // `[datapath]`, and switching to a model that adds the map would then append the map
+              // AFTER the datapath, silently overturning the placement the shell argues for. An
+              // order the user never expressed should not outlive the drop that failed to express
+              // it.
+              if (next.length !== keys.length || next.some((k, i) => k !== keys[i])) setOrder(next);
               setDragging(null);
               setOver(null);
             }}
