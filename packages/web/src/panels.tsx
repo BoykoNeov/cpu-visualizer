@@ -40,7 +40,10 @@ export function SourcePanel(props: {
   const lines = source.replace(/\n$/, '').split('\n');
 
   return (
-    <section className="panel">
+    // `panel--scroll-x` clips and scrolls: the code column below is `white-space: pre` (assembly
+    // indentation is meaning), so a long trailing comment makes a line wider than the panel — and
+    // unclipped that overflow drew straight across the register panel beside it.
+    <section className="panel panel--scroll-x">
       <h2 className="panel-heading">Source ↔ machine code</h2>
       <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.85rem', width: '100%' }}>
         <tbody>

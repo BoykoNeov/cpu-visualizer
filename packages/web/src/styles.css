@@ -177,6 +177,80 @@ input[type='range'] {
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 
+/* The source panel's code column keeps `white-space: pre` — assembly indentation is meaning, not
+   formatting, so wrapping a long trailing comment would misalign the mnemonics under it. The line
+   therefore has to be allowed to be wider than the panel, and the panel has to CLIP it: without
+   this the overflow escaped the border and drew across the register panel beside it. Scrolls rather
+   than hides, so the comment is still readable. */
+.panel--scroll-x {
+  overflow-x: auto;
+}
+
+/* The drag grip (panel reorder): parked at the panel's top-LEFT, in a gutter widened for it, and
+   quiet until hovered. `position: absolute` against the reorder wrapper — the slot — so the grip
+   sits on the panel whatever the panel is (an SVG datapath, a scrolling map, a table).
+
+   Left, and the gutter, are both the fix for a collision the browser caught: at top-RIGHT the grip
+   landed square on the datapath's Writeback phase chip, and the map and cache grid put their own
+   controls in that same corner. The top-left is the one place EVERY panel here is empty — the
+   heading starts there, and the gutter below pushes it clear — so the grip cannot cover a control
+   in a panel that has not been written yet. */
+.panel-slot > .panel {
+  /* The grip's reserved gutter. Scoped to a panel inside a reorder slot, so a panel rendered
+     outside one keeps its normal padding rather than an unexplained indent. */
+  padding-left: 1.9rem;
+}
+.panel-grip {
+  position: absolute;
+  /* Aligned with the panel heading: the panel's own 0.75rem top padding. The slot wrapper has no
+     border or padding of its own, so a panel's top margin collapses THROUGH it — which is what
+     makes this one offset correct for both groups, the stack's panels (which carry `margin-top`)
+     and the bottom row's (which do not). */
+  top: 0.7rem;
+  left: 0.45rem;
+  z-index: 2;
+  padding: 0 0.25rem;
+  line-height: 1;
+  font-size: 0.95rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: grab;
+  opacity: 0.5;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease;
+}
+.panel-grip:hover {
+  opacity: 1;
+  color: var(--ink-2);
+  background: var(--surface-2);
+}
+.panel-grip:active {
+  cursor: grabbing;
+}
+
+/* The transport bar (step buttons + status + scrub slider) pinned to the top of the viewport, so a
+   reader scrolled down to the datapath or the machine code can still step the clock and watch that
+   surface change — the whole point of the pin. Two things are mandatory, not taste:
+     - an OPAQUE background: a sticky bar defaults to transparent, and the datapath scrolling under
+       it would show straight through the buttons.
+     - a z-index above everything it scrolls over. The pipeline map's own sticky cells go to 4, but
+       they are trapped inside `.pmap-scroll`'s box, so beating the map's container is enough. */
+.transport--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--page);
+  /* The bar's content sits flush to the viewport edge when pinned; the padding is what keeps the
+     buttons off it, and the negative inline margin lets the opaque plane reach the full content
+     width so nothing peeks past its corners. */
+  margin: 1rem -1rem 0;
+  padding: 0.5rem 1rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
 .panel-heading {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;

@@ -16,6 +16,7 @@ import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { EXAMPLE_PROGRAMS } from './programs';
+import { ReorderGroup, type Slot } from './Reorderable';
 import { predictsTaken, type BranchPrediction } from './session';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
 import { useSimulator } from './useSimulator';
@@ -129,6 +130,22 @@ export function App(): React.JSX.Element {
   const narration = useMemo(
     () => (sim.anchoredSteps ? narrationView(sim.anchoredSteps, sim.cursor, tier) : null),
     [sim.anchoredSteps, sim.cursor, tier],
+  );
+
+  // Panel order (drag-to-reorder, M7). Two INDEPENDENT groups, and the split is the design: the
+  // stack's panels are full-width surfaces and the row's are third-width columns, so a permutation
+  // that mixed them would drop a 900px-wide datapath into a column laid out for a register table.
+  // Slots, not free-floating windows — so two panels can never overlap (see `reorder.ts`). Pure
+  // view state; the engine and trace know nothing of it (INV-2).
+  const [stackOrder, setStackOrder] = useState<string[]>([]);
+  const [rowOrder, setRowOrder] = useState<string[]>([]);
+
+  // The pipeline map is gated on the TRACE (instructions overlapping in time), not the model, and
+  // the cache grid on the recording having a cache — both unchanged by the reorder, which only
+  // permutes whatever is present (see `visibleOrder`).
+  const showMap = hasOverlap(sim.recorded);
+  const showCache = sim.recorded.some(
+    (t) => (t.state.micro as { cache?: unknown } | undefined)?.cache != null,
   );
 
   return (
@@ -304,7 +321,11 @@ export function App(): React.JSX.Element {
             />
           ) : null}
 
-          {/* The pipeline map (M3 step 7), directly under the transport and ABOVE the datapath —
+          {/* The three full-width surfaces, as a drag-reorderable stack. The authored order is the
+              one every placement note below argued for and stays the default; dragging is the
+              reader's override, for when THEY want the machine code beside the datapath instead.
+
+              The pipeline map (M3 step 7), directly under the transport and ABOVE the datapath —
               placement found by the browser eyeball, not by a test. The map is a TIMELINE surface:
               its playhead IS the scrub cursor, so its natural neighbour is the scrub bar. Below the
               datapath it sat ~880px down a 900px viewport, which put the one picture this tier
@@ -317,57 +338,84 @@ export function App(): React.JSX.Element {
               cycle by construction, so it never appears for them — without this file naming either
               of them (INV-3), and a future model gets it for free. The same shape as the transport's
               `N in flight` qualifier. */}
-          {hasOverlap(sim.recorded) ? (
-            <PipelineMap
-              recorded={sim.recorded}
-              cursor={sim.cursor}
-              followed={followed}
-              onFollow={setFollowed}
-              onSeek={sim.scrubTo}
-            />
-          ) : null}
-
-          {activeModel.datapath === 'single-cycle' ? (
-            <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
-          ) : activeModel.datapath === 'multi-cycle' ? (
-            <MultiCycleDatapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
-          ) : activeModel.datapath === 'pipeline' ? (
-            // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
-            // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
-            // events to draw), and with prediction on the bet's adder and redirect appear. The view
-            // already holds both positions; the user set them.
-            //
-            // `predictsTaken` collapses the knob HERE, at the shell's edge, exactly once: three
-            // scheme names, two machines, and a diagram can only draw a machine.
-            <PipelineDatapath
-              trace={sim.cycleTrace}
-              cycleKey={sim.cursor}
-              tier={tier}
-              config={{
-                forwarding: sim.forwarding,
-                predictTaken: predictsTaken(sim.branchPrediction),
-              }}
-              followed={followed}
-            />
-          ) : (
-            <DatapathPlaceholder modelLabel={activeModel.label} />
-          )}
-
-          {/* The cache grid (M6 step 6), directly under the datapath and above the memory panel it
-              shadows. Gated on a TRACE fact, not the model or the shell's config: the grid shows a
-              cache's state, so it appears exactly when the recording HAS a cache — without this file
-              naming the pipeline (INV-3), and a future model that honors `config.cache` gets it for
-              free. `some` over the whole recording keeps it stable across the timeline (a cache-off
-              run never shows it; a cache-on run shows it at every cursor, cold at cycle 0). The same
-              shape as the map's `hasOverlap` gate. */}
-          {sim.recorded.some(
-            (t) => (t.state.micro as { cache?: unknown } | undefined)?.cache != null,
-          ) ? (
-            <CacheGrid trace={sim.cycleTrace} cache={sim.cache} />
-          ) : null}
+          <ReorderGroup
+            order={stackOrder}
+            setOrder={setStackOrder}
+            slots={[
+              ...(showMap
+                ? ([
+                    {
+                      key: 'map',
+                      label: 'pipeline map',
+                      node: (
+                        <PipelineMap
+                          recorded={sim.recorded}
+                          cursor={sim.cursor}
+                          followed={followed}
+                          onFollow={setFollowed}
+                          onSeek={sim.scrubTo}
+                        />
+                      ),
+                    },
+                  ] satisfies Slot[])
+                : []),
+              {
+                key: 'datapath',
+                label: 'datapath',
+                node:
+                  activeModel.datapath === 'single-cycle' ? (
+                    <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+                  ) : activeModel.datapath === 'multi-cycle' ? (
+                    <MultiCycleDatapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+                  ) : activeModel.datapath === 'pipeline' ? (
+                    // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
+                    // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
+                    // events to draw), and with prediction on the bet's adder and redirect appear. The view
+                    // already holds both positions; the user set them.
+                    //
+                    // `predictsTaken` collapses the knob HERE, at the shell's edge, exactly once: three
+                    // scheme names, two machines, and a diagram can only draw a machine.
+                    <PipelineDatapath
+                      trace={sim.cycleTrace}
+                      cycleKey={sim.cursor}
+                      tier={tier}
+                      config={{
+                        forwarding: sim.forwarding,
+                        predictTaken: predictsTaken(sim.branchPrediction),
+                      }}
+                      followed={followed}
+                    />
+                  ) : (
+                    <DatapathPlaceholder modelLabel={activeModel.label} />
+                  ),
+              },
+              /* The cache grid (M6 step 6), authored directly under the datapath and above the
+                 memory panel it shadows. Gated on a TRACE fact, not the model or the shell's
+                 config: the grid shows a cache's state, so it appears exactly when the recording
+                 HAS a cache — without this file naming the pipeline (INV-3), and a future model
+                 that honors `config.cache` gets it for free. `some` over the whole recording keeps
+                 it stable across the timeline (a cache-off run never shows it; a cache-on run shows
+                 it at every cursor, cold at cycle 0). The same shape as the map's `hasOverlap`
+                 gate. */
+              ...(showCache
+                ? [
+                    {
+                      key: 'cache',
+                      label: 'cache grid',
+                      node: <CacheGrid trace={sim.cycleTrace} cache={sim.cache} />,
+                    },
+                  ]
+                : []),
+            ]}
+          />
 
           {sim.state && sim.program ? (
-            <div
+            /* The bottom row, drag-reorderable within its own group. The tracks are sized by
+               POSITION, not by which panel is in them — the source panel is the wide one because
+               code lines are long, and that stays true of whatever is dragged into slot 1. */
+            <ReorderGroup
+              order={rowOrder}
+              setOrder={setRowOrder}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)',
@@ -375,15 +423,30 @@ export function App(): React.JSX.Element {
                 marginTop: '1rem',
                 alignItems: 'start',
               }}
-            >
-              <SourcePanel
-                program={sim.program}
-                source={sim.loadedSource ?? ''}
-                activeLine={activeLine}
-              />
-              <RegisterPanel state={sim.state} writtenRegs={writtenRegs} />
-              <MemoryPanel state={sim.state} />
-            </div>
+              slots={[
+                {
+                  key: 'source',
+                  label: 'source',
+                  node: (
+                    <SourcePanel
+                      program={sim.program}
+                      source={sim.loadedSource ?? ''}
+                      activeLine={activeLine}
+                    />
+                  ),
+                },
+                {
+                  key: 'registers',
+                  label: 'registers',
+                  node: <RegisterPanel state={sim.state} writtenRegs={writtenRegs} />,
+                },
+                {
+                  key: 'memory',
+                  label: 'data memory',
+                  node: <MemoryPanel state={sim.state} />,
+                },
+              ]}
+            />
           ) : (
             <p style={{ color: T.ink3 }}>Loading…</p>
           )}
@@ -1023,7 +1086,13 @@ function Transport(props: {
   const { sim, atStart, lastCycle, inFlight, following } = props;
   const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
   return (
-    <div style={{ marginTop: '1rem' }}>
+    // PINNED to the top of the viewport (`transport--sticky`). The clock controls are the one
+    // surface a reader needs while looking at ANY other surface: the whole point of the datapath,
+    // the map, the cache grid, and the machine-code panel is watching them change as you step, and
+    // all of them sit below the fold. Unpinned, examining any of them meant scrolling up to press
+    // `step ▶` and back down to see what it did — which is the reader doing the animation's job by
+    // hand. The bar carries the slider too: scrubbing while watching is the same act.
+    <div className="transport--sticky">
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="btn" onClick={sim.reset} disabled={atStart} title="Back to start">
           ⏮ reset
