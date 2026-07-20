@@ -75,9 +75,8 @@
  *     stand in for it, exactly as `a-alu` stands in for ALUSrcA.
  *
  * Honest simplifications that REMAIN (surfaced, not hidden — INV-5 permits lawful omission, never
- * contradiction): `lui` keeps no ALU path —
- * it is a pure immediate pass-through, and is the only instruction class that skips EX. And the
- * `aluout → pc` label carries `micro.aluOut`, which for
+ * contradiction): `lui` keeps no ALU path — it is a pure immediate pass-through, and is the only
+ * instruction class that skips EX. And the `aluout → pc` label carries `micro.aluOut`, which for
  * `jalr` is `rs1+imm` before the mandatory bit-0 clear — PC actually receives `(rs1+imm) & ~1`.
  * The two differ only for an odd target; the wire is the right wire either way.
  */

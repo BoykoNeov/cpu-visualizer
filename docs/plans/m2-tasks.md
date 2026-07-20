@@ -15,10 +15,11 @@ understating itself; a 2-input mux would have been the same lie in a smaller box
 whose commonest input never lights is worse than no selector.
 
 So 5e closed the sequential loop (`pc → pcarith → pc`) and added `pcsource` with all three arms.
-**View-only, like 5d** — `pc + 4` is derived from the trace's own `pc` (RV32I is fixed-width),
-never read out of the engine, so INV-8 is untouched by construction. The lighting rule is 5d's,
-generalized once more: the sequential arm lights **at retire** for any instruction that neither
-jumps nor takes a branch — which is WB for most, **MEM for a store, EX for a not-taken branch**.
+**View-only, like 5d** — the value is the trace's own committed `state.pc`, never read out of the
+engine, so INV-8 is untouched by construction. The lighting rule is 5d's, generalized once more:
+the sequential arm lights **at retire** for any instruction that neither jumps, takes a branch,
+nor halts — which is WB for most, **MEM for a store, EX for a not-taken branch** (and never for a
+halting `ecall`; see the defect below, which is what forced the "nor halts" clause).
 
 **The layout cost the plan had not predicted:** the mux could not go where the textbook puts it.
 PC sits 28px from the canvas edge and a mux takes its inputs on its left _vertical_ edge, so a
