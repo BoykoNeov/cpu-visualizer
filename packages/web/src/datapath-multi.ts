@@ -51,12 +51,21 @@
  *     and the `jal`/`jalr` link. It no longer takes an immediate input — `auipc` gets its value
  *     from ALUOut now, like any other ALU result.
  *
+ * STEP 5d closed the last redirect. A **taken branch** now draws its own: the shared ALU holds the
+ * compare result (`taken?1:0`), never the target, so the `aluout → pc` wire physically cannot carry
+ * it — the target needs the **branch adder**, a second dedicated adder computing `pc + imm` from
+ * the PC and the sign-extender. That is the real hardware, not a drawing convenience: it is exactly
+ * why textbook datapaths carry two adders. It lights at **EX**, the branch's retire phase, and only
+ * when the branch is TAKEN — generalizing the redirect rule to "the next-PC wire lights at retire",
+ * which is WB for the jumps (they write a link) and EX for a branch (its last phase).
+ *
  * Honest simplifications that REMAIN (surfaced, not hidden — INV-5 permits lawful omission, never
- * contradiction): a **taken branch's** redirect is still not drawn. Its target is `pc+imm`, which
- * is not in ALUOut (ALUOut holds the compare result), so the redirect wire cannot carry it and a
- * separate branch adder would be needed. The transport / register panels still show `pc` moving.
- * `lui` likewise keeps no ALU path — it is a pure immediate pass-through, and is now the only
- * instruction class that skips EX. And the redirect wire's LABEL carries `micro.aluOut`, which for
+ * contradiction): PC now has THREE drivers (the sequential path, `aluout → pc`, and the branch
+ * adder) with **no PCSource mux drawn** between them. Real hardware selects; this diagram shows the
+ * winning source lit and the losers dark, which is a lawful omission of the selector, never a
+ * contradiction of it — the same shape as the other muxes, minus the box. `lui` keeps no ALU path —
+ * it is a pure immediate pass-through, and is the only instruction class that skips EX. And the
+ * `aluout → pc` label carries `micro.aluOut`, which for
  * `jalr` is `rs1+imm` before the mandatory bit-0 clear — PC actually receives `(rs1+imm) & ~1`.
  * The two differ only for an odd target; the wire is the right wire either way.
  */
@@ -130,6 +139,9 @@ const NODE_LIST: readonly DatapathNode[] = [
   { id: 'alu', label: 'ALU', x: 620, y: 228, w: 84, h: 100, shape: 'adder' },
   { id: 'aluout', label: 'ALUOut', x: 742, y: 252, w: 54, h: 52 },
   { id: 'wbmux', label: '', x: 834, y: 216, w: 22, h: 128, shape: 'mux', minTier: 'detailed', controlLabel: 'MemtoReg' }, // prettier-ignore
+  // 5d: the second adder. `pc + imm` for a taken branch — the ALU can't supply this, it is busy
+  // holding the compare result. Real dataflow, not a selector, so it is drawn at every tier.
+  { id: 'branchadd', label: 'Branch\nadd', x: 806, y: 150, w: 58, h: 46, shape: 'adder' },
 ] as const;
 
 export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
@@ -232,6 +244,13 @@ const WIRE_LIST: readonly DatapathWire[] = [
   //     y=460 rail under the writeback fan-in. Taken branches do NOT use it (their target is not
   //     in ALUOut) — see this file's header for that lawful omission. ---
   { id: 'aluout-pc', ends: ['aluout', 'pc'], points: [at('aluout', 'b', 16), [at('aluout', 'b', 16)[0], 460], [at('pc', 'b')[0], 460], at('pc', 'b')] }, // prettier-ignore
+  // --- The taken-branch redirect (5d): PC and the immediate meet in the branch adder, whose
+  //     `pc+imm` returns to PC along the clear y=32 rail and the empty x=14 margin — deliberately
+  //     the OPPOSITE side of PC from the `aluout → pc` bottom rail, so the two redirects read as
+  //     two distinct sources rather than one wire. ---
+  { id: 'pc-branchadd', ends: ['pc', 'branchadd'], points: [at('pc', 't', -12), [at('pc', 't', -12)[0], 44], [786, 44], [786, aUp('branchadd')[1]], aUp('branchadd')] }, // prettier-ignore
+  { id: 'signext-branchadd', ends: ['signext', 'branchadd'], points: [at('signext', 'r', -14), [800, at('signext', 'r', -14)[1]], [800, aLo('branchadd')[1]], aLo('branchadd')] }, // prettier-ignore
+  { id: 'branchadd-pc', ends: ['branchadd', 'pc'], points: [at('branchadd', 'r'), [880, at('branchadd', 'r')[1]], [880, 32], [14, 32], [14, at('pc', 'l')[1]], at('pc', 'l')] }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
@@ -324,6 +343,7 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   const isJal = mnem === 'jal';
   const isLui = mnem === 'lui';
   const isAuipc = mnem === 'auipc';
+  const isBranch = d.format === 'B';
   const usesImm = d.format !== 'R' && mnem !== 'ecall' && mnem !== 'ebreak' && mnem !== 'fence';
   // The ALU's second operand is the immediate for I/S forms (I-ALU, loads, stores, jalr) and — as
   // of 5c — for the PC-arithmetic ops `jal` (J) and `auipc` (U); it is the rs2 register (the B
@@ -406,6 +426,21 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
         }
         const addrLike = isLoad || isStore || isJalr;
         w('alu-aluout', micro?.aluOut ?? aluOp.result, addrLike ? 'hex' : 'dec');
+        // 5d: the taken-branch redirect. EX is a branch's LAST phase (no MEM, no WB), so this is
+        // where it retires and commits pc — the same "redirect lights at retire" rule that puts
+        // the jumps' `aluout → pc` at WB. Taken-ness is read from the trace, not recomputed: the
+        // compare's own `alu-op` result IS the condition (1 = taken). A not-taken branch lights
+        // nothing here, matching the undrawn sequential path.
+        if (isBranch && aluOp.result === 1) {
+          c('pc');
+          c('signext');
+          c('branchadd');
+          w('pc-branchadd', pc, 'hex');
+          w('signext-branchadd', imm, 'dec');
+          // The adder's own output — `pc + imm` from two trace fields, the same inputs the engine
+          // used (INV-3: derived from the trace, not read out of the engine).
+          w('branchadd-pc', (pc + imm) >>> 0, 'hex');
+        }
       }
       break;
     }

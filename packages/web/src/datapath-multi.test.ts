@@ -175,6 +175,30 @@ describe('multi-cycle activation is phase-driven (one CycleTrace = one phase)', 
     expect(ex.writtenReg).toBeNull();
   });
 
+  it('a TAKEN branch redirects PC from the branch adder at EX (5d), not from ALUOut', () => {
+    // `beq x0, x0` always takes. EX is the branch's retire phase, so the redirect lands there.
+    const traces = phasesOf('  beq x0, x0, ahead\n  nop\nahead:');
+    const ex = activate(atPhase(traces, 'EX'));
+    expect(ex.components.has('branchadd')).toBe(true);
+    expect(ex.wires.has('pc-branchadd')).toBe(true);
+    expect(ex.wires.has('signext-branchadd')).toBe(true);
+    // The target is pc+imm — the branch is at pc=0 and jumps over one 4-byte `nop`.
+    const pc = atPhase(traces, 'EX').instructions[0]!.pc;
+    expect(ex.wires.get('branchadd-pc')?.value).toBe((pc + 8) >>> 0);
+    // The ALU holds the COMPARE result, so the jumps' redirect wire stays dark.
+    expect(ex.wires.has('aluout-pc')).toBe(false);
+  });
+
+  it('a NOT-taken branch draws no redirect (the branch adder stays dark)', () => {
+    const traces = phasesOf('  bne x0, x0, ahead\n  nop\nahead:');
+    const ex = activate(atPhase(traces, 'EX'));
+    // The compare still happens — only the redirect is gated on the outcome.
+    expect(ex.components.has('alu')).toBe(true);
+    expect(ex.components.has('branchadd')).toBe(false);
+    expect(ex.wires.has('branchadd-pc')).toBe(false);
+    expect(ex.wires.has('pc-branchadd')).toBe(false);
+  });
+
   it('a store is IF→ID→EX→MEM (no WB): the B latch supplies the datum at MEM', () => {
     const traces = phasesOf('  sw x0, 4(x0)');
     expect(traces.map((t) => t.instructions[0]?.location)).toEqual(['IF', 'ID', 'EX', 'MEM']);

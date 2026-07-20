@@ -103,10 +103,11 @@ describe('multi-cycle wrapper × shared renderer', () => {
     const detailed = renderToStaticMarkup(
       <MultiCycleDatapath trace={fetch} cycleKey={0} tier="detailed" />,
     );
-    // Polygons = 2 adder silhouettes (pcarith, alu) at essentials; +4 mux trapezoids at detailed
-    // (IorD / ALUSrcA / ALUSrcB / MemtoReg — ALUSrcA arrived with step 5c's PC-into-the-ALU path).
-    expect(count(essentials, '<polygon')).toBe(2);
-    expect(count(detailed, '<polygon')).toBe(6);
+    // Polygons = 3 adder silhouettes (pcarith, alu, branchadd) at essentials; +4 mux trapezoids at
+    // detailed (IorD / ALUSrcA / ALUSrcB / MemtoReg — ALUSrcA arrived with step 5c's PC-into-the-ALU
+    // path). The branch adder is dataflow, not a selector, so it is drawn at every tier (5d).
+    expect(count(essentials, '<polygon')).toBe(3);
+    expect(count(detailed, '<polygon')).toBe(7);
     // Fetch goes through the IorD mux at detailed; via the contraction the path stays lit at
     // essentials too — both tiers must show an active wire into Memory (INV-5, no contradiction).
     expect(essentials).toContain('dp-wire--on');
