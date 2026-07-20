@@ -17,5 +17,9 @@
   {
     "track": "The cache",
     "lessons": ["cache-spatial", "cache-temporal", "cache-conflict"]
+  },
+  {
+    "track": "The wide machine",
+    "lessons": ["two-at-once"]
   }
 ]

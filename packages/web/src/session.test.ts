@@ -207,7 +207,12 @@ describe('a lesson opens on the model + config it declares', () => {
     //
     // Arriving on the position each shipped lesson would be WRONG in, so "honored" is a claim the
     // sweep can fail rather than one it can coincide with: every lesson that declares a config is
-    // reset off `static-taken`, and the one lesson that declares forwarding is reset off ON.
+    // reset off `static-taken`, and the one lesson that declares forwarding is reset off ON. Arrival
+    // width stays at the default 1 (see `arrivingWith`), so the first superscalar lesson (M8 step 1,
+    // which declares `issueWidth: 2`) makes the width line failable: a plumbing bug that leaked the
+    // arrival width would open it at 1, and its whole narration — "44 vs 56", "IPC 0.77 vs 0.61" —
+    // is a lie the moment the reader is on a 1-wide machine (the milestone's headline failure mode:
+    // the engine's `issueWidth ?? 1` default reads 56/56 with every anchoring test still green).
     for (const lesson of LESSONS) {
       const opening = lessonOpening(lesson, arrivingWith(true, 'static-taken', CACHE_SMALL));
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
@@ -221,6 +226,12 @@ describe('a lesson opens on the model + config it declares', () => {
       // Arriving on a cache the lesson does not declare, so "honored" is failable: both shipped
       // pipeline lessons declare `cache: null`, so a leaked session cache would redden here.
       expect(opening.cache, `${lesson.id} opens in its declared cache`).toBe(lesson.config.cache);
+      // The width knob, the one that has never carried a shipped lesson until M8. `issueWidth` is
+      // OPTIONAL on a declared config, so an omitted width means 1 (the engine's own `?? 1`); a
+      // declared 2 must survive the opening whole, exactly like the other three knobs.
+      expect(opening.issueWidth, `${lesson.id} opens at its declared width`).toBe(
+        lesson.config.issueWidth ?? 1,
+      );
     }
   });
 });

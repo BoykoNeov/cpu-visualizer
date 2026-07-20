@@ -505,7 +505,12 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // the lesson is ABOUT. A language lesson authored on the pipeline is lawful, and the proxy
     // would file it under the machine and stay green: a case list that cannot reach the defect,
     // for the third milestone running. So the track is declared in `index.json` and read here.
-    expect(LESSON_TRACKS.map((t) => t.track)).toEqual(['The language', 'The machine', 'The cache']);
+    expect(LESSON_TRACKS.map((t) => t.track)).toEqual([
+      'The language',
+      'The machine',
+      'The cache',
+      'The wide machine',
+    ]);
   });
 
   it('teaches the MACHINE before the CACHE', () => {
@@ -593,19 +598,25 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // must NOT appear, and the sections flattened must be exactly the picker's order — the property
     // that makes grouping and order one declaration rather than two that can drift.
     const sections = lessonSections();
-    expect(sections.map((s) => s.track)).toEqual(['The language', 'The machine', 'The cache']);
+    expect(sections.map((s) => s.track)).toEqual([
+      'The language',
+      'The machine',
+      'The cache',
+      'The wide machine',
+    ]);
     expect(sections.flatMap((s) => s.lessons.map((l) => l.id))).toEqual(LESSONS.map((l) => l.id));
   });
 });
 
 describe('authored lessons (INV-6)', () => {
-  it('ships the language tours, the two µarch flagships, and the three-lesson cache track', () => {
+  it('ships the language tours, the two µarch flagships, the cache track, and the wide machine', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
     // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
-    // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); and the
-    // three-lesson cache track (M6 step 7). Multi-cycle deliberately has none: its story is "one
-    // instruction, phases spread over cycles", which the single-cycle lessons already narrate
-    // correctly when the model is swapped under them (pinned by the cross-model suite below).
+    // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); the
+    // three-lesson cache track (M6 step 7); and the first superscalar lesson (M8 step 1), the wide
+    // machine's opening beat. Multi-cycle deliberately has none: its story is "one instruction,
+    // phases spread over cycles", which the single-cycle lessons already narrate correctly when the
+    // model is swapped under them (pinned by the cross-model suite below).
     //
     // **The cache is where "one lesson per toggle" stops being the shape, and that is honest.** The
     // cache toggle is three positions, not two, and it is not one behavior to demonstrate but three
@@ -613,7 +624,9 @@ describe('authored lessons (INV-6)', () => {
     // capacity/conflict (the size flip) — no one of which subsumes the others. So it earns a track,
     // like the language, rather than a single flagship like forwarding and prediction. A config knob
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
-    expect(LESSONS.length).toBe(11);
+    // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
+    // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
+    expect(LESSONS.length).toBe(12);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -1715,6 +1728,110 @@ describe('branch-bet — the milestone’s thesis, guided (M4 step 7)', () => {
     }
     // The declaration is present regardless — the point of the test above, not a contradiction of it.
     expect(declared.forwarding).toBe(true);
+  });
+});
+
+/**
+ * `two-at-once`'s oracle (M8 step 1) — the FIRST lesson ever on `model: superscalar`, and the first
+ * at `issueWidth: 2`. The generic sweep proves each step fires and reads in order; it is blind to the
+ * two things this lesson exists to say, so both are pinned here by name.
+ *
+ * **(1) The pair, not merely an event.** The sweep's no-shared-cycle guard checks two steps never
+ * anchor to ONE cycle; it never checks that one cycle holds TWO lanes. "Two at once" is entirely the
+ * oracle's to prove, and anchoring `result: 19` only proves one add exists. So the paired cycles are
+ * asserted to carry exactly two of the event that marks the pairing — two `instr-fetch` on cycle 0
+ * (the opening pair pulled together) and two `alu-op` on the mid-loop cycle (both loop-body ops in
+ * EX). This is `forwarding-bubble`'s `stallsAt` counting turned on the pairing itself.
+ *
+ * **(2) The counterfactual numbers, derived not trusted.** The closing narration quotes "44 vs 56"
+ * and "IPC 0.77 vs 0.61" AS FACT — and those are properties of the width knob, exactly the M4-step-4
+ * trap (`forwarding-bubble` shipped "51 cycles" over a transport reading 49 once its numbers drifted
+ * from its declared machine). So the two cycle counts are recorded from the engine at width 1 and 2
+ * under the lesson's own declared config, the IPCs are COMPUTED from retire counts, and the closing
+ * prose is asserted to contain those exact tokens. A corpus edit that moves either number reddens
+ * here instead of letting the prose silently lie.
+ */
+describe('two-at-once — pairing works, the wide machine’s opening beat (M8 step 1)', () => {
+  const lesson = (): Lesson => byId('two-at-once');
+
+  /** The lesson's own declared machine with only the width varied — everything else from the JSON. */
+  const record = (issueWidth: number): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('two-at-once must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, issueWidth });
+  };
+
+  it('opens on the superscalar at width 2 — the axis the whole lesson rests on', () => {
+    // The declared opening. `lessonOpening` honoring this is what `session.test.ts` guards on the
+    // load path; here it is the precondition for every number below being about a 2-wide machine.
+    expect(lesson().model).toBe('superscalar');
+    expect(lesson().config?.issueWidth).toBe(2);
+  });
+
+  it('THE PAIR: two instructions fetched together, two ALU ops in one EX cycle', () => {
+    const trace = record(2);
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Step 0 — the opening pair. It anchors the SECOND fetch, and that second fetch is in the SAME
+    // cycle as the first: two `instr-fetch` events, one cycle. On the 1-wide machine the second
+    // fetch is a cycle later, which is the whole contrast the lesson opens on.
+    const open = anchored[0]!;
+    expect(anchoredEvent(trace, open)).toMatchObject({ type: 'instr-fetch' });
+    const fetchesOnOpen = trace
+      .find((c) => c.cycle === open.cycle)!
+      .events.filter((e) => e.type === 'instr-fetch');
+    expect(fetchesOnOpen, 'the opening pair is fetched in one cycle').toHaveLength(2);
+    // The pair is the first two instructions in program order — `li a0, 0` (pc 0) and `li t0, 10`
+    // (pc 4) — not two copies of one fetch. Pinned by pc so a slid anchor can't fake it.
+    expect(
+      fetchesOnOpen.map((e) => (e as TraceEvent & { pc: number }).pc).sort((a, b) => a - b),
+    ).toEqual([0, 4]);
+
+    // Step 1 — the mid-loop paired EX. `add a0` reaching 19 (the second iteration's accumulate) is
+    // arithmetic-fixed, so it anchors in every position; here it lands on a cycle that also holds
+    // the `addi t0` in the other lane — two `alu-op` events, the signature of a paired EX.
+    const ex = anchored[1]!;
+    expect(anchoredEvent(trace, ex)).toMatchObject({ type: 'alu-op', op: 'add', result: 19 });
+    const alusOnEx = trace
+      .find((c) => c.cycle === ex.cycle)!
+      .events.filter((e) => e.type === 'alu-op');
+    expect(alusOnEx, 'the loop body issues its two arithmetic ops together').toHaveLength(2);
+    // The partner is the counter decrement: `add` pushes a0 to 19, `addi` drops t0 to 8, same cycle.
+    expect(
+      alusOnEx.map((e) => (e as TraceEvent & { result: number }).result).sort((a, b) => a - b),
+    ).toEqual([8, 19]);
+  });
+
+  it('same answer, fewer cycles: a0 = 55 at 44 cycles vs 56 (IPC 0.77 vs 0.61)', () => {
+    const [w1, w2] = [record(1), record(2)];
+
+    // The closing payoff, alive at both widths — it is what the program computed, not how it ran.
+    for (const trace of [w1, w2]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 10, value: 55 });
+    }
+
+    // The two totals the closing narration quotes as fact — derived from the declared machine, not
+    // trusted. Under any other prediction scheme these would move; `record` fixes the whole config
+    // and varies only width, so prose and engine cannot drift apart without this line going red.
+    expect(w1.length).toBe(56);
+    expect(w2.length).toBe(44);
+
+    // The IPCs, COMPUTED from the retire counts rather than typed, then matched against the prose.
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(w1)).toBe(34); // width is not a correctness knob — the same 34 retire either way
+    expect(retired(w2)).toBe(34);
+    const ipcW1 = (retired(w1) / w1.length).toFixed(2); // 34 / 56 = 0.61
+    const ipcW2 = (retired(w2) / w2.length).toFixed(2); // 34 / 44 = 0.77
+    expect([ipcW1, ipcW2]).toEqual(['0.61', '0.77']);
+
+    // The prose states all four numbers. Asserted against the DEFAULT tier (what the reader sees),
+    // so a silently-wrong count — the M4-step-4 defect, green under every anchoring test — reddens.
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    for (const token of ['44', '56', ipcW1, ipcW2]) {
+      expect(closing, `closing narration must quote ${token}`).toContain(token);
+    }
   });
 });
 

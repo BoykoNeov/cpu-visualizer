@@ -1,0 +1,39 @@
+{
+  "id": "two-at-once",
+  "title": "Two at once",
+  "program": "sum-loop",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "instr-fetch", "nth": 2 },
+      "narration": {
+        "essentials": "Two instructions enter the machine at once — that is what two-wide means.",
+        "detailed": "This is the wide machine. Where the pipeline fetches one instruction per cycle, this one fetches two: `li a0, 0` and `li t0, 10` are pulled from instruction memory together, in the very first cycle, and travel down the pipe side by side. Watch the fetch stage — two slots, both lit.",
+        "expert": "Fetch is `issueWidth`-wide: pc and pc+4 index instruction memory in the same cycle, latching an aligned pair. Everything downstream — decode, the register-file read ports, the execute lanes — is replicated to match, so a two-instruction group can advance as a unit. Whether the pair actually ISSUES together is decided later, at issue; fetching two is always free."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 19 } },
+      "narration": {
+        "essentials": "The loop's two arithmetic instructions run in the same cycle, in two execute lanes.",
+        "detailed": "Here is the payoff, mid-loop. `add a0, a0, t0` and `addi t0, t0, -1` are the loop body's two arithmetic instructions, and the wide machine runs them together: both are in Execute this one cycle, one in each ALU lane. The add pushes the running total to 19; beside it the counter drops to 8. Two instructions, one cycle — the one-wide pipeline would have spent two.",
+        "expert": "The pair issues because it is independent at issue. `add` reads a0 and t0; `addi` reads t0 and writes t0. That write-after-read on t0 is harmless — both instructions read the register file in the same cycle, so `add` sees the pre-decrement t0 — so there is no intra-pair RAW to refuse them. Two `alu-op` events in one cycle is the signature of a paired EX, and the datapath lights both lanes."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 10, "value": 55 } },
+      "narration": {
+        "essentials": "Same answer — 55 — reached in 44 cycles instead of 56.",
+        "detailed": "The loop is done: a0 holds 55, the sum 10 + 9 + ... + 1, exactly as on any other machine. Width never changes what a program computes, only how fast. Count the cost: this wide run finished in 44 cycles where the one-wide pipeline needs 56 — an IPC of 0.77 against 0.61. Flip the width toggle back to 1 and watch the 55 stay put while the cycle count climbs to 56.",
+        "expert": "34 instructions retire either way — width is a throughput knob, not a correctness one. That is 34 / 44 = 0.77 IPC at width 2 against 34 / 56 = 0.61 at width 1. The speedup is sub-linear because the loop's backward branch mispredicts every pass — the not-taken machine bets fall-through and the branch is taken — and a flush is a flush at any width: the pair cannot fill the shadow the redirect clears. Pairing pays where instructions are independent and the pipe is full, not across a control transfer."
+      }
+    }
+  ]
+}

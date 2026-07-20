@@ -121,15 +121,31 @@ engine, no trace, no view code.
       Acceptance: `npm test` green (conformance across all models at every config, both timing guards
       satisfied), `npm run lint`, `tsc -b` green. INV-8 passes for the new program on every model.
 
-- [ ] **1. Lesson — "Two at once" (pairing works).** `program: sum-loop`, `model: superscalar`,
+- [x] **1. Lesson — "Two at once" (pairing works).** DONE 2026-07-20 (2331 tests). `two-at-once.json`
+      shipped: `program: sum-loop`, `model: superscalar`,
       `config: { forwarding: true, branchPrediction: 'static-not-taken', cache: null, issueWidth: 2 }`.
-      Anchors: the opening pair fetched together, a mid-loop paired EX, and the closing
-      `reg-write reg:10 value:55` retire — all `nth`-counted from a re-dump of THIS config. Narration
-      (all three tiers) frames width 2 against width 1 as an explicit COUNTERFACTUAL: the reader is on
-      the 2-wide machine; "44 vs 56" and "IPC 0.77 vs 0.61" are quoted as the flip, not as the
-      reader's current run (the M4-step-4 defect — prose quoting a machine the reader is not on).
-      Acceptance: `lessons.test.ts` sweep green (every step anchors in ≥1 position, in order, no two
-      share a cycle); a narration oracle pins the headline numbers so a silently-wrong count is caught.
+      Three anchors, all re-dumped under THIS exact config (throwaway `zz-m8-dump.test.ts`, since
+      deleted; `temp\m8\sum-loop-w2.txt`): the opening pair fetched together (`instr-fetch nth:2` →
+      cycle 0, both `li` in one cycle), a mid-loop paired EX (`alu-op where:{op:add, result:19}` →
+      cycle 7, `add a0`+`addi t0` in two lanes), and the closing retire (`reg-write where:{reg:10,
+    value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:55`) so they fire
+      in all 24 sweep positions. Narration frames the counterfactual as the flip, not the reader's run.
+      **Two forced deviations from the plan's literal 1-vs-5 split, both routine (advisor-confirmed):**
+      **(1)** `LESSONS` is GLOBBED, so the lesson file cannot exist un-wired — the instant it lands,
+      the glob-vs-hardcoded guards fire (`LESSONS.length`, the `LESSON_ORDER` toEqual, `lessonSections()`
+      track lists at two sites, `LESSON_TRACKS` order). This is step 0's ripple one layer up (a `.json`
+      is the same shape as a `.s`). So the **"The wide machine"** track (working title, pinned in step 5)
+      was added to `index.json` NOW with just `two-at-once`; steps 2–4 append. Grepped every track/count
+      guard across the web tests before editing, not just the ones the eye caught. **(2)** The generic
+      sweep bypasses `lessonOpening`, so it CANNOT see whether the lesson opens at width 2 — the
+      milestone's headline failure mode (the engine's `issueWidth ?? 1` reads 56/56 with every anchoring
+      test green). Extended `session.test.ts`'s shipped-lesson opening loop to assert `issueWidth`,
+      failable because arrival width stays 1 while this lesson declares 2. **The by-name oracle proves
+      the two things the sweep is blind to:** the PAIR (exactly two `instr-fetch` on cycle 0, two
+      `alu-op` on the mid-loop cycle — the no-shared-cycle guard checks steps don't collide, never that
+      a cycle holds two lanes), and the COUNTERFACTUAL numbers derived from the engine at width 1 and 2
+      (56/44 cycles, IPC computed from 34 retires → 0.61/0.77, then asserted present in the closing
+      prose). `npm test` + `lint` + `tsc -b` + `build` all green. Browser pass deferred to step 6.
 
 - [ ] **2. Lesson — "The pair that can't" (`intra-pair-raw`).** `program: array-sum`, same config.
       Anchor the FIRST `stall` with `reason: 'intra-pair-raw'` (cycle 1 in this config, per the dump —
@@ -155,6 +171,15 @@ engine, no trace, no view code.
       track heading, in teaching order (pairing → the three refusals; refusals ordered easy-to-hard:
       data dependency, then the two structural). Update `lessons.test.ts`'s hardcoded track-name
       expectations (it names `'The language'` / `'The machine'`; the new heading joins them).
+      **NOTE (from step 1): the track heading `'The wide machine'` and the `LESSON_TRACKS` /
+      `lessonSections()` track-name-expectation updates are ALREADY DONE** — step 1 was forced to wire
+      them because `LESSONS` is globbed (a lesson file cannot exist un-wired). Steps 2–4 only APPEND
+      their id to the existing track's `lessons` array. So what genuinely remains for step 5: (a) pin
+      the final track name (working title `'The wide machine'`, alternatives below); (b) add the
+      **by-name track-membership assertion** — the line-542 pattern (`machine`/`cache` membership by
+      name) for `'The wide machine'`, which nothing asserts yet: `lessonSections()` totality would
+      pass even if a lesson were misfiled, because `LESSON_ORDER` derives from the same `index.json`;
+      (c) confirm the four ids are in teaching order.
       Acceptance: `lessonSections` returns the new track with all four lessons resolved and none under
       `UNTRACKED_HEADING`; full `npm test`, `npm run lint`, `tsc -b`, `npm run build` green.
 
