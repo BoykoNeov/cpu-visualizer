@@ -613,8 +613,8 @@ describe('authored lessons (INV-6)', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
     // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
     // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); the
-    // three-lesson cache track (M6 step 7); and the first superscalar lesson (M8 step 1), the wide
-    // machine's opening beat. Multi-cycle deliberately has none: its story is "one instruction,
+    // three-lesson cache track (M6 step 7); and the first two superscalar lessons (M8 steps 1–2),
+    // the wide machine's pairing payoff and its first refusal. Multi-cycle deliberately has none: its story is "one instruction,
     // phases spread over cycles", which the single-cycle lessons already narrate correctly when the
     // model is swapped under them (pinned by the cross-model suite below).
     //
@@ -626,7 +626,7 @@ describe('authored lessons (INV-6)', () => {
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
-    expect(LESSONS.length).toBe(12);
+    expect(LESSONS.length).toBe(13);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -1832,6 +1832,104 @@ describe('two-at-once — pairing works, the wide machine’s opening beat (M8 s
     for (const token of ['44', '56', ipcW1, ipcW2]) {
       expect(closing, `closing narration must quote ${token}`).toContain(token);
     }
+  });
+});
+
+/**
+ * `pair-that-cant`'s oracle (M8 step 2) — the wide machine's second beat, and the track's first
+ * REFUSAL. Where `two-at-once` proved a pair FORMS, this proves one is REFUSED, and by name.
+ *
+ * The generic sweep is doubly blind here. It proves a `stall` fires and reads in order; it cannot
+ * see (1) that the anchor lands on the RIGHT stall, nor (2) that it names the RIGHT hazard — and
+ * `array-sum` at width 2 emits three stall flavors (`intra-pair-raw`, `load-use`, and the `la`
+ * pseudo-op's own internal `intra-pair-raw`), so a slipped anchor stays green while pointing the
+ * cursor at the wrong instruction. Both are pinned below, exactly as `forwarding-bubble` pins its
+ * hazards by pc.
+ *
+ * **The `nth: 2` is load-bearing, and it is the reason this oracle exists.** The FIRST
+ * `intra-pair-raw` in this recording is at cycle 1 — the `addi` half of `la t0, arr` reading the
+ * `t0` the `lui` beside it just wrote. That is a real refusal, but it is INSIDE a pseudo-op: an
+ * instruction the reader never typed, and the exact trap `forwarding-bubble`'s oracle above was
+ * written to catch ("a slipped `nth` slides onto the `la` pseudo-op's hidden internal RAW"). The
+ * plan said "anchor the first, cycle 1"; that was a plan error — the author corrected the config
+ * drift ("not cycle 10") but did not notice cycle 1 IS the `la` internal. `nth: 2` skips it to the
+ * first SOURCE-LINE dependent pair: `bnez t1, loop` (pc 32) refused for the `t1` that
+ * `addi t1, t1, -1` (pc 28) beside it is still computing. Pinned by pc, so a re-slip fails loud.
+ *
+ * The steady-state accumulate was the tempting alternative and is worse: in the dump `add a0,a0,t2`
+ * is refused TWICE on adjacent cycles — `intra-pair-raw` then `load-use` — because its partner is a
+ * load, so a reader scrubbing one cycle sees the reason flip. `bnez`/`addi` is a single, clean
+ * refusal that fires every iteration, whose partner is a plain ALU op. It is the branch-ness that is
+ * incidental: the refusal here is DATA (it needs `t1`), not structure — the one-branch-unit hazard
+ * is `branch-slot`, reserved for step 4 and a different program.
+ */
+describe('pair-that-cant — the dependent pair is refused (M8 step 2)', () => {
+  const BRANCH_PC = 32; // `bnez t1, loop` — reads the t1 that `addi t1, t1, -1` (pc 28) is computing
+  const lesson = (): Lesson => byId('pair-that-cant');
+
+  /** The lesson's own declared machine with only the width varied — everything else from the JSON. */
+  const record = (issueWidth: number): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('pair-that-cant must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, issueWidth });
+  };
+
+  it('opens on the superscalar at width 2 — a refusal only a two-wide machine can make', () => {
+    expect(lesson().model).toBe('superscalar');
+    expect(lesson().config?.issueWidth).toBe(2);
+  });
+
+  it('THE REFUSAL: intra-pair-raw on the branch, NOT the la internal, NOT a load-use', () => {
+    const trace = record(2);
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Step 0 is the refusal. The event is a stall naming the data hazard by its pairing reason...
+    const refusal = anchored[0]!;
+    expect(anchoredEvent(trace, refusal)).toMatchObject({
+      type: 'stall',
+      reason: 'intra-pair-raw',
+    });
+    // ...and it is the SOURCE-LINE branch (pc 32), not the `la` pseudo-op's internal addi (pc 4)
+    // that `nth: 1` would have found one cycle earlier. This is the whole point of the `nth`.
+    expect(anchoredPc(trace, refusal)).toBe(BRANCH_PC);
+    // Guard the trap explicitly: the la internal really is a distinct, earlier intra-pair-raw, so a
+    // reader-facing anchor must skip past it — proven by the cycle strictly advancing off cycle 1.
+    expect(refusal.cycle).toBeGreaterThan(1);
+  });
+
+  it('the refusal is width-exclusive: no pair means no intra-pair-raw to refuse', () => {
+    // Lawfully dead at width 1 (like forwarding-bubble's config-exclusive steps): a one-wide machine
+    // issues one instruction per cycle, so there is no candidate pair and no intra-pair hazard. The
+    // step must therefore be dead at width 1 and alive at width 2 — the axis the lesson rests on.
+    const w1 = anchorLesson(lesson(), record(1));
+    expect(
+      w1[0]!.cycle,
+      'width 1 forms no pair, so nothing is refused for intra-pair-raw',
+    ).toBeNull();
+  });
+
+  it('same answer, held pair or not: 120 is stored, and the same 34 retire at both widths', () => {
+    const [w1, w2] = [record(1), record(2)];
+
+    // The closing beat is alive at both widths — it is what the program computed, not how it ran.
+    for (const trace of [w1, w2]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'mem-write', value: 120 });
+    }
+
+    // The expert tier states "34 instructions retire ... either way" as fact — a claim about the
+    // width knob (M4 step 4), so derived from the engine at both widths, not trusted. Width is a
+    // throughput knob, not a correctness one: the same instructions retire whether or not pairs fold.
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(w1)).toBe(34);
+    expect(retired(w2)).toBe(34);
+
+    // The prose quotes 34; asserted against the DEFAULT tier's expert companion so a silently-wrong
+    // count reddens. (No cycle counts are quoted — step 2's payoff is the dependency, not speed — so
+    // unlike two-at-once there is nothing more to pin here.)
+    const expert = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
+    expect(expert, 'the expert tier must quote the retire count it claims').toContain('34');
   });
 });
 

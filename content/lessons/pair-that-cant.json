@@ -1,0 +1,31 @@
+{
+  "id": "pair-that-cant",
+  "title": "The pair that can't",
+  "program": "array-sum",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "stall", "where": { "reason": "intra-pair-raw" }, "nth": 2 },
+      "narration": {
+        "essentials": "Two instructions arrived together, but the second needs a value the first is still computing — so it waits.",
+        "detailed": "Here is the limit of two-wide. `addi t1, t1, -1` and `bnez t1, loop` were fetched side by side as a candidate pair — but the branch reads `t1`, and the instruction beside it is the very one computing the new `t1`. They cannot both sit in Execute this cycle and have the branch see the fresh value: it does not exist yet. So the machine holds the younger one back. Watch the readout name the reason — intra-pair-raw — while the map keeps the branch in place; it issues alone next cycle, once the decremented `t1` is there to hand over.",
+        "expert": "Forwarding closes gaps BETWEEN issue groups, never WITHIN one. A forward carries a result from an older instruction already in EX/MEM or MEM/WB to a younger one entering EX — but two instructions issued together enter EX in the same cycle, so the older has produced nothing yet to forward. That is the same-cycle read-after-write no bypass can serve. The pair is split at issue: the older goes, the younger is refused with reason `intra-pair-raw` and reissues solo one cycle later, now receiving `t1` by forward. Independence at issue is the entire condition for a pair, and a genuine data dependency inside a candidate pair is the one case width cannot fold — it is held for what it NEEDS, not for what it IS."
+      }
+    },
+    {
+      "trigger": { "event": "mem-write", "where": { "value": 120 } },
+      "narration": {
+        "essentials": "The sum is 120, exactly as on the one-wide machine — the wait cost a cycle, never the answer.",
+        "detailed": "The loop is done and 120 — the sum of { 5, 17, -4, 100, 2 } — is written to memory, the same total any machine reaches. Width never changes what a program computes. Where a candidate pair carries a real dependency the wide machine simply cannot fold it and pays a cycle; everywhere the instructions are independent it still runs two at a time. Correctness is never the price. Throughput is.",
+        "expert": "The held pairs are pure throughput cost: 34 instructions retire and 120 is stored either way. Pairing pays exactly where the code offers independent instructions and the pipe is full; each intra-pair read-after-write forfeits one slot — here, for instance, the branch reading the counter its neighbour just decremented, once every pass through the loop. That is the honest ceiling on in-order superscalar: it can only issue the pairs the program hands it, and a dependent pair is not one of them. Reordering to find independent work is the next machine's job, not this one's."
+      }
+    }
+  ]
+}

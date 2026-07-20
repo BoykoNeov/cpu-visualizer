@@ -128,7 +128,7 @@ engine, no trace, no view code.
       deleted; `temp\m8\sum-loop-w2.txt`): the opening pair fetched together (`instr-fetch nth:2` →
       cycle 0, both `li` in one cycle), a mid-loop paired EX (`alu-op where:{op:add, result:19}` →
       cycle 7, `add a0`+`addi t0` in two lanes), and the closing retire (`reg-write where:{reg:10,
-    value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:55`) so they fire
+value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:55`) so they fire
       in all 24 sweep positions. Narration frames the counterfactual as the flip, not the reader's run.
       **Two forced deviations from the plan's literal 1-vs-5 split, both routine (advisor-confirmed):**
       **(1)** `LESSONS` is GLOBBED, so the lesson file cannot exist un-wired — the instant it lands,
@@ -147,12 +147,27 @@ engine, no trace, no view code.
       (56/44 cycles, IPC computed from 34 retires → 0.61/0.77, then asserted present in the closing
       prose). `npm test` + `lint` + `tsc -b` + `build` all green. Browser pass deferred to step 6.
 
-- [ ] **2. Lesson — "The pair that can't" (`intra-pair-raw`).** `program: array-sum`, same config.
-      Anchor the FIRST `stall` with `reason: 'intra-pair-raw'` (cycle 1 in this config, per the dump —
-      NOT the remembered "cycle 10") and show the readout naming the reason while the map holds the
-      younger instruction. Teach: the second slot needs a value the first is still computing, so it
-      waits — the price of a real data dependency inside a candidate pair. Acceptance: as step 1;
-      oracle pins `reason: 'intra-pair-raw'` and the anchored cycle under the declared config.
+- [x] **2. Lesson — "The pair that can't" (`intra-pair-raw`).** DONE 2026-07-20 (2388 tests).
+      `pair-that-cant.json` shipped: `program: array-sum`, same config as step 1 (superscalar,
+      forwarding on, static-not-taken, cache null, `issueWidth: 2` → w2 = 42 cycles, w1 = 51). Two
+      steps: the refusal (`{ event: 'stall', where: { reason: 'intra-pair-raw' }, nth: 2 }` → cycle 6,
+      `bnez t1, loop` at pc 32, refused for the `t1` that `addi t1, t1, -1` at pc 28 beside it is still
+      computing) and the closing "same answer" (`mem-write value:120` → cycle 39). All re-dumped under
+      THIS config (throwaway `zz-m8-dump.test.ts`, since deleted; `temp\m8\array-sum-w2.txt`).
+      **PLAN ERROR CORRECTED (advisor-confirmed): the plan said "anchor the FIRST `intra-pair-raw`,
+      cycle 1" — but cycle 1 is the `addi` half of the `la t0, arr` pseudo-op (reading the `t0` the
+      `lui` beside it just wrote), an instruction the reader never typed and the EXACT trap
+      `forwarding-bubble`'s oracle was written to catch.** The plan author corrected the config-drift
+      ("not cycle 10") but did not notice cycle 1 IS the `la` internal. `nth: 2` skips it to the first
+      SOURCE-LINE dependent pair. **The steady-state accumulate (`add a0,a0,t2`) was the tempting
+      alternative and is worse — it is refused TWICE on adjacent cycles (`intra-pair-raw` then
+      `load-use`, because its partner is a load), so a reader scrubbing sees the reason flip;
+      `bnez`/`addi` is a single clean refusal, partner a plain ALU op, firing every iteration.** The
+      branch-ness is incidental: the refusal here is DATA (needs `t1`), reserved the one-branch-unit
+      structural hazard (`branch-slot`) for step 4. Oracle pins `reason: 'intra-pair-raw'` + pc 32 +
+      `cycle > 1` (skips the la trap) + width-EXCLUSIVE (dead at width 1: no pair, no refusal) + the
+      closing 120/34-retires at both widths. No cycle counts quoted in prose (the payoff is the
+      dependency, not speed), so — unlike step 1 — nothing more to pin. `npm test` + `lint` + `tsc -b` + `build` all green. Browser pass deferred to step 6.
 
 - [ ] **3. Lesson — "One door for memory" (`mem-port`).** `program: byte-loads`, same config. Anchor
       the single `mem-port` refusal (present exactly once in the dump). Teach the STRUCTURAL hazard:
