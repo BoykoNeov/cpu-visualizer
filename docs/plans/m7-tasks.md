@@ -469,6 +469,17 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       a defect; step 7 is the deliverable. Worth stating because a missing diagram is precisely the
       shape of thing an eyeball is tempted to log as a bug.
 
+      **Scrub was exercised too, closing the one live interaction the checks above miss.** Dragging
+      back to cycle 3 of the width-2 recording redraws the playhead and shows the first pair tracked
+      together — `addi x10,x0,0` in `MEM.0` beside `addi x5,x0,10` in `MEM.1`, with the pair behind
+      them in `EX.0`/`EX.1` — and the readout says **`7 in flight`**, where width 1 tops out at 5.
+      `ecall` sits alone in `IF.0`/`ID.0`, which is the refusal picture step 8's readout will name.
+      Step 5 had already proven `follow()`/scrub headlessly, so this confirms rather than discovers;
+      it is recorded because "the map renders a paired trace" and "you can scrub back INTO one" are
+      different claims and only the first was covered. Also confirmed in passing: **the config
+      survives a model round-trip** — switching superscalar → pipeline → superscalar kept forwarding
+      ON and the width at 2, and the re-run landed on `43 / 43` again.
+
 - [ ] **7. The widened datapath — `datapath-superscalar.ts`.** Shared front-end (PC, I-mem
       fetching a pair, issue logic) + two replicated execute lanes, per the playbook in
       `docs/templates/new-model-datapath.md`. Add `--lane-0` / `--lane-1` to **both** theme
