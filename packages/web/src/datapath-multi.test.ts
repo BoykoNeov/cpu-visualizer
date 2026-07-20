@@ -278,9 +278,53 @@ describe('multi-cycle activation is phase-driven (one CycleTrace = one phase)', 
     expect(traces.map((t) => t.instructions[0]?.location)).toEqual(['IF', 'ID', 'EX', 'WB']);
     const wb = activate(atPhase(traces, 'WB'));
     expect(wb.wires.has('aluout-wbmux')).toBe(true);
-    expect(wb.components.has('pcarith'), 'auipc no longer uses the incrementer').toBe(false);
+    // `auipc`'s WRITEBACK no longer comes from the incrementer (that was 5c's move). The
+    // incrementer itself IS lit here — 5e draws the sequential next-PC, and auipc's next PC
+    // genuinely is pc+4 — so the assertion has to name the writeback path, not the unit.
+    expect(wb.wires.has('pcarith-wbmux'), 'auipc no longer links via the incrementer').toBe(false);
     expect(wb.wires.has('aluout-pc'), 'auipc writes a register — it does NOT redirect').toBe(false);
     expect(wb.writtenReg).toBe(5);
+  });
+
+  // Step 5e drew the PCSource mux, which forced the driver the diagram had never shown: the
+  // SEQUENTIAL next-PC. These pin all three arms of the selector — exactly one lights per retire.
+  it('lights the sequential pc+4 through PCSource at retire (5e)', () => {
+    const traces = phasesOf('  add x5, x0, x0');
+    const wb = activate(atPhase(traces, 'WB'));
+    const pc = atPhase(traces, 'WB').instructions[0]!.pc;
+    expect(wb.components.has('pcarith')).toBe(true);
+    expect(wb.components.has('pcsource')).toBe(true);
+    expect(wb.wires.get('pcarith-pcsource')?.value).toBe((pc + 4) >>> 0);
+    expect(wb.wires.get('pcsource-pc')?.value).toBe((pc + 4) >>> 0);
+    expect(wb.wires.get('pcarith-pc')?.value).toBe((pc + 4) >>> 0); // essentials contraction
+    // The other two arms lose.
+    expect(wb.wires.has('aluout-pc')).toBe(false);
+    expect(wb.wires.has('branchadd-pc')).toBe(false);
+  });
+
+  it('retires the sequential path in whichever phase is last (a store retires at MEM)', () => {
+    // The rule is "the next-PC wire lights at retire", NOT "at WB" — a store has no WB at all.
+    const traces = phasesOf('  sw x0, 4(x0)');
+    const mem = activate(atPhase(traces, 'MEM'));
+    expect(mem.wires.has('pcsource-pc')).toBe(true);
+    // ...and it must not light early: EX is not this store's last phase.
+    expect(activate(atPhase(traces, 'EX')).wires.has('pcsource-pc')).toBe(false);
+  });
+
+  it('a redirecting instruction does NOT also light the sequential arm', () => {
+    // Only one PCSource input may win per retire, or the picture shows PC taking two values.
+    const jal = activate(atPhase(phasesOf('  jal x1, ahead\n  nop\nahead:'), 'WB'));
+    expect(jal.wires.has('aluout-pcsource')).toBe(true);
+    expect(jal.wires.has('pcarith-pcsource'), 'jal redirects — no sequential arm').toBe(false);
+
+    const taken = activate(atPhase(phasesOf('  beq x0, x0, ahead\n  nop\nahead:'), 'EX'));
+    expect(taken.wires.has('branchadd-pcsource')).toBe(true);
+    expect(taken.wires.has('pcarith-pcsource'), 'taken branch — no sequential arm').toBe(false);
+
+    // A NOT-taken branch retires at EX and DOES fall through to the sequential arm.
+    const notTaken = activate(atPhase(phasesOf('  bne x0, x0, ahead\n  nop\nahead:'), 'EX'));
+    expect(notTaken.wires.has('pcarith-pcsource')).toBe(true);
+    expect(notTaken.wires.has('branchadd-pcsource')).toBe(false);
   });
 
   it('is empty for the pre-run state (no in-flight instruction)', () => {
@@ -324,7 +368,7 @@ describe('activation coherence: every lit wire is a real wire with both endpoint
 });
 
 describe('depth tiers (structural detail; handoff §4, INV-5)', () => {
-  const MUXES = ['addrmux', 'alusrcb', 'wbmux'];
+  const MUXES = ['addrmux', 'alusrca', 'alusrcb', 'wbmux', 'pcsource'];
   const visibleNodes = (t: DepthTier): Set<string> =>
     new Set([...NODES.values()].filter((n) => nodeVisibleAt(n, t)).map((n) => n.id));
   const visibleWires = (t: DepthTier): Set<string> =>

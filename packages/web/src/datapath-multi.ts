@@ -59,15 +59,29 @@
  * when the branch is TAKEN — generalizing the redirect rule to "the next-PC wire lights at retire",
  * which is WB for the jumps (they write a link) and EX for a branch (its last phase).
  *
+ * STEP 5e closed the last stated omission: the **PCSource mux**. 5c and 5d each landed a redirect
+ * into PC but left the selector between them undrawn, and the diagram was one driver short of even
+ * being able to draw it — the SEQUENTIAL next-PC (`pcarith → pc`) had no wire at all. `pcarith` fed
+ * only the writeback mux (the `jal`/`jalr` link); the ordinary "PC ← PC+4" that every instruction
+ * performs was invisible. So 5e:
+ *   - **closes the sequential loop** — `pc → pcarith → pc` — lighting it at RETIRE for any
+ *     instruction that neither jumps nor takes a branch. Like 5d this is view-only: `pc + 4` is
+ *     derived from the trace's own `pc` (RV32I is fixed-width), never read out of the engine.
+ *   - adds the **`pcsource` mux** with all three drivers on its inputs. Drawing it 2-input would
+ *     have been the same lie in a smaller box; a selector whose commonest input never lights is
+ *     worse than no selector. It sits below-left of PC — the one place all three sources reach a
+ *     left edge on well-separated rails — and is tiered like every other mux: hidden at
+ *     `essentials`, where three contraction wires (`pcarith → pc`, `aluout → pc`, `branchadd → pc`)
+ *     stand in for it, exactly as `a-alu` stands in for ALUSrcA.
+ *
  * Honest simplifications that REMAIN (surfaced, not hidden — INV-5 permits lawful omission, never
- * contradiction): PC now has THREE drivers (the sequential path, `aluout → pc`, and the branch
- * adder) with **no PCSource mux drawn** between them. Real hardware selects; this diagram shows the
- * winning source lit and the losers dark, which is a lawful omission of the selector, never a
- * contradiction of it — the same shape as the other muxes, minus the box. `lui` keeps no ALU path —
+ * contradiction): `lui` keeps no ALU path —
  * it is a pure immediate pass-through, and is the only instruction class that skips EX. And the
  * `aluout → pc` label carries `micro.aluOut`, which for
  * `jalr` is `rs1+imm` before the mandatory bit-0 clear — PC actually receives `(rs1+imm) & ~1`.
- * The two differ only for an odd target; the wire is the right wire either way.
+ * The two differ only for an odd target; the wire is the right wire either way. Finally, a halting
+ * `ecall` still lights the sequential `pc+4` at its retire: the incrementer genuinely computes it
+ * and the mux genuinely selects it — the machine stops for reasons outside this diagram.
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
@@ -142,6 +156,11 @@ const NODE_LIST: readonly DatapathNode[] = [
   // 5d: the second adder. `pc + imm` for a taken branch — the ALU can't supply this, it is busy
   // holding the compare result. Real dataflow, not a selector, so it is drawn at every tier.
   { id: 'branchadd', label: 'Branch\nadd', x: 806, y: 150, w: 58, h: 46, shape: 'adder' },
+  // 5e: the next-PC selector. It sits BELOW-LEFT of PC rather than directly left of it — PC is only
+  // 28px from the canvas edge, and a mux takes its inputs on its left VERTICAL edge, so a
+  // directly-left placement leaves no room for three separated feed rails. Down here the margin is
+  // empty and each source gets its own rail (pcarith x=82, aluout x=70, branchadd x=14).
+  { id: 'pcsource', label: '', x: 90, y: 330, w: 22, h: 100, shape: 'mux', minTier: 'detailed', controlLabel: 'PCSource' }, // prettier-ignore
 ] as const;
 
 export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
@@ -240,17 +259,26 @@ const WIRE_LIST: readonly DatapathWire[] = [
   // --- The PC+4 incrementer's one input. 5c dropped its immediate input: `auipc` gets its
   //     `pc+imm` from the ALU now, so the only value this unit still makes is `pc+4`. ---
   { id: 'pc-pcarith', ends: ['pc', 'pcarith'], points: [at('pc', 't'), [at('pc', 't')[0], aLo('pcarith')[1]], aLo('pcarith')] }, // prettier-ignore
-  // --- The next-PC redirect (5c): `jal` / `jalr` commit PC ← ALUOut at retire. Rides the clear
-  //     y=460 rail under the writeback fan-in. Taken branches do NOT use it (their target is not
-  //     in ALUOut) — see this file's header for that lawful omission. ---
-  { id: 'aluout-pc', ends: ['aluout', 'pc'], points: [at('aluout', 'b', 16), [at('aluout', 'b', 16)[0], 460], [at('pc', 'b')[0], 460], at('pc', 'b')] }, // prettier-ignore
-  // --- The taken-branch redirect (5d): PC and the immediate meet in the branch adder, whose
-  //     `pc+imm` returns to PC along the clear y=32 rail and the empty x=14 margin — deliberately
-  //     the OPPOSITE side of PC from the `aluout → pc` bottom rail, so the two redirects read as
-  //     two distinct sources rather than one wire. ---
+  // --- The taken-branch redirect's two INPUTS (5d): PC and the immediate meet in the branch adder.
+  //     Its output is one of the three PCSource drivers below. ---
   { id: 'pc-branchadd', ends: ['pc', 'branchadd'], points: [at('pc', 't', -12), [at('pc', 't', -12)[0], 44], [786, 44], [786, aUp('branchadd')[1]], aUp('branchadd')] }, // prettier-ignore
   { id: 'signext-branchadd', ends: ['signext', 'branchadd'], points: [at('signext', 'r', -14), [800, at('signext', 'r', -14)[1]], [800, aLo('branchadd')[1]], aLo('branchadd')] }, // prettier-ignore
-  { id: 'branchadd-pc', ends: ['branchadd', 'pc'], points: [at('branchadd', 'r'), [880, at('branchadd', 'r')[1]], [880, 32], [14, 32], [14, at('pc', 'l')[1]], at('pc', 'l')] }, // prettier-ignore
+  // --- The next-PC select (5e). THREE drivers reach the PCSource mux, which drives PC:
+  //       `pcarith`   — the sequential PC+4, taken by every instruction that neither jumps nor
+  //                     branches-taken. 5e drew this one for the first time.
+  //       `aluout`    — `jal` / `jalr` (5c), whose ALUOut holds the computed target.
+  //       `branchadd` — a TAKEN branch (5d), whose target the busy ALU cannot supply.
+  //     Each has an `essentials` CONTRACTION straight into PC (the mux is hidden at that tier), and
+  //     the three contractions land on three different PC edges so they never merge into one line.
+  { id: 'pcarith-pcsource', ends: ['pcarith', 'pcsource'], points: [at('pcarith', 'r'), [170, at('pcarith', 'r')[1]], [170, 88], [82, 88], [82, at('pcsource', 'l', -20)[1]], at('pcsource', 'l', -20)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'aluout-pcsource', ends: ['aluout', 'pcsource'], points: [at('aluout', 'b', -16), [at('aluout', 'b', -16)[0], 460], [70, 460], [70, at('pcsource', 'l', 5)[1]], at('pcsource', 'l', 5)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'branchadd-pcsource', ends: ['branchadd', 'pcsource'], points: [at('branchadd', 'r'), [880, at('branchadd', 'r')[1]], [880, 32], [14, 32], [14, at('pcsource', 'l', 30)[1]], at('pcsource', 'l', 30)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'pcsource-pc', ends: ['pcsource', 'pc'], points: [at('pcsource', 'r'), [132, at('pcsource', 'r')[1]], [132, 310], [at('pc', 'b')[0], 310], at('pc', 'b')], minTier: 'detailed' }, // prettier-ignore
+  // The three contractions. `pcarith → pc` leaves the incrementer 8px above the `pcarith-regfile`
+  // contraction's anchor: both are drawn at `essentials`, so they must not share the exit run.
+  { id: 'pcarith-pc', ends: ['pcarith', 'pc'], points: [at('pcarith', 'r', -8), [176, at('pcarith', 'r', -8)[1]], [176, 88], [6, 88], [6, at('pc', 'l', 12)[1]], at('pc', 'l', 12)], maxTier: 'essentials', contracts: 'pcsource' }, // prettier-ignore
+  { id: 'aluout-pc', ends: ['aluout', 'pc'], points: [at('aluout', 'b', 16), [at('aluout', 'b', 16)[0], 460], [at('pc', 'b')[0], 460], at('pc', 'b')], maxTier: 'essentials', contracts: 'pcsource' }, // prettier-ignore
+  { id: 'branchadd-pc', ends: ['branchadd', 'pc'], points: [at('branchadd', 'r'), [880, at('branchadd', 'r')[1]], [880, 32], [14, 32], [14, at('pc', 'l')[1]], at('pc', 'l')], maxTier: 'essentials', contracts: 'pcsource' }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
@@ -439,7 +467,10 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
           w('signext-branchadd', imm, 'dec');
           // The adder's own output — `pc + imm` from two trace fields, the same inputs the engine
           // used (INV-3: derived from the trace, not read out of the engine).
-          w('branchadd-pc', (pc + imm) >>> 0, 'hex');
+          const target = (pc + imm) >>> 0;
+          w('branchadd-pcsource', target, 'hex'); // through the 5e selector
+          w('pcsource-pc', target, 'hex');
+          w('branchadd-pc', target, 'hex'); // essentials contraction of PCSource
         }
       }
       break;
@@ -503,10 +534,30 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
       if (isJal || isJalr) {
         c('aluout');
         c('pc');
-        w('aluout-pc', micro?.aluOut ?? undefined, 'hex');
+        const target = micro?.aluOut ?? undefined;
+        w('aluout-pcsource', target, 'hex'); // through the 5e selector
+        w('pcsource-pc', target, 'hex');
+        w('aluout-pc', target, 'hex'); // essentials contraction of PCSource
       }
       break;
     }
+  }
+
+  // 5e: the SEQUENTIAL next-PC. Outside the phase switch, because which phase retires depends on
+  // the instruction class (WB for most, MEM for a store, EX for a branch) — the same "the next-PC
+  // wire lights at retire" rule 5c and 5d established, now applied to the third driver. It is the
+  // default arm of PCSource: taken by everything that neither jumps nor takes a branch. `pc + 4` is
+  // derived from the trace's own `pc` (RV32I is fixed-width), exactly as 5d derived `pc + imm`.
+  const takenBranch = isBranch && events.find((e) => e.type === 'alu-op')?.result === 1;
+  const retiring = events.some((e) => e.type === 'instr-retire');
+  if (retiring && !isJal && !isJalr && !takenBranch) {
+    const next = (pc + 4) >>> 0;
+    c('pc');
+    c('pcarith');
+    w('pc-pcarith', pc, 'hex');
+    w('pcarith-pcsource', next, 'hex'); // through the 5e selector
+    w('pcsource-pc', next, 'hex');
+    w('pcarith-pc', next, 'hex'); // essentials contraction of PCSource
   }
 
   return { phase, components, wires, writtenReg };
