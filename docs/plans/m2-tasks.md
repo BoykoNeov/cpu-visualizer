@@ -1,8 +1,32 @@
 # Milestone 2 — the multi-cycle model (second microarchitecture)
 
-**Status: M2 COMPLETE — steps 0–4 (model), 5a (model picker), 5b (datapath SVG), and 5c
-(the next-PC redirect) all shipped. 5c landed 2026-07-20 and closed the last open item; the
-milestone has no deferred work left.**
+**Status: M2 COMPLETE — steps 0–4 (model), 5a (model picker), 5b (datapath SVG), 5c
+(the next-PC redirect) and 5d (the taken-branch redirect) all shipped. 5d landed 2026-07-20 and
+closed the last stated omission; the milestone has no deferred work left.**
+
+**Step 5d (2026-07-20) — the taken-branch redirect, view-only.** The mirror image of 5c: where 5c
+had to change the ENGINE before the view could tell the truth, 5d needed no engine change at all,
+because the trace already carried everything. A branch's target is `pc+imm` and the shared ALU
+holds the compare result (`taken?1:0`), so `aluout→pc` physically cannot carry it — the fix was
+the second adder real hardware has. Added `branchadd` (`pc + imm`, from PC and the sign-extender),
+returning to PC along the free `y=32` rail and the empty `x=14` left margin, deliberately the
+opposite side of PC from the jumps' bottom rail so the two redirects read as two sources rather
+than one wire. It lights at **EX** — a branch's retire phase — which generalizes the rule to
+_"the next-PC wire lights at retire"_: WB for the jumps (they write a link), EX for a branch (its
+last phase). Taken-ness is **read from the trace**, not recomputed: the compare's own `alu-op`
+result IS the condition. The target is derived from two trace fields (`inst.pc`, `decoded.imm`) —
+lawful under INV-3, which forbids reading engine internals, not deriving from trace values.
+Drawn at **every tier**: it is dataflow, not a selector, so it needs no contraction machinery —
+the one structural asymmetry with 5c's mux. **Browser-verified** on `sum-loop`: the taken `bne` at
+cycle 18 lights PC → branch adder → PC with `0x10 + (-8) = 0x08`, while `aluout→pc` stays dark;
+the loop-exit `bne` at cycle 117 lights the compare and nothing else. 1354 tests green; the engine
+was not touched, so INV-8 is untouched by construction.
+
+**Cost this step charged that the plan had not predicted: none** — 5c's surprise was the 4th mux;
+5d's geometry fit the existing canvas with no new node type, no tier machinery, and no
+re-layout. The one thing that took real work was routing: the collinearity test (0.5px epsilon)
+is the binding constraint on this diagram, and the two free rails (`y=32`, `x=14`) were the
+only clean way in and out of a PC box whose top and bottom edges were already fully spoken for.
 
 **Step 5c (2026-07-20) — the next-PC redirect, engine-first.** The redirect could not be drawn
 while the engine computed PC-relative values directly and emitted no `alu-op` for them, so 5c
@@ -327,13 +351,12 @@ null` (nothing in flight). The fuller shape makes step 5b's latch boxes real at 
   its EX (`rs1+imm`); 5c gives that ALUOut a drawn consumer rather than a second `alu-op` (its link
   comes from the incrementer). **Branches stay 3** — EX is the compare, not the target.
 
-  **The taken-branch redirect stays UNDRAWN after 5c — a lawful INV-5 omission, stated not
-  hidden.** A branch's target is `pc+imm`, which is not in ALUOut (ALUOut holds the _compare_
-  result), so the `aluout→pc` redirect cannot carry it; drawing it would need a separate branch
-  adder node, which 5c does not add. So after 5c the datapath draws the redirect for `jal`/`jalr`
-  (both genuinely `PC ← ALUOut`) and continues to omit it for taken branches. That omits detail
-  and contradicts nothing — the transport and register panels still show `pc` moving. A branch
-  adder is the obvious next increment if this gap is worth closing.
+  **The taken-branch redirect was UNDRAWN after 5c — a lawful INV-5 omission, stated not hidden;
+  CLOSED BY STEP 5d (2026-07-20).** A branch's target is `pc+imm`, which is not in ALUOut (ALUOut
+  holds the _compare_ result), so the `aluout→pc` redirect cannot carry it; drawing it needs a
+  separate branch adder node, which 5c did not add. 5d added exactly that — see the 5d record at
+  the top of this file. The stated-omission discipline paid off here: the note named the missing
+  component precisely enough that closing it was a contained step, not a re-derivation.
 
   **Cost 5c actually charged, recorded because it was NOT in the plan that was approved:** the
   multi-cycle datapath grows from **three muxes to four** — routing `pc` into the ALU for
