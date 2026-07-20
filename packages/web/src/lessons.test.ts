@@ -568,6 +568,20 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'cache-spatial',
       'cache-temporal',
     ]);
+
+    // The wide machine's membership (M8), by name for the same reason: "is this lesson about
+    // superscalar width" is pedagogy, not derivable — all four run on `superscalar` at `issueWidth: 2`,
+    // but so could a lesson that is really about, say, forwarding observed on a wide machine. The
+    // track claims exactly these four: the pairing payoff plus the three refusals. `lessonSections`
+    // totality (line 600) would stay green even if one were misfiled, because `LESSON_ORDER` derives
+    // from the same `index.json`; only naming the set here catches a mis-file.
+    const wide = LESSON_TRACKS.find((t) => t.track === 'The wide machine');
+    expect([...(wide?.lessons ?? [])].sort()).toEqual([
+      'one-branch-unit',
+      'one-door',
+      'pair-that-cant',
+      'two-at-once',
+    ]);
   });
 
   it('shows every lesson in the picker, even one the index forgot', () => {

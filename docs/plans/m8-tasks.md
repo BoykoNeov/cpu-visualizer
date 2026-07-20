@@ -204,7 +204,7 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       w1 = 9). Two steps: the refusal (`{ event: 'stall', where: { reason: 'branch-slot' } }`, UNIQUE
       so no `nth` → cycle 1, the younger `bne x0,x0,done` at pc 4 refused because the elder `bne` at
       pc 0 beside it holds the one branch unit) and the closing "same answer" (`reg-write reg:10
-    value:42` → cycle 5, `a0 = 42` by falling through). All re-dumped under THIS config (throwaway
+  value:42` → cycle 5, `a0 = 42` by falling through). All re-dumped under THIS config (throwaway
       `zz-m8-dump.test.ts`, since deleted; `temp\m8\paired-branches-w.txt`). **The design completes
       the trilogy of refusals and is the SECOND structural one — the contrast is the spine:
       `intra-pair-raw` refuses for what the younger NEEDS (data); `mem-port` and `branch-slot` refuse
@@ -235,21 +235,25 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       "one branch unit" framing (inherited from `paired-branches.s`'s header and one-door's expert
       tier) must be checked against what the datapath actually draws.**
 
-- [ ] **5. Wire the track.** Add the four lesson ids to `content/lessons/index.json` under a new
+- [x] **5. Wire the track.** DONE 2026-07-20 (2503 tests). The track was already wired incrementally by
+      steps 1–4 (step 1 had to add the `'The wide machine'` heading and the `LESSON_TRACKS` /
+      `lessonSections()` order updates because `LESSONS` is globbed — a lesson file cannot exist
+      un-wired — and steps 2–4 APPENDED their id). So of step 5's three genuine remainders: (a) the
+      track name `'The wide machine'` is PINNED (used at `lessons.test.ts:508` and `:601`); (c) teaching
+      order is covered transitively by the flattened-order assertion at `:601-607` and by `index.json`.
+      **What actually remained and was done: (b) the by-name track-membership assertion.** Added to the
+      "files each lesson under the track its SUBJECT belongs to — asserted by name" test (next to the
+      `machine`/`cache` blocks): `LESSON_TRACKS.find(t => t.track === 'The wide machine')`, lessons
+      sorted, `toEqual(['one-branch-unit','one-door','pair-that-cant','two-at-once'])`. This is the one
+      net a mis-file could slip past — `lessonSections()` totality (`:600`) stays green even if a lesson
+      were filed under the wrong track, because `LESSON_ORDER` derives from the same `index.json`, so
+      only naming the set here catches it. `npm test` (2503), `npm run lint`, `npm run typecheck` all
+      green.
+      Original scope, for the record: add the four lesson ids to `content/lessons/index.json` under a new
       track heading, in teaching order (pairing → the three refusals; refusals ordered easy-to-hard:
       data dependency, then the two structural). Update `lessons.test.ts`'s hardcoded track-name
-      expectations (it names `'The language'` / `'The machine'`; the new heading joins them).
-      **NOTE (from step 1): the track heading `'The wide machine'` and the `LESSON_TRACKS` /
-      `lessonSections()` track-name-expectation updates are ALREADY DONE** — step 1 was forced to wire
-      them because `LESSONS` is globbed (a lesson file cannot exist un-wired). Steps 2–4 only APPEND
-      their id to the existing track's `lessons` array. So what genuinely remains for step 5: (a) pin
-      the final track name (working title `'The wide machine'`, alternatives below); (b) add the
-      **by-name track-membership assertion** — the line-542 pattern (`machine`/`cache` membership by
-      name) for `'The wide machine'`, which nothing asserts yet: `lessonSections()` totality would
-      pass even if a lesson were misfiled, because `LESSON_ORDER` derives from the same `index.json`;
-      (c) confirm the four ids are in teaching order.
-      Acceptance: `lessonSections` returns the new track with all four lessons resolved and none under
-      `UNTRACKED_HEADING`; full `npm test`, `npm run lint`, `tsc -b`, `npm run build` green.
+      expectations. Acceptance: `lessonSections` returns the new track with all four lessons resolved and
+      none under `UNTRACKED_HEADING`; full suites green.
 
 - [ ] **6. Browser pass — the only net that sees this.** Per the repo's own record (9 of 10 view
       steps shipped a browser-only defect; "the browser is the only net"), and because THIS is the
