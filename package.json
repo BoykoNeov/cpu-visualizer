@@ -19,6 +19,7 @@
     "packages/engine/single-cycle",
     "packages/engine/multi-cycle",
     "packages/engine/pipeline",
+    "packages/engine/superscalar",
     "packages/web"
   ],
   "scripts": {

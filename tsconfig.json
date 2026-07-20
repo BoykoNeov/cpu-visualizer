@@ -11,6 +11,7 @@
     { "path": "packages/engine/single-cycle" },
     { "path": "packages/engine/multi-cycle" },
     { "path": "packages/engine/pipeline" },
+    { "path": "packages/engine/superscalar" },
     { "path": "packages/curriculum" }
   ]
 }

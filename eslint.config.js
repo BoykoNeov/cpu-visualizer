@@ -61,6 +61,7 @@ export default tseslint.config(
         'engine-single-cycle',
         'engine-multi-cycle',
         'engine-pipeline',
+        'engine-superscalar',
         'web',
       ],
       'INV-7: isa is the lowest layer and imports no other workspace package.',
@@ -78,6 +79,7 @@ export default tseslint.config(
         'engine-single-cycle',
         'engine-multi-cycle',
         'engine-pipeline',
+        'engine-superscalar',
         'web',
       ],
       'INV-3: the trace is the contract; it may depend only on isa, never on engines, curriculum, or web.',
@@ -95,6 +97,7 @@ export default tseslint.config(
         'engine-single-cycle',
         'engine-multi-cycle',
         'engine-pipeline',
+        'engine-superscalar',
         'web',
       ],
       'The assembler depends only on isa.',
@@ -122,6 +125,7 @@ export default tseslint.config(
         'engine-single-cycle',
         'engine-multi-cycle',
         'engine-pipeline',
+        'engine-superscalar',
       ],
       'engine-common is a leaf shared by the engines (engine-common ← isa, assembler, trace); it depends on no engine model, curriculum, or web.',
     ),
@@ -133,7 +137,14 @@ export default tseslint.config(
     // (same last-match-wins reason as engine-common), so curriculum/web are repeated here.
     files: ['packages/engine/conformance/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-pipeline'],
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-pipeline',
+        'engine-superscalar',
+      ],
       'engine-conformance is model-agnostic: it drives any model through an injected () => Processor factory, so it imports no engine-under-test.',
     ),
   },
@@ -144,7 +155,14 @@ export default tseslint.config(
     // generic engine rule for the same last-match-wins reason as engine-common above.
     files: ['packages/engine/reference/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-pipeline'],
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-pipeline',
+        'engine-superscalar',
+      ],
       'INV-8: the golden reference is model-agnostic; it never depends on a specific engine model (nor on curriculum/web).',
     ),
   },
@@ -157,22 +175,57 @@ export default tseslint.config(
     // transitively through the model-agnostic conformance harness.
     files: ['packages/engine/single-cycle/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-multi-cycle', 'engine-pipeline'],
+      ['curriculum', 'web', 'engine-multi-cycle', 'engine-pipeline', 'engine-superscalar'],
       'A concrete model never imports another model’s production code; the trace schema is the only shared surface.',
     ),
   },
   {
     files: ['packages/engine/multi-cycle/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-pipeline', 'engine-reference'],
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-pipeline',
+        'engine-superscalar',
+        'engine-reference',
+      ],
       'A concrete model never imports another model’s production code, and multi-cycle copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {
     files: ['packages/engine/pipeline/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-single-cycle', 'engine-multi-cycle', 'engine-reference'],
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-superscalar',
+        'engine-reference',
+      ],
       'A concrete model never imports another model’s production code, and the pipeline copies the ISA idioms rather than importing the reference (INV-8).',
+    ),
+  },
+  {
+    // Superscalar (M7) is the case this rule exists for. It is a WIDENING of the 5-stage pipeline
+    // and the temptation to import it is real — the two share a stage vocabulary, and `pipeline`
+    // sits right there. It may not: the shared, model-independent parts (prediction, the cache)
+    // were moved DOWN into `engine-common` at M7 step 0 precisely so this edge never has to exist,
+    // and the parts that are not shared (the stage walk, forwarding, the hazard unit) are the ones
+    // whose single-issue shape M7 exists to break. Importing them would mean parameterizing the
+    // very assumption this model is built to violate.
+    files: ['packages/engine/superscalar/**/*.ts'],
+    rules: deny(
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-pipeline',
+        'engine-reference',
+      ],
+      'A concrete model never imports another model’s production code, and superscalar copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {
@@ -186,6 +239,7 @@ export default tseslint.config(
         'engine-single-cycle',
         'engine-multi-cycle',
         'engine-pipeline',
+        'engine-superscalar',
         'web',
       ],
       'INV-3: curriculum reads the trace, never engine internals or the web app.',

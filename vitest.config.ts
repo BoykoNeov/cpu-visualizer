@@ -20,6 +20,7 @@ export const workspaceAliases = {
   '@cpu-viz/engine-single-cycle': pkg('./packages/engine/single-cycle/src/index.ts'),
   '@cpu-viz/engine-multi-cycle': pkg('./packages/engine/multi-cycle/src/index.ts'),
   '@cpu-viz/engine-pipeline': pkg('./packages/engine/pipeline/src/index.ts'),
+  '@cpu-viz/engine-superscalar': pkg('./packages/engine/superscalar/src/index.ts'),
 };
 
 export default defineConfig({

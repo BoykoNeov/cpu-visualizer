@@ -1,0 +1,23 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../isa" },
+    { "path": "../../trace" },
+    // Production edges. `common` carries the shared prediction + cache modules (moved down at
+    // M7 step 0) — this model is the reason they moved, so unlike `pipeline`, `common` was a
+    // production dependency here from the first line.
+    { "path": "../common" },
+    // Test-only edges, exactly as the other models declare them. `assembler` drives the unit
+    // tests; `conformance` is the shared INV-8 differential harness (it pulls in the golden
+    // reference). Production code never imports the reference (INV-8: copy the idioms, don't
+    // import them) — the ISA semantics below are mirrored from it and PROVEN faithful, not
+    // borrowed.
+    { "path": "../../assembler" },
+    { "path": "../conformance" }
+  ]
+}

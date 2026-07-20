@@ -1,0 +1,24 @@
+{
+  "name": "@cpu-viz/engine-superscalar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "In-order superscalar RV32I — two instructions may issue per cycle. Depends only on isa, trace, and engine-common.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "tsc -b --clean"
+  },
+  "dependencies": {
+    "@cpu-viz/isa": "*",
+    "@cpu-viz/trace": "*",
+    "@cpu-viz/engine-common": "*"
+  }
+}
