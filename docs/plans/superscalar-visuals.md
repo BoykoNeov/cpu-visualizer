@@ -40,6 +40,24 @@ lane-1 hue; shared front-end structures stay accent-neutral. An idle lane (singl
 cycle) renders idle — the picture "one lane lit, one dark" IS the story of a pairing
 failure, which is the pedagogical money shot.
 
+> **⚠️ SUPERSEDED at M7 step 7 (2026-07-20) — the money shot survived, the CHANNEL did not.**
+> This paragraph gives the lane hue the WIRE STROKE, and that was written before M3 step 6
+> shipped. The stroke is now spoken for: it means STAGE, in the same validated `PHASE_COLORS`
+> set the pipeline map uses — and the map renders directly ABOVE this diagram on the same
+> screen. Obeying this rule would have said blue = IF on one surface and blue = lane 0 on the
+> other, and would have made `EX.0` and `EX.1` DIFFERENT colors, destroying the one reading the
+> whole tier exists to produce: _two instructions in EX at once._
+>
+> **What shipped instead (user-pinned, 2026-07-20): the lane hue tints REPLICATED NODE BOXES.**
+> Wire stroke = stage, node tint = lane, follow ring = identity — three channels, three
+> meanings, no collision. This is available precisely because a replicated box does not have
+> the problem that keeps M3's boxes hue-neutral: the register file is read by ID and written by
+> WB in one cycle so it belongs to no single anything, but `ALU 1` does slot 1's work and
+> nothing else. "One lane lit, one dark" is unchanged and was browser-verified.
+>
+> The rest of this document held up — the hues themselves, the relief rule, renderer deltas 1–4,
+> the pipeline map, and the "lane is not a map axis" reasoning all shipped as designed.
+
 ### 2. The pipeline map (NEW — the stage×cycle grid, an HTML component)
 
 The classic pipeline diagram: **rows = instructions in program order, columns = cycles,
@@ -167,11 +185,14 @@ The visuals read the trace only (INV-3). What must exist by the superscalar mile
 
 ## Decisions to pin (seeded)
 
-| Decision                 | Recommendation (seed)                                                                 | Pinned answer |
-| ------------------------ | ------------------------------------------------------------------------------------- | ------------- |
-| Issue width              | 2 (dual-issue) — the pedagogy is "more than one", not "many"                          | _(open)_      |
-| Lane hues                | `--lane-0` = accent blue, `--lane-1` = magenta `#e87ba4`/`#d55181` (validated above)  | _(open)_      |
-| Memory ports             | 1 (mem-op pairs never dual-issue) — gives the structural-hazard lesson for free       | _(open)_      |
-| `location` lane encoding | `"<stage>.<slot>"` strings — keeps the field a plain string for existing consumers    | _(open)_      |
-| Pipeline map tech        | HTML grid (not SVG) — scrollable, cells are follow click-targets                      | _(open)_      |
-| Follow-highlight visual  | dashed `--ink` outline ring — hue-free so it composes with lane tint and survives CVD | _(open)_      |
+All six were answered by M7 (see `docs/plans/m7-tasks.md`, which is the authority — this table is
+kept for the record of what was seeded).
+
+| Decision                 | Recommendation (seed)                                                                 | Pinned answer                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue width              | 2 (dual-issue) — the pedagogy is "more than one", not "many"                          | **AS SEEDED** — and as an in-model 1 ↔ 2 toggle rather than a second model (M7 headline)                                                                                         |
+| Lane hues                | `--lane-0` = accent blue, `--lane-1` = magenta `#e87ba4`/`#d55181` (validated above)  | **VALUES AS SEEDED; the CHANNEL changed** — they tint replicated node BOXES, not wires (M7 step 7; see the superseded note above). Both tokens shipped in all three theme blocks |
+| Memory ports             | 1 (mem-op pairs never dual-issue) — gives the structural-hazard lesson for free       | **AS SEEDED** (M7 step 2b) — reason `mem-port`, classified by PORT, and it is what keeps the data memory, the cache and the miss-freeze single-lane                              |
+| `location` lane encoding | `"<stage>.<slot>"` strings — keeps the field a plain string for existing consumers    | **AS SEEDED** (M7 step 2a, proven step 5) — zero trace-schema change AND zero recorder change; only `location` is slotted, event fields stay bare                                |
+| Pipeline map tech        | HTML grid (not SVG) — scrollable, cells are follow click-targets                      | **AS SEEDED** (M3 step 7) — and it absorbed superscalar with no API change, exactly as this plan predicted                                                                       |
+| Follow-highlight visual  | dashed `--ink` outline ring — hue-free so it composes with lane tint and survives CVD | **AS SEEDED** (M3 step 7) — and the hue-free choice paid off at M7 step 7, where it now composes with a lane tint for real rather than hypothetically                            |
