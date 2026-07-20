@@ -1,10 +1,16 @@
 # Milestone 8 — The superscalar lesson track
 
-**Status: NOT STARTED, 2026-07-20. Nothing built. The design is grounded in a real width-1/width-2
-trace dump of the whole corpus (see "The dump" below), not in memory — the anchors and every quoted
-number will come from that dump per (program × config), following the pinned repo rule. No engine or
-trace change is expected: the superscalar engine (M7) and the lesson machinery (M5) both already
-exist; this milestone is CONTENT plus one new corpus program.**
+**Status: COMPLETE, 2026-07-20 (2503 tests). All 7 steps done. Shipped: the `paired-branches` corpus
+program (step 0) and the four-lesson "The wide machine" track (`two-at-once`, `pair-that-cant`,
+`one-door`, `one-branch-unit`) — the first lessons ever on `model: superscalar` at `issueWidth: 2`,
+teaching the pairing payoff plus all three refusal reasons. NO engine or trace change; content plus one
+`.s` file, exactly as scoped. The step-6 browser pass (the only net that sees a superscalar lesson load)
+was clean on every mechanical check and surfaced ONE real INV-5 tension — the "one branch unit" the
+prose named was not drawn (branch work is doubled across the two execute lanes; only the next-PC commit
+is singular) — fixed IN SCOPE by rewording `one-branch-unit`'s prose to ground the name in what the
+datapath actually draws. The design was grounded in a real width-1/width-2 trace dump of the whole
+corpus (see "The dump" below), re-dumped per config; no anchor typed from memory. The superscalar engine
+(M7) and the lesson machinery (M5) both already existed.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap) and §13 (the curriculum system).
 The load-bearing constraints are INV-6 (lessons anchor to trace EVENTS, not cycle numbers), INV-7
@@ -204,7 +210,7 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       w1 = 9). Two steps: the refusal (`{ event: 'stall', where: { reason: 'branch-slot' } }`, UNIQUE
       so no `nth` → cycle 1, the younger `bne x0,x0,done` at pc 4 refused because the elder `bne` at
       pc 0 beside it holds the one branch unit) and the closing "same answer" (`reg-write reg:10
-  value:42` → cycle 5, `a0 = 42` by falling through). All re-dumped under THIS config (throwaway
+value:42` → cycle 5, `a0 = 42` by falling through). All re-dumped under THIS config (throwaway
       `zz-m8-dump.test.ts`, since deleted; `temp\m8\paired-branches-w.txt`). **The design completes
       the trilogy of refusals and is the SECOND structural one — the contrast is the spine:
       `intra-pair-raw` refuses for what the younger NEEDS (data); `mem-port` and `branch-slot` refuse
@@ -255,28 +261,63 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       expectations. Acceptance: `lessonSections` returns the new track with all four lessons resolved and
       none under `UNTRACKED_HEADING`; full suites green.
 
-- [ ] **6. Browser pass — the only net that sees this.** Per the repo's own record (9 of 10 view
-      steps shipped a browser-only defect; "the browser is the only net"), and because THIS is the
-      first lesson ever on `model: superscalar` (session.ts:198), the headless suite cannot see the
-      picker, the model load, or narration appearing. Drive the real dev server (identify the tab by
-      served `<title>`, never by port — this repo runs several Vite projects): confirm the new track
-      shows in the picker; selecting each lesson loads the superscalar model **at width 2** (not a
-      silent fall to width 1); narration appears at the anchored cycles; the readout/IPC tile agree
-      with the prose. Acceptance: a clean browser pass with the specific defect class ruled out
-      (model actually superscalar, width actually 2, no null-trace panel vanish at pre-run).
+- [x] **6. Browser pass — the only net that sees this.** DONE 2026-07-20 (2503 tests). Drove the
+      SHIPPED BUNDLE (`vite preview` on a `--strictPort`, identified by served `<title>`, CDP on a
+      random high debug port, target by URL with a throw and no fallback — the [[browser-is-the-only-net]]
+      recipe). Rig at `M:\...\temp\m8-browser\` (`eyeball.mjs` walks all four lessons × every step
+      reading model/width/readout/narration; `datapath-shot.mjs` + `confirm-reword.mjs` capture the
+      datapath and the reworded panel). **All mechanical checks CLEAN on all four:** picker shows the
+      fourth track "The wide machine" with its four lessons in teaching order; each loads
+      `model=superscalar` with the **2-wide** toggle pressed (the headline `issueWidth ?? 1` fall-to-1
+      ruled out — read off the seg toggle's `aria-pressed`, scoped to the `-wide` buttons, NOT the
+      first pressed `.seg-btn` which is forwarding's "on"); narration fires at every anchored cycle;
+      the readout names all three refusal reasons matching the prose (`intra-pair-raw` / `mem-port` /
+      `branch-slot`), and `two-at-once` shows **PAIRED** with the IPC tile reading **44 cyc / width 2**
+      (the discriminator — a width-1 fall would read 56; the others read 42 / 9 / 7). No null-trace
+      panel vanish.
+      **THE ONE SUBSTANTIVE FINDING — step 4's flagged branch-unit framing, CONFIRMED against the
+      picture and FIXED (user chose the in-scope prose fix).** The datapath draws `ALU 0`/`ALU 1` and
+      `PC arith 0`/`PC arith 1` (both replicated per lane, `laneNodes()` in `datapath-superscalar.ts`)
+      and ONE shared `Data Mem` box. So `one-door`'s "one door" IS drawn (the single Data-Mem box both
+      loads pass through) but `one-branch-unit`'s "one branch unit" was NOT — branch work (compare in
+      the ALU, target in PC-arith) is doubled, and the only genuinely-singular next-PC resource is the
+      shared `pcmux`/PCSrc ("caps EX at ONE resolved transfer per cycle... both lanes must be able to
+      steer and at most one ever does" — the node's own comment). A learner reading "both need the one
+      branch unit" saw, in the same picture, two ALUs they'd just watched pair two adds in `two-at-once`
+      — an INV-5 prose-vs-picture tension the expert tier sharpened ("left the branch unit single" as
+      distinct from "the two execute lanes"). NB the phrase "one branch unit" is the SHIPPED M7 badge
+      (`REFUSAL_TEXT` in `SuperscalarDatapathView.tsx`, gloss in `pairing-readout.ts`), so the lesson was
+      faithful to the product; the mismatch is an M7 _drawing_ decision M8 inherited, and drawing a
+      branch box is view code — out of M8's content+browser scope. **Fix (content only, advisor-vetted):
+      reworded `one-branch-unit` step 1's essentials/detailed/expert to KEEP "one branch unit" as the
+      name (step 2 references "a second branch unit" — dropping it would dangle) but GROUND it in what
+      the datapath draws:** the two execute lanes give two ALUs + two address adders, "so doing the
+      comparison is not what is scarce — what is scarce is the resolving," the single next-PC commit
+      (PCSrc, both lanes feed but only one can drive), one control transfer resolved per cycle. Leads
+      with "resolve" not "redirect the PC" (both branches are not-taken — neither steers the PC; each
+      still occupies the one resolution slot to be _determined_ not-taken), preserving the load-bearing
+      "before either has been resolved" clause and its `branch-resolved` anchor. Confirmed in the browser:
+      backticks render as inline `<code>`, 0 literal leftovers, the prose now names the very boxes
+      (`ALU 0/1`, `PC arith 0/1`) drawn directly below it. The `one-branch-unit` oracle pins only the
+      closing "42" substring (untouched); the reworded step-1 prose carries no pinned substring, so no
+      oracle change was needed. `npm test` (2503) + `lint` + `typecheck` + `build` all green.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] The picker shows a fourth track; each of its four lessons loads the superscalar model at
-      width 2 and plays through with narration on the correct events (INV-6).
-- [ ] The track teaches all THREE refusal reasons the machine can emit — `intra-pair-raw`,
-      `mem-port`, `branch-slot` — the last reachable only via the new corpus program.
-- [ ] Every cycle count / IPC in narration matches the engine under that lesson's declared config,
+- [x] The picker shows a fourth track; each of its four lessons loads the superscalar model at
+      width 2 and plays through with narration on the correct events (INV-6). **Confirmed in the
+      browser (step 6): "The wide machine", four lessons, 2-wide toggle pressed on all four.**
+- [x] The track teaches all THREE refusal reasons the machine can emit — `intra-pair-raw`,
+      `mem-port`, `branch-slot` — the last reachable only via the new corpus program. **All three
+      REFUSED badges read back from the shipped readout with the right reason string.**
+- [x] Every cycle count / IPC in narration matches the engine under that lesson's declared config,
       pinned by a narration oracle (not just an anchoring sweep — M4 step 4 proved anchoring is blind
-      to wrong words).
-- [ ] The new corpus program passes INV-8 on every model, and both timing guards (pipeline w1,
-      superscalar w1+w2) cover it with hand-derived cells.
-- [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean.
+      to wrong words). **`two-at-once`'s "44 cycles / IPC 0.77" pinned by oracle AND read off the live
+      IPC tile (44 cyc, width 2).**
+- [x] The new corpus program passes INV-8 on every model, and both timing guards (pipeline w1,
+      superscalar w1+w2) cover it with hand-derived cells. **(step 0.)**
+- [x] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean (the one
+      finding — the undrawn "branch unit" — fixed in-scope by rewording the prose to match the drawing).
 
 ## How this milestone can lie to itself
 
