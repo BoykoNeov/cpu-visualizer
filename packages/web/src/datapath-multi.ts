@@ -56,7 +56,9 @@
  * is not in ALUOut (ALUOut holds the compare result), so the redirect wire cannot carry it and a
  * separate branch adder would be needed. The transport / register panels still show `pc` moving.
  * `lui` likewise keeps no ALU path — it is a pure immediate pass-through, and is now the only
- * instruction class that skips EX.
+ * instruction class that skips EX. And the redirect wire's LABEL carries `micro.aluOut`, which for
+ * `jalr` is `rs1+imm` before the mandatory bit-0 clear — PC actually receives `(rs1+imm) & ~1`.
+ * The two differ only for an odd target; the wire is the right wire either way.
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
