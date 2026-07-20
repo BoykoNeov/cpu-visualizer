@@ -1,11 +1,24 @@
 # Milestone 2 — the multi-cycle model (second microarchitecture)
 
-**Status: MODEL COMPLETE (steps 0–4) + web model picker (step 5a) + multi-cycle datapath SVG
-(step 5b) built, 2026-07-13. 5b is IMPLEMENTED + headlessly tested (16 new tests) + build green;
-**browser verification of the layout is still pending** (this project eyeballs web work via
-`npm run dev`, as 5a was). One deliberate simplification is carved out as a possible **step 5c**
-engine follow-up: the datapath does not draw the next-PC redirect (ALUOut→PC) — see the pinned
-decision below.**
+**Status: M2 COMPLETE — steps 0–4 (model), 5a (model picker), 5b (datapath SVG), and 5c
+(the next-PC redirect) all shipped. 5c landed 2026-07-20 and closed the last open item; the
+milestone has no deferred work left.**
+
+**Step 5c (2026-07-20) — the next-PC redirect, engine-first.** The redirect could not be drawn
+while the engine computed PC-relative values directly and emitted no `alu-op` for them, so 5c
+changed the engine and let the view follow the trace: `jal`/`auipc` now compute `pc+imm` in the
+shared ALU and gain an EX phase (3 cycles → 4), while `pc+4` stays on a dedicated incrementer.
+The view then drew the `aluout→pc` redirect for `jal`/`jalr` — which **forced a 4th mux**
+(ALUSrcA), the one cost this step charged that its own plan had not predicted (recorded in the
+cycle-table decision below). `lui` is now the only class that skips EX. **Browser-verified** on
+`call-return`: the jal's WB lights the link (`pcarith→wbmux→regfile`) and the redirect
+(`aluout→pc`) simultaneously, and `ret` (`jalr x0`) lights the redirect as its ONLY wire —
+a phase that drew nothing at all before 5c. Essentials still collapses all four muxes to their
+contractions. 1352 tests green; INV-8 untouched by construction.
+
+**Step 5b's browser verification, outstanding since 2026-07-13, is now also discharged** — 5c's
+session drove the real multi-cycle datapath and found no layout defect. That makes 5c only the
+second view step in this project to survive the browser clean.
 The multi-cycle model is implemented and fully proven headlessly — the INV-8 differential net
 (multi-cycle ≡ golden reference on every corpus program) and the recorder time-travel /
 `follow()` phase-walk both pass, alongside 38 hand-derived unit tests pinning the model's soul
