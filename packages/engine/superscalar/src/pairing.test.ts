@@ -462,10 +462,31 @@ describe('width 2 is a real machine', () => {
   });
 
   it('is strictly faster on every program in the corpus, with identical final state', () => {
-    // Pinned as EXACT counts, not as an inequality. `cycles = N + 4 + S + P + M` is step 4's
-    // deliverable and these numbers are its raw material; an inequality would let the pairing logic
-    // drift by a cycle in either direction and still pass, which for a timing-only tier is no net
-    // at all. Observed and read back against the traces, one program at a time.
+    // **PROVISIONAL NUMBERS — read this before trusting them.** They are pinned EXACTLY rather than
+    // as an inequality, which catches future DRIFT: the pairing logic cannot move a cycle in either
+    // direction without a failure here. What that does NOT do is prove the numbers are RIGHT. Six
+    // of the seven width-2 counts were taken from this engine's own output, so a consistent timing
+    // bug — one spurious bubble in the issue logic — would be blessed by this table rather than
+    // caught by it, and every other net in the package is blind to exactly that: width 1 is
+    // unaffected by pairing, and final architectural state is identical at both widths BY
+    // CONSTRUCTION. Stable is not the same as correct.
+    //
+    // The width-1 column is different in kind and IS trustworthy: those are M3's hand-derived
+    // numbers, asserted against this engine in `timing.test.ts`.
+    //
+    // `sum-loop.s = 44` is the one width-2 number derived BY HAND from the pinned rules rather than
+    // observed, because it is the flagship A/B a reader will care about most. The derivation: 34
+    // retires (2 prologue + 3×10 loop + 2 epilogue); `(add, addi)` pair because `add` writes a0
+    // while `addi` reads t0, so there is no intra-pair RAW; `(bnez, li a7)` pair because only one
+    // of them is a transfer; a taken `bnez` mispredicts under the default `'none'` scheme, and the
+    // redirect is clocked at the end of its EX, so the target leaves ID at `d_b + 3` — a LOOP
+    // PERIOD OF 4, i.e. `d_body = 4k+2` and `d_bne = 4k+3`. On the tenth iteration the branch falls
+    // through, so its mate survives instead of being squashed and `ecall` issues at `d = 40`.
+    // `cycles = d_last + 4 = 44`.
+    //
+    // **Step 4 owes the other six the same treatment, and must DERIVE them rather than copy them
+    // from here.** A derived number that disagrees with a pin below is the entire value of that
+    // step; copying the pins forward would bless any current bug permanently.
     const EXPECTED: Record<string, { w1: number; w2: number }> = {
       'add.s': { w1: 7, w2: 6 },
       'array-sum-twice.s': { w1: 208, w2: 178 },

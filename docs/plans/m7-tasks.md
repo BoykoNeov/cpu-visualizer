@@ -263,6 +263,17 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       or a rule that was never pinned. Acceptance: a full matrix of exact cycle counts per
       (program × width × config), each one asserted, none of them "whatever the engine printed."
 
+      > **⚠ DO NOT COPY STEP 2b's WIDTH-2 NUMBERS FORWARD.** `pairing.test.ts` pins an exact
+      > width-2 cycle count per corpus program, and six of the seven were taken from **the engine's
+      > own output**. That table catches future DRIFT; it does not prove the numbers are RIGHT, and
+      > nothing else in the package covers the gap — width 1 is unaffected by pairing, and final
+      > architectural state is identical at both widths by construction. A consistent one-bubble
+      > bug in the issue logic is green everywhere today. **Derive all seven independently; a
+      > derived number that disagrees with a step-2b pin is the whole value of this step.** The one
+      > already derived by hand is `sum-loop.s = 44` (loop period 4 from the `d_b + 3` mispredict
+      > rule; the tenth branch falls through so its pair-mate survives; `d_ecall = 40`) — reproduce
+      > it independently rather than trusting this parenthesis.
+
 - [ ] **5. Recorder / time-travel proof + the `location` encoding.** `location` becomes
       `"<stage>.<slot>"` (`"EX.0"` / `"EX.1"`) — a plain string, so **no trace-schema change**.
       Prove `follow()` and scrub over a dual-issue recording. Acceptance: recorder suite green;
