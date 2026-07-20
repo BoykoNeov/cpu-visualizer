@@ -8,15 +8,22 @@
  *   - **Against the real engine** — every walk below was hand-derived from the pinned rules BEFORE
  *     it was run, exactly as step 3's timing table was. A cell sequence copied off a failing run is
  *     not a pin, it is a snapshot of a bug.
- *   - **Against hand-built traces** — the parametricity half. No engine we ship emits a lane
- *     (`"EX.0"`) or a deep stage set (`"IF1"`), so nothing in the corpus can exercise the two axes
- *     the map is required to absorb without an API change. A synthetic trace is the only thing that
- *     can, and it is also the sharpest available proof of "derived purely from the trace": these
- *     cases construct no engine, no recorder, and no program at all — just trace literals.
+ *   - **Against hand-built traces** — the parametricity half. When M3 wrote it, no engine we shipped
+ *     emitted a lane (`"EX.0"`) or a deep stage set (`"IF1"`), so nothing in the corpus could
+ *     exercise the two axes the map is required to absorb without an API change. A synthetic trace
+ *     was the only thing that could, and it is still the sharpest available proof of "derived purely
+ *     from the trace": those cases construct no engine, no recorder, and no program at all — just
+ *     trace literals.
+ *   - **Against the real superscalar** (M7 step 6) — the LANE axis stopped being hypothetical at
+ *     M7 step 2b, so the last describe cashes it: a genuine width-2 recording is folded and shown to
+ *     produce shared columns, with width 1 as the control. The hand-built lane case above is kept —
+ *     it proves the FOLD, this proves the ENGINE AND THE FOLD MEET. The deep stage set is still
+ *     unemitted by anything we ship and remains hand-built only.
  */
 
 import { decode } from '@cpu-viz/isa';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import {
   defaultConfig,
   makeRegisters,
@@ -438,9 +445,17 @@ function cycle(
 }
 
 /**
- * The two axes M3 pinned `location` to absorb, driven for real. Nothing we ship emits either yet —
- * that is exactly why these are hand-built: a test that could only run against our own engine would
- * prove the map parametric in precisely the cases where it already is.
+ * The two axes M3 pinned `location` to absorb, driven for real. These are hand-built because a test
+ * that could only run against our own engine would prove the map parametric in precisely the cases
+ * where it already is.
+ *
+ * **Half of this is no longer speculative, and saying so is the point (M7 step 6).** When M3 wrote
+ * these, the header's "no engine we ship emits a lane" was simply true. The superscalar has emitted
+ * `"EX.0"`/`"EX.1"` since M7 step 2b, so the LANE case below is now also reachable for real — and it
+ * is cashed against the actual engine in the last describe of this file. A comment asserting a case
+ * is unreachable is how the case quietly stops being checked, which is the failure shape this
+ * milestone keeps flagging; the deeper stage set (`"IF1"`) is still genuinely unemitted, and stays
+ * hand-built for the original reason.
  */
 describe('parametric from day one — no engine, just traces', () => {
   /**
@@ -626,5 +641,75 @@ describe('parametric from day one — no engine, just traces', () => {
     expect(firstRowAt(map, 1)).toBe(0); // `a` and `b` — the oldest is `a`
     expect(firstRowAt(map, 2)).toBe(1); // `a` has retired; `b` is the oldest left
     expect(firstRowAt(map, 9)).toBe(-1);
+  });
+});
+
+/**
+ * **The hand-built lane claim, CASHED against a real engine (M7 step 6).** This is the whole of the
+ * step's acceptance — "the pipeline map shows two rows sharing a column with zero map changes" —
+ * and until now it was unverified in both directions at once: the engine suite proves width 2 runs
+ * FEWER CYCLES (so something pairs), and the hand-built case above proves the map can RENDER a lane
+ * pairing, but nothing joined them. A map that renders synthetic lanes perfectly and a real
+ * recording that never produces one would leave both halves green and the picture empty.
+ *
+ * That gap had a second symptom worth recording: the describe above still says "nothing we ship
+ * emits either yet", which was true when M3 wrote it and is false as of M7 step 2b. A stale comment
+ * asserting a case is unreachable is how the case stops being checked — the shape this milestone
+ * keeps flagging. Corrected there, cashed here.
+ *
+ * Deliberately asserted as the CONTRAST between the widths rather than as "width 2 pairs". Width 1
+ * is the control: the same program on the same engine, whose map must be the familiar one-occupant
+ * staircase. A test that only looked at width 2 would pass just as well against an engine that
+ * paired at every width, which would mean the toggle taught nothing.
+ */
+describe('two rows share a column — the real superscalar, not a hand-built trace (M7 step 6)', () => {
+  /** `sum-loop` recorded on the real superscalar at a width, through the shell's own load path. */
+  const mapAt = (issueWidth: number): PipelineMap => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const result = loadSource(program.source, () => new SuperscalarProcessor(), {
+      ...defaultConfig(),
+      issueWidth,
+    });
+    if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+    result.loaded.recorder.runToEnd();
+    return buildPipelineMap(result.loaded.recorder.recorded);
+  };
+
+  /** Cycles in which two instructions occupy the SAME stage family — the dual-issue picture. */
+  const sharedStageCycles = (issueWidth: number): number[] => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const result = loadSource(program.source, () => new SuperscalarProcessor(), {
+      ...defaultConfig(),
+      issueWidth,
+    });
+    if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded
+      .filter((t) => {
+        const families = t.instructions.map((i) => stageFamily(i.location));
+        return new Set(families).size < families.length; // a family occurs twice
+      })
+      .map((t) => t.cycle);
+  };
+
+  it('width 2 really does put two instructions in one stage; width 1 never does', () => {
+    // The claim, and its control. If the first were empty the map would be correct and the picture
+    // would be a staircase — the engine pairing in its cycle count while never SHOWING a pair.
+    expect(sharedStageCycles(2).length).toBeGreaterThan(0);
+    expect(sharedStageCycles(1)).toEqual([]);
+  });
+
+  it('the map folds those cycles into shared COLUMNS, with no lane axis of its own', () => {
+    // The map's side of the same fact, in its own vocabulary: a column (cycle) in which two rows
+    // (instructions) both have a cell. `maxInFlight` rising is the compact statement of it — more
+    // instructions alive at once than the 5-stage machine can hold one-per-stage.
+    const wide = mapAt(2);
+    expect(wide.maxInFlight).toBeGreaterThan(mapAt(1).maxInFlight);
+    // The families stay the five stage families — lanes are told apart by ROW, never by hue, which
+    // is the encoding rule the whole lane design rests on (and why `location` needed no schema
+    // change). A sixth "family" here would mean a slot had leaked into the hue key.
+    expect(wide.families.every((f) => ['IF', 'ID', 'EX', 'MEM', 'WB'].includes(f))).toBe(true);
+    // And the slotted spelling really is reaching the map — `stageFamily` is folding something.
+    expect(wide.stages.some((s) => s.includes('.1'))).toBe(true);
   });
 });
