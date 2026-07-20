@@ -128,6 +128,12 @@ const RESULT_ORACLES: Record<
   // unsigned (bltu) → 1 in a1 (x11). Both are non-zero, so neither can pass by matching the
   // reset value — the trap this program exists for is that the two answers disagree.
   'branch-flavors.s': { regs: { 10: -1, 11: 1 } },
+  // Two adjacent never-taken branches, then `li a0, 42`: both `bne x0, x0` fall through, so a0
+  // lands on 42 (M8 step 0). The result is architecturally trivial ON PURPOSE — the program
+  // exists for its TIMING (the `branch-slot` refusal it provokes at width 2, invisible to INV-8
+  // since an in-order superscalar retires in order), and 42 is only here so the equality net has a
+  // non-reset value to check.
+  'paired-branches.s': { regs: { 10: 42 } },
 };
 
 const PROGRAMS = readdirSync(PROGRAMS_DIR)

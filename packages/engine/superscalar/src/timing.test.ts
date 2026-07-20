@@ -483,6 +483,52 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 5 retires, two never-taken branches back to back (M8 step 0) — the corpus's ONLY witness of the
+   * `branch-slot` refusal, which is the whole reason this program was added.
+   *    0 bne x0,x0,done   4 bne x0,x0,done   8 addi a0,x0,42   12 addi a7,x0,10   16 ecall
+   * `done` = 12, never reached (both branches DECLINE: 0 != 0 is false). Every source is x0, so no
+   * RAW ⇒ S = 0 both positions.
+   *
+   * OFF/ON, NOT-TAKEN (width 1): d = 1,2,3,4,5 → cycles = 5 + 4 = 9. STATIC-TAKEN: both branches
+   * bet taken and both mispredict ⇒ P = 2·notTaken(2) = 4, cycles = 13.
+   */
+  'paired-branches.s': {
+    retires: 5,
+    // Two `bne x0, x0` — both DECLINE, neither a `jalr`. P: not-taken 0; taken 2·2 = 4.
+    transfers: { takenPredictable: 0, notTaken: 2, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // nothing taken; `ecall` is the last word — no halt flush
+    stalls: { off: {}, on: {} },
+    misses: { small: 0, large: 0 }, // no loads or stores
+    /**
+     * WIDTH 2 — the `branch-slot` exhibit. The two `bne` are instructions 0 and 1, so they land in
+     * ONE fetch group; the machine has a single branch unit, so the younger is refused for
+     * `branch-slot`:
+     *   1 {bne@0}            — `bne@4` is a second transfer ⇒ BRANCH-SLOT refusal (in SLOT 1, FREE).
+     *   2 {bne@4, addi a0@8} — pair (only one of the two is a transfer).
+     *   3 {addi a7@12, ecall@16} — pair.
+     *   G = 3, Q = 2, L = 0 ⇒ cycles = 3 + 0 + 0 + 0 + 4 = **7**, against 9 at width 1.
+     * The refusal is the slot-1 kind, so it costs nothing (L = 0) — it is exactly the free-refusal
+     * the `S ≠ L` suite counts. OFF is IDENTICAL: no source but x0, so the interlock never fires and
+     * the partition is unchanged. G = 3, Q = 2, L = 0 in both positions; doomed = 0 (nothing taken).
+     * BETTING: under `static-taken` BOTH branches bet taken and BOTH mispredict, and each bet sets
+     *   `killedRest` — squashing its would-be mate BEFORE the branch-slot rule can refuse it. So no
+     *   branch pairs AND no branch is refused; each issues SOLO, its wrong-path mate re-fetched:
+     *     {bne@0} | {bne@4} | {addi a0@8, addi a7@12} | {ecall@16} — G = 4, Q = 1.
+     *   The second branch, which paired with `addi a0` under not-taken, now goes alone (−1 pair), and
+     *   the tail re-packs so `ecall` gets its own trailing group (+1 group). Delta: G +1, Q −1, both
+     *   positions. L stays 0 (betting REMOVED the only refusal), so P alone moves it:
+     *   cycles = 4 + 0 + 4 + 0 + 4 = **12**.
+     */
+    w2: {
+      groups: { off: 3, on: 3 },
+      pairs: { off: 2, on: 2 },
+      blocked: { off: 0, on: 0 },
+      doomed: { off: 0, on: 0 },
+      betting: { off: { groups: 1, pairs: -1 }, on: { groups: 1, pairs: -1 } },
+    },
+  },
+
+  /**
    * 2 prologue + 3 per iteration × 10 + 2 epilogue = 34 retires. `bnez` is taken 9 times.
    *    0 addi a0,x0,0   4 addi t0,x0,10
    *    8 add a0,a0,t0  12 addi t0,t0,-1  16 bne t0,x0,loop

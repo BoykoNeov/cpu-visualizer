@@ -88,7 +88,22 @@ engine, no trace, no view code.
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. The `branch-slot` corpus program.** Author a small `.s` (working name
+- [x] **0. The `branch-slot` corpus program.** DONE 2026-07-20 (2275 tests). `paired-branches.s`
+      shipped: two adjacent `bne x0,x0,done` (instructions 0 and 1), both never-taken so no flush,
+      `a0 = 42`, `ecall` last word. Confirmed against a fresh dump per config (`M:\...\temp\m8\`),
+      not eyeballed. Hand-derived cells added: conformance `RESULT_ORACLES {10:42}`; pipeline `TIMING`
+      (w1: retires 5, no stalls, P not-taken 0 / taken 4 → 9 / 13 cycles); superscalar `TIMING` (same
+      w1 **plus** w2: G 3 / Q 2 / L 0 / doomed 0, `branch-slot` the free slot-1 refusal → **7 cycles**,
+      vs 9 at w1). **A FOURTH table needed the row** beyond the three the plan named: `pairing.test.ts`'s
+      `EXPECTED` w1/w2 headline A/B (`{w1:9, w2:7}`) — its own hard-coded-corpus guard failed loudly,
+      exactly as designed. **The one non-obvious cell was `betting` (static-taken w2), dumped not
+      guessed:** both branches bet taken and both mispredict, and each bet's `killedRest` squashes its
+      would-be mate BEFORE the `branch-slot` rule can refuse it — so under betting NO branch pairs and
+      NO branch is refused; each issues solo, G 3→4, Q 2→1 (`betting {groups:+1, pairs:−1}` both
+      positions), and crucially **L stays 0 in every scheme** (betting removed the only refusal), so
+      `W2_MATRIX`'s scheme-blind `L = blocked[pos]` still balances (4+0+4+0+4 = 12). `npm test` +
+      `lint` + `tsc -b` + `build` all green; INV-8 passes for the new program on every model.
+      Author a small `.s` (working name
       `paired-branches.s`) whose two control transfers are ADJACENT so they land in one issue group
       at width 2 and the older refuses the younger for `branch-slot`. Design it against a fresh dump,
       not by eyeball: the cleanest witness is **two adjacent not-taken branches** (both proceed, no

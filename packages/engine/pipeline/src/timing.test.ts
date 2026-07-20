@@ -417,6 +417,29 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 5 retires, two never-taken branches back to back (M8 step 0). Its whole reason to exist is
+   * WIDTH 2 — see the superscalar table, where it is the corpus's only `branch-slot` witness — but
+   * at width 1 it is an ordinary straight-line run:
+   *    0 bne x0,x0,done   4 bne x0,x0,done   8 addi a0,x0,42   12 addi a7,x0,10   16 ecall
+   * `done` = 12, never reached by a taken branch. Every source is x0, so there is no RAW anywhere
+   * and forwarding buys nothing: S = 0 in both positions.
+   *
+   * NOT-TAKEN: d = 1,2,3,4,5 → cycles = 5 + 4 = 9 (both off and on); P = 2·T = 0.
+   * STATIC-TAKEN: both branches bet taken and both MISPREDICT (x0 == x0), so each costs 2 —
+   *   P = 2·notTaken(2) = 4 ⇒ cycles = 5 + 4 + 0 + 4 = 13. The corpus's sharpest "a bet on a branch
+   *   that never goes is pure loss": two branches, both bet wrong, pinned by the MATRIX below.
+   */
+  'paired-branches.s': {
+    retires: 5,
+    // Two `bne x0, x0` — both DECLINE (0 != 0 is false), neither is a `jalr`. P: not-taken 2·0 = 0;
+    // taken 2·2 = 4 (two lost bets).
+    transfers: { takenPredictable: 0, notTaken: 2, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // nothing taken; `ecall` is the last word — no halt flush
+    stalls: { off: {}, on: {} },
+    misses: { small: 0, large: 0 }, // no loads or stores ⇒ M = 0 at every size
+  },
+
+  /**
    * 2 prologue + 3 per iteration × 10 + 2 epilogue = 34 retires. `bnez` is taken 9 times.
    *    0 addi a0,x0,0   4 addi t0,x0,10
    *    8 add a0,a0,t0  12 addi t0,t0,-1  16 bne t0,x0,loop

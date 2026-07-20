@@ -484,6 +484,9 @@ describe('width 2 is a real machine', () => {
       'branch-flavors.s': { w1: 15, w2: 11 },
       'byte-loads.s': { w1: 10, w2: 9 },
       'call-return.s': { w1: 17, w2: 14 },
+      // M8 step 0: two adjacent never-taken branches. Width 2 pairs the tail behind the one solo
+      // `branch-slot` refusal (9 → 7); the refusal is the free slot-1 kind, so the gain is real.
+      'paired-branches.s': { w1: 9, w2: 7 },
       'sum-loop.s': { w1: 56, w2: 44 },
     };
     const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));
