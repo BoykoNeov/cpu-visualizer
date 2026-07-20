@@ -158,6 +158,60 @@ describe('micro is slot-shaped, and each snapshot is its own', () => {
     }
   });
 
+  /**
+   * **IF is the enforcer of the post-bet kill, and `stageId`'s `killedRest` is a duplicate.**
+   *
+   * Found in M7 step 4 by provoking, not by reading: deleting `killedRest` outright left all 680
+   * suites green, because `stageIf` runs after `stageId` in the reverse walk and clears every seat
+   * of `next.ifId` on a bet or a squash regardless. The redundancy is kept deliberately — ID should
+   * not silently depend on a sibling stage undoing its work — but "deliberate" only holds if the
+   * enforcer is pinned. This is that pin: if IF ever stops clearing, `killedRest` quietly becomes
+   * load-bearing and nothing else in the package would notice.
+   *
+   * The observable consequence: after a bet, ID is empty the next cycle. That empty cycle is the
+   * whole of the `+1` a correct prediction costs, and `timing.test.ts` prices it as such.
+   *
+   * IF, by contrast, is **not** empty — and the first draft of this test wrongly asserted it was.
+   * `ifSlot` is cleared at the edge and then immediately refills from the REDIRECTED pc, so IF
+   * already holds the target while ID is still empty. That is precisely why a correct bet costs one
+   * cycle instead of the mispredict's two, so the right thing to pin is the target's presence, not
+   * an emptiness that never happens. Watched in the trace, not reasoned about.
+   */
+  it('a bet empties ID next cycle, and IF already holds the target', () => {
+    const config: ProcessorConfig = {
+      ...defaultConfig(),
+      issueWidth: 1,
+      branchPrediction: 'static-taken',
+    };
+    const ts = runFile('sum-loop.s', config);
+    const pcs = new Map(
+      ts.flatMap((t) =>
+        t.events.filter((e) => e.type === 'instr-fetch').map((e) => [e.instr, e.pc]),
+      ),
+    );
+    const bets = ts.flatMap((t, c) =>
+      t.events.flatMap((e) =>
+        e.type === 'branch-predicted' ? [{ cycle: c, target: e.target }] : [],
+      ),
+    );
+    expect(bets.length, 'sum-loop bets on every one of its ten branches').toBe(10);
+
+    for (const { cycle, target } of bets) {
+      const after = ts[cycle + 1];
+      if (!after) continue; // the last bet can fall inside the drain
+      // ID is empty: the fall-through that was sitting there died at the clock edge.
+      expect(
+        after.instructions.some((i) => i.location.startsWith('ID.')),
+        `cycle ${cycle + 1}: ID must be empty after a bet`,
+      ).toBe(false);
+      // ...but IF is already fetching the TARGET, which is what makes a bet cheaper than a
+      // mispredict. If this ever reads the fall-through instead, the redirect stopped landing.
+      const inIf = after.instructions.find((i) => i.location.startsWith('IF.'));
+      expect(inIf, `cycle ${cycle + 1}: IF refilled`).toBeDefined();
+      expect(pcs.get(inIf!.id), `cycle ${cycle + 1}: IF holds the bet's target`).toBe(target);
+    }
+  });
+
   it('does not alias slot arrays across cycles — the time-travel bug conformance cannot see', () => {
     // The recorder keeps every cycle, so a shared array would replay as latest-values-everywhere.
     // Final-state conformance is structurally blind to it; only a cross-cycle comparison sees it.

@@ -1,14 +1,17 @@
 # Milestone 7 — in-order superscalar: two instructions per stage
 
-**Status: steps 0–3 COMPLETE, step 4 (the timing matrices — the real net) next. 2026-07-20 (1835
-tests).** Shipped and PROVEN
+**Status: steps 0–4 COMPLETE, step 5 (recorder / time-travel + the `location` encoding) next.
+2026-07-20 (2050 tests).** Shipped and PROVEN
 headlessly: `predict.ts`/`cache.ts` moved down into `engine-common` with every existing suite green
 and zero assertions touched (step 0), and the `issueWidth` config seam with whole-trace inertness
 pinned for all three existing models (step 1), and the width-1 superscalar base, which reproduces M3’s closed form EXACTLY over the whole corpus × config matrix (step 2a), and **the pairing logic —
 sliding/greedy issue, the three refusal verdicts, intra-pair forwarding and lane-aware `squash` —
 which makes width 2 strictly faster than width 1 on all 7 corpus programs with identical
 architectural results (step 2b), and the INV-8 differential across all 36 configs at both widths,
-whose real deliverable was teaching `configLabel` the width axis (step 3).** **Nothing is
+whose real deliverable was teaching `configLabel` the width axis (step 3), and **the DERIVED width-2
+timing matrix — `cycles = G + L + P + M + 4`, every cell of 7 programs × 2 widths × 2 forwarding × 3
+prediction × 3 cache derived rather than observed, confirming all six provisional step-2b pins
+(step 4)**.** **Nothing is
 browser-verified yet, because nothing
 user-visible exists yet** — the first view step is 6. Scope, the reuse strategy, the width toggle,
 the view depth, and the sliding/greedy issue grouping were decided with the user (see "Decisions to
@@ -290,22 +293,78 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       not a guard, one axis further down.
       Acceptance met: 1835 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
-- [ ] **4. Timing matrices — the real correctness net.** Closed-form cycle counts for dual-issue,
+- [x] **4. Timing matrices — the real correctness net.** Closed-form cycle counts for dual-issue,
       in the shape M6 pinned (`cycles = N + 4 + S + P + M`). Dual-issue adds a pairing term; the
       derivation is this step's actual deliverable, and a number that cannot be derived is a bug
       or a rule that was never pinned. Acceptance: a full matrix of exact cycle counts per
       (program × width × config), each one asserted, none of them "whatever the engine printed."
 
-      > **⚠ DO NOT COPY STEP 2b's WIDTH-2 NUMBERS FORWARD.** `pairing.test.ts` pins an exact
-      > width-2 cycle count per corpus program, and six of the seven were taken from **the engine's
-      > own output**. That table catches future DRIFT; it does not prove the numbers are RIGHT, and
-      > nothing else in the package covers the gap — width 1 is unaffected by pairing, and final
-      > architectural state is identical at both widths by construction. A consistent one-bubble
-      > bug in the issue logic is green everywhere today. **Derive all seven independently; a
-      > derived number that disagrees with a step-2b pin is the whole value of this step.** The one
-      > already derived by hand is `sum-loop.s = 44` (loop period 4 from the `d_b + 3` mispredict
-      > rule; the tenth branch falls through so its pair-mate survives; `d_ecall = 40`) — reproduce
-      > it independently rather than trusting this parenthesis.
+      ✅ **Done (2026-07-20, 1835 → 2050 tests, +215.)** The closed form is
+
+      > **`cycles = G + L + P + M + 4`** — G = issue-group cycles, L = BLOCKING stalls,
+      > P = the speculation penalty, M = misses × penalty.
+
+      **The `+4` is width-invariant** (pipeline depth, not width), so the entire problem reduces to
+      deriving the issue schedule. At width 1, `G = N` and `L = S`, so it **reduces to M3's
+      `N + 4 + S + P + M`** — asserted, not hand-waved. The matrix is 7 programs × 2 widths × 2
+      forwarding × 3 prediction × 3 cache, every cell derived, with each term (`G`, `Q`, `L`, `P`,
+      `M`, `N`) asserted **separately** so a failing cell names the term that moved.
+
+      **The headline finding: nothing disagreed.** All six provisional step-2b pins are CONFIRMED.
+      That is a real result rather than a non-event, because the route was genuinely independent —
+      the derivation was validated by predicting all seven **forwarding-OFF** counts, which had no
+      pin to copy, *before* the engine was run, and all seven were right. The pins' warning comment
+      in `pairing.test.ts` has been rewritten accordingly.
+
+      **Five findings worth carrying.**
+      **(a) `S` splits at width 2, and half of it is FREE.** At width 1 a `stall` event is always one
+      lost cycle. At width 2 a refusal in **slot 1** leaves slot 0 issuing, so the group merely ends
+      early and nothing is lost. `call-return.s` with forwarding off fires such a refusal and runs at
+      exactly the same 14 cycles as with it on. Hence the term is `L` (blocking stalls), counted
+      DIRECTLY as "a stall event fired and nothing issued" — **never as a residual**, which would
+      have made the closed-form assertion `0 === 0` and passed for any engine. `array-sum-twice.s`
+      fires 50 free refusals; a reader who called the stall-event total "S" would over-charge it.
+      **(b) `G` and `Q` are NOT prediction-invariant — the plan did not predict this.** Under
+      `static-taken` a betting branch sets `killedRest`, so **every bet from slot 0 with a live mate
+      costs a pair**. A CORRECT bet kills a mate that was doomed anyway (`Q−1`, G unchanged); a WRONG
+      bet kills a mate on the correct path, which is re-issued and costs a group **iff it cannot
+      re-pair** — `array-sum.s`'s `lui t3` cannot (intra-pair RAW with `addi t3`) so `G+1`, while
+      `sum-loop.s`'s `addi a7` re-pairs with `ecall` and costs nothing. A bet from slot 1 costs
+      neither (`branch-flavors.s`, where both branches sit in slot 1). It is encoded as that RULE
+      plus deltas, not as a 28-cell table of observations.
+      **(c) `P` and `M` ARE width-invariant, and that is why `penaltyOf` carries over unchanged.** A
+      mispredict costs 2 and a correct bet 1 at both widths — the reasons are about the redirect's
+      clock edge, not about how many instructions travel abreast. `M` is invariant because the
+      mem-port rule keeps MEM single-lane, so width cannot reorder the address stream. `L` is
+      prediction- AND cache-invariant: a miss freezes IF/ID/EX/MEM *together* so producer-consumer
+      distances survive it, and the freeze emits no `stall` event at all, so its cycles are charged
+      to `M` and never to `L`. All three asserted rather than assumed.
+      **(d) `killedRest`'s slide-suppression is DEAD CODE, found by provoking.** Deleting the flag
+      outright left all 680 package tests green: `stageIf` runs after `stageId` in the reverse walk
+      and clears every seat of `next.ifId` on a bet or squash regardless. The `break` is load-bearing;
+      the flag is not. The code is KEPT (ID should not silently depend on a sibling stage undoing its
+      work) but its comment, which claimed the kill outright, now says who really does it — and
+      `processor.test.ts` pins IF as the enforcer, so the redundancy cannot quietly become
+      load-bearing again. **This is the M2-5e shape exactly: a claim with a rationalization attached.**
+      **(e) The observe-then-assert rule caught two of my own claims, both about SLOTS.** First:
+      "every taken transfer strands a doomed mate" is FALSE — `branch-flavors.s` has 1 taken transfer
+      and 0 doomed mates, because both its branches issue from slot 1 and the fall-through dies in IF
+      without ever consuming a slot. Second: "after a bet, ID and IF are both empty" is half false —
+      IF is cleared and then *immediately refills from the redirected pc*, which is precisely why a
+      bet costs 1 and not 2. Both were reasoned, both were wrong, both were fixed by dumping the
+      trace. **Step 2b's warning generalizes: any claim naming a slot must be watched.**
+
+      **What a green here is worth, stated exactly.** Anchored OUTSIDE the engine: the width-1 column
+      (M3's numbers), `P` (`penaltyOf`), `M` (the miss table), and **`sum-loop.s = 44`, which this
+      plan derived independently before the suite existed** — the one deep external check on the
+      pairing concept, and it holds. Internal-consistency only: the width-2 `G`/`Q` for the other six.
+      The suite says so in its own header rather than overclaiming.
+      **The net was PROVOKED, not trusted.** A spurious extra pairing refusal fails 24 assertions
+      across all 18 `sum-loop.s` matrix cells — while `differential.test.ts` stays **green**, cashing
+      the plan's warning that INV-8 is a false safety net here. (A first provocation refusing a `lui`
+      partner was a no-op, because the `la` idiom already refuses it for intra-pair RAW — a reminder
+      that a provocation must be confirmed to bite before it proves anything.)
+      Acceptance met: 2050 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
 - [ ] **5. Recorder / time-travel proof + the `location` encoding.** `location` becomes
       `"<stage>.<slot>"` (`"EX.0"` / `"EX.1"`) — a plain string, so **no trace-schema change**.
@@ -341,8 +400,11 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
 - [ ] The readout names the refusal reason, and it agrees with what the map's shape shows.
 - [ ] IPC rises between the two widths, and its value equals retires ÷ cycles computed by hand.
 - [ ] All suites green; `npm run lint`, `tsc -b`, and `npm run build` green.
-- [ ] INV-8 differential passes on the full corpus at both widths × every config combination.
-- [ ] Every exact cycle count in step 4's matrix is derived from a stated rule, not observed.
+- [x] INV-8 differential passes on the full corpus at both widths × every config combination.
+      ✅ step 3 — 36 configs × 7 programs = 252 cases.
+- [x] Every exact cycle count in step 4's matrix is derived from a stated rule, not observed.
+      ✅ step 4 — and the rules are cited per cell (the three refusal verdicts, the `d_b + 3`
+      mispredict rule, the bet-kills-its-mate rule), never "because `stageId` does X".
 
 ## How this milestone can lie to itself
 

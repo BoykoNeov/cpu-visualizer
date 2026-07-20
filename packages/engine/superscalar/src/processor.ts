@@ -1348,15 +1348,24 @@ export class SuperscalarProcessor implements Processor {
       group.push(fd);
       issued = s + 1;
 
-      // The group ENDS HERE, and what is behind it dies rather than slides. Both cases are the same
-      // fact: this instruction has just declared that the sequential path behind it is not the path.
-      // A halt says so architecturally, a bet says so speculatively, and in either case the ID slot
-      // behind them holds a fall-through that must not survive into next cycle's group.
+      // The group ENDS HERE. Both cases are the same fact: this instruction has just declared that
+      // the sequential path behind it is not the path. A halt says so architecturally, a bet says so
+      // speculatively, and in either case the ID slot behind them holds a fall-through that must not
+      // survive into next cycle's group.
       //
       // This is why a betting branch does not need a fourth pairing rule refusing it a partner:
       // pairing with one is harmless because the partner is killed either way. Refusing to pair
       // would have left the same instruction stranded in IF/ID as a survivor — still wrong-path,
       // still needing to die, just via a longer route.
+      //
+      // **The `break` is load-bearing; `killedRest` is a DELIBERATE DUPLICATE.** The actual kill is
+      // done one stage later: `stageIf` runs after us in the reverse walk and, on a bet or a squash,
+      // clears every seat of `next.ifId` outright — so the slide below is overwritten whatever this
+      // flag says. That was established by deleting the flag and watching all suites stay green, not
+      // by reading the code; it is kept because the alternative is that ID's correctness depends
+      // silently on a sibling stage running afterwards and undoing its work. `processor.test.ts`
+      // pins IF as the enforcer, so if that clearing is ever removed the reason this looks redundant
+      // fails loudly rather than becoming load-bearing again in silence.
       if (ctx.squash !== null || ctx.bet !== null) {
         killedRest = true;
         break;
