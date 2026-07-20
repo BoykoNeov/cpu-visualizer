@@ -66,6 +66,14 @@ export interface LessonOpening {
   branchPrediction: BranchPrediction;
   /** The cache geometry to record in, or `null` for no D-cache (M6 step 5). */
   cache: ProcessorConfig['cache'];
+  /**
+   * The issue width to record at (M7 step 6) — 1 or 2. **Always a number here, even though
+   * `ProcessorConfig.issueWidth` is optional**: a lesson that declares a config but no width means
+   * width 1, which is what the engine itself reads it as (`config.issueWidth ?? 1`). Keeping the
+   * opening total rather than optional is what stops "honored WHOLE" from quietly acquiring an
+   * exception — see {@link lessonOpening}.
+   */
+  issueWidth: number;
 }
 
 /**
@@ -165,6 +173,7 @@ export function lessonOpening(
     forwarding: boolean;
     branchPrediction: BranchPrediction;
     cache: ProcessorConfig['cache'];
+    issueWidth: number;
   },
 ): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
@@ -179,5 +188,14 @@ export function lessonOpening(
     forwarding: lesson.config.forwarding,
     branchPrediction: lesson.config.branchPrediction,
     cache: lesson.config.cache,
+    // The FOURTH knob (M7 step 6), and the first one the config type makes OPTIONAL — which is
+    // exactly why it is spelled out here rather than left off. `issueWidth` follows `seed`'s
+    // precedent in `ProcessorConfig` (present only if a model needs it), so a declared config can
+    // omit it; omitting it MEANS width 1, the reading the engine itself applies (`?? 1`). Dropping
+    // the field instead would make a declared config leave the user's width untouched — a per-knob
+    // rule smuggled into an all-or-nothing one, which is precisely the shape M4 step 4 shipped and
+    // the browser caught (a lesson's own prose quoting cycle counts from a machine the reader was
+    // not on). A superscalar lesson does not exist yet; the rule has to be right before it does.
+    issueWidth: lesson.config.issueWidth ?? 1,
   };
 }

@@ -27,6 +27,7 @@ export default defineConfig({
       // have quietly shown a picture that no longer matched the code. The comment above already
       // claimed this list mirrors vitest.config.ts; now it does.
       '@cpu-viz/engine-pipeline': pkg('../engine/pipeline/src/index.ts'),
+      '@cpu-viz/engine-superscalar': pkg('../engine/superscalar/src/index.ts'),
     },
   },
 });

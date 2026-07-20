@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultConfig } from '@cpu-viz/trace';
+import { defaultConfig, type ProcessorCapabilities } from '@cpu-viz/trace';
 import { MODELS, modelById, DEFAULT_MODEL_ID } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
@@ -12,8 +12,13 @@ import { loadSource } from './simulator';
  * that make the table's claims checkable rather than merely asserted.
  */
 describe('the model table', () => {
-  it('lists the three microarchitectures built so far, with unique ids', () => {
-    expect(MODELS.map((m) => m.id)).toEqual(['single-cycle', 'multi-cycle', 'pipeline']);
+  it('lists the four microarchitectures built so far, with unique ids', () => {
+    expect(MODELS.map((m) => m.id)).toEqual([
+      'single-cycle',
+      'multi-cycle',
+      'pipeline',
+      'superscalar',
+    ]);
   });
 
   it('defaults to single-cycle — the simplest first teaching model', () => {
@@ -51,25 +56,29 @@ describe('the model table', () => {
   }
 
   /**
-   * The forwarding toggle is gated on this flag, so it is what decides whether the control is
-   * shown at all. Pinned as an exact set rather than per-model asserts: the interesting claim is
-   * that exactly ONE model honors the config today — a new model quietly arriving with the flag
-   * true (or the pipeline losing it) is precisely what should fail here.
+   * Each config toggle is gated on its capability flag, so these flags are what decide whether a
+   * control is shown at all. Pinned as exact SETS rather than per-model asserts: the claim worth
+   * failing on is which models honor a knob, so a new model quietly arriving with a flag true (or
+   * an existing one losing it) reddens here.
+   *
+   * **All three lists said "exactly one — the pipeline" until M7 step 6, and the superscalar is why
+   * they now name two.** That is the seam working rather than eroding: the superscalar honors
+   * forwarding, prediction and the cache for real (it has hazards, it bets, it caches), so a shell
+   * that showed it fewer controls than the pipeline would be lying about the machine. Written as a
+   * per-knob sweep so the sets cannot drift apart silently — the failure mode being one model
+   * gaining a knob in three places and a fourth being forgotten.
    */
-  it('exactly one model honors ProcessorConfig.forwarding — the pipeline', () => {
-    const configurable = MODELS.filter((m) => m.capabilities.configurableForwarding);
-    expect(configurable.map((m) => m.id)).toEqual(['pipeline']);
-  });
-
-  /**
-   * The cache toggle's gate (M6 step 5), mirroring forwarding above: this flag decides whether the
-   * control renders at all, so the interesting claim is again that exactly ONE model honors the
-   * cache today. A second model quietly arriving with `configurableCache` true (or the pipeline
-   * losing it) is what should redden here — the same shape that guards the other two knobs.
-   */
-  it('exactly one model honors ProcessorConfig.cache — the pipeline', () => {
-    const configurable = MODELS.filter((m) => m.capabilities.configurableCache);
-    expect(configurable.map((m) => m.id)).toEqual(['pipeline']);
+  it('names exactly which models honor each config knob', () => {
+    const honoring = (flag: (c: ProcessorCapabilities) => boolean) =>
+      MODELS.filter((m) => flag(m.capabilities)).map((m) => m.id);
+    expect(honoring((c) => c.configurableForwarding)).toEqual(['pipeline', 'superscalar']);
+    expect(honoring((c) => c.configurableBranchPrediction)).toEqual(['pipeline', 'superscalar']);
+    expect(honoring((c) => c.configurableCache)).toEqual(['pipeline', 'superscalar']);
+    // The one knob that is NOT shared, and the reason the width toggle appears on exactly one model
+    // (M7 step 6). The other three engines do not merely leave `issueWidth` unmoved — they ignore it,
+    // pinned as whole-trace inertness in each of their suites at step 1. A second model arriving with
+    // this true without that proof is what should fail here.
+    expect(honoring((c) => c.configurableIssueWidth)).toEqual(['superscalar']);
   });
 
   /**
@@ -84,6 +93,13 @@ describe('the model table', () => {
       ['single-cycle', 'single-cycle'],
       ['multi-cycle', 'multi-cycle'],
       ['pipeline', 'pipeline'],
+      // `'none'` is the HONEST value at M7 step 6, not an oversight: the superscalar's diagram is
+      // step 7's deliverable, and `'none'` means "no diagram yet" (App draws the placeholder). The
+      // failure this table exists to catch is a row pointing at the WRONG diagram — `'none'` points
+      // at none, which cannot draw a contradictory picture (INV-5). Flipping this to `'superscalar'`
+      // is step 7's, together with the union member and App's dispatch arm; doing it here would make
+      // this test assert a bespoke diagram that nothing draws.
+      ['superscalar', 'none'],
     ]);
   });
 

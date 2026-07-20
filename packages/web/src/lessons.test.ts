@@ -149,6 +149,20 @@ const CONFIG_AXES: readonly ConfigAxis[] = [
       { label: 'cache large', set: (c) => ({ ...c, cache: CACHE_LARGE }) },
     ],
   },
+  {
+    // The fourth axis (M7 step 6), added the step that makes it REACHABLE rather than the step that
+    // will first use it — which is the ownership rule this helper's docblock states, and the rule
+    // that was broken twice before (the sweep read `configurableForwarding` alone while claiming to
+    // derive from capabilities, and stayed silently at a fraction of coverage). No shipped lesson
+    // targets the superscalar today, so `honored` is false for every lesson's model and this axis
+    // contributes nothing yet. That is exactly why it goes in NOW: the first superscalar lesson
+    // would otherwise be swept at half coverage, and nothing would say so.
+    honored: (caps) => caps.configurableIssueWidth,
+    positions: [
+      { label: '1-wide', set: (c) => ({ ...c, issueWidth: 1 }) },
+      { label: '2-wide', set: (c) => ({ ...c, issueWidth: 2 }) },
+    ],
+  },
 ];
 
 /**
@@ -344,6 +358,31 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
       'forwarding on, predict taken, cache small',
       'forwarding on, predict taken, cache large',
     ]);
+  });
+
+  /**
+   * The superscalar's own count (M7 step 6) — and the case that gives this guard something to fail
+   * on, because it is the ONLY model that reaches the width axis. Without it the axis could be
+   * dropped, mis-gated, or given one position and every test here would stay green: `positionsFor`
+   * is only ever called with a lesson's declared model, and no shipped lesson declares this one.
+   * That is the precise shape of the two staleness bugs recorded above, so the case list is
+   * extended to reach the collision rather than left to the first superscalar lesson to discover.
+   *
+   * Four honored knobs ⇒ 2 × 2 × 3 × 2 = twenty-four machines. Asserted as a COUNT plus the axis
+   * order and the endpoints, not twenty-four spelled-out labels: at this size a literal list stops
+   * being read and starts being pasted, and what is worth pinning is that all four axes are in the
+   * product and the width is the innermost one.
+   */
+  it('gives the superscalar all FOUR knobs it honors — the width axis included', () => {
+    const labels = positionsFor('superscalar').map((p) => p.label);
+    expect(labels).toHaveLength(24);
+    expect(labels[0]).toBe('forwarding off, predict not-taken, cache off, 1-wide');
+    expect(labels[1]).toBe('forwarding off, predict not-taken, cache off, 2-wide');
+    expect(labels[23]).toBe('forwarding on, predict taken, cache large, 2-wide');
+    // Non-vacuity: the width genuinely varies across the sweep rather than every position carrying
+    // the same value under two different labels — the failure a length check alone cannot see.
+    const widths = new Set(positionsFor('superscalar').map((p) => p.config.issueWidth));
+    expect(widths).toEqual(new Set([1, 2]));
   });
 
   it('the positions are DISTINCT configs, not twelve labels on one machine', () => {

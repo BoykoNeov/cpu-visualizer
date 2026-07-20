@@ -87,14 +87,17 @@ describe('a lesson opens on the model + config it declares', () => {
     forwarding: boolean,
     branchPrediction: BranchPrediction = 'none',
     cache: ProcessorConfig['cache'] = null,
+    issueWidth = 1,
   ): {
     forwarding: boolean;
     branchPrediction: BranchPrediction;
     cache: ProcessorConfig['cache'];
+    issueWidth: number;
   } => ({
     forwarding,
     branchPrediction,
     cache,
+    issueWidth,
   });
 
   it('honors the declared model — a lesson is prose about ONE machine, not just anchors', () => {
@@ -115,6 +118,7 @@ describe('a lesson opens on the model + config it declares', () => {
       forwarding: false,
       branchPrediction: 'none',
       cache: null,
+      issueWidth: 1,
     });
   });
 
@@ -133,6 +137,13 @@ describe('a lesson opens on the model + config it declares', () => {
     // would silently switch off exactly the user who had turned a cache on.
     expect(defaultConfig().cache).toBeNull(); // the value a naive fallback would force
     expect(lessonOpening(LESSON, arrivingWith(false, 'none', CACHE_SMALL)).cache).toBe(CACHE_SMALL);
+    // The width is the FOURTH knob under the same rule (M7 step 6), and the trap is sharper here
+    // than for the other three: `ProcessorConfig.issueWidth` is OPTIONAL, so `defaultConfig()`
+    // leaves it undefined and the shell supplies the 1 — meaning a naive fallback would not even
+    // look like a fallback, it would look like the field simply not being carried. A reader at
+    // width 2 must still be at width 2.
+    expect(defaultConfig().issueWidth).toBeUndefined(); // there is no default to fall back TO
+    expect(lessonOpening(LESSON, arrivingWith(false, 'none', null, 2)).issueWidth).toBe(2);
   });
 
   /**
@@ -157,9 +168,10 @@ describe('a lesson opens on the model + config it declares', () => {
         forwarding: false,
         branchPrediction: 'static-not-taken',
       }),
-      // The user arrived with ALL THREE knobs against the lesson — including a cache the declared
-      // config (default, `cache: null`) must switch back off.
-      arrivingWith(true, 'static-taken', CACHE_SMALL),
+      // The user arrived with ALL FOUR knobs against the lesson — including a cache the declared
+      // config (default, `cache: null`) must switch back off, and a width-2 machine it must return
+      // to 1.
+      arrivingWith(true, 'static-taken', CACHE_SMALL, 2),
     );
     expect(opening.forwarding, 'the subject knob is pinned').toBe(false);
     expect(opening.branchPrediction, 'the CONTROL knob is pinned too').toBe('static-not-taken');
@@ -167,6 +179,15 @@ describe('a lesson opens on the model + config it declares', () => {
       opening.cache,
       'the cache is a control knob too — reset to the declared null',
     ).toBeNull();
+    // The width is where "honored WHOLE" is most easily lost, because the declared config here does
+    // not MENTION `issueWidth` — it is optional, so a config can be total and still omit it. Omitting
+    // it means width 1 (the engine's own `?? 1`), NOT "leave the user where they were": that second
+    // reading is the per-knob rule M4 step 4 shipped and the browser caught, and it would park a
+    // reader of a 1-wide lesson on a 2-wide machine whose cycle counts contradict the prose.
+    expect(
+      opening.issueWidth,
+      'an omitted width in a DECLARED config means 1, not "leave it alone"',
+    ).toBe(1);
   });
 
   it('honors a declared prediction scheme — the field is live the moment a lesson uses it', () => {

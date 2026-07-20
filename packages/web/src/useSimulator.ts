@@ -100,6 +100,23 @@ export interface Simulator {
    * cache, then add one and watch the misses (and the size flip) appear.
    */
   cache: CacheConfig | null;
+  /**
+   * How many instructions the driving engine may issue per cycle (`ProcessorConfig.issueWidth`) —
+   * M7's toggle, and the FOURTH to ride M3's config seam with no widening at all: session level,
+   * handed to every model, gated only as a CONTROL on `capabilities.configurableIssueWidth`.
+   *
+   * Two positions, two real machines. The 1-wide position is not the M3 pipeline wearing a new name
+   * — it runs the superscalar's issue logic and simply never finds a pair — which is what makes the
+   * flip a fair same-program A/B rather than a model switch in disguise. Opens at **1**: the
+   * machine's own degenerate case, so the first picture matches the pipeline the reader just
+   * learned, and the flip to 2 is the reveal (`sum-loop.s` 56 → 44 cycles).
+   *
+   * Always a NUMBER here even though the config field is optional: the shell holds a position, and
+   * "no opinion" is not one of the positions a toggle can be in. It writes `issueWidth: 1`
+   * explicitly for every model, which every pre-M7 engine ignores — pinned as whole-trace inertness
+   * in each model's suite at step 1, not assumed.
+   */
+  issueWidth: number;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -207,6 +224,18 @@ export interface Simulator {
    * every comparison.
    */
   setCache: (geometry: CacheConfig | null) => void;
+  /**
+   * Set `ProcessorConfig.issueWidth` and re-record the current source under it — the same shape as
+   * {@link setForwarding}, for the same reason: the trace genuinely changes (the same instructions
+   * pair up and the run gets shorter), so a fresh recording IS the mechanism.
+   *
+   * The no-op guard is a plain `===` on the number, which needs none of {@link setCache}'s
+   * reasoning about object identity or {@link setBranchPrediction}'s about two names for one
+   * machine: a width is a primitive, and each of its two values is a distinct machine. Without the
+   * guard, clicking the already-lit position would discard the cursor to rebuild an identical
+   * timeline.
+   */
+  setIssueWidth: (width: number) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -263,6 +292,13 @@ export function useSimulator(): Simulator {
   // then add one and watch the misses appear, then flip the size and watch the straddler slow down.
   const [cache, setCacheState] = useState<CacheConfig | null>(defaultConfig().cache);
   const cacheRef = useRef(cache);
+  // Issue width, mirroring the three knobs above (M7 step 6). Opens on 1 — but written as a literal
+  // rather than read from `defaultConfig()`, unlike prediction and the cache, and the difference is
+  // real: `issueWidth` is OPTIONAL in `ProcessorConfig`, so `defaultConfig()` leaves it `undefined`,
+  // and "undefined" is not a position a two-position toggle can be lit in. The shell holds a
+  // position; the engine's own `?? 1` is what makes that position agree with the default.
+  const [issueWidth, setIssueWidthState] = useState(1);
+  const issueWidthRef = useRef(issueWidth);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -278,6 +314,7 @@ export function useSimulator(): Simulator {
         forwarding: forwardingRef.current,
         branchPrediction: branchPredictionRef.current,
         cache: cacheRef.current,
+        issueWidth: issueWidthRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -339,6 +376,7 @@ export function useSimulator(): Simulator {
         forwarding: forwardingRef.current,
         branchPrediction: branchPredictionRef.current,
         cache: cacheRef.current,
+        issueWidth: issueWidthRef.current,
       });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
@@ -349,6 +387,8 @@ export function useSimulator(): Simulator {
       setBranchPredictionState(opening.branchPrediction);
       cacheRef.current = opening.cache;
       setCacheState(opening.cache);
+      issueWidthRef.current = opening.issueWidth;
+      setIssueWidthState(opening.issueWidth);
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -429,6 +469,23 @@ export function useSimulator(): Simulator {
     [loadInto],
   );
 
+  const setIssueWidth = useCallback(
+    (width: number) => {
+      if (width === issueWidthRef.current) return; // already there — keep the cursor where it is
+      issueWidthRef.current = width; // read by loadInto below (and every later load)
+      setIssueWidthState(width);
+      // Re-record whatever is loaded at the new width. Same shape as `setForwarding`: the source is
+      // the exact running text, so re-loading keeps the session and any active lesson intact while
+      // changing only how many instructions the machine issues per cycle. The lesson re-anchors
+      // against the new recording — its steps anchor to EVENTS, so they survive the cycle numbers
+      // moving underneath them (INV-6), which they do a lot here: width is a pure TIMING knob, so
+      // every architectural result is byte-identical and only the schedule moves.
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
   // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
   // counting loop is the clearest first teaching example; `add` (which sorts first) halts
   // by running off text-end, so its final pc is an out-of-range value that reads as odd.
@@ -480,6 +537,7 @@ export function useSimulator(): Simulator {
     forwarding,
     branchPrediction,
     cache,
+    issueWidth,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -499,6 +557,7 @@ export function useSimulator(): Simulator {
     setForwarding,
     setBranchPrediction,
     setCache,
+    setIssueWidth,
     select,
     startLesson,
     loadEdited,

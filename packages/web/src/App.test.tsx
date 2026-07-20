@@ -26,7 +26,7 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { PredictionToggle } from './App';
+import { PredictionToggle, WidthToggle } from './App';
 import type { BranchPrediction } from './session';
 
 const noop = (): void => {};
@@ -58,5 +58,44 @@ describe('the prediction control has two positions, not one per scheme name (M4 
     // `defaultConfig()` opens on, so a shell that lit neither position (or both) would greet every
     // user with a toggle showing no state at all, on the pipeline's very first load.
     expect(litPosition(render('none'))).toBe('not taken');
+  });
+});
+
+/**
+ * The issue-width control's SHAPE (M7 step 6) — the fourth config toggle, pinned in the same place
+ * and for the same reason as prediction's above.
+ *
+ * The decision this pins is the DEFAULT POSITION, which is the one thing about this control that is
+ * a real choice rather than a consequence. The width opens at **1**: the superscalar's own
+ * degenerate case, so a reader arriving from the pipeline sees the machine they just learned, and
+ * the flip to 2 is the reveal rather than the starting state. A control that opened 2-wide would
+ * still be correct and would silently throw away the milestone's whole A/B.
+ *
+ * ## The wiring gap, MEASURED for this knob rather than inherited from the note above
+ *
+ * The header's account of what this suite cannot see holds here, and it was re-provoked rather than
+ * assumed: deleting `issueWidth` from `loadInto`'s config left **all 581 web tests green**. So this
+ * toggle, too, could be pure decoration and nothing headless would notice.
+ *
+ * It is worse for width than for the three knobs before it, and worth stating plainly:
+ * `ProcessorConfig.issueWidth` is OPTIONAL, so dropping it is not a type error and does not throw —
+ * the engine's own `?? 1` quietly runs BOTH positions at width 1. The other three are required
+ * fields, and deleting one at least reddens `tsc`. Which makes the browser eyeball not merely this
+ * step's real net but the ONLY thing standing between a working toggle and a decorative one.
+ */
+describe('the width control opens on the degenerate case (M7 step 6)', () => {
+  const renderWidth = (width: number): string =>
+    renderToStaticMarkup(<WidthToggle width={width} setWidth={noop} />);
+
+  it('renders exactly two positions — two widths, two real machines', () => {
+    expect((renderWidth(1).match(/<button/g) ?? []).length).toBe(2);
+  });
+
+  it('lights 1-wide at the width the shell opens on, and 2-wide after the flip', () => {
+    // `useSimulator` seeds `issueWidth` to 1, so the first of these is what every reader sees on
+    // selecting the superscalar. If it lit neither (or both), the model's first impression would be
+    // a toggle showing no state — the failure the prediction control's `'none'` case guards against.
+    expect(litPosition(renderWidth(1))).toBe('1-wide');
+    expect(litPosition(renderWidth(2))).toBe('2-wide');
   });
 });

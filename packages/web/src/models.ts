@@ -22,6 +22,12 @@ import {
   SINGLE_CYCLE_CAPABILITIES,
   SINGLE_CYCLE_MODEL_ID,
 } from '@cpu-viz/engine-single-cycle';
+import {
+  SuperscalarProcessor,
+  SUPERSCALAR_CAPABILITIES,
+  SUPERSCALAR_MODEL_DESCRIPTION,
+  SUPERSCALAR_MODEL_ID,
+} from '@cpu-viz/engine-superscalar';
 import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
 
 /**
@@ -84,6 +90,25 @@ export const MODELS: readonly ModelChoice[] = [
     // would light it into a contradictory picture (INV-5).
     datapath: 'pipeline',
     capabilities: PIPELINE_CAPABILITIES,
+  },
+  {
+    id: SUPERSCALAR_MODEL_ID,
+    label: 'Superscalar',
+    // The engine's OWN one-liner rather than a sentence written here, unlike the three rows above.
+    // Those predate the constant; this model exports one, and a description re-typed in the shell is
+    // a second place for the same claim to go stale.
+    description: SUPERSCALAR_MODEL_DESCRIPTION,
+    make: () => new SuperscalarProcessor(),
+    // `'none'` — no diagram YET, and that is the honest value at M7 step 6 rather than a placeholder
+    // for one. `'superscalar'` joins the union in step 7, when `datapath-superscalar.ts` exists and
+    // App can dispatch to it; declaring the kind a step early would make this discriminator (and the
+    // table test that pins it) assert a bespoke diagram that nothing draws, while App silently fell
+    // through to `DatapathPlaceholder`. A `DatapathKind` value means "a diagram of this kind exists".
+    // Everything else this model needs is already free via INV-3: the picker, transport, panels,
+    // scrub, lessons, the sandbox fork, and the pipeline map (gated on overlap in the TRACE, so a
+    // model whose instructions share a stage gets it without this file naming it).
+    datapath: 'none',
+    capabilities: SUPERSCALAR_CAPABILITIES,
   },
 ];
 

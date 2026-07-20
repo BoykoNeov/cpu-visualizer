@@ -18,7 +18,8 @@
       "@cpu-viz/engine-reference": ["../engine/reference/src/index.ts"],
       "@cpu-viz/engine-single-cycle": ["../engine/single-cycle/src/index.ts"],
       "@cpu-viz/engine-multi-cycle": ["../engine/multi-cycle/src/index.ts"],
-      "@cpu-viz/engine-pipeline": ["../engine/pipeline/src/index.ts"]
+      "@cpu-viz/engine-pipeline": ["../engine/pipeline/src/index.ts"],
+      "@cpu-viz/engine-superscalar": ["../engine/superscalar/src/index.ts"]
     }
   },
   "include": ["src"]

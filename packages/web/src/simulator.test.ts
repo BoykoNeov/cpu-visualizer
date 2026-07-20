@@ -1,6 +1,7 @@
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
+import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import {
   defaultConfig,
   type CycleTrace,
@@ -494,5 +495,85 @@ describe('loadSource cache config — the size flip on the live scrub bar (M6 st
     };
     expect(cyclesSingleCycle(CACHE_SMALL)).toBe(cyclesSingleCycle(null));
     expect(cyclesSingleCycle(CACHE_LARGE)).toBe(cyclesSingleCycle(null));
+  });
+});
+
+/**
+ * The issue-width toggle (M7 step 6) — the milestone's flagship interaction, and the FOURTH knob to
+ * ride M3's config seam. Headless half of the step's acceptance ("flip the width without reloading
+ * and the cycle count drops"); rows visibly pairing in the map is the browser eyeball's job.
+ *
+ * The seam test is the one the other three knobs each made, and it matters more here than for any of
+ * them: `issueWidth` is OPTIONAL in `ProcessorConfig`, so a shell that dropped the field on the floor
+ * would not fail to type-check and would not throw — the engine's `?? 1` would quietly run BOTH
+ * positions at width 1. That is a toggle that looks like it works, on a tier whose entire content is
+ * timing. The other three knobs are required fields and would at least have surfaced as a type error.
+ *
+ * The absolute figures belong to the engine's `timing.test.ts`, which derives every one of them in
+ * closed form (`cycles = G + L + P + M + 4`, M7 step 4); they are pinned here as "what the user reads
+ * off the scrub bar" through the shell's own load path, cross-referenced rather than re-derived —
+ * the same arrangement the prediction and cache blocks above use. Forwarding ON throughout, matching
+ * the config the step-2b counts were pinned under (`W1`/`W2` in `pairing.test.ts`).
+ */
+describe('loadSource issue width — the pairing flip on the live scrub bar (M7 step 6)', () => {
+  const config = (issueWidth: number): ProcessorConfig => ({
+    ...defaultConfig(),
+    forwarding: true,
+    issueWidth,
+  });
+
+  const runAt = (name: string, issueWidth: number) => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
+    const result = loadSource(program.source, () => new SuperscalarProcessor(), config(issueWidth));
+    if (!result.ok) throw new Error(`unreachable: ${name} should assemble`);
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder;
+  };
+
+  const cyclesOf = (name: string, issueWidth: number): number =>
+    runAt(name, issueWidth).recordedCycles;
+
+  it('carries the width to the engine — the same program runs SHORTER at width 2', () => {
+    // The numbers the transport shows, and the headline of the whole milestone: `sum-loop` in 56
+    // cycles 1-wide and 44 cycles 2-wide. If the shell dropped `issueWidth`, both would read 56 —
+    // which is why this is an equality on each, not just `w2 < w1`. An inequality would also pass
+    // for an engine that paired wrongly but still got shorter, and this tier has no golden
+    // reference for cycle counts.
+    expect(cyclesOf('sum-loop', 1)).toBe(56);
+    expect(cyclesOf('sum-loop', 2)).toBe(44);
+    expect(cyclesOf('array-sum', 1)).toBe(51);
+    expect(cyclesOf('array-sum', 2)).toBe(42);
+  });
+
+  it('lands on the IDENTICAL final architectural state at both widths (INV-8 by construction)', () => {
+    // Width is a pure TIMING knob: an in-order superscalar retires in order, so the answers cannot
+    // move. Pinned here at the shell's edge as well as in the engine because it is the claim the
+    // toggle's honesty rests on — the reader is being told this is the SAME program on the SAME
+    // machine, just issuing differently, and a shell that changed the result would be teaching a lie.
+    const w1 = runAt('sum-loop', 1).currentState();
+    const w2 = runAt('sum-loop', 2).currentState();
+    expect(w1.registers[10]).toBe(55);
+    expect([...w2.registers]).toEqual([...w1.registers]);
+    expect(w2.memory.definedAddresses()).toEqual(w1.memory.definedAddresses());
+  });
+
+  it('is inert for a model that does not honor it (the pipeline ignores the width)', () => {
+    // The argument all four knobs rest on, and the reason width could ride the seam without widening
+    // it: the value is held at SESSION level and handed to every model, so a model that does not
+    // honor it is simply unmoved. That is what makes gating the CONTROL on
+    // `capabilities.configurableIssueWidth` a pure view concern — the engine needs no defending.
+    //
+    // Compared on the WHOLE trace, not just the cycle count, because `issueWidth` is a timing knob:
+    // a leak could reorder events while leaving the length and every architectural result correct.
+    // This is the whole-trace form M7 step 1 pinned in each engine's own suite, re-made here at the
+    // shell's edge — where the value the user set actually enters the config.
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const pipelineTrace = (issueWidth: number): readonly CycleTrace[] => {
+      const result = loadSource(program.source, () => new PipelineProcessor(), config(issueWidth));
+      if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+      result.loaded.recorder.runToEnd();
+      return result.loaded.recorder.recorded;
+    };
+    expect(pipelineTrace(2)).toEqual(pipelineTrace(1));
   });
 });

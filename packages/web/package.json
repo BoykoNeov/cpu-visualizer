@@ -17,6 +17,7 @@
     "@cpu-viz/engine-multi-cycle": "*",
     "@cpu-viz/engine-pipeline": "*",
     "@cpu-viz/engine-single-cycle": "*",
+    "@cpu-viz/engine-superscalar": "*",
     "@cpu-viz/isa": "*",
     "@cpu-viz/trace": "*",
     "react": "^19.0.0",

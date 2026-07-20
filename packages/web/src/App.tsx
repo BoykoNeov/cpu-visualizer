@@ -281,6 +281,9 @@ export function App(): React.JSX.Element {
           {activeModel.capabilities.configurableCache ? (
             <CacheToggle cache={sim.cache} setCache={sim.setCache} />
           ) : null}
+          {activeModel.capabilities.configurableIssueWidth ? (
+            <WidthToggle width={sim.issueWidth} setWidth={sim.setIssueWidth} />
+          ) : null}
         </div>
       </div>
 
@@ -1042,6 +1045,67 @@ function CacheToggle(props: {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The issue-width toggle (M7 step 6) — the milestone's flagship experiment (§12.4), and the FOURTH
+ * control to change the machine rather than the picture. It rides M3's config seam exactly as
+ * forwarding, prediction and the cache did, and the finding is the same one a fourth time: a whole
+ * new tier of microarchitecture needed no widening of the seam it was handed.
+ *
+ * **Two positions, and BOTH are honest machines — which is the thing this control has to get right.**
+ * The 1-wide position is not the M3 pipeline relabelled: it runs the superscalar's own issue logic
+ * and simply never finds a pair, which is the pairing-failure picture at its limit. That is what
+ * makes the flip a same-program A/B on ONE machine rather than a model switch in disguise, and it is
+ * the reason the width is a config knob here instead of a fifth row in the model picker. It also
+ * satisfies the rule the other three toggles live by — *a control that cannot move anything is worse
+ * than no control* — twice over: every corpus program runs strictly fewer cycles at width 2, so
+ * neither position is ever a no-op (M7 step 2b, exact counts pinned in `pairing.test.ts`).
+ *
+ * Rendered only where `capabilities.configurableIssueWidth` is true, so it exists for the
+ * superscalar and for nothing else — the three earlier models are not merely *unmoved* by the knob,
+ * they ignore it, and step 1 pinned that as whole-trace inertness rather than assuming it.
+ *
+ * The `title`s carry where the honesty budget goes: that a wider machine does not double the speed,
+ * because pairing keeps getting REFUSED for three reasons the reader can watch (two memory ops, two
+ * branches, or a same-cycle RAW). "Two per cycle" is a ceiling, not a rate.
+ */
+export function WidthToggle(props: {
+  width: number;
+  setWidth: (width: number) => void;
+}): React.JSX.Element {
+  const { width, setWidth } = props;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        Issue
+      </span>
+      <div className="seg">
+        {([1, 2] as const).map((position) => (
+          <button
+            key={position}
+            className={position === width ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setWidth(position)}
+            aria-pressed={position === width}
+            title={
+              position === 2
+                ? 'Issue 2 per cycle — the machine tries to start the next TWO instructions together. It is a ceiling, not a rate: a pair is refused when both touch memory, when both are branches, or when the second reads what the first writes (forwarding cannot fix a same-cycle dependency). A refused instruction slides forward and pairs with the one behind it.'
+                : 'Issue 1 per cycle — the same machine, running its issue logic and never finding a pair. This is the 5-stage pipeline you already know, which is what makes it the baseline the 2-wide flip is measured against.'
+            }
+          >
+            {position === 2 ? '2-wide' : '1-wide'}
+          </button>
+        ))}
       </div>
     </div>
   );
