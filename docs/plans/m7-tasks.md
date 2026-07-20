@@ -7,7 +7,7 @@ and zero assertions touched (step 0), and the `issueWidth` config seam with whol
 pinned for all three existing models (step 1), and the width-1 superscalar base, which reproduces M3’s closed form EXACTLY over the whole corpus × config matrix (step 2a), and **the pairing logic —
 sliding/greedy issue, the three refusal verdicts, intra-pair forwarding and lane-aware `squash` —
 which makes width 2 strictly faster than width 1 on all 7 corpus programs with identical
-architectural results (step 2b), and the INV-8 differential across all 18 configs at both widths,
+architectural results (step 2b), and the INV-8 differential across all 36 configs at both widths,
 whose real deliverable was teaching `configLabel` the width axis (step 3).** **Nothing is
 browser-verified yet, because nothing
 user-visible exists yet** — the first view step is 6. Scope, the reuse strategy, the width toggle,
@@ -260,14 +260,17 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       **Read the warning in "How this milestone can lie to itself" before trusting this step.**
 
       ✅ **Done (2026-07-20, 1705 → 1835 tests, +130).** The matrix is 2 widths × 2 forwarding × 3
-      prediction × 3 cache = 18 configs × 7 programs = 126 cases, all green, plus 4 new harness
-      guards. **The green is worth exactly what the plan said it would be worth and no more:** it
+      prediction × 3 cache = **36 configs × 7 programs = 252 cases**, all green. The +130 is the
+      width-2 DELTA (126 new cases) plus 4 new harness guards — the width-1 half of the matrix was
+      already there from 2a, which is why that half of the count appears twice and is easy to
+      misread. **The green is worth exactly what the plan said it would be worth and no more:** it
       proves pairing does not CORRUPT the machine, and nothing else. Width-invariance of final state
       is what the design predicts, not evidence it works — step 2b's out-of-order-retirement bug ran
       green through a matrix of this exact shape. Step 4 is still the net.
 
       **The step's real deliverable was the label, not the differential.** `configLabel` did not know
-      `issueWidth`, so the 18 configs would have rendered as 9 labels used twice — the M4 collision
+      `issueWidth`, so the 36 configs would have rendered as **18 labels used twice** (2×3×3 names,
+      each shared by a width-1 and a width-2 case) — the M4 collision
       exactly, and this time **with its alarm disconnected**. Every earlier axis had a failing column
       available to make someone read the titles; width does not, since both columns are green by
       construction. A duplicated-title report would have looked indistinguishable from a correct one,

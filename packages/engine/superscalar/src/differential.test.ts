@@ -42,9 +42,10 @@ const CACHES: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
  *
  * The width axis is why `configLabel` learned `issueWidth` in this step. Every prior axis had a
  * failing column available to force someone to read the titles; this one does not, since both
- * widths are green by construction. A collision here would therefore have produced a report naming
- * 18 configs twice over, all passing, with nothing to prompt a second look — so the label gained the
- * axis and `conformance.test.ts` gained a guard in both directions.
+ * widths are green by construction. Dropping width from the label leaves 2×3×3 = 18 distinct
+ * forwarding/predict/cache names for 36 configs — every one shared by a width-1 and a width-2 case,
+ * all passing, with nothing to prompt a second look. So the label gained the axis and
+ * `conformance.test.ts` gained a guard in both directions.
  */
 const WIDTHS = [1, 2] as const;
 
