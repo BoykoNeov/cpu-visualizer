@@ -1,0 +1,31 @@
+{
+  "id": "one-branch-unit",
+  "title": "One branch unit",
+  "program": "paired-branches",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "stall", "where": { "reason": "branch-slot" } },
+      "narration": {
+        "essentials": "Two branches were fetched together — but the machine has one branch unit, so the second must wait for the first.",
+        "detailed": "`bne x0, x0, done` and `bne x0, x0, done` were fetched side by side as a candidate pair, and again nothing stops them by data: neither reads a value the other computes — they compare the same register to itself. What stops them is the hardware. There is exactly one branch unit — one place a control transfer is decided — and two branches cannot both use it in one cycle. So the older branch goes and the younger is held. Watch the readout name the reason: branch-slot. And notice WHEN it is held: right now, in the same cycle both are still in Decode, before either has been resolved — the machine has not yet worked out that neither is taken. It does not need to. The refusal is about what these instructions ARE, not about what they will do. The younger branch issues alone next cycle, once the unit is free.",
+        "expert": "This completes the machine's three refusals, and it is the second STRUCTURAL one — the contrast is the whole lesson. `intra-pair-raw` refuses a pair for what the younger NEEDS (a value not yet computed); `mem-port` and `branch-slot` refuse it for what the younger IS — a memory access, a control transfer — decided at issue by instruction CLASS, before any address is formed, any value returns, or any branch is resolved. That last clause is what makes `branch-slot` the sharpest of the three: both of these branches are not-taken and NEITHER will flush, but the machine refuses the pair before it knows that, because it cannot know it yet and does not have to. Widening replicated the cheap units — fetch, decode, the register-file ports, the two execute lanes — but left the branch unit single, exactly as it left the memory port single. So two control transfers can never issue together however independent they are, and these two are maximally independent: no shared operand, no shared result, the same trivial comparison. Independence at issue is necessary for a pair; it is never sufficient."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 10, "value": 42 } },
+      "narration": {
+        "essentials": "Execution falls straight through both branches — a0 ends at 42, exactly as on the one-wide machine.",
+        "detailed": "Neither branch was taken, so control fell through to `li a0, 42` and 42 lands in a0 — the same answer the one-wide machine reaches. The single branch unit changed neither the result nor the path taken: it only made the two branches resolve in consecutive cycles instead of one. Width never changes what a program computes. And a structural hazard is a fixed fact about this datapath, not about the program: the only cure is more hardware — a second branch unit — which this machine does not have, on purpose. So the one unit costs a cycle here, and never the answer.",
+        "expert": "a0 = 42 at width 1 and at width 2: the branch unit serialized two control transfers, it did not alter the control flow they describe. A structural hazard cannot be forwarded around or reordered away in this machine — unlike a data hazard it is not about WHEN a value exists but about HOW MANY copies of a unit the datapath was built with, and this machine was built with one branch unit and one memory port. That is the honest ceiling of in-order superscalar, and this track has now walked its whole width: a pair issues together only when the two instructions need neither the same value (`intra-pair-raw`), nor the same memory port (`mem-port`), nor the same branch unit (`branch-slot`). Where the program offers such a pair, the wide machine runs two at a time; where it does not, it pays a cycle and computes exactly the same result."
+      }
+    }
+  ]
+}

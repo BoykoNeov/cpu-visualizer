@@ -613,9 +613,9 @@ describe('authored lessons (INV-6)', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
     // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
     // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); the
-    // three-lesson cache track (M6 step 7); and the first three superscalar lessons (M8 steps 1–3),
-    // the wide machine's pairing payoff, its first (data) refusal, and its first structural refusal.
-    // Multi-cycle deliberately has none: its story is "one instruction,
+    // three-lesson cache track (M6 step 7); and the four superscalar lessons (M8 steps 1–4), the
+    // wide machine's pairing payoff, its first (data) refusal, and its two structural refusals (the
+    // memory port and the branch unit). Multi-cycle deliberately has none: its story is "one instruction,
     // phases spread over cycles", which the single-cycle lessons already narrate correctly when the
     // model is swapped under them (pinned by the cross-model suite below).
     //
@@ -627,7 +627,7 @@ describe('authored lessons (INV-6)', () => {
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
-    expect(LESSONS.length).toBe(14);
+    expect(LESSONS.length).toBe(15);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -2032,6 +2032,140 @@ describe('one-door — two loads, one memory port (M8 step 3)', () => {
     const expert = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
     expect(expert, 'the closing must quote both byte results').toContain('-128');
     expect(expert).toContain('+128');
+  });
+});
+
+/**
+ * `one-branch-unit`'s oracle (M8 step 4) — the wide machine's FOURTH beat, its SECOND structural
+ * refusal, and the one the rest of the corpus cannot reach. `branch-slot` fires ZERO times across
+ * all seven other programs (no shipped program places two control transfers adjacent — M8 step 0's
+ * finding), so `paired-branches` exists precisely to provoke it; without step 0 this lesson would be
+ * unauthorable.
+ *
+ * Where `one-door` refused a pair for the memory port, this refuses one for the single branch unit —
+ * and it is the SHARPEST of the three refusals, because the machine holds the pair before it knows
+ * either branch's outcome. In this recording both branches are not-taken and NEITHER flushes, yet
+ * the refusal fires a full cycle before either resolves (`branch-resolved` lands at cycle 2 for the
+ * elder, cycle 3 for the younger). So the anchor is doubly clean: the trigger names `branch-slot`
+ * and is the ONLY stall in the whole trace — no `la` internal, no data hazard, nothing else to slip
+ * onto, which is exactly why (unlike step 2) it carries no `nth`, and that uniqueness is itself
+ * pinned so a future corpus edit cannot silently reintroduce a second stall for it to land on.
+ *
+ * The refused instruction is the younger branch (pc 4); its older partner (pc 0) issues. Both are
+ * control transfers — asserted by reading who sits in ID beside the refusal and confirming each
+ * drives a `branch-resolved` — so the contended resource is the single BRANCH UNIT, the analog of
+ * one-door's single memory port, not anything the two instructions compute. The closing cannot copy
+ * one-door's shape (which anchored the refused load's OWN writeback): a branch has no result of its
+ * own, so the payoff anchors on the architectural `a0 = 42` that the fall-through path computes.
+ */
+describe('one-branch-unit — two branches, one branch unit (M8 step 4)', () => {
+  const YOUNGER_PC = 4; // the younger `bne`, refused for the branch unit
+  const ELDER_PC = 0; // the older `bne`, which issues
+  const lesson = (): Lesson => byId('one-branch-unit');
+
+  /** The lesson's own declared machine with only the width varied — everything else from the JSON. */
+  const record = (issueWidth: number): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('one-branch-unit must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, issueWidth });
+  };
+
+  it('opens on the superscalar at width 2 — a refusal only a two-wide machine can make', () => {
+    expect(lesson().model).toBe('superscalar');
+    expect(lesson().config?.issueWidth).toBe(2);
+  });
+
+  it('THE REFUSAL: branch-slot on the younger branch, the ONLY stall in the trace', () => {
+    const trace = record(2);
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Unlike step 2's `array-sum`, this program emits exactly ONE stall — no `la` pseudo-op internal,
+    // no data hazard — so the trigger needs no `nth`, and that uniqueness is pinned: a corpus edit
+    // introducing a second stall reddens here rather than silently shifting which one anchors.
+    const stalls = trace.flatMap((c) => c.events).filter((e) => e.type === 'stall');
+    expect(
+      stalls,
+      'paired-branches emits exactly one stall — the branch-slot refusal',
+    ).toHaveLength(1);
+
+    // Step 0 is the STRUCTURAL refusal. The reason being `branch-slot` is the whole proof: the engine
+    // held the pair for the single branch unit, not for a value — the two branches are maximally
+    // independent (they compare the same register to itself), refused for what they ARE.
+    const refusal = anchored[0]!;
+    const refusalEvent = anchoredEvent(trace, refusal) as TraceEvent & { instr: string };
+    expect(refusalEvent).toMatchObject({ type: 'stall', reason: 'branch-slot' });
+    // ...and it names the YOUNGER branch (pc 4), the one held; slot 0 is never refused for pairing.
+    expect(anchoredPc(trace, refusal)).toBe(YOUNGER_PC);
+
+    // The structural signature: the refusal is between two genuine CONTROL TRANSFERS. The refused
+    // younger is the second `bne`; its older partner is whoever sits in ID.0 the same cycle — the
+    // first `bne` (pc 0). Both drive a `branch-resolved`, which is what makes the single BRANCH UNIT
+    // the resource they contend for — the analog of one-door's single memory port.
+    const cycle = trace.find((c) => c.cycle === refusal.cycle)!;
+    const older = cycle.instructions.find((i) => i.location === 'ID.0')!.id;
+    expect(pcById(trace).get(older)).toBe(ELDER_PC);
+    const branchers = new Set(
+      trace
+        .flatMap((c) => c.events)
+        .filter((e) => e.type === 'branch-resolved')
+        .map((e) => e.instr),
+    );
+    expect(branchers.has(older), 'the older partner is a control transfer').toBe(true);
+    expect(branchers.has(refusalEvent.instr), 'the refused younger is a control transfer').toBe(
+      true,
+    );
+  });
+
+  it('is refused BEFORE either branch resolves — held by class, not by outcome', () => {
+    // The lesson's sharpest claim, and what separates branch-slot from the other two structural
+    // stories: the pair is refused a full cycle before the machine knows either outcome. This lives
+    // in narration ("before either has been resolved ... it does not need to know"), where nothing
+    // guards it — so it is asserted against the recording, the sign-and-zero shape. Both
+    // `branch-resolved` land STRICTLY AFTER the refusal cycle, and both are not-taken: the refusal
+    // could not have been about a taken branch or a flush, only about CLASS at issue.
+    const trace = record(2);
+    const refusal = anchorLesson(lesson(), trace)[0]!;
+    const resolves = trace.flatMap((c) =>
+      c.events
+        .filter((e): e is TraceEvent & { actual: boolean } => e.type === 'branch-resolved')
+        .map((e) => ({ cycle: c.cycle, e })),
+    );
+    expect(resolves, 'both branches resolve').toHaveLength(2);
+    for (const { cycle, e } of resolves) {
+      expect(cycle, 'the branch resolves AFTER it was refused, not before').toBeGreaterThan(
+        refusal.cycle!,
+      );
+      expect(e.actual, 'neither branch is taken — no flush muddies the witness').toBe(false);
+    }
+  });
+
+  it('the refusal is width-exclusive: no pair means no branch-unit contention', () => {
+    // Lawfully dead at width 1 (like the other two refusals): one branch issues per cycle, so the
+    // single unit is never contended and there is no candidate pair. Dead at width 1, alive at
+    // width 2 — the axis the lesson rests on.
+    const w1 = anchorLesson(lesson(), record(1));
+    expect(
+      w1[0]!.cycle,
+      'width 1 forms no pair, so nothing contends for the branch unit',
+    ).toBeNull();
+  });
+
+  it('same answer, held or not: a0 = 42 by falling through, at both widths', () => {
+    const [w1, w2] = [record(1), record(2)];
+
+    // The closing anchors on the architectural result — a0 = 42 (reg 10) — alive at both widths.
+    // Unlike one-door, the refused instruction is a BRANCH with no writeback of its own to land on;
+    // the payoff is the value the fall-through path computes, invariant to how it issued.
+    for (const trace of [w1, w2]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 10, value: 42 });
+    }
+
+    // The closing prose quotes 42; asserted against the default tier so a silently-wrong value
+    // reddens. (No cycle counts are quoted — like steps 2 and 3, the payoff is the structural rule,
+    // not speed.)
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    expect(closing, 'the closing must quote the answer it claims').toContain('42');
   });
 });
 

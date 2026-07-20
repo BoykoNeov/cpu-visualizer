@@ -198,12 +198,42 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       lesson automatically (asserts `issueWidth === 2`). `npm test` + `lint` + `tsc -b` + `build` all
       green. Browser pass deferred to step 6.
 
-- [ ] **4. Lesson — "One branch unit" (`branch-slot`).** `program: paired-branches` (step 0), same
-      config. Anchor the `branch-slot` refusal the new program provokes. Teach the other structural
-      hazard: two control transfers cannot issue together because there is one branch unit — refused
-      by CLASS at issue, before any outcome is known. Acceptance: as above; oracle pins
-      `reason: 'branch-slot'`. This is the step that would have been UNAUTHORABLE without step 0, and
-      the sweep's `issueWidth` axis proves the anchor is real at width 2.
+- [x] **4. Lesson — "One branch unit" (`branch-slot`).** DONE 2026-07-20 (2503 tests).
+      `one-branch-unit.json` shipped: `program: paired-branches` (step 0), same config as steps 1–3
+      (superscalar, forwarding on, static-not-taken, cache null, `issueWidth: 2` → w2 = 7 cycles,
+      w1 = 9). Two steps: the refusal (`{ event: 'stall', where: { reason: 'branch-slot' } }`, UNIQUE
+      so no `nth` → cycle 1, the younger `bne x0,x0,done` at pc 4 refused because the elder `bne` at
+      pc 0 beside it holds the one branch unit) and the closing "same answer" (`reg-write reg:10
+    value:42` → cycle 5, `a0 = 42` by falling through). All re-dumped under THIS config (throwaway
+      `zz-m8-dump.test.ts`, since deleted; `temp\m8\paired-branches-w.txt`). **The design completes
+      the trilogy of refusals and is the SECOND structural one — the contrast is the spine:
+      `intra-pair-raw` refuses for what the younger NEEDS (data); `mem-port` and `branch-slot` refuse
+      for what it IS — a memory access, a control transfer — decided by CLASS at issue.** What makes
+      `branch-slot` the SHARPEST of the three (its unique teaching point, absent from step 3): the
+      pair is refused BEFORE either branch resolves — both branches are not-taken and NEITHER flushes,
+      yet the refusal fires a full cycle before either `branch-resolved` lands (c2 elder, c3 younger).
+      The machine cannot know the outcomes yet and does not need to; the refusal is about class, not
+      outcome. **Two clean-anchor facts (both simpler than steps 2/3): (1) the trace emits EXACTLY ONE
+      stall** — no `la` pseudo-op internal (the program has no `la`), no data hazard, nothing else to
+      slip onto — so no `nth`, and the oracle PINS that uniqueness (a corpus edit reintroducing a
+      second stall reddens rather than silently shifting the anchor); **(2) the closing CANNOT copy
+      one-door's shape** (which anchored the refused load's OWN writeback) — a branch has no result of
+      its own, so the payoff anchors on the architectural `a0 = 42` the fall-through computes,
+      advisor-flagged. Oracle mirrors one-door's structural signature with `branch-resolved` in place
+      of `mem-read`: both the refused younger (pc 4) and its ID.0 partner (pc 0) drive a
+      `branch-resolved`, proving the contended unit is the single BRANCH UNIT; plus a dedicated
+      "refused before either resolves" oracle (the sign-and-zero shape — the thesis lives in narration,
+      pinned against the recording). Width-exclusive (dead at w1: one branch per cycle, no contention).
+      No cycle counts in prose (like steps 2/3). **Wiring was the pure APPEND case (step 5's note):
+      `one-branch-unit` added 4th in the "The wide machine" track; only `LESSONS.length` (14→15) fired
+      — `LESSON_ORDER` toEqual auto-derives from `index.json`, and no track-NAME guard fired.** Also
+      updated the shipped-lessons docblock prose ("first three superscalar lessons (steps 1–3), its
+      first structural refusal" → four / 1–4 / two structural refusals). `session.test.ts`'s all-lessons
+      opening loop covered the new lesson automatically (asserts `issueWidth === 2`). `npm test` +
+      `lint` + `tsc -b` + `build` all green. Browser pass deferred to step 6 — **flagged there
+      (advisor): the dump shows branches resolving in the EX LANES, not a distinct branch box, so the
+      "one branch unit" framing (inherited from `paired-branches.s`'s header and one-door's expert
+      tier) must be checked against what the datapath actually draws.**
 
 - [ ] **5. Wire the track.** Add the four lesson ids to `content/lessons/index.json` under a new
       track heading, in teaching order (pairing → the three refusals; refusals ordered easy-to-hard:
