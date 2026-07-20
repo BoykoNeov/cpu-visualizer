@@ -5,16 +5,21 @@
  * "the instruction in EX" named exactly one instruction. Here a stage has `issueWidth` SLOTS, and
  * naming an occupant takes a stage *and* a slot.
  *
- * ## What this file is, at M7 step 2a
+ * ## What this file is, at M7 step 2b
  *
  * A faithful port of `@cpu-viz/engine-pipeline`'s `PipelineProcessor`, restructured so every latch
- * is SLOT-SHAPED, but running at **width 1 only** — there is no pairing logic yet (step 2b). That
- * is deliberate, and it is the milestone's bisection anchor: a width-1 superscalar never pairs, so
- * it must reproduce M3's closed form `cycles = N + 4 + S + P + M` over the whole corpus. Proving
- * THAT before pairing exists de-risks "did I re-implement the pipeline faithfully" while the answer
- * is still a single number per (program × config) rather than a pairing verdict per cycle.
- * `reset()` therefore THROWS on any `issueWidth` other than 1: an honest "not yet" beats a model
- * that silently runs narrow while the toggle says otherwise.
+ * is SLOT-SHAPED, plus the ISSUE LOGIC that makes the second slot mean something. Width is a config
+ * toggle, 1 ↔ 2, and BOTH positions are honest machines: the width-1 position is not a stub, it is
+ * the pairing machine at its degenerate limit — it runs the same issue logic and simply never finds
+ * a partner, which is the "pairing failure" picture held permanently. Step 2a proved that position
+ * reproduces M3's closed form `cycles = N + 4 + S + P + M` over the whole corpus, cell for cell, and
+ * `timing.test.ts` still asserts it against M3's own hand-derived numbers. That is the regression
+ * net under everything here: pairing may not disturb the machine it degenerates to.
+ *
+ * Grouping is SLIDING / GREEDY — see {@link SuperscalarProcessor.stageId}, which is the soul of the
+ * model. The consequence worth carrying to every other file: **a slot is a per-cycle issue position,
+ * not a stable lane.** An instruction refused from slot 1 executes in slot 0 the next cycle.
+ * Identity lives in the id (INV-4), never in the slot.
  *
  * The ISA semantics — the arithmetic, the `s`/`u` signed/unsigned views, `imm & 0x1f`, the `>>> 0`
  * at the memory boundary — are mirrored VERBATIM from the golden reference, exactly as every other
@@ -29,9 +34,12 @@
  * no latch to live in (five stages, four latches) — is an array for the same reason. At width 1
  * every array has length 1 and the behaviour is byte-for-byte M3's.
  *
- * The stage walk iterates slots rather than indexing `[0]`, so step 2b's job is to make the issue
- * logic FILL slot 1 — not to rewrite the walk. Nothing here is written as if slot 0 were the only
- * one, even where at width 1 it is.
+ * `ifId` and `ifSlot` are additionally kept **COMPACTED**: occupants at indices `0..k-1`, nulls
+ * above, never a hole in the middle. That is what lets the issue loop stop at the first refusal and
+ * still know that everything it did not consume is exactly `prev.ifId[issued..]`, and it is why the
+ * issue index and the ID slot index are always the same number. The three EXECUTE-side latches
+ * (`idEx`/`exMem`/`memWb`) carry no such invariant — a lane-aware squash or a miss-freeze legitimately
+ * empties one slot and not the other, so every walk over them skips nulls rather than stopping.
  *
  * ## Per-slot vs broadcast — the split that IS the milestone
  *
@@ -44,10 +52,12 @@
  *  - **`squash` is LANE-AWARE**: it carries the resolving slot alongside the reason, because a
  *    slot-0 branch kills its slot-1 mate while a slot-1 branch spares the older slot-0. At width 1
  *    the resolving slot is always 0 and everything in a younger stage dies, which is M3 exactly.
- *  - **`stalled`** (load-use) keeps a SINGLE-LANE producer but freezes a whole pair: the interlock
- *    is decided by one instruction's sources and applied to the stage.
- *  - **`bet`** stays the single-casualty boolean it is in M3 — branches never pair, so a bet is
- *    placed by at most one instruction per cycle.
+ *  - **The load-use interlock** has a SINGLE-LANE producer, and at width 2 it no longer needs a
+ *    broadcast signal at all: a refused instruction simply stays in IF/ID and leads the next group,
+ *    so "the stage froze" is expressed by which seats ID left occupied rather than by a flag. M3's
+ *    `stalled` boolean is gone for that reason — see {@link SuperscalarProcessor.stageIf}.
+ *  - **`bet`** stays at most one per cycle — two transfers never pair — but it is no longer a bare
+ *    boolean: it carries its slot, because at width 2 it kills the ID seat behind the branch.
  *
  * ## Everything else is M3, unchanged
  *
@@ -186,8 +196,8 @@ export interface SuperscalarMicro {
 /**
  * The superscalar honors EVERY config knob in the family — it is the first model to do so, and the
  * fourth flag is what it exists for. `configurableIssueWidth: true` is the claim that flipping
- * 1 ↔ 2 changes the machine; at step 2a only the width-1 position is implemented, and `reset()`
- * refuses the other loudly rather than pretending.
+ * 1 ↔ 2 changes the machine, and as of step 2b it is a claim both positions can cash: the corpus
+ * runs strictly fewer cycles at width 2, with identical architectural results.
  *
  * The other three are honored exactly as the pipeline honors them, because this model is that
  * pipeline with slot-shaped latches: `'none'` and `'static-not-taken'` remain one machine (a
@@ -206,9 +216,27 @@ export const SUPERSCALAR_CAPABILITIES: ProcessorCapabilities = {
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
 const STORES = new Set(['sb', 'sh', 'sw']);
-// There is deliberately no BRANCHES set: "is this a control transfer" is not a separate
-// classification here, it is whatever the EX switch resolved a `taken` answer for. That is what
-// makes jal/jalr fall out as ordinary transfers rather than special cases.
+
+/**
+ * The control-transfer classes, needed by the ISSUE logic and by nothing else.
+ *
+ * M3 deliberately had no such set: downstream, "is this a control transfer" is not a separate
+ * classification, it is whatever the EX switch resolved a `taken` answer for — which is what makes
+ * `jal`/`jalr` fall out as ordinary transfers instead of special cases. That reasoning still holds
+ * for EX, and EX is unchanged.
+ *
+ * ID cannot use it. The branch-slot rule ("no two transfers pair") has to be decided at ISSUE,
+ * cycles before EX knows whether either one is taken — and it is a STRUCTURAL rule about the one
+ * branch unit, so it must refuse two transfers whatever they later resolve to. A not-taken branch
+ * still occupied the unit. So the classification here is by CLASS, deliberately coarser than EX's
+ * by-outcome one, and the two are not in tension: they answer different questions.
+ */
+const TRANSFERS = new Set(['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu', 'jal', 'jalr']);
+
+/** Does this instruction use the single data-memory port? (loads and stores, nothing else) */
+function usesMemPort(d: DecodedInstruction): boolean {
+  return LOADS.has(d.mnemonic) || STORES.has(d.mnemonic);
+}
 
 /**
  * Every class that writes a register. Enumerated rather than derived from the format, because
@@ -320,6 +348,15 @@ const emptySlots = <T>(width: number): (T | null)[] => new Array<T | null>(width
 const anyOccupied = (slots: readonly (unknown | null)[]): boolean => slots.some((s) => s !== null);
 
 /**
+ * Is any slot of this stage occupied by an instruction YOUNGER than `slot`? Index 0 is the oldest,
+ * so "younger" is simply "a higher index" — which is the whole of lane-awareness. This is the
+ * predicate that separates a slot-0 branch (kills its mate) from a slot-1 one (spares it), and at
+ * width 1 it is constantly false, which is exactly why width 1 behaves as M3 did.
+ */
+const younger = (slots: readonly (unknown | null)[], slot: number): boolean =>
+  slots.some((s, i) => s !== null && i > slot);
+
+/**
  * An instruction sitting in the IF stage — fetched, but not yet latched into IF/ID. It is a
  * distinct thing from the IF/ID latch: five stages, four latches, so the IF stage's occupants have
  * nowhere to live but here. A stall is exactly the case where the two differ for a whole cycle.
@@ -361,17 +398,27 @@ function squashReason(resolver: IdExLatch | null): string {
   return resolver !== null && resolver.predictedTaken ? 'branch-not-taken' : 'branch-taken';
 }
 
+/**
+ * ID's bet, and WHICH SLOT placed it — the same lane-awareness {@link Squash} carries, for the same
+ * reason. A bet steers the fetch pointer to a predicted target, which condemns not only the
+ * fall-through IF just fetched but **every ID occupant younger than the branch**: those were fetched
+ * sequentially behind it, so they are exactly the fall-through path the bet says we are not taking.
+ *
+ * It stays at most ONE bet per cycle at every width — two transfers never pair — so this is
+ * nullable rather than an array. What it is NOT is a boolean any more: at width 2 a branch may sit
+ * in either slot, and "did anything in ID die beside it" is answerable only from the slot.
+ */
+interface Bet {
+  /** The ID slot of the branch that placed it. */
+  readonly slot: number;
+  readonly target: number;
+}
+
 /** The mutable working set for one cycle: read `prev`, fill `next`, collect events and signals. */
 interface CycleCtx {
   readonly prev: Latches;
   readonly next: Latches;
   readonly events: TraceEvent[];
-  /**
-   * Raised by ID; read by IF, which then holds its instructions instead of handing them over. A
-   * SINGLE-LANE producer that freezes a whole pair: the interlock is decided by one instruction's
-   * sources, but a stage cannot half-advance, so both slots hold.
-   */
-  stalled: boolean;
   /**
    * Raised by MEM on a cache miss, read by the three stages younger than it in the reverse walk
    * (EX, ID, IF), which then FREEZE their occupants in place — while MEM re-presents the waiting
@@ -405,10 +452,15 @@ interface CycleCtx {
    * "everything younger than the deciding stage is wrong" — ID *and* IF. A bet means only "what IF
    * just fetched is not what we now think comes next": the branch in ID is the thing doing the
    * predicting and sails on to EX. That difference IS the reason a correct prediction costs 1
-   * instead of 2. It stays a plain boolean at every width, because branches never pair — at most
-   * one instruction per cycle can place a bet.
+   * instead of 2.
+   *
+   * At width 2 the bet's casualty set grows by exactly one seat — the ID slot BEHIND the branch, if
+   * the branch paired with a younger instruction. That instruction is the fall-through too, and
+   * dies for the same reason as IF's. The branch itself and everything OLDER than it in the group
+   * are untouched, which is what keeps this a bet rather than a squash. There is still at most ONE
+   * bet per cycle at every width, because two transfers never pair.
    */
-  bet: boolean;
+  bet: Bet | null;
 }
 
 export class SuperscalarProcessor implements Processor {
@@ -427,10 +479,10 @@ export class SuperscalarProcessor implements Processor {
   private seq = 0; // dynamic-instruction counter → stable ids (INV-4)
   private sourceMap: ReadonlyMap<number, number> = new Map();
   /**
-   * Slots per stage, from `ProcessorConfig.issueWidth`. **Step 2a implements width 1 only** — the
-   * whole point of this step is a faithful single-issue base whose timing reproduces M3's, so the
-   * pairing logic that would make any other value meaningful does not exist yet. Every array in
-   * this class has exactly this length.
+   * Slots per stage, from `ProcessorConfig.issueWidth` — 1 or 2, the toggle's two positions. Every
+   * array in this class has exactly this length. Nothing outside `reset()` branches on the value:
+   * the walks iterate `width` slots and the issue logic asks the pairing rules, so width 1 is the
+   * same code finding no partner rather than a separate path.
    */
   private width = 1;
   private forwarding = false;
@@ -455,11 +507,11 @@ export class SuperscalarProcessor implements Processor {
     // so an absent value means "this caller has no opinion" and gets the machine's own degenerate
     // width — the same default the web toggle will start on.
     const width = config.issueWidth ?? 1;
-    if (width !== 1) {
+    if (width !== 1 && width !== 2) {
       throw new Error(
-        `superscalar: issueWidth ${width} is not implemented yet — M7 step 2a ships the width-1 ` +
-          `base (slot-shaped latches, no pairing logic); step 2b adds the issue logic that makes ` +
-          `width 2 a real machine. Refusing rather than silently running 1-wide.`,
+        `superscalar: issueWidth ${width} is not a width this machine has — the model ships the ` +
+          `1 ↔ 2 toggle (M7), and a wider machine would need pairing rules it does not have. ` +
+          `Refusing rather than silently running narrow.`,
       );
     }
     this.width = width;
@@ -509,12 +561,11 @@ export class SuperscalarProcessor implements Processor {
       prev,
       next: emptyLatches(this.width),
       events: [],
-      stalled: false,
       memStall: false,
       squash: null,
       redirect: null,
       stopFetch: false,
-      bet: false,
+      bet: null,
     };
 
     // Who is where, captured before the walk. `prev` is the start-of-cycle latch state, so the
@@ -547,15 +598,27 @@ export class SuperscalarProcessor implements Processor {
     // and the curriculum, which triggers on a bare `{ event: 'flush' }`): every consumer wants
     // "something died", none wants "a wire went high".
     //
-    // The strings stay BARE stage names (`'ID'`, `'IF'`), not slotted — only
-    // `InstructionInstance.location` carries a slot. At width 1 a stage has at most one casualty, so
-    // there is nothing a slot could disambiguate here; whether `stages` should name slots once a
-    // pair can die together is a step-2b question, to be decided against an OBSERVED multi-slot
-    // flush rather than guessed at now.
+    // The strings stay BARE stage names (`'ID'`, `'IF'`, and now `'EX'`), never slotted — only
+    // `InstructionInstance.location` carries a slot. Width 2 is where a pair CAN die together, and
+    // the plan left "should `stages` name slots then?" open until one was observed. It was: a
+    // mispredicting branch in EX.0 kills its EX.1 mate. The answer is still no. `stages` answers
+    // "which stages lost someone", the map and the datapath both key off stage families, and a
+    // slotted spelling here would fork three event types the schema shares with the map, the
+    // datapath and the curriculum — for a distinction every one of those readers would have to fold
+    // straight back out. A consumer that needs the identity of the dead has `instructions[]`.
     if (ctx.squash !== null) {
       // Program order, oldest first — the same rule `instructions[]` uses.
       const stages: string[] = [];
-      if (ctx.squash.reason === 'branch' && anyOccupied(inId)) stages.push('ID');
+      // The LANE-AWARE casualty, and the one genuinely new to width 2. A transfer resolving in EX
+      // kills the slots BESIDE it that are younger — EX.0's mate in EX.1 — while an EX.1 transfer
+      // spares the older EX.0 entirely. A halt is raised in ID, so at EX-time nothing has resolved
+      // and this list is empty for it.
+      if (ctx.squash.reason === 'branch' && younger(inEx, ctx.squash.slot)) stages.push('EX');
+      // A branch in EX is older than every ID occupant, so all of ID dies. A halt is raised IN ID,
+      // so only the slots behind it do — the halting instruction itself issues and retires.
+      const idDied =
+        ctx.squash.reason === 'branch' ? anyOccupied(inId) : younger(inId, ctx.squash.slot);
+      if (idDied) stages.push('ID');
       if (anyOccupied(inIf)) stages.push('IF');
       if (stages.length > 0) {
         ctx.events.push({
@@ -565,15 +628,21 @@ export class SuperscalarProcessor implements Processor {
           stages,
         });
       }
-    } else if (ctx.bet && anyOccupied(inIf)) {
-      // The BET's casualty. A CORRECT prediction still kills something — the fall-through IF had
+    } else if (ctx.bet !== null) {
+      // The BET's casualties. A CORRECT prediction still kills something — the fall-through IF had
       // already fetched — and that discarded instruction is precisely the "1" in "a correctly
       // predicted taken branch costs 1, not 0". Emitting it only on misprediction would make the
       // cost invisible to every consumer that counts casualties.
       //
-      // One stage, never two, and no ID check: a bet does not kill ID (that instruction IS the
-      // branch). The single-casualty shape is not new — a halt flush has always cut only IF.
-      ctx.events.push({ type: 'flush', reason: 'branch-predicted-taken', stages: ['IF'] });
+      // At width 2 there may be a second casualty, and only one: the ID slot behind the branch, if
+      // it paired with a younger instruction. That is a fall-through too. Everything at or older
+      // than the betting slot lives — which is the whole difference between a bet and a squash.
+      const stages: string[] = [];
+      if (younger(inId, ctx.bet.slot)) stages.push('ID');
+      if (anyOccupied(inIf)) stages.push('IF');
+      if (stages.length > 0) {
+        ctx.events.push({ type: 'flush', reason: 'branch-predicted-taken', stages });
+      }
     }
 
     // Halt-with-drain, asserted rather than assumed. `halted` may only be raised once the pipe is
@@ -686,15 +755,31 @@ export class SuperscalarProcessor implements Processor {
    *     MEM/WB, exactly as the cache-less machine always has.
    */
   private stageMem(ctx: CycleCtx): void {
+    // Once a slot is held, every YOUNGER slot must be held with it. Without this a non-memory
+    // instruction paired behind a missing load would sail into WB and RETIRE AHEAD OF IT — an
+    // out-of-order retirement in a machine whose entire premise is in-order retirement, and one
+    // that final-state conformance would never see because both instructions do retire in the end.
+    // The freeze only ever propagates DOWNWARD in age: an older slot beside a younger miss keeps
+    // going, because it is already ahead and nothing it does depends on the datum.
+    let frozen = false;
     for (let s = 0; s < this.width; s++) {
       const em = ctx.prev.exMem[s] ?? null;
       if (em === null) continue;
+
+      if (frozen) {
+        // Not this slot's miss — its older pair-mate's. It holds where it stands, owing no penalty
+        // of its own, and re-arrives fresh on the release cycle (it is not a memory op, so the
+        // second `consultCache` there is a no-op: two memory ops never pair).
+        this.holdInMem(ctx, em, s, 0);
+        continue;
+      }
 
       // Mid-stall: a penalty already in progress. Decrement; hold until the release cycle.
       if (em.missCyclesRemaining > 0) {
         const remaining = em.missCyclesRemaining - 1;
         if (remaining > 0) {
           this.holdInMem(ctx, em, s, remaining);
+          frozen = true;
           continue;
         }
         // remaining === 0 ⇒ the release cycle: fall through to the real access + MEM/WB build.
@@ -703,6 +788,7 @@ export class SuperscalarProcessor implements Processor {
         const penalty = this.consultCache(ctx, em);
         if (penalty > 0) {
           this.holdInMem(ctx, em, s, penalty);
+          frozen = true;
           continue;
         }
       }
@@ -842,6 +928,16 @@ export class SuperscalarProcessor implements Processor {
       ctx.next.idEx[slot] = ie;
       return;
     }
+
+    // LANE-AWARE SQUASH, within the resolving stage itself. Slots are walked oldest first, so a
+    // non-null squash here was raised by an OLDER slot of this same EX (ID runs later in the walk
+    // and cannot have raised one yet) — and this instruction was fetched sequentially behind that
+    // taken transfer, so it is wrong-path. It dies where it sits: no ALU, no forward, no
+    // `branch-resolved`, and `next.exMem[slot]` stays the bubble it already is.
+    //
+    // This is the one place a squash's `slot` field discriminates, and the reason it exists. A
+    // slot-1 transfer reaches this line with nothing younger beside it and kills nobody in EX.
+    if (ctx.squash !== null && ctx.squash.slot < slot) return;
 
     const d = ie.decoded;
     const { rs1, rs2, imm, mnemonic } = d;
@@ -1138,9 +1234,22 @@ export class SuperscalarProcessor implements Processor {
    * cycle, so the read below sees a value written back in this very cycle (the pinned same-cycle
    * WB→ID rule).
    *
-   * **Step 2a has no ISSUE LOGIC**: each ID slot simply hands its own occupant to the ID/EX slot of
-   * the same index. Step 2b is where a verdict decides whether the two fetched instructions may go
-   * together, and a refused younger one becomes the older of the next group.
+   * **This is the ISSUE stage, and the issue logic is the model's soul.** Grouping is
+   * SLIDING / GREEDY (pinned with the user): each cycle ID tries to issue the next `width`
+   * UNDISPATCHED instructions, oldest first, and stops at the first one it must refuse. The refused
+   * instruction is not discarded and does not become a bubble — it stays in IF/ID and slides down to
+   * become the OLDEST of the next cycle's group, so pairing RECOVERS. The rejected alternative,
+   * aligned packets, would have made pairing depend on address parity: whether two instructions can
+   * go together would turn on where they happen to sit, which is a worse thing to teach than this
+   * extra machinery is to build.
+   *
+   * The consequence to keep in mind everywhere else: **a slot is a per-cycle issue position, not a
+   * stable lane.** An instruction refused from slot 1 executes in slot 0 next cycle. Identity lives
+   * in the id (INV-4), never in the slot.
+   *
+   * Because the loop stops at the first refusal and IF/ID is kept COMPACTED (occupants at 0..k-1),
+   * the issue index and the ID slot index are always the same number — so `next.idEx[s]` needs no
+   * separate counter, and the survivors are exactly `prev.ifId[s..]`.
    */
   private stageId(ctx: CycleCtx): void {
     // A MEM miss freezes ID: hold every occupant here (EX ran earlier and is holding its own, so it
@@ -1154,28 +1263,42 @@ export class SuperscalarProcessor implements Processor {
     // execute: no reads, no hazard detection, no chance of a squashed shadow polluting the trace
     // with a phantom stall or a `forward` that the timing assertions would read.
     //
-    // The squash's slot is not consulted here, and at width 1 it cannot matter: the resolver is in
-    // EX, so EVERY occupant of ID is younger than it whatever slot it sat in. Lane-awareness bites
-    // WITHIN the resolving stage (a slot-1 branch sparing its slot-0 mate), which is step 2b's
-    // business — there is no second slot to spare yet.
+    // The squash's slot is deliberately not consulted here. The resolver is in EX, one whole stage
+    // older, so EVERY occupant of ID is younger than it whatever slot it sat in — lane-awareness
+    // bites WITHIN the resolving stage (EX.0 killing its EX.1 mate), not across stages.
     if (ctx.squash !== null) return;
+
+    // The instructions issued so far THIS cycle — the "group". It is what the pairing rules are
+    // asked about, and it is empty for slot 0, which is why slot 0 is never refused for a pairing
+    // reason: the oldest undispatched instruction always gets to go if the older stages let it.
+    const group: IfIdLatch[] = [];
+    /** How many of IF/ID's occupants were consumed. The rest slide down to lead the next group. */
+    let issued = 0;
+    /** Set when the group ends by KILLING what is behind it rather than leaving it to slide. */
+    let killedRest = false;
 
     for (let s = 0; s < this.width; s++) {
       const fd = ctx.prev.ifId[s] ?? null;
-      if (fd === null) continue; // nothing in this ID slot
+      // IF/ID is compacted, so a null slot means the machine simply has nothing more fetched —
+      // not a bubble to skip over. Stop; there is no younger instruction hiding behind it.
+      if (fd === null) break;
 
       const d = fd.decoded;
       const src = sourceRegs(d);
 
-      const reason = this.detectHazard(ctx, src);
+      const reason = this.issueVerdict(ctx, d, src, group);
       if (reason !== null) {
-        // `stage` is the BARE stage name, as every model in the family emits it — only
+        // The REFUSAL, and the only trace an onlooker gets of the issue logic saying no. It reuses
+        // `stall` rather than inventing an `issue`/`pairing-refused` event, because that is exactly
+        // what it is — this instruction did not advance — and because `reason` is a free-form string
+        // in the schema, so a new refusal reason costs no schema change. The house record is
+        // against new events (M4 took 1 field of 5; M6 added none); step 8's readout is the last
+        // chance to prove one is genuinely undrawable without.
+        //
+        // `stage` stays the BARE stage name, as every model in the family emits it — only
         // `InstructionInstance.location` carries a slot.
         ctx.events.push({ type: 'stall', reason, stage: 'ID', instr: fd.instr });
-        ctx.stalled = true; // a single-lane producer that freezes the whole stage
-        ctx.next.idEx[s] = null; // a bubble goes down the pipe...
-        ctx.next.ifId[s] = fd; // ...and this instruction stays right here in ID
-        continue;
+        break; // ...and this instruction stays right here in ID, to lead the next group
       }
 
       const a = src.rs1 === null ? null : this.readReg(ctx, fd.instr, src.rs1);
@@ -1204,7 +1327,7 @@ export class SuperscalarProcessor implements Processor {
       // transfer, so the `isArchHalt` squash above cannot coincide with a bet.
       const target = this.predictTaken ? speculativeTarget(d, fd.pc) : null;
       if (target !== null) {
-        ctx.bet = true;
+        ctx.bet = { slot: s, target };
         ctx.redirect = target; // applied at the clock edge, AFTER IF has fetched the fall-through
         // The bet's own event, emitted HERE rather than left to be inferred from the `flush` it
         // usually causes. The two are different facts and they come apart: a branch at the end of
@@ -1222,7 +1345,83 @@ export class SuperscalarProcessor implements Processor {
         b,
         predictedTaken: target !== null,
       };
+      group.push(fd);
+      issued = s + 1;
+
+      // The group ENDS HERE, and what is behind it dies rather than slides. Both cases are the same
+      // fact: this instruction has just declared that the sequential path behind it is not the path.
+      // A halt says so architecturally, a bet says so speculatively, and in either case the ID slot
+      // behind them holds a fall-through that must not survive into next cycle's group.
+      //
+      // This is why a betting branch does not need a fourth pairing rule refusing it a partner:
+      // pairing with one is harmless because the partner is killed either way. Refusing to pair
+      // would have left the same instruction stranded in IF/ID as a survivor — still wrong-path,
+      // still needing to die, just via a longer route.
+      if (ctx.squash !== null || ctx.bet !== null) {
+        killedRest = true;
+        break;
+      }
     }
+
+    // The SLIDE. Whatever the group did not consume moves down to lead the next one, compacted so
+    // slot 0 is always the oldest undispatched instruction — the invariant the whole issue loop and
+    // IF's hand-over both read. When the group ended by killing what was behind it, there is
+    // nothing to slide and `next.ifId` stays the empty set it was built as.
+    if (!killedRest) {
+      for (let s = issued; s < this.width; s++) {
+        ctx.next.ifId[s - issued] = ctx.prev.ifId[s] ?? null;
+      }
+    }
+  }
+
+  /**
+   * **The issue verdict: may this instruction join the group forming this cycle?** `null` means yes;
+   * a string is the refusal reason, and it is what the `stall` event carries and step 8's readout
+   * will name. Slot 0 faces an empty `group` and so can only ever be refused by the ordinary hazard
+   * check — the oldest undispatched instruction is never refused for a PAIRING reason, which is what
+   * guarantees forward progress and makes "refused ⇒ leads the next group" safe from livelock.
+   *
+   * The three pairing rules are checked BEFORE the ordinary hazard, and that order is deliberate
+   * rather than incidental. They look at disjoint state (the group in ID vs. the older stages), so
+   * they rarely both fire; when they do, the pairing verdict is the true one to report, because the
+   * instruction is about to be retried ALONE next cycle and the hazard check will be re-run against
+   * a stage walk that has moved on. Reporting a hazard that may well have evaporated by the time the
+   * instruction actually issues would name a cause that never cost anything.
+   *
+   * The rules are a COORDINATED SIMPLIFICATION, not three independent tastes — together they are
+   * what keeps the widening confined. No two memory ops ⇒ MEM stays single-ported and the cache and
+   * its miss-freeze stay single-lane. No two transfers ⇒ EX resolves at most one control transfer a
+   * cycle, so `bet`/`squash`/`redirect` stay single-lane. No intra-pair RAW ⇒ forwarding never has
+   * to resolve a within-group dependency. What actually doubles is a short list: fetch, the
+   * register-read ports, the ALU, the WB write ports, and the forwarding SOURCE set.
+   */
+  private issueVerdict(
+    ctx: CycleCtx,
+    d: DecodedInstruction,
+    src: SourceRegs,
+    group: readonly IfIdLatch[],
+  ): string | null {
+    for (const older of group) {
+      // STRUCTURAL — one data-memory port. Two loads, two stores, or one of each cannot go
+      // together, and this is the structural-hazard lesson the tier gets for free.
+      if (usesMemPort(d) && usesMemPort(older.decoded)) return 'mem-port';
+
+      // STRUCTURAL — one branch unit. Classified by CLASS, not by outcome (see TRANSFERS): a
+      // not-taken branch still occupied the unit, and at issue nobody knows the outcome anyway.
+      if (TRANSFERS.has(d.mnemonic) && TRANSFERS.has(older.decoded.mnemonic)) return 'branch-slot';
+
+      // INTRA-PAIR RAW. This one holds at EVERY forwarding setting, which is itself the teachable
+      // fact: forwarding moves a value from a LATER stage back to EX, and there is no later stage
+      // than "beside me, this very cycle". The producer's result does not exist yet. `rd !== 0`
+      // excludes both "writes nothing" and a write to hardwired x0.
+      const rd = destReg(older.decoded);
+      if (rd !== 0 && (rd === src.rs1 || rd === src.rs2)) return 'intra-pair-raw';
+    }
+
+    // The ordinary hazards against OLDER STAGES — `load-use` with forwarding on, `raw` with it off.
+    // Identical at both widths: this is a question about instructions already in EX/MEM, and the
+    // group forming in ID has no bearing on it.
+    return this.detectHazard(ctx, src);
   }
 
   /**
@@ -1294,37 +1493,56 @@ export class SuperscalarProcessor implements Processor {
       }
     }
 
-    if (ctx.squash !== null) {
-      // Whatever IF holds dies, and nothing enters ID.
+    if (ctx.squash !== null || ctx.bet !== null) {
+      // Whatever IF holds dies, and nothing enters ID. The two cases differ decisively ONE STAGE UP
+      // and not at all here: a squash killed ID's occupants too, while a bet spared the branch and
+      // everything older than it in its group — so `ctx.next.idEx`, already set by stageId, stands
+      // either way and this stage is blind to which happened. One casualty instead of two is the
+      // entire saving a correct prediction buys.
       this.ifSlot = emptySlots<Fetched>(this.width);
       for (let s = 0; s < this.width; s++) ctx.next.ifId[s] = null;
       return slots; // they were here this cycle, and they die here
     }
 
-    if (ctx.bet) {
-      // The ID bet steered fetch to a predicted target, so the fall-through this stage just fetched
-      // is off the predicted path and dies — exactly like a squash from IF's point of view. The
-      // difference is invisible here and decisive one stage up: ID's own instruction (the branch
-      // doing the predicting) is NOT killed, so `ctx.next.idEx` — already set by stageId — stands.
-      // One casualty instead of two is the entire saving a correct prediction buys.
-      this.ifSlot = emptySlots<Fetched>(this.width);
-      for (let s = 0; s < this.width; s++) ctx.next.ifId[s] = null;
+    if (ctx.memStall) {
+      // The whole front of the pipe is frozen. ID has already re-presented its own occupants in
+      // `ctx.next.ifId`, and IF must not hand anything over even if a seat looks free — a miss is a
+      // property of the machine, not of a lane, so nothing younger moves at all.
+      this.ifSlot = slots;
       return slots;
     }
 
-    if (ctx.stalled || ctx.memStall) {
-      // Hold them in IF. `ctx.stalled` is the load-use case (ID could not accept them); `memStall`
-      // is the miss (the whole front of the pipe is frozen). In both, `ctx.next.ifId` was already
-      // set by ID — to the held or fetched instruction on a load-use stall, to ID's own frozen
-      // occupants on a miss — so IF must not touch it, only keep its own occupants for next cycle.
-      this.ifSlot = slots;
-    } else {
-      this.ifSlot = emptySlots<Fetched>(this.width);
-      for (let s = 0; s < this.width; s++) {
-        const f = slots[s] ?? null;
-        ctx.next.ifId[s] = f === null ? null : toLatch(f);
+    // THE HAND-OVER, and the other half of the sliding-issue machinery. ID left its unconsumed
+    // occupants compacted at the bottom of `next.ifId`; IF fills the seats above them, oldest
+    // first, and keeps whatever does not fit for next cycle. Everything the old width-1 code said
+    // with three special cases falls out of this one rule:
+    //
+    //   - ID issued everything ⇒ every seat free ⇒ IF hands over its whole fetch. The steady state.
+    //   - ID refused a younger instruction ⇒ that survivor took seat 0 ⇒ IF hands over ONE, and the
+    //     other stays in IF. Next cycle the survivor leads the group and can pair with it. This is
+    //     precisely how pairing RECOVERS from a refusal.
+    //   - ID stalled its oldest ⇒ it re-took its own seat ⇒ at width 1 no seat is free and IF holds
+    //     everything, which is the classic stall picture, byte for byte what M3 does.
+    //
+    // Note what the third case becomes at width 2 when ID holds only ONE stalled instruction: the
+    // seat behind it IS free, so a younger instruction moves into ID beside the stalled one and is
+    // ready to be grouped the moment the stall clears. That is correct and in-order — it is the
+    // decoupling a fetch buffer buys — and it is invisible at width 1, where the seat never exists.
+    const keep = emptySlots<Fetched>(this.width);
+    let seat = ctx.next.ifId.findIndex((o) => o === null);
+    let kept = 0;
+    for (let s = 0; s < this.width; s++) {
+      const f = slots[s] ?? null;
+      if (f === null) continue;
+      if (seat >= 0 && seat < this.width) {
+        ctx.next.ifId[seat] = toLatch(f);
+        seat += 1;
+      } else {
+        keep[kept] = f; // no seat: it waits in IF, still compacted, still in program order
+        kept += 1;
       }
     }
+    this.ifSlot = keep;
     return slots;
   }
 

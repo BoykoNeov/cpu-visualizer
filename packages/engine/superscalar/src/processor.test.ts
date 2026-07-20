@@ -101,16 +101,19 @@ describe('issueWidth', () => {
     expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 1 })).not.toThrow();
   });
 
-  it('THROWS on width 2 — an honest "not yet" beats silently running narrow', () => {
-    // Step 2a ships the slot-shaped base with no pairing logic. A model that accepted width 2 and
-    // quietly issued one instruction per cycle would be indistinguishable from a working dual-issue
-    // machine to every consumer except a cycle count — and the width toggle's entire observable
-    // effect IS a cycle count. Step 2b lifts this.
+  it('accepts an explicit 2 — step 2b made the other toggle position a real machine', () => {
+    // Step 2a's refusal lived here, and lifting it is the headline of step 2b. It was an honest
+    // "not yet": a model that had accepted width 2 while quietly issuing one instruction per cycle
+    // would have been indistinguishable from a working dual-issue machine to every consumer except
+    // a cycle count — and the width toggle's entire observable effect IS a cycle count.
     const p = new SuperscalarProcessor();
-    expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 2 })).toThrow(/issueWidth 2/);
+    expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 2 })).not.toThrow();
+    expect(p.isHalted()).toBe(false);
   });
 
-  it('rejects nonsense widths too, with the same refusal', () => {
+  it('still rejects widths the machine does not have', () => {
+    // 1 and 2 are the toggle; anything else would need pairing rules this model has not got, and
+    // running narrow while the config says otherwise is the one failure mode worth throwing over.
     const p = new SuperscalarProcessor();
     expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 0 })).toThrow();
     expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 3 })).toThrow();
