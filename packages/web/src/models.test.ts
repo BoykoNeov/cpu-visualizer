@@ -93,13 +93,13 @@ describe('the model table', () => {
       ['single-cycle', 'single-cycle'],
       ['multi-cycle', 'multi-cycle'],
       ['pipeline', 'pipeline'],
-      // `'none'` is the HONEST value at M7 step 6, not an oversight: the superscalar's diagram is
-      // step 7's deliverable, and `'none'` means "no diagram yet" (App draws the placeholder). The
-      // failure this table exists to catch is a row pointing at the WRONG diagram — `'none'` points
-      // at none, which cannot draw a contradictory picture (INV-5). Flipping this to `'superscalar'`
-      // is step 7's, together with the union member and App's dispatch arm; doing it here would make
-      // this test assert a bespoke diagram that nothing draws.
-      ['superscalar', 'none'],
+      // Flipped from `'none'` at M7 step 7, together with the union member and App's dispatch arm —
+      // and this table FAILING was the reminder to do all three, which is what an exhaustive table
+      // is for. `datapath-superscalar.ts` now exists: a shared front-end feeding two replicated
+      // execute lanes, with issue width as a third structural axis. Reusing `'pipeline'` here would
+      // be the exact failure this test hunts — that diagram draws one instruction per stage, so a
+      // superscalar trace would light it into a picture the machine contradicts (INV-5).
+      ['superscalar', 'superscalar'],
     ]);
   });
 

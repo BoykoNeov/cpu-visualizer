@@ -10,12 +10,14 @@
 
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Datapath } from './DatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
+import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { loadSource } from './simulator';
 
 /** Assemble `source`, step `cycles` on the chosen engine, and return the trace at the cursor. */
@@ -216,5 +218,142 @@ describe('pipeline wrapper × shared renderer', () => {
     expect(html).toContain('dp-wire');
     expect(html).not.toContain('dp-wire--on');
     expect(html).not.toContain('dp-flow');
+  });
+});
+
+describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
+  /** A width-`w` recording of `source`, at cycle `cycles`. */
+  function ssAt(source: string, cycles: number, issueWidth: number, forwarding = true): CycleTrace {
+    const result = loadSource(
+      `${source}\n  li a7, 10\n  ecall\n`,
+      () => new SuperscalarProcessor(),
+      { ...defaultConfig(), forwarding, issueWidth },
+    );
+    if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+    const { recorder } = result.loaded;
+    for (let i = 0; i < cycles; i++) recorder.stepForward();
+    const trace = recorder.current();
+    if (!trace) throw new Error(`no trace at cycle ${cycles - 1}`);
+    return trace;
+  }
+
+  const FILL = '  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4\n  addi x5, x0, 5\n  addi x6, x0, 6'; // prettier-ignore
+  // Two stores back to back — the `mem-port` refusal, and the "one lane dark" picture.
+  const REFUSE = '  addi x1, x0, 256\n  addi x2, x0, 7\n  sw x2, 0(x1)\n  sw x2, 4(x1)';
+
+  const render = (
+    trace: CycleTrace,
+    tier: 'essentials' | 'detailed' | 'expert',
+    issueWidth: number,
+    forwarding = true,
+  ): string =>
+    renderToStaticMarkup(
+      <SuperscalarDatapath
+        trace={trace}
+        cycleKey={0}
+        tier={tier}
+        config={{ forwarding, predictTaken: false, issueWidth }}
+      />,
+    );
+
+  it('tints REPLICATED boxes by lane and leaves SHARED ones hue-neutral', () => {
+    // The three-channel split at the render seam, which the pure activation suite cannot see: the
+    // lane hue reaches the markup as a custom property on the BOX, and never on the wires (those
+    // are stroked by stage) nor on the shared spine.
+    const html = render(ssAt(FILL, 4, 2), 'expert', 2);
+    expect(html).toContain('--dp-hue:var(--lane-0)');
+    expect(html).toContain('--dp-hue:var(--lane-1)');
+    expect(html).toContain('dp-node-shape--hue');
+    // The wires keep the STAGE grammar — the same hues the pipeline map beside them uses.
+    expect(html).toContain('stroke:var(--phase-ex)');
+    expect(html).not.toContain('stroke:var(--lane-1)');
+    // The relief rule: each lane hue appears beside its own words, in the legend and on the boxes.
+    expect(html).toContain('Lane 0');
+    expect(html).toContain('Lane 1');
+    expect(html).toContain('ALU 1');
+  });
+
+  it('the width toggle RESTRUCTURES the diagram — lane 1 is gone, not idle', () => {
+    // The flagship 1↔2 A/B, at the seam that draws it. Asserted as an absence of shapes and labels
+    // rather than "the markups differ": a second lane rendered dim would pass a mere-difference
+    // check while drawing hardware the 1-wide machine does not have.
+    const wide = render(ssAt(FILL, 4, 2), 'expert', 2);
+    const narrow = render(ssAt(FILL, 4, 1), 'expert', 1);
+    expect(wide).toContain('ALU 1');
+    expect(narrow).not.toContain('ALU 1');
+    expect(narrow).toContain('ALU 0');
+    expect(narrow).not.toContain('--dp-hue:var(--lane-1)');
+    expect(narrow).not.toContain('Lane 1');
+    // The ISSUE unit goes with it: pairing is a question about two candidates.
+    expect(wide).toContain('Issue');
+    expect(narrow).not.toContain('Issue');
+    // ...while the shared spine and the hazard unit survive the flip untouched.
+    for (const html of [wide, narrow]) {
+      expect(html).toContain('Registers');
+      expect(html).toContain('Hazard');
+    }
+    // Strictly fewer shapes at width 1 — the picture really is smaller, not merely dimmer.
+    expect(count(narrow, '<polygon')).toBeLessThan(count(wide, '<polygon'));
+    expect(count(narrow, '<rect')).toBeLessThan(count(wide, '<rect'));
+    expect(wide).toContain('2-wide');
+    expect(narrow).toContain('1-wide');
+  });
+
+  it('names the pairing verdict on a refused cycle, and says nothing on a paired one', () => {
+    // The badge exists because the picture provokes the question "why is that lane dark?". The
+    // cycle index was read off a dumped trace, not reasoned about.
+    const refused = render(ssAt(REFUSE, 3, 2), 'detailed', 2);
+    expect(refused).toContain('one data-memory port');
+    // It is a STATUS, so it wears the warn family and not a lane hue — a magenta badge would read
+    // as "lane 1" to a reader who has just learned that magenta means lane 1.
+    expect(refused).toContain('dp-verdict');
+    expect(render(ssAt(FILL, 4, 2), 'detailed', 2)).not.toContain('dp-verdict');
+  });
+
+  it('strokes one cycle in MANY stage hues while TWO instructions share a stage', () => {
+    const trace = ssAt(FILL, 4, 2);
+    const slots = trace.instructions.map((i) => i.location);
+    expect(slots.filter((l) => l.endsWith('.1')).length, 'no paired stage').toBeGreaterThan(0);
+    const html = render(trace, 'detailed', 2);
+    const hues = (['if', 'id', 'ex', 'mem', 'wb'] as const).filter((s) =>
+      html.includes(`stroke:var(--phase-${s})`),
+    );
+    expect(hues.length, 'several stages light at once').toBeGreaterThanOrEqual(4);
+  });
+
+  it('tiers representation: values at detailed+, control labels at expert only', () => {
+    const full = ssAt(FILL, 4, 2);
+    expect(render(full, 'essentials', 2)).not.toContain('dp-vlabel-text');
+    expect(render(full, 'detailed', 2)).toContain('dp-vlabel-text');
+    expect(render(full, 'detailed', 2)).not.toContain('MemtoReg');
+    expect(render(full, 'expert', 2)).toContain('MemtoReg0');
+    expect(render(full, 'expert', 2)).toContain('MemtoReg1');
+  });
+
+  it('the forwarding network VANISHES when forwarding is off — in BOTH lanes', () => {
+    const on = render(ssAt(FILL, 4, 2, true), 'expert', 2, true);
+    const off = render(ssAt(FILL, 4, 2, false), 'expert', 2, false);
+    expect(on).toContain('Forwarding');
+    expect(off).not.toContain('Forwarding');
+    expect(on).toContain('ForwardA0');
+    expect(on).toContain('ForwardA1');
+    expect(off).not.toContain('ForwardA');
+    expect(off).toContain('Hazard');
+  });
+
+  it('renders the idle diagram (no active classes) pre-run', () => {
+    const html = renderToStaticMarkup(
+      <SuperscalarDatapath
+        trace={null}
+        cycleKey={-1}
+        tier="detailed"
+        config={{ forwarding: true, predictTaken: false, issueWidth: 2 }}
+      />,
+    );
+    expect(html).toContain('dp-wire');
+    expect(html).not.toContain('dp-wire--on');
+    expect(html).not.toContain('dp-flow');
+    // An idle lane-1 box carries its hue CLASS but never the active tint — "one lane dark" needs it.
+    expect(html).not.toContain('dp-node-shape--on');
   });
 });

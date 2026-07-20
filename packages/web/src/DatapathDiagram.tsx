@@ -68,6 +68,22 @@ export interface NodeVM {
   readonly active: boolean;
   /** Control-signal annotation above the node (mux control lines, `expert` tier). */
   readonly controlLabel?: string;
+  /**
+   * CSS color for this box when ACTIVE (e.g. `var(--lane-1)`) — its outline and fill wash. Absent ⇒
+   * the default active accent, which is what every pre-M7 view passes, so those render unchanged.
+   *
+   * This is the "hue override" renderer delta `superscalar-visuals.md` planned in 2026-07-14, and
+   * it deliberately lands on NODES rather than wires. The wire stroke already means STAGE in every
+   * model here and in the pipeline map beside them, so re-pointing it would put two color grammars
+   * on one screen. A box, meanwhile, can only take a hue when it belongs to exactly one thing —
+   * which is false for a SHARED box (the register file is read by ID and written by WB in the same
+   * cycle, so it has no one stage) and true for a REPLICATED one (`ALU 1` does slot 1's work and
+   * nothing else). So: wire stroke = stage, node hue = issue lane, follow ring = identity.
+   *
+   * Whoever sets this owns the relief rule: some validated lane hues sit below 3:1 against the
+   * surface, so a hued box must also carry its meaning in its text.
+   */
+  readonly hue?: string;
 }
 
 /** Format a wire value for a label: 32-bit hex for addresses/encodings, signed decimal for data. */
@@ -358,7 +374,11 @@ export function DatapathDiagram(props: {
 /** Draw one component as a box / mux / notched adder, with its (optional) control annotation. */
 function NodeShape(props: { node: NodeVM }): React.JSX.Element {
   const { node } = props;
-  const shapeClass = node.active ? 'dp-node-shape dp-node-shape--on' : 'dp-node-shape';
+  // The hue rides a CSS custom property rather than a direct `stroke`/`fill`, so one class can
+  // derive both the outline and its 11% fill wash from it — and so an idle box ignores it entirely.
+  const hueClass = node.hue ? ' dp-node-shape--hue' : '';
+  const shapeClass = (node.active ? 'dp-node-shape dp-node-shape--on' : 'dp-node-shape') + hueClass;
+  const hueStyle = node.hue ? ({ '--dp-hue': node.hue } as React.CSSProperties) : undefined;
   const labelClass = node.active ? 'dp-node-label dp-node-label--on' : 'dp-node-label';
   const cx = node.x + node.w / 2;
   const cy = node.y + node.h / 2;
@@ -366,10 +386,20 @@ function NodeShape(props: { node: NodeVM }): React.JSX.Element {
 
   let shape: React.JSX.Element;
   if (node.shape === 'mux' || node.shape === 'adder') {
-    shape = <polygon className={shapeClass} points={toPolyline(shapePolygon(node))} />;
+    shape = (
+      <polygon className={shapeClass} style={hueStyle} points={toPolyline(shapePolygon(node))} />
+    );
   } else {
     shape = (
-      <rect className={shapeClass} x={node.x} y={node.y} width={node.w} height={node.h} rx={5} />
+      <rect
+        className={shapeClass}
+        style={hueStyle}
+        x={node.x}
+        y={node.y}
+        width={node.w}
+        height={node.h}
+        rx={5}
+      />
     );
   }
 

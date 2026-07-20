@@ -37,7 +37,7 @@ import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
  * the web shell dispatches on this discriminator rather than a plain has/has-not flag. `'none'`
  * falls back to a placeholder for models whose datapath isn't built yet.
  */
-export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'pipeline' | 'none';
+export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'pipeline' | 'superscalar' | 'none';
 
 /** A selectable microarchitecture: its id, a display label, and how to make a fresh engine. */
 export interface ModelChoice {
@@ -99,15 +99,14 @@ export const MODELS: readonly ModelChoice[] = [
     // a second place for the same claim to go stale.
     description: SUPERSCALAR_MODEL_DESCRIPTION,
     make: () => new SuperscalarProcessor(),
-    // `'none'` — no diagram YET, and that is the honest value at M7 step 6 rather than a placeholder
-    // for one. `'superscalar'` joins the union in step 7, when `datapath-superscalar.ts` exists and
-    // App can dispatch to it; declaring the kind a step early would make this discriminator (and the
-    // table test that pins it) assert a bespoke diagram that nothing draws, while App silently fell
-    // through to `DatapathPlaceholder`. A `DatapathKind` value means "a diagram of this kind exists".
-    // Everything else this model needs is already free via INV-3: the picker, transport, panels,
-    // scrub, lessons, the sandbox fork, and the pipeline map (gated on overlap in the TRACE, so a
-    // model whose instructions share a stage gets it without this file naming it).
-    datapath: 'none',
+    // Its OWN hand-authored geometry (M7 step 7): a shared front-end feeding two replicated execute
+    // lanes. Deliberately NOT reusing the pipeline's diagram — that one draws one instruction per
+    // stage, so a superscalar trace would light it into a picture that contradicts the machine
+    // (INV-5), which is the same reason M3 did not reuse M2's. This value stayed `'none'` through
+    // step 6 on purpose: a `DatapathKind` means "a diagram of this kind exists", so declaring it a
+    // step early would have made the discriminator (and the table test that pins it) assert a
+    // bespoke diagram that nothing drew, while App silently fell through to the placeholder.
+    datapath: 'superscalar',
     capabilities: SUPERSCALAR_CAPABILITIES,
   },
 ];

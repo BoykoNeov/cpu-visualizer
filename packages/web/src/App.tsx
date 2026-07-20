@@ -11,6 +11,7 @@ import { LESSONS, lessonSections } from './lessons';
 import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
+import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { hasOverlap } from './pipeline-map';
@@ -385,6 +386,24 @@ export function App(): React.JSX.Element {
                       config={{
                         forwarding: sim.forwarding,
                         predictTaken: predictsTaken(sim.branchPrediction),
+                      }}
+                      followed={followed}
+                    />
+                  ) : activeModel.datapath === 'superscalar' ? (
+                    // The first datapath with THREE structural axes: the pipeline's two, plus issue
+                    // WIDTH. At `1-wide` the second execute lane and the issue unit are absent — not
+                    // idle — because a width-1 trace has no `.1` occupant and no pairing refusal to
+                    // put there, so the width toggle visibly restructures the diagram rather than
+                    // just changing its numbers. `issueWidth` is optional on `ProcessorConfig` (only
+                    // this model needs it), so the shell resolves the absent case to 1 right here.
+                    <SuperscalarDatapath
+                      trace={sim.cycleTrace}
+                      cycleKey={sim.cursor}
+                      tier={tier}
+                      config={{
+                        forwarding: sim.forwarding,
+                        predictTaken: predictsTaken(sim.branchPrediction),
+                        issueWidth: sim.issueWidth ?? 1,
                       }}
                       followed={followed}
                     />

@@ -64,6 +64,19 @@
   --phase-ex: #eda100;
   --phase-mem: #008300;
   --phase-wb: #4a3aa7;
+
+  /* Issue-lane hues (M7 step 7) — a SECOND encoding channel, and deliberately not a phase hue.
+     Phase hues mean STAGE and own the wire stroke everywhere (map cells, chips, datapath wires);
+     these mean ISSUE SLOT and tint only replicated hardware BOXES, which is the one thing a stage
+     hue cannot claim (a shared box belongs to no single stage). Lane 0 aliases the accent on
+     purpose: a single-issue machine's lane 0 is today's picture, which is the right degenerate
+     case. Machine-validated 2026-07-14 against both surfaces — CVD separation dE 41.3 light /
+     42.6 dark — with one WARN: light magenta is 2.62:1 against the surface, so the RELIEF RULE is
+     mandatory and a lane hue never appears without a text label (every lane-tinted node carries
+     its lane number in its own label; pinned by test). No red or amber lane: red is the
+     danger/flush family and amber the warn wash, so a lane in either would impersonate a status. */
+  --lane-0: #2a78d6;
+  --lane-1: #e87ba4;
 }
 
 /* Dark tokens, twice: once for the OS preference (unless the toggle pinned light), once for the
@@ -98,6 +111,8 @@
     --phase-ex: #c98500;
     --phase-mem: #008300;
     --phase-wb: #9085e9;
+    --lane-0: #3987e5;
+    --lane-1: #d55181;
   }
 }
 :root[data-theme='dark'] {
@@ -129,6 +144,8 @@
   --phase-ex: #c98500;
   --phase-mem: #008300;
   --phase-wb: #9085e9;
+  --lane-0: #3987e5;
+  --lane-1: #d55181;
 }
 
 /* ---- 2. Base ------------------------------------------------------------------------ */
@@ -388,6 +405,15 @@ input[type='range'] {
   stroke: var(--accent);
   stroke-width: 2;
 }
+/* A node handed a LANE HUE (M7 step 7 — the superscalar's replicated units). Only the ACTIVE state
+   is tinted: idle stays the shared grey, because "one lane lit, one dark" is the picture a pairing
+   failure makes and a permanently-tinted idle lane would erase it. Views that pass no hue never get
+   this class and render pixel-identical to before. The 11% wash mirrors what `--accent-soft` is to
+   `--accent`, derived rather than a second hand-maintained token per lane. */
+.dp-node-shape--on.dp-node-shape--hue {
+  fill: color-mix(in srgb, var(--dp-hue) 11%, var(--surface));
+  stroke: var(--dp-hue);
+}
 
 .dp-node-label {
   fill: var(--ink-2);
@@ -591,6 +617,21 @@ input[type='range'] {
   color: var(--ink-3);
   margin-top: 0.15rem;
 }
+/* The issue verdict, shown beside the superscalar datapath's heading on a cycle where pairing was
+   refused (M7 step 7). It uses the WARN family rather than a lane hue on purpose: a refusal is a
+   status, and the lane hues are already spoken for as an identity channel — tinting this magenta
+   would say "lane 1" to a reader who had just learned that. Text-first, so it needs no color to be
+   read at all. */
+.dp-verdict {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--warn-ink);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+}
+
 .dp-legend-swatch {
   display: inline-block;
   width: 18px;
