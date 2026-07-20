@@ -179,6 +179,28 @@ function idOccupants(trace: CycleTrace, width: number): (InstructionInstance | u
  * stalling; then a miss-freeze, which does neither and is the case that disproved the naive rule.
  * If none of the three applies, the reason stays `null` rather than being guessed.
  */
+/**
+ * The PRE-RUN readout: an idle verdict carrying the recording's width, or `null` if this recording
+ * is not superscalar.
+ *
+ * This exists because of a defect the browser caught and no headless test could: at the pre-run
+ * cursor `trace` is `null`, so keying the whole panel on the cursor's trace made it VANISH at
+ * cycle -1 — and with it the IPC tile, which is a whole-recording figure that is perfectly
+ * meaningful before the first step and is the one number the width A/B is read from. The panel
+ * popping in and out as you scrub to the start is the visible half of the bug; the invisible half is
+ * that a reader who loads a program, flips the width toggle and never presses step sees nothing at
+ * all. The cache grid solved the same problem by drawing a cold cache at `trace === null`; this is
+ * that idea in this panel's vocabulary.
+ */
+export function readPairingPreRun(recording: readonly CycleTrace[]): PairingReadoutView | null {
+  for (const t of recording) {
+    const micro = superscalarMicro(t);
+    if (micro !== null)
+      return { width: micro.width, candidates: [], verdict: 'idle', reason: null };
+  }
+  return null;
+}
+
 export function readPairing(trace: CycleTrace): PairingReadoutView | null {
   const micro = superscalarMicro(trace);
   if (micro === null) return null;

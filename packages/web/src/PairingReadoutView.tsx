@@ -34,6 +34,7 @@ import type { CycleTrace } from '@cpu-viz/trace';
 import {
   readIpc,
   readPairing,
+  readPairingPreRun,
   REASON_TEXT,
   type IssueVerdict,
   type PairingReadoutView as Readout,
@@ -71,7 +72,13 @@ export function PairingReadout(props: {
   followed?: string | null;
 }): React.JSX.Element | null {
   const { trace, recording, followed } = props;
-  const readout = useMemo(() => (trace === null ? null : readPairing(trace)), [trace]);
+  // At the pre-run cursor there is no trace, but there IS a recording — and the IPC tile is a
+  // whole-recording figure, so the panel stays (see `readPairingPreRun`). Keying the panel on the
+  // cursor alone made it vanish at cycle -1, taking the width A/B's one number with it.
+  const readout = useMemo(
+    () => (trace === null ? readPairingPreRun(recording) : readPairing(trace)),
+    [trace, recording],
+  );
   const ipc = useMemo(() => readIpc(recording), [recording]);
   if (readout === null) return null;
 

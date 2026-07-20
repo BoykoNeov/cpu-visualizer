@@ -17,7 +17,13 @@ import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { CACHE_SMALL } from '@cpu-viz/engine-common';
 import { defaultConfig, type CycleTrace, type ProcessorConfig } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
-import { readIpc, readPairing, REASON_TEXT, type IssueReason } from './pairing-readout';
+import {
+  readIpc,
+  readPairing,
+  readPairingPreRun,
+  REASON_TEXT,
+  type IssueReason,
+} from './pairing-readout';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
@@ -301,5 +307,42 @@ describe('gating', () => {
       'memory-stall',
     ];
     for (const k of all) expect(REASON_TEXT[k] ?? '').not.toBe('');
+  });
+});
+
+// =================================================================================================
+// The pre-run cursor — a defect only the browser could catch
+// =================================================================================================
+
+describe('pre-run (cursor -1, no trace)', () => {
+  /**
+   * Caught in the browser, and catchable NOWHERE ELSE in this repo: the headless tests are
+   * `renderToStaticMarkup` with no jsdom, so no test can scrub a cursor to -1. Keying the panel on
+   * the cursor'''s trace made it vanish at pre-run, taking the IPC tile with it — and IPC is a
+   * whole-recording figure that is meaningful before the first step. A reader who loads a program,
+   * flips the width toggle and never presses step saw nothing at all.
+   */
+  it('still yields a readout, carrying the width, so the IPC tile survives cycle -1', () => {
+    const ts = record(program('sum-loop'));
+    const pre = readPairingPreRun(ts)!;
+    expect(pre.verdict).toBe('idle');
+    expect(pre.width).toBe(2);
+    expect(pre.candidates).toEqual([]);
+    // ...and the figure it exists to keep on screen is unaffected by having no cursor.
+    expect(readIpc(ts)).toMatchObject({ retired: 34, cycles: 44 });
+  });
+
+  it('reports the width the RECORDING was made at, not a default', () => {
+    // Provoked in both directions: a width-1 recording must say 1. A hardcoded 2 would pass the
+    // test above and mislabel every 1-wide run.
+    expect(readPairingPreRun(record(program('sum-loop'), { ...W2, issueWidth: 1 }))!.width).toBe(1);
+  });
+
+  it('and stays null for a non-superscalar recording — the gate is unchanged', () => {
+    const r = loadSource(program('add'));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    r.loaded.recorder.runToEnd();
+    expect(readPairingPreRun(r.loaded.recorder.recorded)).toBeNull();
   });
 });

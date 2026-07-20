@@ -581,10 +581,71 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       Acceptance met: 2122 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check`,
       `npm run build` all green.
 
-- [ ] **8. Pairing readout + IPC tile.** The readout names the fetched pair, the verdict, and the
+- [x] **8. Pairing readout + IPC tile.** The readout names the fetched pair, the verdict, and the
       refusal reason; IPC is **derived by the view** from retire events, never an engine counter
       (INV-2). Acceptance: panel tests + **browser eyeball**; flipping the width toggle on one
       program visibly moves IPC.
+
+      ✅ **Done (2026-07-20, 2122 → 2142 tests, +20).** `pairing-readout.ts` (pure fold) +
+      `PairingReadoutView.tsx` (HTML panel), the two-halves shape of the cache grid and the map.
+      Browser-verified: `sum-loop.s` at forwarding ON, flipping `1-wide → 2-wide` without reloading
+      moves IPC **0.61 (34 ÷ 56) → 0.77 (34 ÷ 44)** live, and on `array-sum.s` cycle 10 the readout
+      reads `REFUSED · intra-pair-raw`, `slot 0 lw x7, 0(x5) issued → / slot 1 add x10, x10, x7 held`
+      — byte-identical to the offline scan.
+
+      **(a) The obvious rule is a lie, and only a dump could show it.** "A `stall` names the refused
+      instruction, so no stall ⇒ they paired" survives every hand-reasoned case and then fails on the
+      flagship cache program: `array-sum.s` at width 2 / small cache holds `ID.0=i5, ID.1=i6` frozen
+      for cycles 6–14 with **no `stall` event on any of them** (a miss-freeze emits none — the M6
+      finding), so the naive readout announces "paired, issuing together" for nine consecutive cycles
+      while nothing moves. The deeper defect is structural: that rule requires ENUMERATING every way
+      an issue can be blocked (pairing refusal, ordinary hazard, flush, freeze) and being complete,
+      and the freeze hole is precisely a missing enumeration case — there is no way to know the list
+      is finished. **So the fold reads the RESULT, not the reasons:** `micro.idEx` is exactly who
+      issued, so blocked-ness cannot be under-counted and the panel never needs to know WHY in order
+      to avoid claiming they went. The reason is looked up separately and is allowed to be `null`.
+
+      **(b) The licensing identity was verified, not reasoned:** `micro.idEx@N` === the `EX.<slot>`
+      occupants at N+1, over 3 hand-written refusal programs plus the whole corpus at 2 widths ×
+      cache on/off (28 configs, ~1600 cycles), zero mismatches. It is guarded in the suite because
+      breaking it would fail **silently** — the panel would report issues that never happened and
+      nothing else would notice. This is NOT the datapath's one-cycle-ahead `micro` trap: that trap
+      is reading `micro` for CURRENT occupancy, and here being a cycle ahead is the whole point.
+
+      **(c) The browser caught a defect no test in this repo can reach: the panel VANISHED at
+      pre-run.** Keying it on the cursor's trace meant `trace === null` at cycle -1 hid the whole
+      section — including the IPC tile, which is a whole-recording figure that is perfectly
+      meaningful before the first step. A reader who loads a program, flips the width toggle and
+      never presses step saw nothing at all. Headless tests here are `renderToStaticMarkup` with no
+      jsdom, so **no test can scrub a cursor**; `readPairingPreRun` fixes it and is now guarded in
+      both directions (a width-1 recording must report 1, not a hardcoded 2).
+
+      **(d) A test cited a cycle number observed in a DIFFERENT config.** The flush case was first
+      written against cycle 18 read off the cache-ON dump, then asserted against a cache-off
+      recording — where 18 is an ordinary `load-use` stall. It failed loudly this time; the same slip
+      onto a cycle that happened to agree would have passed while demonstrating nothing. **An
+      observed cycle number is only valid for the config it was observed in** — the sharpest form yet
+      of this milestone's standing observe-then-assert rule.
+
+      **(e) `refused` and `blocked` are deliberately different verdicts.** Refused = the older issued
+      and a younger did not, so the machine kept making progress; blocked = nobody moved. Collapsing
+      both into one "stalled" chip would erase the tier's own lesson ("pairing failed, but we did not
+      stop"). The split falls out of the `micro.idEx` reading for free.
+
+      **(f) The readout does NOT agree with the datapath at the same cursor, and must not be read as
+      if it did.** Its subject is the pair in ID; the dark `ALU 1` is that decision's consequence one
+      cycle later. The surface that agrees at a shared cursor is the **pipeline map**, where a
+      refusal is a visible stagger — browser-confirmed on `array-sum.s`, where the held `add`'s row
+      shows two ID cells (`ID.1` then `ID.0`, the slot slide the sliding-issue decision predicts) and
+      its `EX` lands one column right of the `lw`'s. The panel says this on the surface rather than
+      leaving a reader to discover it as an apparent bug.
+
+      One number worth pinning against future doubt: `array-sum.s` and `sum-loop.s` **both** retire
+      34 instructions, which reads like a stale constant and is not — the other corpus programs
+      report 134 / 9 / 6 / 9. Checked, because a frozen numerator is exactly what a broken
+      view-derived counter looks like.
+      Acceptance met: 2142 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check`,
+      `npm run build` green.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
@@ -597,9 +658,17 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       the refinement the test forced: "one lane dark" is a claim about the EXECUTE band, not the
       whole diagram — the front-end keeps fetching two behind a refusal, and `Sign Extend 1` is
       still lit magenta in that very frame.
-- [ ] The readout names the refusal reason, and it agrees with what the map's shape shows.
-- [ ] IPC rises between the two widths, and its value equals retires ÷ cycles computed by hand.
-- [ ] All suites green; `npm run lint`, `tsc -b`, and `npm run build` green.
+- [x] The readout names the refusal reason, and it agrees with what the map's shape shows.
+      ✅ step 8 — `array-sum.s` cycle 10 reads `REFUSED · intra-pair-raw`, and the map shows the
+      held `add` with two ID cells (`ID.1` then `ID.0`) and its EX one column right of the `lw`'s.
+      Note the map is the surface that agrees AT THE CURSOR; the datapath's dark lane is one cycle
+      later, and the panel says so itself.
+- [x] IPC rises between the two widths, and its value equals retires ÷ cycles computed by hand.
+      ✅ step 8 — `sum-loop.s` at forwarding ON: 0.61 (34 ÷ 56) → 0.77 (34 ÷ 44) on a live flip.
+      The tile shows the honest cycle COUNT (56), not the 0-indexed last cursor the transport reads
+      (55).
+- [x] All suites green; `npm run lint`, `tsc -b`, and `npm run build` green.
+      ✅ step 8 — 2142 tests.
 - [x] INV-8 differential passes on the full corpus at both widths × every config combination.
       ✅ step 3 — 36 configs × 7 programs = 252 cases.
 - [x] Every exact cycle count in step 4's matrix is derived from a stated rule, not observed.
@@ -639,7 +708,7 @@ milestone has more unobserved case-combinations than any before it. Observe, the
 | Branch slots                                         | **1, and it may sit in either slot** — a taken branch kills its pair-mate too if that mate is younger. Seeded, but the alternative (branches only in slot 0) is simpler to draw; step 2 decides against the real stage walk                                                                                                                  | **ADOPTED AS SEEDED (step 2b), and BOTH directions observed.** Refusal reason `branch-slot`, classified by CLASS not by outcome (a not-taken branch still occupied the unit, and at issue nobody knows the outcome) — so `jal`/`jalr` are in it. A taken `EX.0` transfer kills its `EX.1` mate; a taken `EX.1` transfer **spares** the older `EX.0`, which retires normally. That asymmetry is the entire content of `Squash.slot`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Intra-pair RAW                                       | **Never pairs** — if the second instruction reads what the first writes, it goes alone next cycle. Forwarding cannot fix a same-cycle dependency, so this holds at every forwarding setting, which is itself a teachable fact                                                                                                                | **ADOPTED AS SEEDED (step 2b), and the forwarding-independence is asserted** — reason `intra-pair-raw`, provoked at `forwarding: true` AND `false` in one test. Forwarding moves a value from a LATER stage back to EX, and there is no later stage than "beside me, this very cycle"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `location` lane encoding                             | `"<stage>.<slot>"` strings — a plain string, so no trace-schema change; `stageFamily` already folds `"EX.0"`→`EX`                                                                                                                                                                                                                            | **ADOPTED AS SEEDED (step 2a, PROVEN step 5).** `"<stage>.<slot>"` at BOTH widths — never a bare `"EX"`, even at width 1, so the encoding never depends on a config the view cannot see. Zero trace-schema change and **zero recorder change**: `follow()` keys on `id`, and `InstructionSighting.location` was already free-form, so two occupants of one stage resolve to distinct sightings for free. Only `location` is slotted — `stall.stage`, `flush.stages` and `forward.to` stay BARE (re-decided in 2b, not inherited). Step 5 cashed it over a real dual-issue recording, including the case the encoding exists for: an instruction that **changes slot mid-flight**                                                                                                                                                                                                       |
-| A new `issue` trace event?                           | **Decline it, pending proof.** `superscalar-visuals.md` proposed `issue` + a pairing-refused event, but `location` gives the slot free and a refusal is "slot 1 empty + a `stall` with a new `reason`". House record: M4 accepted 1 field of 5, M6 added zero. Force the event only if step 8's readout genuinely cannot be drawn without it | _(open — step 8 is the last chance)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| A new `issue` trace event?                           | **Decline it, pending proof.** `superscalar-visuals.md` proposed `issue` + a pairing-refused event, but `location` gives the slot free and a refusal is "slot 1 empty + a `stall` with a new `reason`". House record: M4 accepted 1 field of 5, M6 added zero. Force the event only if step 8's readout genuinely cannot be drawn without it | **DECLINED WITH PROOF (step 8).** The readout is drawable with zero schema change, and each element was cashed against a real trace: the PAIR from `location` (`ID.0`/`ID.1`), the REFUSAL REASON from the existing `stall` event, WHO ISSUED from `micro.idEx`, and the FREEZE from the same `missCyclesRemaining` the cache grid reads. Note what the seed got WRONG, though its conclusion was right: it proposed reading a refusal as "slot 1 empty + a `stall`", and that rule is a LIE — a miss-freeze emits no `stall`, so on `array-sum.s` at width 2 with the small cache it reports "paired" for 9 consecutive frozen cycles. The event was declined for a better reason than the one offered. House record holds: M4 +1 field of 5, M6 +0, M7 +0                                                                                                                            |
 | Lane hues                                            | `--lane-0` = accent blue, `--lane-1` = magenta `#e87ba4` light / `#d55181` dark — machine-validated 2026-07-14, CVD ΔE 41.3/42.6                                                                                                                                                                                                             | **ADOPTED AS SEEDED (step 7) — the VALUES were not re-derived, but WHAT THEY TINT was re-decided with the user.** The visuals doc gave the lane hue the WIRE STROKE; that stroke already means STAGE in the shipped pipeline datapath and in the pipeline map sitting directly above this one, and re-pointing it would have made `EX.0` and `EX.1` different colors — destroying the "two instructions in EX" reading the tier exists for. **PINNED (user, 2026-07-20): the lane hue tints REPLICATED NODE BOXES only.** Shared boxes stay hue-neutral (M3's pinned reason still holds); `ALU 1` does slot 1's work and nothing else, so it can wear a lane hue without lying. Three channels, three meanings: wire = stage, box = lane, ring = identity. The relief rule is satisfied structurally — a test pins that every lane-tinted node carries its lane number in its own text |
 | Default width on load                                | **1** — the machine's own degenerate case, so the first picture matches the pipeline the reader just learned, and the toggle is the reveal                                                                                                                                                                                                   | **ADOPTED AS SEEDED (step 6), and CONFIRMED IN THE BROWSER** — the superscalar opens on `1-wide`, so the first picture a reader meets is the pipeline they already know and the 2-wide flip is the reveal. Note the neighbouring default is NOT so lucky: the app also opens at forwarding **OFF**, and the flagship 56 → 44 A/B is a forwarding-ON pair, so the reveal only lands cleanly once forwarding is on                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Is a 1-wide superscalar distinct from M3's pipeline? | **Yes, and it must stay so** — it runs issue logic that never finds a pair. If it turns out cycle-identical to M3 on the whole corpus, say so in the plan rather than hiding it; that is a _finding_, not an embarrassment                                                                                                                   | **ANSWERED (step 2a, 2026-07-20): NO — it is cycle-identical to M3 across the entire corpus × forwarding × prediction × cache matrix**, hitting every cell of `N + 4 + S + P + M` on the first run with no number adjusted. That is the INTENDED result, not a disappointment: a width-1 machine is the pairing machine at its degenerate limit, and identity is what PROVES the port faithful — a width-1 base that differed from M3 would mean the port had drifted, not that the model was interesting. It is recorded here because the plan promised to say so rather than hide it, and because it settles what the toggle teaches: the 1-wide position says "this is the pipeline you already know", which is exactly the baseline the 2-wide flip has to be measured against.                                                                                                    |
