@@ -65,8 +65,8 @@
  * only the writeback mux (the `jal`/`jalr` link); the ordinary "PC ← PC+4" that every instruction
  * performs was invisible. So 5e:
  *   - **closes the sequential loop** — `pc → pcarith → pc` — lighting it at RETIRE for any
- *     instruction that neither jumps nor takes a branch. Like 5d this is view-only: `pc + 4` is
- *     derived from the trace's own `pc` (RV32I is fixed-width), never read out of the engine.
+ *     instruction that neither jumps, takes a branch, nor halts. Like 5d this is view-only: the
+ *     value is the trace's own committed `state.pc`, never read out of the engine.
  *   - adds the **`pcsource` mux** with all three drivers on its inputs. Drawing it 2-input would
  *     have been the same lie in a smaller box; a selector whose commonest input never lights is
  *     worse than no selector. It sits below-left of PC — the one place all three sources reach a
@@ -79,9 +79,7 @@
  * it is a pure immediate pass-through, and is the only instruction class that skips EX. And the
  * `aluout → pc` label carries `micro.aluOut`, which for
  * `jalr` is `rs1+imm` before the mandatory bit-0 clear — PC actually receives `(rs1+imm) & ~1`.
- * The two differ only for an odd target; the wire is the right wire either way. Finally, a halting
- * `ecall` still lights the sequential `pc+4` at its retire: the incrementer genuinely computes it
- * and the mux genuinely selects it — the machine stops for reasons outside this diagram.
+ * The two differ only for an odd target; the wire is the right wire either way.
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
@@ -550,8 +548,17 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   // derived from the trace's own `pc` (RV32I is fixed-width), exactly as 5d derived `pc + imm`.
   const takenBranch = isBranch && events.find((e) => e.type === 'alu-op')?.result === 1;
   const retiring = events.some((e) => e.type === 'instr-retire');
-  if (retiring && !isJal && !isJalr && !takenBranch) {
-    const next = (pc + 4) >>> 0;
+  // The committed next PC, straight from the trace — NOT `pc + 4` computed and hoped for. This is
+  // the load-bearing guard: a HALTING instruction (`ecall`/`ebreak`/an unknown word) still emits
+  // `instr-retire`, but the engine deliberately leaves `pc` where it is. Deriving `pc + 4` and
+  // lighting it there would have the view assert `PC ← pc+4` while the trace says PC never moved —
+  // a lower tier CONTRADICTING the engine, which is exactly what INV-5 forbids. So the sequential
+  // arm lights only when the machine really did fall through. (`fence` does fall through, and
+  // correctly lights it; `ecall` does not, and correctly stays dark.)
+  const committedPc = trace.state.pc >>> 0;
+  const fellThrough = retiring && committedPc === (pc + 4) >>> 0;
+  if (fellThrough && !isJal && !isJalr && !takenBranch) {
+    const next = committedPc;
     c('pc');
     c('pcarith');
     w('pc-pcarith', pc, 'hex');

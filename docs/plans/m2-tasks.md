@@ -39,8 +39,28 @@ WB lights `pc → pcarith → pcsource → pc` with `0x0 → 0x4` (the first tim
 shown PC+4); the `jal` WB lights the link out through MemtoReg _and_ the target `0x18` through
 PCSource while the sequential arm stays dark; the taken `bne` at cycle 18 lights the branch adder
 arm to `0x08`; fetch cycles leave the mux dark; and `essentials` collapses all five muxes, giving
-PC three distinct, visually separate incoming arrows. **No defect found** — only the second view
-step in this project (after 5c) where the browser found nothing. 1357 tests green.
+PC three distinct, visually separate incoming arrows.
+
+**The one real defect in 5e was found by neither the tests nor the browser, but by noticing an
+unverified claim.** The first cut keyed the sequential arm off `instr-retire` alone. But the engine
+pushes `instr-retire` **unconditionally** at an instruction's last phase, and on an architectural
+halt (`ecall`/`ebreak`/an unknown word) it then deliberately leaves `pc` parked
+(`processor.ts` — `if (cur.plan.halt) { this.halted = true } else { this.pc = cur.plan.nextPc }`).
+So a halting `ecall` would have lit `PC ← pc+4` while the trace said PC never moved — the view
+**contradicting** the engine, which is precisely what INV-5 forbids, not the lawful omission it
+looks like. Worse, the header comment had _rationalized_ it ("the machine stops for reasons outside
+this diagram") — a wrong picture with a justification attached.
+
+It surfaced because the header asserted ecall behaviour that had never actually been observed: the
+only ecall cycle looked at in the browser was its **fetch** (mux dark), one cycle before the retire.
+The fix keys the arm off the trace's **committed `state.pc`** instead of a computed `pc + 4` —
+strictly better, because it is the real next PC rather than a guess that happens to be right for
+every non-halting case. `fence` falls through and correctly lights; `ecall` does not and correctly
+stays dark. Pinned by test, then watched at cycle 123 (`— halted ecall`): the whole next-PC path
+is dark. 1358 tests green.
+
+**Rule this earns: if a header comment asserts behaviour for a case, that case must have been
+observed — a claim with a rationalization attached is the shape a bug hides in.**
 
 **Step 5d (2026-07-20) — the taken-branch redirect, view-only.** The mirror image of 5c: where 5c
 had to change the ENGINE before the view could tell the truth, 5d needed no engine change at all,

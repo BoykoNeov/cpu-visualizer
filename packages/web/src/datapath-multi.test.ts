@@ -327,6 +327,27 @@ describe('multi-cycle activation is phase-driven (one CycleTrace = one phase)', 
     expect(notTaken.wires.has('branchadd-pcsource')).toBe(false);
   });
 
+  it('a HALTING ecall retires but does NOT light the sequential arm (INV-5)', () => {
+    // The trap this pins: `ecall` DOES emit `instr-retire` (the engine pushes it unconditionally
+    // at the last phase), but on a halt the engine deliberately leaves `pc` where it is. Keying
+    // the sequential arm off "retired" alone would draw `PC ← pc+4` while the trace says PC never
+    // moved — the view CONTRADICTING the engine, not merely omitting detail. So the arm is keyed
+    // off the committed `state.pc` instead.
+    const traces = allPhasesOf('  li a7, 10\n  ecall\n');
+    const ecall = traces.filter((t) => t.instructions[0]?.decoded.mnemonic === 'ecall');
+    expect(ecall.length, 'the ecall must actually execute').toBeGreaterThan(0);
+    const last = ecall[ecall.length - 1]!;
+    expect(
+      last.events.some((e) => e.type === 'instr-retire'),
+      'ecall retires',
+    ).toBe(true);
+    expect(last.state.pc, 'a halt leaves pc parked on the ecall').toBe(last.instructions[0]!.pc);
+    const a = activate(last);
+    expect(a.wires.has('pcsource-pc'), 'PC did not move — draw no next-PC wire').toBe(false);
+    expect(a.wires.has('pcarith-pcsource')).toBe(false);
+    expect(a.wires.has('pcarith-pc')).toBe(false);
+  });
+
   it('is empty for the pre-run state (no in-flight instruction)', () => {
     const a = activate(null);
     expect(a.phase).toBeNull();
