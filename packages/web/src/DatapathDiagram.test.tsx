@@ -96,16 +96,17 @@ describe('multi-cycle wrapper × shared renderer', () => {
     expect(html).toContain('Writeback');
   });
 
-  it('hides the three muxes structurally at essentials (contraction wires stand in)', () => {
+  it('hides the four muxes structurally at essentials (contraction wires stand in)', () => {
     const essentials = renderToStaticMarkup(
       <MultiCycleDatapath trace={fetch} cycleKey={0} tier="essentials" />,
     );
     const detailed = renderToStaticMarkup(
       <MultiCycleDatapath trace={fetch} cycleKey={0} tier="detailed" />,
     );
-    // Polygons = 2 adder silhouettes (pcarith, alu) at essentials; +3 mux trapezoids at detailed.
+    // Polygons = 2 adder silhouettes (pcarith, alu) at essentials; +4 mux trapezoids at detailed
+    // (IorD / ALUSrcA / ALUSrcB / MemtoReg — ALUSrcA arrived with step 5c's PC-into-the-ALU path).
     expect(count(essentials, '<polygon')).toBe(2);
-    expect(count(detailed, '<polygon')).toBe(5);
+    expect(count(detailed, '<polygon')).toBe(6);
     // Fetch goes through the IorD mux at detailed; via the contraction the path stays lit at
     // essentials too — both tiers must show an active wire into Memory (INV-5, no contradiction).
     expect(essentials).toContain('dp-wire--on');

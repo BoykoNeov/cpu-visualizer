@@ -246,16 +246,27 @@ make, hasDatapath}`); `loadSource(source, makeProcessor = single-cycle)` takes a
   Step 5b then landed the shared-ALU / single-memory / five-latch **structural** datapath as a
   pure view concern (`datapath-multi.ts`), with `minTier` box-hiding of the three muxes.
 
-- **Multi-cycle next-PC path — DECIDED: omitted from the datapath; textbook version is a possible
-  step 5c (engine-level).** The 5b datapath does not draw the ALUOut→PC redirect / next-PC select.
-  This is forced by INV-3/INV-5, not laziness: the engine emits **no `alu-op`** for PC arithmetic
-  (jal/lui/auipc skip EX; pc+4 is computed directly) and commits PC at retire with **no event**, so
-  a textbook ALU-based PC path would _contradict_ the trace. Visible cost: for `jalr` the ALU target
-  in ALUOut has no drawn consumer (the link comes from the dedicated `pcarith` unit); a taken branch
-  shows the compare but not the redirect. Making it canonical means changing the **engine** (emit
-  alu-ops for jal/auipc/pc+4 → extra EX phases → the pinned cycle-count table and step-4 tests move),
-  so it is a follow-up milestone, not view polish. `pcarith` keeps every writeback sourced today
-  (no register written "from nowhere", INV-5).
+- **Multi-cycle next-PC path — RESOLVED BY STEP 5c (2026-07-20): the engine change was taken.**
+  PC arithmetic now routes through the main ALU (`jal`/`auipc` gain an EX phase; see the revised
+  cycle table above), so the datapath can draw the ALUOut→PC redirect without contradicting the
+  trace. **On INV-7:** this was checked, not assumed. INV-7 is one ISA / one assembler / one
+  program library — 5c touches none of them. It changes one model's _event stream_, which models
+  are supposed to differ in (single-cycle emits no stall/flush events; the pipeline does), and
+  INV-8 pins only final architectural state, so the differential stays green by construction. The
+  original text below cited INV-7 for cross-model `alu-op` consistency; that citation was a loose
+  hang — the real value there was pedagogical least-surprise, not the invariant. Preserved as the
+  pre-5c record:
+
+  > **DECIDED: omitted from the datapath; textbook version is a possible step 5c (engine-level).**
+  > The 5b datapath does not draw the ALUOut→PC redirect / next-PC select.
+  > This is forced by INV-3/INV-5, not laziness: the engine emits **no `alu-op`** for PC arithmetic
+  > (jal/lui/auipc skip EX; pc+4 is computed directly) and commits PC at retire with **no event**, so
+  > a textbook ALU-based PC path would _contradict_ the trace. Visible cost: for `jalr` the ALU target
+  > in ALUOut has no drawn consumer (the link comes from the dedicated `pcarith` unit); a taken branch
+  > shows the compare but not the redirect. Making it canonical means changing the **engine** (emit
+  > alu-ops for jal/auipc/pc+4 → extra EX phases → the pinned cycle-count table and step-4 tests move),
+  > so it is a follow-up milestone, not view polish. `pcarith` keeps every writeback sourced today
+  > (no register written "from nowhere", INV-5).
 
 - **`micro` / `ModelSpecificState` shape — DECIDED: fuller.** `MultiCycleMicro =
 { phase, ir, a, b, aluOut, mdr }` (exported from `@cpu-viz/engine-multi-cycle`). `ir` latched at
@@ -269,25 +280,61 @@ null` (nothing in flight). The fuller shape makes step 5b's latch boxes real at 
   in-flight instance's `location` advances one phase per cycle; a class that skips a phase simply
   doesn't visit it. `instr-retire` fires at the last phase the instruction visits.
 
-- **Per-class cycle-count table — PINNED (unit-tested, so it can't silently drift):**
+- **Per-class cycle-count table — PINNED (unit-tested, so it can't silently drift). REVISED BY
+  STEP 5c** — the `jal` / `auipc` rows moved; every other row is untouched:
   | class | phases | cycles |
   |---|---|---|
   | load (`lb/lh/lw/lbu/lhu`) | IF ID EX MEM WB | 5 |
   | R-type + I-ALU | IF ID EX WB | 4 |
   | `jalr` | IF ID EX WB | 4 |
+  | `jal` **(5c: was 3)** | IF ID EX WB | **4** |
+  | `auipc` **(5c: was 3)** | IF ID EX WB | **4** |
   | store (`sb/sh/sw`) | IF ID EX MEM | 4 |
   | branch (`beq…bgeu`) | IF ID EX | 3 |
-  | `jal` / `lui` / `auipc` | IF ID WB | 3 |
+  | `lui` | IF ID WB | 3 |
   | `ecall` / `ebreak` / `fence` / unknown | IF ID | 2 |
 
-  The rule that generates the table: **IF+ID universal; then EX iff the main ALU is used (emits
-  `alu-op`), MEM iff data memory is touched, WB iff a register is written** — a static function of
-  the opcode, never of runtime values (so `addi x0,…` and a not-taken branch keep their class's
-  count). The edges resolved as the reference's events dictate: `jal`/`lui`/`auipc` emit no
-  `alu-op` (dedicated adder / pass-through), so they skip EX → 3 cycles; `jalr` **does** use the
-  ALU (`rs1 + imm`) → 4. This echoes M1's datapath finding that `lui`/`jal`/`auipc` emit no
-  reg-read/alu-op, and keeps the multi-cycle event stream consistent with single-cycle's per
-  mnemonic (INV-7). INV-8 doesn't care about the counts; the tests pin them.
+  The rule that generates the table is unchanged: **IF+ID universal; then EX iff the main ALU is
+  used (emits `alu-op`), MEM iff data memory is touched, WB iff a register is written** — a static
+  function of the opcode, never of runtime values (so `addi x0,…` and a not-taken branch keep their
+  class's count). What 5c changed is not the rule but **which instructions use the main ALU**: PC
+  arithmetic now routes through it, so `jal` (target `pc+imm`) and `auipc` (`pc+imm`) gain an EX.
+  INV-8 doesn't care about the counts; the tests pin them.
+
+  **The line 5c draws, and it is the load-bearing one: the ALU computes jump/branch _targets_;
+  `pc+4` never goes through the ALU.** A dedicated **PC+4 incrementer** supplies the sequential PC
+  and the jump link — a real unit in every textbook datapath, so keeping it is not a fudge (unlike
+  the pre-5c catch-all `pcarith`, which it replaces by shrinking to that one honest job). This is
+  what stops 5c from adding an IF-phase `alu-op` to _every_ instruction (the P&H multi-cycle FSM
+  computes `pc+4` in the ALU during IF; we deliberately do not — it would pollute every
+  instruction's event stream to buy nothing the incrementer doesn't already show honestly).
+
+  Consequences pinned with it: **`lui` stays 3** and is now alone in the IF/ID/WB class — it is a
+  pure immediate pass-through with no PC arithmetic to route. **`jalr` stays 4** — it already had
+  its EX (`rs1+imm`); 5c gives that ALUOut a drawn consumer rather than a second `alu-op` (its link
+  comes from the incrementer). **Branches stay 3** — EX is the compare, not the target.
+
+  **The taken-branch redirect stays UNDRAWN after 5c — a lawful INV-5 omission, stated not
+  hidden.** A branch's target is `pc+imm`, which is not in ALUOut (ALUOut holds the _compare_
+  result), so the `aluout→pc` redirect cannot carry it; drawing it would need a separate branch
+  adder node, which 5c does not add. So after 5c the datapath draws the redirect for `jal`/`jalr`
+  (both genuinely `PC ← ALUOut`) and continues to omit it for taken branches. That omits detail
+  and contradicts nothing — the transport and register panels still show `pc` moving. A branch
+  adder is the obvious next increment if this gap is worth closing.
+
+  **Cost 5c actually charged, recorded because it was NOT in the plan that was approved:** the
+  multi-cycle datapath grows from **three muxes to four** — routing `pc` into the ALU for
+  `jal`/`auipc` forces an **ALUSrcA** mux (PC vs the A latch). This is not optional polish: once
+  the trace says the ALU computed `pc+imm`, INV-3 requires the datapath to show PC reaching the
+  ALU, or the picture contradicts the trace — the exact defect 5c set out to fix. It is also
+  textbook-canonical (P&H's multi-cycle datapath has precisely this mux). `jalr` needed no mux —
+  its ALU A operand genuinely is `Reg[rs1]` — so the redirect wire was landed on `jalr` first and
+  validated independently of the mux.
+
+  Accepted, consciously (see the INV-7 note in the 5c decision below): this makes multi-cycle the
+  **only** model routing `jal`/`auipc` through the ALU — single-cycle and the M3 pipeline keep
+  their dedicated adders. That is a per-model microarchitectural choice, which is what having
+  several models is for; it is not an ISA divergence.
 
 - **`PhasedEvent` ordinal — CONFIRMED STILL DEFERRED.** Not revived. In multi-cycle the **cycle
   number itself** separates the phases (each phase is its own cycle) and event _order within a

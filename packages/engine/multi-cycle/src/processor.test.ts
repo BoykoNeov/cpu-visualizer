@@ -138,15 +138,21 @@ describe('multi-cycle: per-class phase plan & varying cycle counts (§12.1)', ()
     expect(walk(ts, 'beq')).toEqual(['IF', 'ID', 'EX']);
   });
 
-  it('jal / lui / auipc walk IF→ID→WB (3 cycles — no main-ALU use, so no EX)', () => {
+  // Step 5c: PC arithmetic routes through the main ALU, so `jal` (target pc+imm) and `auipc`
+  // (pc+imm) gained an EX. `lui` did not — it is a pure immediate pass-through with no PC
+  // arithmetic to route, which leaves it ALONE in the IF/ID/WB class. That split is the point
+  // of this test: it pins that 5c moved exactly the two PC-arithmetic classes and no others.
+  it('jal / auipc walk IF→ID→EX→WB (4 cycles — 5c routes pc+imm through the ALU)', () => {
     const jalTs = run(['.text', 'jal x1, tgt', 'tgt:', 'ecall'].join('\n'));
-    expect(walk(jalTs, 'jal')).toEqual(['IF', 'ID', 'WB']);
-
-    const luiTs = run(['.text', 'lui x1, 0x12345', 'ecall'].join('\n'));
-    expect(walk(luiTs, 'lui')).toEqual(['IF', 'ID', 'WB']);
+    expect(walk(jalTs, 'jal')).toEqual(['IF', 'ID', 'EX', 'WB']);
 
     const auipcTs = run(['.text', 'auipc x1, 1', 'ecall'].join('\n'));
-    expect(walk(auipcTs, 'auipc')).toEqual(['IF', 'ID', 'WB']);
+    expect(walk(auipcTs, 'auipc')).toEqual(['IF', 'ID', 'EX', 'WB']);
+  });
+
+  it('lui alone still walks IF→ID→WB (3 cycles — immediate pass-through, no ALU)', () => {
+    const luiTs = run(['.text', 'lui x1, 0x12345', 'ecall'].join('\n'));
+    expect(walk(luiTs, 'lui')).toEqual(['IF', 'ID', 'WB']);
   });
 
   it('jalr walks IF→ID→EX→WB (4 cycles — it does use the ALU: rs1 + imm)', () => {
@@ -160,12 +166,14 @@ describe('multi-cycle: per-class phase plan & varying cycle counts (§12.1)', ()
     expect(walk(run(['.text', 'fence', 'ecall'].join('\n')), 'fence')).toEqual(['IF', 'ID']);
   });
 
-  it('the classes take DIFFERENT cycle counts: load(5) > R-type(4) > jal(3) > ecall(2)', () => {
+  it('the classes take DIFFERENT cycle counts: load(5) > R-type(4) > lui(3) > ecall(2)', () => {
     const cyc = (source: string, mnemonic: string): number =>
       tracesOf(run(source), mnemonic).length;
     expect(cyc('.data\nv: .word 7\n.text\nla x1, v\nlw x2, 0(x1)\necall', 'lw')).toBe(5);
     expect(cyc('.text\naddi x1, x0, 5\necall', 'addi')).toBe(4);
-    expect(cyc('.text\njal x1, t\nt:\necall', 'jal')).toBe(3);
+    // `lui` carries the 3-cycle rung since 5c moved `jal` up to 4 (it is now the only class there).
+    expect(cyc('.text\nlui x1, 5\necall', 'lui')).toBe(3);
+    expect(cyc('.text\njal x1, t\nt:\necall', 'jal')).toBe(4);
     expect(cyc('.text\necall', 'ecall')).toBe(2);
   });
 });
@@ -238,16 +246,38 @@ describe('multi-cycle: events fire in the phase they belong to', () => {
     expect(ureg(last(ts), 1)).toBe(0x12345000);
   });
 
-  it('jal / lui / auipc emit no reg-read and no alu-op (dedicated adder / pass-through)', () => {
-    const all = (source: string): TraceEvent['type'][] => run(source).flatMap((t) => types(t));
-    expect(all('.text\njal x1, t\nt:\necall')).not.toContain('alu-op');
-    for (const src of ['.text\nlui x1, 5\necall', '.text\nauipc x1, 1\necall']) {
+  it('jal / lui / auipc read NO source register — the U/J formats have none', () => {
+    for (const src of [
+      '.text\njal x1, t\nt:\necall',
+      '.text\nlui x1, 5\necall',
+      '.text\nauipc x1, 1\necall',
+    ]) {
       const evs = run(src)
         .filter((t) => t.instructions[0]!.decoded.mnemonic !== 'ecall')
         .flatMap(types);
       expect(evs).not.toContain('reg-read');
-      expect(evs).not.toContain('alu-op');
     }
+  });
+
+  // Step 5c: `jal`/`auipc` DO emit an alu-op now — but its operands are `pc` and the immediate,
+  // never a register (the test above). That is precisely the PC-arithmetic ALU use 5c added, and
+  // it is what lets the datapath draw ALUOut→PC without contradicting the trace.
+  it('jal / auipc emit an alu-op over (pc, imm) at EX; lui still emits none', () => {
+    const aluOps = (source: string): TraceEvent[] =>
+      run(source)
+        .flatMap((t) => t.events)
+        .filter((e) => e.type === 'alu-op');
+
+    const jalAlu = aluOps('.text\njal x1, t\nt:\necall');
+    expect(jalAlu).toHaveLength(1);
+    // pc=0, imm=4 → target 4. The LINK (pc+4) is NOT this value: it comes from the incrementer.
+    expect(jalAlu[0]).toMatchObject({ op: 'add', a: 0, b: 4, result: 4 });
+
+    const auipcAlu = aluOps('.text\nauipc x1, 1\necall');
+    expect(auipcAlu).toHaveLength(1);
+    expect(auipcAlu[0]).toMatchObject({ op: 'add', a: 0, result: 0x1000 });
+
+    expect(aluOps('.text\nlui x1, 5\necall')).toHaveLength(0);
   });
 });
 

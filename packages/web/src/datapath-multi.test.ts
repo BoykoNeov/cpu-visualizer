@@ -96,6 +96,23 @@ function phasesOf(source: string): CycleTrace[] {
   return traces;
 }
 
+/** Like {@link phasesOf} but walks the WHOLE program, not just the first instruction — needed to
+ *  reach an instruction that only exists after a jump (e.g. the `jalr` in a call/return pair). */
+function allPhasesOf(source: string, maxCycles = 200): CycleTrace[] {
+  const result = loadSource(`${source}\n`, () => new MultiCycleProcessor());
+  if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+  const { recorder } = result.loaded;
+  const traces: CycleTrace[] = [];
+  // `stepForward()` returns null once the run has halted at the end; `maxCycles` is only a
+  // runaway guard so a mis-written test program can't hang the suite.
+  for (let i = 0; i < maxCycles; i++) {
+    const t = recorder.stepForward();
+    if (!t) break;
+    traces.push(t);
+  }
+  return traces;
+}
+
 /** The single cycle whose in-flight instruction is at `phase` (each phase is one cycle here). */
 function atPhase(traces: CycleTrace[], phase: Phase): CycleTrace {
   const t = traces.find((tr) => tr.instructions[0]?.location === phase);
@@ -186,14 +203,60 @@ describe('multi-cycle activation is phase-driven (one CycleTrace = one phase)', 
     expect(wb.writtenReg).toBe(5);
   });
 
-  it('jal writes the link (pc+4) from the dedicated PC-arithmetic unit, not the ALU', () => {
+  // Step 5c split `jal` across two units, and the split is the whole point of the change: the
+  // ALU computes the TARGET (and drives the redirect into PC), while the incrementer supplies the
+  // LINK. Both are live in the same WB phase, from different sources.
+  it('jal computes its target in the ALU (5c), with PC — not the A latch — as operand A', () => {
     const traces = phasesOf('  jal x1, ahead\n  nop\nahead:');
-    expect(traces.map((t) => t.instructions[0]?.location)).toEqual(['IF', 'ID', 'WB']);
+    expect(traces.map((t) => t.instructions[0]?.location)).toEqual(['IF', 'ID', 'EX', 'WB']);
+
+    const ex = activate(atPhase(traces, 'EX'));
+    expect(ex.components.has('alu')).toBe(true);
+    expect(ex.components.has('pc')).toBe(true);
+    expect(ex.wires.has('pc-alusrca'), 'ALUSrcA selects PC for jal').toBe(true);
+    expect(ex.wires.has('alusrca-alu')).toBe(true);
+    expect(
+      ex.components.has('a'),
+      'jal reads no source register, so the A latch must stay dark',
+    ).toBe(false);
+    expect(ex.wires.has('a-alusrca')).toBe(false);
+    // The B operand is the immediate, not the B latch (jal is J-format).
+    expect(ex.wires.has('signext-alusrcb')).toBe(true);
+    expect(ex.wires.has('b-alusrcb')).toBe(false);
+  });
+
+  it('jal writes the link (pc+4) from the incrementer while ALUOut redirects PC (5c)', () => {
+    const traces = phasesOf('  jal x1, ahead\n  nop\nahead:');
     const wb = activate(atPhase(traces, 'WB'));
+    // The link: incrementer → writeback mux → register file.
     expect(wb.components.has('pcarith')).toBe(true);
     expect(wb.wires.has('pcarith-wbmux')).toBe(true);
-    expect(wb.components.has('alu'), 'jal emits no alu-op — the ALU stays idle').toBe(false);
     expect(wb.writtenReg).toBe(1);
+    // The target: ALUOut → PC. This wire is what step 5c exists to draw.
+    expect(wb.wires.has('aluout-pc')).toBe(true);
+    expect(wb.components.has('pc')).toBe(true);
+  });
+
+  it('jalr redirects PC from ALUOut even when it discards the link (rd = x0)', () => {
+    // The redirect must not hide behind a reg-write: `jalr x0, x1, 0` writes no register, so the
+    // redirect is the jump's ONLY visible effect in this phase.
+    const traces = allPhasesOf('  jal x1, func\n  li a7, 10\n  ecall\nfunc:\n  jalr x0, x1, 0');
+    const jalr = traces.filter((t) => t.instructions[0]?.decoded.mnemonic === 'jalr');
+    expect(jalr.length, 'the jalr must actually execute').toBeGreaterThan(0);
+    const wb = activate(atPhase(jalr, 'WB'));
+    expect(wb.writtenReg).toBeNull();
+    expect(wb.wires.has('aluout-pc')).toBe(true);
+    expect(wb.wires.has('pcarith-wbmux'), 'no link is written, so no incrementer path').toBe(false);
+  });
+
+  it('auipc writes its pc+imm from ALUOut (5c moved it off the incrementer)', () => {
+    const traces = phasesOf('  auipc x5, 1');
+    expect(traces.map((t) => t.instructions[0]?.location)).toEqual(['IF', 'ID', 'EX', 'WB']);
+    const wb = activate(atPhase(traces, 'WB'));
+    expect(wb.wires.has('aluout-wbmux')).toBe(true);
+    expect(wb.components.has('pcarith'), 'auipc no longer uses the incrementer').toBe(false);
+    expect(wb.wires.has('aluout-pc'), 'auipc writes a register — it does NOT redirect').toBe(false);
+    expect(wb.writtenReg).toBe(5);
   });
 
   it('is empty for the pre-run state (no in-flight instruction)', () => {

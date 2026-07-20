@@ -112,16 +112,23 @@ const REG_ALU = new Set([
  * The phase sequence for an instruction class — a STATIC function of the opcode, never of
  * runtime values (so `addi x0,…` and a not-taken branch keep their class's cycle count). The
  * rule: IF+ID are universal (fetch + decode/register-read); then EX iff the main ALU is used,
- * MEM iff data memory is touched, WB iff a register is written. This mirrors the reference's
- * events, including its finding that `lui`/`jal`/`auipc` emit no `alu-op` (dedicated adder /
- * pass-through), so they skip EX and take 3 cycles — while a load takes 5 and an R-type 4.
+ * MEM iff data memory is touched, WB iff a register is written.
+ *
+ * Step 5c changed not the rule but WHICH instructions use the main ALU: PC arithmetic now
+ * routes through it, so `jal` (target `pc+imm`) and `auipc` (`pc+imm`) gained an EX and take 4
+ * cycles instead of 3. `lui` keeps 3 and is alone in the IF/ID/WB class — a pure immediate
+ * pass-through with no PC arithmetic to route. `pc+4` deliberately does NOT go through the ALU
+ * for any instruction (a dedicated incrementer supplies the sequential PC and the jump link),
+ * which is what keeps 5c from adding an `alu-op` to every instruction's IF.
  */
 function phasesFor(mnemonic: string, kind: string | undefined): Phase[] {
   if (LOADS.has(mnemonic)) return ['IF', 'ID', 'EX', 'MEM', 'WB'];
   if (STORES.has(mnemonic)) return ['IF', 'ID', 'EX', 'MEM'];
   if (BRANCHES.has(mnemonic)) return ['IF', 'ID', 'EX'];
-  if (mnemonic === 'jalr') return ['IF', 'ID', 'EX', 'WB'];
-  if (mnemonic === 'jal' || mnemonic === 'lui' || mnemonic === 'auipc') return ['IF', 'ID', 'WB'];
+  if (mnemonic === 'jalr' || mnemonic === 'jal' || mnemonic === 'auipc') {
+    return ['IF', 'ID', 'EX', 'WB'];
+  }
+  if (mnemonic === 'lui') return ['IF', 'ID', 'WB'];
   if (REG_ALU.has(mnemonic)) return ['IF', 'ID', 'EX', 'WB'];
   // system (ecall/ebreak), fence, and unrecognized words: decode, then halt/no-op. No compute.
   void kind;
@@ -402,15 +409,24 @@ export class MultiCycleProcessor implements Processor {
       case 'lui':
         write(rd, imm);
         break;
-      case 'auipc':
-        write(rd, (pc + imm) | 0);
+      // 5c: the main ALU computes `pc + imm`, so ALUOut is the drawn source of rd.
+      case 'auipc': {
+        const sum = (pc + imm) | 0;
+        alu('add', pc, imm, sum);
+        write(rd, sum);
         break;
+      }
 
       // --- Jumps: imm is a sign-extended, byte-scaled offset ---
-      case 'jal':
+      // 5c: the main ALU computes the TARGET `pc + imm` (ALUOut → PC); the link `pc + 4` comes
+      // from the dedicated PC+4 incrementer, never the ALU.
+      case 'jal': {
+        const target = (pc + imm) >>> 0;
+        alu('add', pc, imm, target | 0);
         write(rd, (pc + 4) | 0);
-        nextPc = (pc + imm) >>> 0;
+        nextPc = target;
         break;
+      }
       case 'jalr': {
         const sum = (s(rs1) + imm) | 0; // ALU computes rs1 + imm, then bit 0 is cleared
         alu('add', s(rs1), imm, sum);

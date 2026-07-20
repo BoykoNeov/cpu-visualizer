@@ -39,14 +39,24 @@
  * its tier range AND both endpoints are drawn at that tier. {@link activate} stays tier-oblivious
  * (INV-2): it always lights the full expert slice AND its contraction; the renderer filters.
  *
- * Honest simplifications (surfaced, not hidden — INV-5 permits lawful omission, never
- * contradiction): our multi-cycle engine computes PC-relative values (pc+4, branch/jump targets)
- * DIRECTLY, not by re-using the shared ALU (it emits no `alu-op` for them — jal/lui/auipc skip EX
- * entirely). So this datapath does NOT reuse the ALU for next-PC arithmetic, and it does not draw
- * the next-PC redirect feedback (the transport / register panels already show `pc` advancing). The
- * link/upper-immediate writeback values (jal/jalr `pc+4`, auipc `pc+imm`) come from a small
- * dedicated `pcarith` unit, exactly as single-cycle sourced them from its `add4`/`branchadd`
- * adders — so no register is ever written "from nowhere".
+ * STEP 5c reversed this file's central simplification. The engine now routes PC arithmetic through
+ * the shared ALU (`jal` computes its target `pc+imm` there, `auipc` its `pc+imm` result), so the
+ * datapath draws what the trace actually says:
+ *   - an **ALUSrcA** mux selects the ALU's first operand — the `A` latch (`Reg[rs1]`) for ordinary
+ *     ops and `jalr`, or **PC** for `jal`/`auipc`. This 4th mux is forced, not decorative: once the
+ *     trace carries an `alu-op` over `(pc, imm)`, INV-3 requires PC to visibly reach the ALU.
+ *   - the **`aluout → pc` redirect** closes the next-PC loop for `jal` and `jalr` — both genuinely
+ *     `PC ← ALUOut`. It lights at WB, where the engine commits pc at retire.
+ *   - `pcarith` shrank to what it honestly is: a **PC+4 incrementer**, supplying the sequential PC
+ *     and the `jal`/`jalr` link. It no longer takes an immediate input — `auipc` gets its value
+ *     from ALUOut now, like any other ALU result.
+ *
+ * Honest simplifications that REMAIN (surfaced, not hidden — INV-5 permits lawful omission, never
+ * contradiction): a **taken branch's** redirect is still not drawn. Its target is `pc+imm`, which
+ * is not in ALUOut (ALUOut holds the compare result), so the redirect wire cannot carry it and a
+ * separate branch adder would be needed. The transport / register panels still show `pc` moving.
+ * `lui` likewise keeps no ALU path — it is a pure immediate pass-through, and is now the only
+ * instruction class that skips EX.
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
@@ -111,8 +121,10 @@ const NODE_LIST: readonly DatapathNode[] = [
   { id: 'signext', label: 'Sign\nExtend', x: 362, y: 356, w: 104, h: 44 },
   { id: 'a', label: 'A', x: 502, y: 222, w: 42, h: 44 },
   { id: 'b', label: 'B', x: 502, y: 290, w: 42, h: 44 },
-  // Shared ALU with its second-operand selector, then the ALUOut latch and writeback selector.
-  { id: 'alusrcb', label: '', x: 566, y: 252, w: 22, h: 92, shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrc' }, // prettier-ignore
+  // Shared ALU with BOTH operand selectors (5c added ALUSrcA so `jal`/`auipc` can route PC into
+  // the ALU), then the ALUOut latch and writeback selector.
+  { id: 'alusrca', label: '', x: 566, y: 160, w: 22, h: 76, shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrcA' }, // prettier-ignore
+  { id: 'alusrcb', label: '', x: 566, y: 252, w: 22, h: 92, shape: 'mux', minTier: 'detailed', controlLabel: 'ALUSrcB' }, // prettier-ignore
   { id: 'alu', label: 'ALU', x: 620, y: 228, w: 84, h: 100, shape: 'adder' },
   { id: 'aluout', label: 'ALUOut', x: 742, y: 252, w: 54, h: 52 },
   { id: 'wbmux', label: '', x: 834, y: 216, w: 22, h: 128, shape: 'mux', minTier: 'detailed', controlLabel: 'MemtoReg' }, // prettier-ignore
@@ -182,8 +194,15 @@ const WIRE_LIST: readonly DatapathWire[] = [
   { id: 'ir-signext', ends: ['ir', 'signext'], points: [at('ir', 'r', 20), [348, at('ir', 'r', 20)[1]], [348, 344], [390, 344], at('signext', 't', -24)] }, // prettier-ignore
   { id: 'regfile-a', ends: ['regfile', 'a'], points: [at('regfile', 'r', -16), at('a', 'l')] }, // prettier-ignore
   { id: 'regfile-b', ends: ['regfile', 'b'], points: [at('regfile', 'r', 52), at('b', 'l')] }, // prettier-ignore
-  // --- Execute: A goes straight to the ALU; B or the immediate is chosen by ALUSrc ---
-  { id: 'a-alu', ends: ['a', 'alu'], points: [at('a', 'r'), aUp('alu')] }, // prettier-ignore
+  // --- Execute: ALUSrcA picks A or PC; ALUSrcB picks B or the immediate ---
+  { id: 'a-alusrca', ends: ['a', 'alusrca'], points: [at('a', 'r'), [556, at('a', 'r')[1]], [556, at('alusrca', 'l', 20)[1]], at('alusrca', 'l', 20)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'pc-alusrca', ends: ['pc', 'alusrca'], points: [at('pc', 't', 12), [at('pc', 't', 12)[0], 100], [556, 100], [556, at('alusrca', 'l', -20)[1]], at('alusrca', 'l', -20)], minTier: 'detailed' }, // prettier-ignore
+  { id: 'alusrca-alu', ends: ['alusrca', 'alu'], points: [at('alusrca', 'r'), [604, at('alusrca', 'r')[1]], [604, aUp('alu')[1]], aUp('alu')], minTier: 'detailed' }, // prettier-ignore
+  { id: 'a-alu', ends: ['a', 'alu'], points: [at('a', 'r'), aUp('alu')], maxTier: 'essentials', contracts: 'alusrca' }, // prettier-ignore
+  // Enters the ALU's upper stub 8px above `a-alu`'s anchor — same reasoning as `signext-alu`
+  // below: both are essentials contractions of ALUSrcA, drawn together, so they must not share
+  // the final run into the stub.
+  { id: 'pc-alu', ends: ['pc', 'alu'], points: [at('pc', 't', 12), [at('pc', 't', 12)[0], 100], [608, 100], [608, aUp('alu')[1] - 8], [at('alu', 'l')[0], aUp('alu')[1] - 8]], maxTier: 'essentials', contracts: 'alusrca' }, // prettier-ignore
   { id: 'b-alusrcb', ends: ['b', 'alusrcb'], points: [at('b', 'r'), at('alusrcb', 'l', 14)], minTier: 'detailed' }, // prettier-ignore
   { id: 'signext-alusrcb', ends: ['signext', 'alusrcb'], points: [at('signext', 'r', -8), [548, at('signext', 'r', -8)[1]], [548, at('alusrcb', 'l', 32)[1]], at('alusrcb', 'l', 32)], minTier: 'detailed' }, // prettier-ignore
   { id: 'alusrcb-alu', ends: ['alusrcb', 'alu'], points: [at('alusrcb', 'r'), [at('alusrcb', 'r')[0], aLo('alu')[1]], aLo('alu')], minTier: 'detailed' }, // prettier-ignore
@@ -204,9 +223,13 @@ const WIRE_LIST: readonly DatapathWire[] = [
   { id: 'mdr-regfile', ends: ['mdr', 'regfile'], points: [at('mdr', 'b'), [307, 430], [350, 430], [350, at('regfile', 'l', 48)[1]], at('regfile', 'l', 48)], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
   { id: 'signext-regfile', ends: ['signext', 'regfile'], points: [at('signext', 't'), at('regfile', 'b')], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
   { id: 'pcarith-regfile', ends: ['pcarith', 'regfile'], points: [at('pcarith', 'r'), [340, 143], [340, at('regfile', 'l', 58)[1]], at('regfile', 'l', 58)], maxTier: 'essentials', contracts: 'wbmux' }, // prettier-ignore
-  // --- PC-arithmetic unit inputs (link = pc+4, jal/auipc target = pc+imm) ---
+  // --- The PC+4 incrementer's one input. 5c dropped its immediate input: `auipc` gets its
+  //     `pc+imm` from the ALU now, so the only value this unit still makes is `pc+4`. ---
   { id: 'pc-pcarith', ends: ['pc', 'pcarith'], points: [at('pc', 't'), [at('pc', 't')[0], aLo('pcarith')[1]], aLo('pcarith')] }, // prettier-ignore
-  { id: 'signext-pcarith', ends: ['signext', 'pcarith'], points: [at('signext', 'l'), [16, at('signext', 'l')[1]], [16, aUp('pcarith')[1]], aUp('pcarith')] }, // prettier-ignore
+  // --- The next-PC redirect (5c): `jal` / `jalr` commit PC ← ALUOut at retire. Rides the clear
+  //     y=460 rail under the writeback fan-in. Taken branches do NOT use it (their target is not
+  //     in ALUOut) — see this file's header for that lawful omission. ---
+  { id: 'aluout-pc', ends: ['aluout', 'pc'], points: [at('aluout', 'b', 16), [at('aluout', 'b', 16)[0], 460], [at('pc', 'b')[0], 460], at('pc', 'b')] }, // prettier-ignore
 ] as const;
 
 export const WIRES: readonly DatapathWire[] = WIRE_LIST;
@@ -300,9 +323,13 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   const isLui = mnem === 'lui';
   const isAuipc = mnem === 'auipc';
   const usesImm = d.format !== 'R' && mnem !== 'ecall' && mnem !== 'ebreak' && mnem !== 'fence';
-  // The ALU's second operand is the immediate for I/S forms (I-ALU, loads, stores, jalr); it is
-  // the rs2 register (the B latch) for R-ALU and branches.
-  const aluBIsImm = d.format === 'I' || d.format === 'S';
+  // The ALU's second operand is the immediate for I/S forms (I-ALU, loads, stores, jalr) and — as
+  // of 5c — for the PC-arithmetic ops `jal` (J) and `auipc` (U); it is the rs2 register (the B
+  // latch) for R-ALU and branches.
+  const aluBIsImm = d.format === 'I' || d.format === 'S' || isJal || isAuipc;
+  // 5c: ALUSrcA selects PC rather than the A latch for exactly the PC-arithmetic ops. `jalr` is
+  // NOT one of them — its ALU op is genuinely `Reg[rs1] + imm`, so it keeps the A latch.
+  const aluAIsPc = isJal || isAuipc;
 
   const components = new Set<string>();
   const wires = new Map<string, WireActivation>();
@@ -346,13 +373,24 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
       break;
     }
     case 'EX': {
-      // Execute: A + (B or imm) through the shared ALU; the result latches into ALUOut.
+      // Execute: (A or PC) + (B or imm) through the shared ALU; the result latches into ALUOut.
       const aluOp = events.find((e) => e.type === 'alu-op');
       if (aluOp) {
         c('alu');
         c('aluout');
-        c('a');
-        w('a-alu', aluOp.a, 'dec');
+        // 5c: `jal`/`auipc` compute `pc + imm`, so ALUSrcA selects PC — NOT the A latch, which
+        // these formats never fill (they read no source register).
+        if (aluAIsPc) {
+          c('pc');
+          w('pc-alusrca', pc, 'hex');
+          w('alusrca-alu', pc, 'hex');
+          w('pc-alu', pc, 'hex'); // essentials contraction of the ALUSrcA mux
+        } else {
+          c('a');
+          w('a-alusrca', aluOp.a, 'dec');
+          w('alusrca-alu', aluOp.a, 'dec');
+          w('a-alu', aluOp.a, 'dec'); // essentials contraction of the ALUSrcA mux
+        }
         if (aluBIsImm) {
           c('signext');
           w('signext-alusrcb', imm, 'dec');
@@ -408,14 +446,12 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
           c('signext');
           w('signext-wbmux', imm, 'dec');
           w('signext-regfile', imm, 'dec');
-        } else if (isJal || isJalr || isAuipc) {
+        } else if (isJal || isJalr) {
+          // The LINK (pc+4) comes from the incrementer — never from the ALU, whose ALUOut holds
+          // this jump's TARGET and is feeding the redirect below in this same phase.
           c('pcarith');
           c('pc');
           w('pc-pcarith', pc, 'hex');
-          if (isAuipc) {
-            c('signext');
-            w('signext-pcarith', imm, 'dec');
-          }
           w('pcarith-wbmux', regWrite.value, 'hex');
           w('pcarith-regfile', regWrite.value, 'hex');
         } else {
@@ -423,6 +459,14 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
           w('aluout-wbmux', regWrite.value, fmt);
           w('aluout-regfile', regWrite.value, fmt);
         }
+      }
+      // 5c: the next-PC redirect. Deliberately OUTSIDE the `regWrite` guard — `jal x0, t` and
+      // `jalr x0, …` discard the link but still redirect, and that is exactly when the jump's
+      // only visible effect IS this wire.
+      if (isJal || isJalr) {
+        c('aluout');
+        c('pc');
+        w('aluout-pc', micro?.aluOut ?? undefined, 'hex');
       }
       break;
     }
