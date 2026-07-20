@@ -1,7 +1,9 @@
 # Milestone 7 — in-order superscalar: two instructions per stage
 
-**Status: steps 0–5 COMPLETE, step 6 (web enablement — the first BROWSER-VERIFIED step) next.
-2026-07-20 (2064 tests).** Shipped and PROVEN
+**Status: steps 0–6 COMPLETE, step 7 (the widened datapath) next. 2026-07-20 (2074 tests).**
+**The milestone is now BROWSER-VERIFIED through step 6** — the superscalar is selectable, the
+width toggle is live, and flipping `1-wide → 2-wide` on `sum-loop.s` at forwarding ON moves it
+`56 → 44` with the map pairing `IF.0`/`IF.1` in one column. Shipped and PROVEN
 headlessly: `predict.ts`/`cache.ts` moved down into `engine-common` with every existing suite green
 and zero assertions touched (step 0), and the `issueWidth` config seam with whole-trace inertness
 pinned for all three existing models (step 1), and the width-1 superscalar base, which reproduces M3’s closed form EXACTLY over the whole corpus × config matrix (step 2a), and **the pairing logic —
@@ -14,9 +16,11 @@ prediction × 3 cache derived rather than observed, confirming all six provision
 (step 4)**, and the **time-travel proof — `follow()` and scrub over a dual-issue recording with
 `recorder.ts` UNTOUCHED, pinning that a slot is not a stable lane (an instruction slides 1→0, its
 neighbour 0→1, a third slides inside IF) and closing a REAL cache-aliasing hole that 694 green
-tests had missed (step 5)**.** **Nothing is
-browser-verified yet, because nothing
-user-visible exists yet** — the first view step is 6. Scope, the reuse strategy, the width toggle,
+tests had missed (step 5)**, and the **web enablement — the model selectable, the width toggle
+riding the config seam as a fourth knob, and the map's lane claim cashed against a real engine
+(step 6, the first eyeballed step and the second view step in project history to survive one with
+no defect found)**.** Steps 7–8 are the remaining
+user-visible work. Scope, the reuse strategy, the width toggle,
 the view depth, and the sliding/greedy issue grouping were decided with the user (see "Decisions to
 pin"). The visual layer was forward-designed in `docs/plans/superscalar-visuals.md` (2026-07-14) and
 M3 step 7 already built most of it — read both before starting.
@@ -417,12 +421,53 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       three steps stale — the same class of untrue-header the milestone keeps warning about.
       Acceptance met: 2064 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
-- [ ] **6. Web enablement.** `models.ts` entry + `DatapathKind: 'superscalar'` + the width
+- [x] **6. Web enablement.** `models.ts` entry + `DatapathKind: 'superscalar'` + the width
       control, gated on `configurableIssueWidth` like every other config control. The map,
       panels, transport, scrub, lessons and sandbox fork come free via INV-3. Acceptance: the
       model is selectable and the **pipeline map shows two rows sharing a column** with zero map
       changes — the claim M3 step 7 made, now cashed against a real engine instead of a hand-built
       trace. **Browser eyeball required.**
+
+      ✅ **Done (2026-07-20, 2064 → 2074 tests, +10). BROWSER-VERIFIED** — the milestone's first
+      eyeballed step, and only the **second view step in project history to survive one with no
+      defect found** (M5 step 5 was the first). Recorded as a finding rather than a non-event: the
+      house prior is 9-of-10 view steps shipping a browser-only defect, so a clean pass is the
+      claim that needed evidence, not the one that gets assumed.
+
+      **The acceptance, cashed live.** `sum-loop.s` on the superscalar, forwarding ON, flipping
+      `1-wide → 2-wide` **without reloading**: `56 → 44` cycles, the exact numbers step 4 derived.
+      The map then shows `IF.0`/`IF.1` in one column, `ID.0`/`ID.1` in the next, `EX.0`/`EX.1` in
+      the next — **two rows sharing a column, from a real recording**, which is the M3-step-7 claim
+      that had only ever been shown against a hand-built trace. Gating was checked in **both**
+      directions: the ISSUE control is present on the superscalar and **absent** on the pipeline
+      model, which keeps forwarding/predict/cache. Console clean — no app errors and, specifically,
+      no module-resolution failure (the risk `fix(web): resolve engine-pipeline to source` had
+      already made real once, and the one thing Vitest cannot rehearse because the dev server
+      resolves differently).
+
+      **Four findings worth carrying.**
+      **(a) The transport is 0-INDEXED, and it is a live off-by-one trap for exactly this check.**
+      `lastCycle = recordedCycles - 1` (`App.tsx:125`), so a 56-cycle run reads **`cycle 55 / 55`**
+      and a 44-cycle run reads **`43 / 43`**. Every pinned cycle count in this milestone is a trace
+      LENGTH. A verifier comparing the on-screen number to the pinned one sees a one-off mismatch
+      and has two bad moves available — report a phantom defect, or "correct" the pinned number and
+      silently destroy the step-4 matrix. **Read `X / Y` as `Y + 1` cycles.** This was hit for real
+      during the step-6 eyeball and resolved by reading `App.tsx`, not by assuming.
+      **(b) The app opens at forwarding OFF, and 56/44 are forwarding-ON numbers.** `W1`/`W2` in
+      `pairing.test.ts` both set `forwarding: true`. Flipping only the width from a cold load
+      compares the wrong pair of cells, so the flagship A/B **must set forwarding ON first**. The
+      out-of-the-box default reads `77 / 77` = 78 cycles — which is itself the derived
+      forwarding-OFF width-1 cell (`N + 4 + S + P + M = 34 + 4 + 22 + 18 + 0`), so the browser
+      incidentally confirmed a second matrix cell. Both traps in (a) and (b) push the SAME
+      direction: the honest number looks wrong at a glance.
+      **(c) The `.0` encoding is visible in the shipped UI, and the two spellings coexist.** The
+      superscalar map draws `IF.0`/`EX.0` at width 1 while the M3 pipeline map beside it still
+      draws bare `IF`/`EX`. That is the encoding decision working as designed — the slot suffix is
+      the superscalar's `location`, not a global map change — and it is the first time both have
+      been seen in one session rather than argued about.
+      **(d) `datapath: 'none'` renders as "Superscalar datapath — coming soon", as intended.** Not
+      a defect; step 7 is the deliverable. Worth stating because a missing diagram is precisely the
+      shape of thing an eyeball is tempted to log as a bug.
 
 - [ ] **7. The widened datapath — `datapath-superscalar.ts`.** Shared front-end (PC, I-mem
       fetching a pair, issue logic) + two replicated execute lanes, per the playbook in
@@ -440,8 +485,9 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] Load `sum-loop.s` on the superscalar model at width 1, then flip to width 2 without
+- [x] Load `sum-loop.s` on the superscalar model at width 1, then flip to width 2 without
       reloading: the pipeline map visibly pairs rows and the cycle count drops.
+      ✅ step 6 — browser-verified at forwarding ON: 56 → 44, map pairs `IF.0`/`IF.1`.
 - [ ] The datapath shows both lanes lit on a paired cycle and **one lane dark** on a refused one.
 - [ ] The readout names the refusal reason, and it agrees with what the map's shape shows.
 - [ ] IPC rises between the two widths, and its value equals retires ÷ cycles computed by hand.
@@ -487,5 +533,5 @@ milestone has more unobserved case-combinations than any before it. Observe, the
 | `location` lane encoding                             | `"<stage>.<slot>"` strings — a plain string, so no trace-schema change; `stageFamily` already folds `"EX.0"`→`EX`                                                                                                                                                                                                                            | **ADOPTED AS SEEDED (step 2a, PROVEN step 5).** `"<stage>.<slot>"` at BOTH widths — never a bare `"EX"`, even at width 1, so the encoding never depends on a config the view cannot see. Zero trace-schema change and **zero recorder change**: `follow()` keys on `id`, and `InstructionSighting.location` was already free-form, so two occupants of one stage resolve to distinct sightings for free. Only `location` is slotted — `stall.stage`, `flush.stages` and `forward.to` stay BARE (re-decided in 2b, not inherited). Step 5 cashed it over a real dual-issue recording, including the case the encoding exists for: an instruction that **changes slot mid-flight**                                                                                                    |
 | A new `issue` trace event?                           | **Decline it, pending proof.** `superscalar-visuals.md` proposed `issue` + a pairing-refused event, but `location` gives the slot free and a refusal is "slot 1 empty + a `stall` with a new `reason`". House record: M4 accepted 1 field of 5, M6 added zero. Force the event only if step 8's readout genuinely cannot be drawn without it | _(open — step 8 is the last chance)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Lane hues                                            | `--lane-0` = accent blue, `--lane-1` = magenta `#e87ba4` light / `#d55181` dark — machine-validated 2026-07-14, CVD ΔE 41.3/42.6                                                                                                                                                                                                             | _(open — step 7; do not re-derive, just adopt)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Default width on load                                | **1** — the machine's own degenerate case, so the first picture matches the pipeline the reader just learned, and the toggle is the reveal                                                                                                                                                                                                   | _(open — step 6)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Default width on load                                | **1** — the machine's own degenerate case, so the first picture matches the pipeline the reader just learned, and the toggle is the reveal                                                                                                                                                                                                   | **ADOPTED AS SEEDED (step 6), and CONFIRMED IN THE BROWSER** — the superscalar opens on `1-wide`, so the first picture a reader meets is the pipeline they already know and the 2-wide flip is the reveal. Note the neighbouring default is NOT so lucky: the app also opens at forwarding **OFF**, and the flagship 56 → 44 A/B is a forwarding-ON pair, so the reveal only lands cleanly once forwarding is on                                                                                                                                                                                                                                                                                                                                                                    |
 | Is a 1-wide superscalar distinct from M3's pipeline? | **Yes, and it must stay so** — it runs issue logic that never finds a pair. If it turns out cycle-identical to M3 on the whole corpus, say so in the plan rather than hiding it; that is a _finding_, not an embarrassment                                                                                                                   | **ANSWERED (step 2a, 2026-07-20): NO — it is cycle-identical to M3 across the entire corpus × forwarding × prediction × cache matrix**, hitting every cell of `N + 4 + S + P + M` on the first run with no number adjusted. That is the INTENDED result, not a disappointment: a width-1 machine is the pairing machine at its degenerate limit, and identity is what PROVES the port faithful — a width-1 base that differed from M3 would mean the port had drifted, not that the model was interesting. It is recorded here because the plan promised to say so rather than hide it, and because it settles what the toggle teaches: the 1-wide position says "this is the pipeline you already know", which is exactly the baseline the 2-wide flip has to be measured against. |
