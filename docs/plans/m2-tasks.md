@@ -1,8 +1,46 @@
 # Milestone 2 — the multi-cycle model (second microarchitecture)
 
 **Status: M2 COMPLETE — steps 0–4 (model), 5a (model picker), 5b (datapath SVG), 5c
-(the next-PC redirect) and 5d (the taken-branch redirect) all shipped. 5d landed 2026-07-20 and
-closed the last stated omission; the milestone has no deferred work left.**
+(the next-PC redirect), 5d (the taken-branch redirect) and 5e (the PCSource mux) all shipped.
+5e landed 2026-07-20 and closed the last stated omission; the milestone has no deferred work
+and no stated omissions left.**
+
+**Step 5e (2026-07-20) — the PCSource mux, and the driver nobody had noticed was missing.**
+5c and 5d each landed a redirect into PC and each left the same note in the header: PC has three
+drivers with no selector drawn between them. Going to draw that selector surfaced the real gap —
+**the diagram was one driver short of being able to draw it.** The SEQUENTIAL next-PC had no wire
+at all: `pcarith` fed only the writeback mux (the `jal`/`jalr` link), so the ordinary
+"PC ← PC+4" that every instruction performs was invisible. The stated omission was therefore
+understating itself; a 2-input mux would have been the same lie in a smaller box, and a selector
+whose commonest input never lights is worse than no selector.
+
+So 5e closed the sequential loop (`pc → pcarith → pc`) and added `pcsource` with all three arms.
+**View-only, like 5d** — `pc + 4` is derived from the trace's own `pc` (RV32I is fixed-width),
+never read out of the engine, so INV-8 is untouched by construction. The lighting rule is 5d's,
+generalized once more: the sequential arm lights **at retire** for any instruction that neither
+jumps nor takes a branch — which is WB for most, **MEM for a store, EX for a not-taken branch**.
+
+**The layout cost the plan had not predicted:** the mux could not go where the textbook puts it.
+PC sits 28px from the canvas edge and a mux takes its inputs on its left _vertical_ edge, so a
+directly-left placement leaves no room for three separated feed rails — and the collinearity test
+(0.5px epsilon) is this diagram's binding constraint, exactly as in 5d. It went **below-left** of
+PC instead, the one place all three sources reach a left edge on well-separated rails
+(`pcarith` x=82, `aluout` x=70, `branchadd` x=14). The three `essentials` contractions land on
+three different PC edges so they never merge into one line.
+
+**One test had to be re-expressed, not suppressed.** `auipc` asserted `pcarith` was dark — a
+5c-era proxy for "auipc's writeback comes from ALUOut, not the incrementer". With 5e that fails,
+and correctly: auipc's next PC genuinely _is_ pc+4, so the incrementer IS lit. The assertion now
+names the writeback path (`pcarith-wbmux`). Special-casing auipc out of the sequential rule would
+have been the lie sneaking back in.
+
+**Browser-verified** on `call-return` and `sum-loop`, all three arms plus both tiers: the `addi`
+WB lights `pc → pcarith → pcsource → pc` with `0x0 → 0x4` (the first time the diagram has ever
+shown PC+4); the `jal` WB lights the link out through MemtoReg _and_ the target `0x18` through
+PCSource while the sequential arm stays dark; the taken `bne` at cycle 18 lights the branch adder
+arm to `0x08`; fetch cycles leave the mux dark; and `essentials` collapses all five muxes, giving
+PC three distinct, visually separate incoming arrows. **No defect found** — only the second view
+step in this project (after 5c) where the browser found nothing. 1357 tests green.
 
 **Step 5d (2026-07-20) — the taken-branch redirect, view-only.** The mirror image of 5c: where 5c
 had to change the ENGINE before the view could tell the truth, 5d needed no engine change at all,
@@ -357,6 +395,16 @@ null` (nothing in flight). The fuller shape makes step 5b's latch boxes real at 
   separate branch adder node, which 5c did not add. 5d added exactly that — see the 5d record at
   the top of this file. The stated-omission discipline paid off here: the note named the missing
   component precisely enough that closing it was a contained step, not a re-derivation.
+
+  **The PCSource mux was UNDRAWN after 5d — the last stated omission; CLOSED BY STEP 5e
+  (2026-07-20).** With three redirects converging on PC and no selector between them, the diagram
+  showed the winning source lit and the losers dark — lawful (a lower tier may omit a selector) but
+  incomplete. 5e drew it. Worth recording how the discipline behaved differently this time: the
+  note was _precise but understated_. It said "no PCSource mux drawn"; it did not notice that one
+  of the three drivers it named — the sequential `pcarith → pc` — **had no wire either**. Drawing
+  the selector is what surfaced that. Lesson for future stated omissions: a note that names a
+  missing _selector_ should also be checked against whether every input it would select is itself
+  drawn, or the note quietly understates the gap.
 
   **Cost 5c actually charged, recorded because it was NOT in the plan that was approved:** the
   multi-cycle datapath grows from **three muxes to four** — routing `pc` into the ALU for
