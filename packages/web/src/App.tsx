@@ -16,6 +16,7 @@ import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
+import { PairingReadout } from './PairingReadoutView';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
 import { predictsTaken, type BranchPrediction } from './session';
@@ -147,6 +148,14 @@ export function App(): React.JSX.Element {
   const showMap = hasOverlap(sim.recorded);
   const showCache = sim.recorded.some(
     (t) => (t.state.micro as { cache?: unknown } | undefined)?.cache != null,
+  );
+  // The issue readout (M7 step 8), gated on the same kind of TRACE fact as its two neighbours: it
+  // appears when the recording has SLOTTED latches, which is what "this machine has an issue unit"
+  // looks like from outside the engine (INV-3). Deliberately true at width 1 as well — a 1-wide
+  // superscalar is an honest machine whose issue unit never finds a pair, which is the pairing-
+  // failure picture at its limit, and it is what makes the width flip legible on this surface too.
+  const showIssue = sim.recorded.some(
+    (t) => typeof (t.state.micro as { width?: unknown } | undefined)?.width === 'number',
   );
 
   return (
@@ -425,6 +434,27 @@ export function App(): React.JSX.Element {
                       key: 'cache',
                       label: 'cache grid',
                       node: <CacheGrid trace={sim.cycleTrace} cache={sim.cache} />,
+                    },
+                  ]
+                : []),
+              /* The issue readout (M7 step 8) — authored directly under the datapath, because it is
+                 the sentence that datapath cannot say: the diagram shows a lane go dark, this says
+                 WHY. Note the two do not agree at the same cursor and are not meant to — the verdict
+                 is about the pair in ID, and the dark execute lane is its consequence one cycle
+                 later. The surface that agrees with this one at a shared cursor is the pipeline map
+                 above, where a refusal is a visible stagger. */
+              ...(showIssue
+                ? [
+                    {
+                      key: 'issue',
+                      label: 'issue',
+                      node: (
+                        <PairingReadout
+                          trace={sim.cycleTrace}
+                          recording={sim.recorded}
+                          followed={followed}
+                        />
+                      ),
                     },
                   ]
                 : []),
