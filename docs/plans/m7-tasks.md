@@ -1,13 +1,15 @@
 # Milestone 7 — in-order superscalar: two instructions per stage
 
-**Status: steps 0–2b COMPLETE, step 3 (INV-8 differential at both widths) next. 2026-07-20 (1705
+**Status: steps 0–3 COMPLETE, step 4 (the timing matrices — the real net) next. 2026-07-20 (1835
 tests).** Shipped and PROVEN
 headlessly: `predict.ts`/`cache.ts` moved down into `engine-common` with every existing suite green
 and zero assertions touched (step 0), and the `issueWidth` config seam with whole-trace inertness
 pinned for all three existing models (step 1), and the width-1 superscalar base, which reproduces M3’s closed form EXACTLY over the whole corpus × config matrix (step 2a), and **the pairing logic —
 sliding/greedy issue, the three refusal verdicts, intra-pair forwarding and lane-aware `squash` —
 which makes width 2 strictly faster than width 1 on all 7 corpus programs with identical
-architectural results (step 2b).** **Nothing is browser-verified yet, because nothing
+architectural results (step 2b), and the INV-8 differential across all 18 configs at both widths,
+whose real deliverable was teaching `configLabel` the width axis (step 3).** **Nothing is
+browser-verified yet, because nothing
 user-visible exists yet** — the first view step is 6. Scope, the reuse strategy, the width toggle,
 the view depth, and the sliding/greedy issue grouping were decided with the user (see "Decisions to
 pin"). The visual layer was forward-designed in `docs/plans/superscalar-visuals.md` (2026-07-14) and
@@ -253,9 +255,37 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       property of the machine rather than of a seat.
       Acceptance met: 1705 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
-- [ ] **3. INV-8 differential net.** `runConformance(() => new SuperscalarProcessor())` across
+- [x] **3. INV-8 differential net.** `runConformance(() => new SuperscalarProcessor())` across
       the full corpus at **both widths × forwarding × prediction × cache**. Acceptance: green.
       **Read the warning in "How this milestone can lie to itself" before trusting this step.**
+
+      ✅ **Done (2026-07-20, 1705 → 1835 tests, +130).** The matrix is 2 widths × 2 forwarding × 3
+      prediction × 3 cache = 18 configs × 7 programs = 126 cases, all green, plus 4 new harness
+      guards. **The green is worth exactly what the plan said it would be worth and no more:** it
+      proves pairing does not CORRUPT the machine, and nothing else. Width-invariance of final state
+      is what the design predicts, not evidence it works — step 2b's out-of-order-retirement bug ran
+      green through a matrix of this exact shape. Step 4 is still the net.
+
+      **The step's real deliverable was the label, not the differential.** `configLabel` did not know
+      `issueWidth`, so the 18 configs would have rendered as 9 labels used twice — the M4 collision
+      exactly, and this time **with its alarm disconnected**. Every earlier axis had a failing column
+      available to make someone read the titles; width does not, since both columns are green by
+      construction. A duplicated-title report would have looked indistinguishable from a correct one,
+      forever. The clause is gated on variation like its predecessors, and the optional `?: number`
+      means every pre-M7 config leaves it `undefined` — so those suites stay silent **for free**
+      rather than by a special case, and their titles are byte-identical (verified by dumping them,
+      not by reasoning: the only 6 `width` hits across the other models are pre-existing "store
+      widths" and step-1 inertness tests).
+
+      **All four guards were provoked in BOTH directions**, which is the house discipline and earned
+      its keep here. Stubbing the clause to `false` fails the two distinctness guards; forcing it to
+      `true` fails the two silence guards. The second pair is the one that pins against the naive
+      implementation, and it needed **two** cases, not one: a `width`-unset list (pre-M7 suites) and
+      a list where the width is **set but constant** — because the superscalar suite states
+      `issueWidth: 1` explicitly, so an implementation blind-by-`undefined` would pass the first
+      guard while still labelling the second. A guard whose case list cannot reach the collision is
+      not a guard, one axis further down.
+      Acceptance met: 1835 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
 - [ ] **4. Timing matrices — the real correctness net.** Closed-form cycle counts for dual-issue,
       in the shape M6 pinned (`cycles = N + 4 + S + P + M`). Dual-issue adds a pairing term; the

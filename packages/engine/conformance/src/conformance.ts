@@ -231,6 +231,19 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   if (among.some((c) => !cacheEquals(c.cache, first.cache))) {
     parts.push(cacheLabel(config.cache));
   }
+  // `issueWidth` (M7 step 3) joins by the same rule, and is the cheapest axis yet: a plain optional
+  // number, so `!==` is the whole comparison — no `cacheEquals` analogue needed. Two things make it
+  // worth a line of its own. It is the axis whose two positions are **architecturally
+  // indistinguishable by construction** (an in-order superscalar retires in order, so width 1 and
+  // width 2 reach identical final state — see the superscalar's `differential.test.ts`), which means
+  // a title collision here would be invisible in a way the forwarding and cache collisions were not:
+  // both columns pass, so nothing ever forces you to read the names. And because the field is
+  // OPTIONAL, every pre-M7 config leaves it `undefined` — `undefined !== undefined` is false, so
+  // those suites stay silent for free rather than by a special case. The render still defaults,
+  // since an unset width means the single-issue machine.
+  if (among.some((c) => c.issueWidth !== first.issueWidth)) {
+    parts.push(`width ${config.issueWidth ?? 1}`);
+  }
   return parts.join(', ');
 }
 

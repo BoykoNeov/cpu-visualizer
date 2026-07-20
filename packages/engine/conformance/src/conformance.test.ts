@@ -299,6 +299,74 @@ describe('the matrix enumerates the corpus once per config', () => {
       expect(c.title).not.toContain('cache');
     }
   });
+
+  /**
+   * M7 step 3 — the `issueWidth` axis, and the one where a label collision would hide BEST.
+   *
+   * Every axis before this one had a failing column to force you to read the titles: a broken
+   * forwarding position, a wrong cache. Width does not. An in-order superscalar retires in order, so
+   * width 1 and width 2 reach **identical final architectural state by construction** — both columns
+   * are green, always, and a report that named them both `[forwarding on, predict none]` would look
+   * exactly like a correct one. That is the M4 collision with its alarm disconnected, so it gets the
+   * same two-directional guard the cache got, and for a sharper reason.
+   *
+   * The list varies width against a knob that is CONSTANT (cache is off throughout) precisely so
+   * that a `configLabel` naming everything unconditionally cannot pass by accident.
+   */
+  const FOUR_AXIS: ProcessorConfig[] = [1, 2].flatMap((issueWidth) =>
+    [false, true].flatMap((forwarding) =>
+      (['none', 'static-not-taken', 'static-taken'] as const).map((branchPrediction) => ({
+        ...defaultConfig(),
+        forwarding,
+        branchPrediction,
+        issueWidth,
+      })),
+    ),
+  );
+
+  it('keeps every case distinct when the matrix varies the ISSUE WIDTH too', () => {
+    const cases = conformanceCases(FOUR_AXIS);
+    // 2 widths × 2 forwarding × 3 predict = 12 configs.
+    expect(cases).toHaveLength(12 * corpusSize);
+    // The claim that fails if `configLabel` ignores `issueWidth`: 12 configs, 12 labels.
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('names the varying width in every title, so a failure says which WIDTH broke', () => {
+    for (const c of conformanceCases(FOUR_AXIS)) {
+      expect(c.title).toContain(`width ${c.config.issueWidth}`);
+    }
+  });
+
+  /**
+   * The other direction, and the one that pins against the naive implementation. `issueWidth` is
+   * OPTIONAL, so every config predating M7 leaves it `undefined` — an ungated width clause would
+   * rename every title in the single-cycle, multi-cycle and pipeline differential suites to carry a
+   * `width 1` none of them means. MULTI_AXIS spreads `defaultConfig()`, so it is exactly that
+   * width-unset list.
+   */
+  it('stays silent about the width when no config sets one, so pre-M7 suites read unchanged', () => {
+    for (const c of conformanceCases(MULTI_AXIS)) {
+      expect(c.title).not.toContain('width');
+    }
+  });
+
+  /**
+   * ...and silent when the width is set but CONSTANT, which is not the same claim. The superscalar
+   * suite states `issueWidth: 1` explicitly rather than leaving it to the default (so a default
+   * change cannot silently stop testing width 1), so a width-blind-by-`undefined` implementation
+   * would pass the guard above while still labelling that suite's single-width lists.
+   */
+  it('stays silent about a width that is set but does not vary', () => {
+    const cases = conformanceCases([
+      { ...defaultConfig(), forwarding: false, issueWidth: 1 },
+      { ...defaultConfig(), forwarding: true, issueWidth: 1 },
+    ]);
+    for (const c of cases) {
+      expect(c.title).not.toContain('width');
+      expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
+    }
+  });
 });
 
 /**
