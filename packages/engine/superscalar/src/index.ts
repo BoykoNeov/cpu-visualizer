@@ -11,11 +11,15 @@
  * width is the most legible instance of it in the product. The 1-wide position is an honest
  * machine, not a duplicate of M3 — it runs the issue logic and simply never finds a pair.
  *
- * **At M7 step 2a only width 1 exists**: the slot-shaped latches and the widened stage walk are
- * here, the pairing logic is not, and `reset()` throws on any other width rather than silently
- * running narrow. The step's net is TIMING, not INV-8 — a width-1 superscalar never pairs, so it
- * must reproduce the pipeline's closed form `cycles = N + 4 + S + P + M` over the whole corpus.
- * See `timing.test.ts`, whose numbers are M3's, unchanged.
+ * **Both widths are real as of step 2b.** Width 1 never pairs, so it reproduces the pipeline's
+ * closed form `cycles = N + 4 + S + P + M` over the whole corpus (`timing.test.ts`, whose width-1
+ * numbers are M3's, unchanged) — that identity is what PROVES the port faithful. Width 2 runs
+ * strictly fewer cycles on all seven corpus programs with byte-identical architectural results,
+ * under the derived form `cycles = G + L + P + M + 4` (step 4). `reset()` throws on any width
+ * other than 1 or 2 rather than silently running narrow.
+ *
+ * **The net for this tier is TIMING, not INV-8.** An in-order superscalar retires in order, so
+ * `runConformance` passes even with the pairing logic completely wrong — see `timing.test.ts`.
  *
  * Implements the {@link Processor} interface (handoff §6) over the pure {@link ProgramImage};
  * `toProgramImage` (in `@cpu-viz/engine-common`) adapts an `AssembledProgram` into that image.

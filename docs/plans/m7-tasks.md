@@ -1,7 +1,7 @@
 # Milestone 7 — in-order superscalar: two instructions per stage
 
-**Status: steps 0–4 COMPLETE, step 5 (recorder / time-travel + the `location` encoding) next.
-2026-07-20 (2050 tests).** Shipped and PROVEN
+**Status: steps 0–5 COMPLETE, step 6 (web enablement — the first BROWSER-VERIFIED step) next.
+2026-07-20 (2064 tests).** Shipped and PROVEN
 headlessly: `predict.ts`/`cache.ts` moved down into `engine-common` with every existing suite green
 and zero assertions touched (step 0), and the `issueWidth` config seam with whole-trace inertness
 pinned for all three existing models (step 1), and the width-1 superscalar base, which reproduces M3’s closed form EXACTLY over the whole corpus × config matrix (step 2a), and **the pairing logic —
@@ -11,7 +11,10 @@ architectural results (step 2b), and the INV-8 differential across all 36 config
 whose real deliverable was teaching `configLabel` the width axis (step 3), and **the DERIVED width-2
 timing matrix — `cycles = G + L + P + M + 4`, every cell of 7 programs × 2 widths × 2 forwarding × 3
 prediction × 3 cache derived rather than observed, confirming all six provisional step-2b pins
-(step 4)**.** **Nothing is
+(step 4)**, and the **time-travel proof — `follow()` and scrub over a dual-issue recording with
+`recorder.ts` UNTOUCHED, pinning that a slot is not a stable lane (an instruction slides 1→0, its
+neighbour 0→1, a third slides inside IF) and closing a REAL cache-aliasing hole that 694 green
+tests had missed (step 5)**.** **Nothing is
 browser-verified yet, because nothing
 user-visible exists yet** — the first view step is 6. Scope, the reuse strategy, the width toggle,
 the view depth, and the sliding/greedy issue grouping were decided with the user (see "Decisions to
@@ -366,10 +369,53 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       that a provocation must be confirmed to bite before it proves anything.)
       Acceptance met: 2050 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
-- [ ] **5. Recorder / time-travel proof + the `location` encoding.** `location` becomes
+- [x] **5. Recorder / time-travel proof + the `location` encoding.** `location` becomes
       `"<stage>.<slot>"` (`"EX.0"` / `"EX.1"`) — a plain string, so **no trace-schema change**.
       Prove `follow()` and scrub over a dual-issue recording. Acceptance: recorder suite green;
       a test pins that a 1-wide superscalar emits `"EX.0"` consistently (never bare `"EX"`).
+
+      ✅ **Done (2026-07-20, 2050 → 2064 tests, +14.)** It is a **PROOF, not a build**:
+      `packages/trace/src/recorder.ts` is **untouched** by this milestone. That is the claim that
+      could have failed and didn't — `follow()` keys on `id`, never on `location`, and
+      `InstructionSighting.location` was always free-form (its own doc cites `"ROB#3"`), so two
+      instructions sharing a stage resolve to distinct `"EX.0"`/`"EX.1"` sightings for free. **A
+      recorder change here would have meant the `location` encoding was the wrong encoding.**
+      The acceptance's width-1 clause was **already met** at the engine layer (`processor.test.ts`
+      pins the `.0` spelling and the `IF.0 → … → WB.0` walk), so the new file re-proves none of it
+      and says so in its header, following the M3 step-4 discipline.
+
+      **Four findings worth carrying.**
+      **(a) The headline: a slot is NOT a stable lane, and it is now pinned three ways.** An
+      instruction refused for `intra-pair-raw` in slot 1 **slides to slot 0** and finishes there
+      (`IF.1 → ID.1 → ID.0 → EX.0 → MEM.0 → WB.0`); the instruction behind it slides the OTHER way,
+      **0 → 1**, to pair with the slider; a third slides **while still in IF**. Sliding is not
+      monotone and not one-directional — which is exactly why "lane" is the wrong word for a slot.
+      Also pinned: a slide never re-mints the id (INV-4 — the failure mode a seat change makes newly
+      plausible), and the stage FAMILY sequence stays monotone even when the slot does not.
+      **(b) `sum-loop.s` does NOT slide, and assuming it would have been the test-lie.** The natural
+      workhorse was dumped first and every one of its instructions keeps its slot for its whole life
+      (`i5: IF.1 → ID.1 → EX.1`). A four-instruction program had to be **written** to provoke a
+      slide. This is step 2b finding (e) and step 4 finding (e) landing a third time: **every
+      expected `location` in the new suite was dumped and read before it was asserted.**
+      **(c) Provoking the net found a REAL hole that 694 green tests did not.** Aliasing the cache
+      into the snapshot (`cache: this.cache`) left the **entire package green** — conformance,
+      timing, pairing, and the engine's own `does not alias slot arrays` test included — while
+      genuinely corrupting every recording: the cache is single-buffered and mutated in place, so a
+      shallow snapshot replays a cold cache as **warm-from-the-start** (cycle 0 reported the final
+      run's 2 valid lines). Time-travel is the only layer at which that is observable, which is
+      precisely what this step exists for. Now pinned by a staircase-not-flat-line assertion plus
+      per-cycle object identity, and the test was **watched failing under the bug before being kept**.
+      **(d) The neighbouring `.slice()` is defensive, not load-bearing — the M7-4(d) shape again.**
+      Deleting the four latch slices left all 694 tests green too, but here that is CORRECT rather
+      than a hole: `step()` allocates a fresh `emptyLatches(width)` as `ctx.next` every cycle, so the
+      arrays cannot alias. The engine's existing anti-aliasing test passes on **array identity**,
+      which the fresh-rebuild discipline satisfies for free — it never covered the cache at all. The
+      slices are KEPT (a snapshot should not depend on a caller's allocation discipline) but the
+      doc comment, which claimed both copies prevented "replaying every recorded cycle as the final
+      one", was **false for the latches and true for the cache** and now says which is which.
+      Also fixed in passing: `index.ts`'s header still said "at M7 step 2a only width 1 exists",
+      three steps stale — the same class of untrue-header the milestone keeps warning about.
+      Acceptance met: 2064 tests green, `lint`, `tsc -b`, web `tsc --noEmit`, `format:check` green.
 
 - [ ] **6. Web enablement.** `models.ts` entry + `DatapathKind: 'superscalar'` + the width
       control, gated on `configurableIssueWidth` like every other config control. The map,
@@ -438,7 +484,7 @@ milestone has more unobserved case-combinations than any before it. Observe, the
 | Memory ports                                         | **1** — mem-ops never pair with each other; gives the structural-hazard lesson for free                                                                                                                                                                                                                                                      | **ADOPTED AS SEEDED (step 2b).** Refusal reason `mem-port`, classified by PORT rather than by load/store, so a load beside a store refuses too. It is what keeps MEM, the cache and the miss-freeze single-lane — the rule pays for itself several times over                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Branch slots                                         | **1, and it may sit in either slot** — a taken branch kills its pair-mate too if that mate is younger. Seeded, but the alternative (branches only in slot 0) is simpler to draw; step 2 decides against the real stage walk                                                                                                                  | **ADOPTED AS SEEDED (step 2b), and BOTH directions observed.** Refusal reason `branch-slot`, classified by CLASS not by outcome (a not-taken branch still occupied the unit, and at issue nobody knows the outcome) — so `jal`/`jalr` are in it. A taken `EX.0` transfer kills its `EX.1` mate; a taken `EX.1` transfer **spares** the older `EX.0`, which retires normally. That asymmetry is the entire content of `Squash.slot`                                                                                                                                                                                                                                                                                                                                                  |
 | Intra-pair RAW                                       | **Never pairs** — if the second instruction reads what the first writes, it goes alone next cycle. Forwarding cannot fix a same-cycle dependency, so this holds at every forwarding setting, which is itself a teachable fact                                                                                                                | **ADOPTED AS SEEDED (step 2b), and the forwarding-independence is asserted** — reason `intra-pair-raw`, provoked at `forwarding: true` AND `false` in one test. Forwarding moves a value from a LATER stage back to EX, and there is no later stage than "beside me, this very cycle"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `location` lane encoding                             | `"<stage>.<slot>"` strings — a plain string, so no trace-schema change; `stageFamily` already folds `"EX.0"`→`EX`                                                                                                                                                                                                                            | _(open — step 5)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `location` lane encoding                             | `"<stage>.<slot>"` strings — a plain string, so no trace-schema change; `stageFamily` already folds `"EX.0"`→`EX`                                                                                                                                                                                                                            | **ADOPTED AS SEEDED (step 2a, PROVEN step 5).** `"<stage>.<slot>"` at BOTH widths — never a bare `"EX"`, even at width 1, so the encoding never depends on a config the view cannot see. Zero trace-schema change and **zero recorder change**: `follow()` keys on `id`, and `InstructionSighting.location` was already free-form, so two occupants of one stage resolve to distinct sightings for free. Only `location` is slotted — `stall.stage`, `flush.stages` and `forward.to` stay BARE (re-decided in 2b, not inherited). Step 5 cashed it over a real dual-issue recording, including the case the encoding exists for: an instruction that **changes slot mid-flight**                                                                                                    |
 | A new `issue` trace event?                           | **Decline it, pending proof.** `superscalar-visuals.md` proposed `issue` + a pairing-refused event, but `location` gives the slot free and a refusal is "slot 1 empty + a `stall` with a new `reason`". House record: M4 accepted 1 field of 5, M6 added zero. Force the event only if step 8's readout genuinely cannot be drawn without it | _(open — step 8 is the last chance)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Lane hues                                            | `--lane-0` = accent blue, `--lane-1` = magenta `#e87ba4` light / `#d55181` dark — machine-validated 2026-07-14, CVD ΔE 41.3/42.6                                                                                                                                                                                                             | _(open — step 7; do not re-derive, just adopt)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Default width on load                                | **1** — the machine's own degenerate case, so the first picture matches the pipeline the reader just learned, and the toggle is the reveal                                                                                                                                                                                                   | _(open — step 6)_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |

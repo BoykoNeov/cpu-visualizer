@@ -1578,11 +1578,22 @@ export class SuperscalarProcessor implements Processor {
   }
 
   /**
-   * An independent full-state snapshot — what each CycleTrace carries (handoff §6). The latch
-   * objects are immutable and rebuilt each cycle, but the slot ARRAYS are the container the walk
-   * writes into, so each is COPIED here; sharing one would replay every recorded cycle as the final
-   * one. The cache is the other exception: it is single-buffered and mutated in place by
-   * {@link access}, so it must be DEEP-COPIED — the same reason `memory` is snapshotted.
+   * An independent full-state snapshot — what each CycleTrace carries (handoff §6).
+   *
+   * **The two copies here are not equally load-bearing, and M7 step 5 proved which is which by
+   * PROVOKING each rather than by reasoning about it** (the M2-5e / M7-4(d) shape: a claim with a
+   * rationalization attached is where a bug hides).
+   *
+   * - The latch slot arrays are `.slice()`d **defensively**. Replacing the slices with the arrays
+   *   themselves left all 694 package tests green — because `step()` allocates a fresh
+   *   `emptyLatches(width)` as `ctx.next` every cycle, so the array handed here is never written
+   *   again and cannot alias. The copies are kept (a snapshot should not depend on a caller's
+   *   allocation discipline to stay independent) but nothing observable rests on them today.
+   * - The cache deep-copy IS load-bearing, and uniquely so: unlike the latches it is
+   *   single-buffered and mutated in place by {@link access} — the same reason `memory` is
+   *   snapshotted. Aliasing it also passed all 694 tests while genuinely corrupting every
+   *   recording, replaying a cold cache as warm-from-the-start. `recorder.test.ts` now pins it,
+   *   because time-travel is the only layer at which it is observable at all.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: SuperscalarMicro = {
