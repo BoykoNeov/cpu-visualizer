@@ -640,6 +640,17 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       its `EX` lands one column right of the `lw`'s. The panel says this on the surface rather than
       leaving a reader to discover it as an apparent bug.
 
+      **(g) The depth tier: the readout is NOT tier-gated, and that is a decision, not an omission.**
+      `superscalar-visuals.md` places the readout at **detailed** ("the issue/pairing readout
+      appears", with essentials hiding "all pairing machinery"). It takes no `tier` prop here, and
+      the discriminator is what this app actually does with tiers: `CacheGrid` and `PipelineMap` take
+      no `tier` either and show at every tier, while only `SuperscalarDatapath` consumes it (via
+      `minTier`/`tierVisible`, for its muxes and control labels). **Panel PRESENCE is not tier-gated
+      in this shell; datapath INTERNALS are** — so the doc's sentence is about the pairing machinery
+      inside the diagram, which already tiers, not about this panel. Gated on panel-presence like the
+      cache grid. INV-5 holds either way: naming "refused — the younger reads what the older writes"
+      only ever ADDS to the essentials story ("two go together when they can"), never contradicts it.
+
       One number worth pinning against future doubt: `array-sum.s` and `sum-loop.s` **both** retire
       34 instructions, which reads like a stale constant and is not — the other corpus programs
       report 134 / 9 / 6 / 9. Checked, because a frozen numerator is exactly what a broken
