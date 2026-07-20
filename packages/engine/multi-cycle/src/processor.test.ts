@@ -91,6 +91,7 @@ describe('multi-cycle: model identity', () => {
       configurableForwarding: false,
       configurableBranchPrediction: false,
       configurableCache: false,
+      configurableIssueWidth: false,
     });
   });
 });
@@ -624,5 +625,45 @@ describe('multi-cycle: jumps round-trip, including jalr with rd == rs1 (target u
     );
     expect(sreg(last(ts), 1)).toBe(107); // proves it returned to pc 8 using the OLD x5 (=8)
     expect(sreg(last(ts), 5)).toBe(24); // the return link written to x5 = jalr_pc(20) + 4
+  });
+});
+
+/**
+ * M7 step 1 — `issueWidth` is inert here, in the strong form: the ENTIRE trace array is compared,
+ * cycle for cycle, not just a final register. For a timing knob that distinction is the whole
+ * point — a width that leaked into this model would move cycle counts and phase boundaries while
+ * leaving every architectural result untouched, which is precisely what a final-state check cannot
+ * see. Multi-cycle is the model where that would show up most visibly, since its cycle count
+ * already varies by instruction class.
+ *
+ * The source carries a backward branch, a store and a load — the three things a width knob would
+ * plausibly perturb if it leaked into fetch, memory, or the loop.
+ */
+const WIDTH_PROBE = [
+  '.text',
+  'addi x1, x0, 4',
+  'addi x2, x0, 0',
+  'loop:',
+  'addi x2, x2, 3',
+  'addi x1, x1, -1',
+  'bne x1, x0, loop',
+  'sw x2, 256(x0)',
+  'lw x3, 256(x0)',
+  'ecall',
+].join('\n');
+
+describe('issueWidth (M7 step 1)', () => {
+  it('is inert — the whole trace is identical at width 1 and width 2', () => {
+    const image = toProgramImage(asm(WIDTH_PROBE));
+    const at = (issueWidth: number): CycleTrace[] => {
+      const p = new MultiCycleProcessor();
+      p.reset(image, { ...defaultConfig(), issueWidth });
+      return runAll(p);
+    };
+    expect(at(2)).toEqual(at(1));
+  });
+
+  it('declares it does not honor the knob', () => {
+    expect(MULTI_CYCLE_CAPABILITIES.configurableIssueWidth).toBe(false);
   });
 });

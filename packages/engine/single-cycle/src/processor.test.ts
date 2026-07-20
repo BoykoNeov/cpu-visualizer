@@ -79,6 +79,7 @@ describe('single-cycle: model identity', () => {
       configurableForwarding: false,
       configurableBranchPrediction: false,
       configurableCache: false,
+      configurableIssueWidth: false,
     });
   });
 });
@@ -476,5 +477,46 @@ describe('single-cycle: jumps round-trip', () => {
       ].join('\n'),
     );
     expect(sreg(last(ts), 1)).toBe(107); // 7 in func, then +100 after return
+  });
+});
+
+/**
+ * M7 step 1 — `issueWidth` is inert here, and this is the strong form of that claim.
+ *
+ * The `reset() ignores config` test above compares one register; this compares the ENTIRE trace
+ * array, cycle for cycle and event for event. That difference matters for a timing knob:
+ * `issueWidth` cannot change what a single-cycle machine computes even if it were honored by
+ * accident, so a final-state check is exactly the assertion that could not fail. Only the full
+ * trace can see a cycle count or an event order move.
+ *
+ * The source deliberately contains a backward branch, a store and a load — the three things a
+ * width knob would plausibly perturb if it leaked into fetch, memory, or the loop.
+ */
+const WIDTH_PROBE = [
+  '.text',
+  'addi x1, x0, 4',
+  'addi x2, x0, 0',
+  'loop:',
+  'addi x2, x2, 3',
+  'addi x1, x1, -1',
+  'bne x1, x0, loop',
+  'sw x2, 256(x0)',
+  'lw x3, 256(x0)',
+  'ecall',
+].join('\n');
+
+describe('issueWidth (M7 step 1)', () => {
+  it('is inert — the whole trace is identical at width 1 and width 2', () => {
+    const image = toProgramImage(asm(WIDTH_PROBE));
+    const at = (issueWidth: number): CycleTrace[] => {
+      const p = new SingleCycleProcessor();
+      p.reset(image, { ...defaultConfig(), issueWidth });
+      return runAll(p);
+    };
+    expect(at(2)).toEqual(at(1));
+  });
+
+  it('declares it does not honor the knob', () => {
+    expect(SINGLE_CYCLE_CAPABILITIES.configurableIssueWidth).toBe(false);
   });
 });

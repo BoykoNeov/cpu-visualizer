@@ -944,3 +944,42 @@ describe('halt with drain', () => {
     expect(() => p.step()).toThrow(/halted/);
   });
 });
+
+/**
+ * M7 step 1 — `issueWidth` is inert here, and the pipeline is the case that matters most.
+ *
+ * It is the model M7's superscalar is a widening OF, so a leak is most plausible here and least
+ * visible: the pipeline already has hazards, stalls and flushes, so a width knob that perturbed
+ * issue would change cycle counts while every architectural result stayed correct. The comparison
+ * is therefore the ENTIRE trace array — and it runs under BOTH forwarding settings, because the
+ * hazard path is the one a width knob would most plausibly reach.
+ *
+ * When superscalar lands (step 2), this test is what pins that the 5-stage pipeline stayed a
+ * one-instruction-per-stage machine rather than quietly acquiring a second slot.
+ */
+const WIDTH_PROBE = [
+  '.text',
+  'addi x1, x0, 4',
+  'addi x2, x0, 0',
+  'loop:',
+  'addi x2, x2, 3',
+  'addi x1, x1, -1',
+  'bne x1, x0, loop',
+  'sw x2, 256(x0)',
+  'lw x3, 256(x0)',
+  'ecall',
+].join('\n');
+
+describe('issueWidth (M7 step 1)', () => {
+  it.each([
+    ['forwarding off', OFF],
+    ['forwarding on', ON],
+  ])('is inert — the whole trace is identical at width 1 and width 2 (%s)', (_label, base) => {
+    const at = (issueWidth: number): CycleTrace[] => run(WIDTH_PROBE, { ...base, issueWidth });
+    expect(at(2)).toEqual(at(1));
+  });
+
+  it('declares it does not honor the knob', () => {
+    expect(PIPELINE_CAPABILITIES.configurableIssueWidth).toBe(false);
+  });
+});

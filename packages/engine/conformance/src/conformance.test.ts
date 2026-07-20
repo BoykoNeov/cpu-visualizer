@@ -64,6 +64,7 @@ class ReferenceBackedStub implements Processor {
     configurableForwarding: true,
     configurableBranchPrediction: false,
     configurableCache: false,
+    configurableIssueWidth: false,
   };
 
   private state: MachineState | null = null;

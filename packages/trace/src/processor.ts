@@ -67,6 +67,22 @@ export interface ProcessorConfig {
   forwarding: boolean;
   branchPrediction: 'none' | 'static-taken' | 'static-not-taken';
   cache: CacheConfig | null;
+  /**
+   * How many instructions may **issue per cycle** (roadmap §12.4, M7). Absent or `1` is every
+   * machine built before M7 — one instruction enters a stage at a time — so the field is optional
+   * rather than required: it follows {@link seed}'s precedent ("only if a model needs it") instead
+   * of {@link cache}'s (a required field with a `null` default), which would have forced a value
+   * into every config literal in the repo to say something none of them do.
+   *
+   * **Only the superscalar model honors it**; every earlier model ignores it and its trace is
+   * byte-identical at any width — the M4-step-0 inertness contract, two milestones on. Gate the UI
+   * on {@link ProcessorCapabilities.configurableIssueWidth}, never on this field's presence.
+   *
+   * The 1-wide position of a superscalar machine is **not** the M3 pipeline wearing a different
+   * name: it runs the same issue logic and simply never finds a pair. That is what makes the
+   * toggle a fair same-program A/B rather than a model switch in disguise.
+   */
+  issueWidth?: number;
   /** Only if a model needs deterministic randomness (INV-1: the seed is part of config). */
   seed?: number;
 }
@@ -94,6 +110,13 @@ export interface ProcessorCapabilities {
   readonly configurableBranchPrediction: boolean;
   /** Does it honor {@link ProcessorConfig.cache}? */
   readonly configurableCache: boolean;
+  /**
+   * Does it honor {@link ProcessorConfig.issueWidth} — can more than one instruction occupy a
+   * stage? Deliberately REQUIRED rather than optional, so adding it is a compile error in every
+   * model's capabilities constant: a model that silently defaulted to `false` would be indis-
+   * tinguishable from one that had simply not been considered.
+   */
+  readonly configurableIssueWidth: boolean;
 }
 
 /**

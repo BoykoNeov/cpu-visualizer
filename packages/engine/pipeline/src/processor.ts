@@ -219,6 +219,8 @@ export const PIPELINE_CAPABILITIES: ProcessorCapabilities = {
   configurableForwarding: true,
   configurableBranchPrediction: true,
   configurableCache: true,
+  // M7: one instruction per stage is this model's definition, not a setting.
+  configurableIssueWidth: false,
 };
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);

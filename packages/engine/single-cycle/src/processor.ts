@@ -38,6 +38,8 @@ export const SINGLE_CYCLE_CAPABILITIES: ProcessorCapabilities = {
   configurableForwarding: false,
   configurableBranchPrediction: false,
   configurableCache: false,
+  // M7: one instruction per stage is this model's definition, not a setting.
+  configurableIssueWidth: false,
 };
 
 export class SingleCycleProcessor implements Processor {

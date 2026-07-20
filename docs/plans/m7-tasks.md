@@ -99,12 +99,22 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       Acceptance met: 1358 tests green with **zero assertions touched**, `npm run lint`, `tsc -b`,
       and the web `tsc --noEmit` all green.
 
-- [ ] **1. The config seam — `issueWidth`.** Add `ProcessorConfig.issueWidth?: number` (absent /
-      `1` = today's machines) and `ProcessorCapabilities.configurableIssueWidth`. **Inertness
-      contract, as M4 step 0 pinned it:** every existing model ignores the field and its trace
-      stays byte-identical. Acceptance: all four models' suites green with zero diffs; a test
-      asserts single-cycle/multi-cycle/pipeline traces are identical with `issueWidth` set to 1
-      and to 2 (they honor neither).
+- [x] **1. The config seam — `issueWidth`.** ✅ Done (2026-07-20, 1358 → 1365 tests).
+      `ProcessorConfig.issueWidth?: number` is **optional**, following `seed`'s precedent ("only if
+      a model needs it") rather than `cache`'s (required, `null` default) — a required field would
+      have forced a value into every config literal in the repo to say something none of them mean.
+      `ProcessorCapabilities.configurableIssueWidth` is the opposite: **deliberately required**, so
+      adding it is a compile error in every model's capabilities constant. That paid immediately —
+      `tsc` caught two stub fixtures (`trace/recorder.test.ts`, `conformance.test.ts`) that a model
+      defaulting to `false` would have let slide.
+      **The inertness proof is the whole-trace form, not a final-state one.** Each model's suite now
+      deep-compares the ENTIRE trace array at width 1 vs width 2 (the pipeline under both forwarding
+      settings), because `issueWidth` is a TIMING knob: a leak would move cycle counts and event
+      order while leaving every architectural result correct — exactly what a final-state check
+      cannot see. The probe program carries a backward branch, a store and a load. **Two exhaustive
+      `toEqual` capability tests failed, and that was the design working** — they enumerate the flag
+      set on purpose so a new knob cannot be added without each model stating its stance.
+      Acceptance met: 1365 tests green, `npm run lint`, `tsc -b`, web `tsc --noEmit` all green.
 
 > **Footgun found in step 0, to be paid in step 2.** The eslint deny lists enumerate models **by
 > name**, in three separate places (`engine-common`, `engine-conformance`, `reference`) — flat
