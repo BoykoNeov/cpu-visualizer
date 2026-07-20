@@ -1,0 +1,31 @@
+{
+  "id": "one-door",
+  "title": "One door for memory",
+  "program": "byte-loads",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "stall", "where": { "reason": "mem-port" } },
+      "narration": {
+        "essentials": "Two loads were fetched together — but the machine has one door to memory, so the second must wait for the first to go through.",
+        "detailed": "`lb t1, 0(t0)` and `lbu t2, 0(t0)` were fetched side by side as a candidate pair, and this time nothing stops them by data: the second needs no value the first is computing — the two loads even read the very same byte. What stops them is the hardware. There is exactly one path to data memory — one port — and two loads cannot both use it in one cycle. So the older load goes and the younger is held. Watch the readout name the reason: mem-port. It is a different refusal from the last lesson's dependent pair — nothing here is missing a value; the machine simply has one door and two instructions that need it. The `lbu` issues alone next cycle, once the port is free.",
+        "expert": "This is a STRUCTURAL hazard, not a data one, and the distinction is the whole lesson. `intra-pair-raw` refuses a pair for what the younger NEEDS; `mem-port` refuses it for what the younger IS — a memory access — decided at issue by instruction CLASS, before any address is formed or any value returns. Widening replicated the cheap resources — fetch, decode, the register-file ports, the execute lanes are all two now — but left MEM single: one data-memory port, deliberately, because a single memory port is what keeps the cache model single-lane. So two memory ops can never issue together however independent they are, and these two are maximally independent: same address, different destination registers, no shared result. Independence at issue is necessary for a pair; it is not sufficient. The pair must also not both claim a unit the machine did not replicate."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 7, "value": 128 } },
+      "narration": {
+        "essentials": "Both bytes are read — the port served them one after another, and the answers are exactly what the one-wide machine gives.",
+        "detailed": "The held `lbu` issues the next cycle and its read lands: t2 comes out holding +128, and t1 already holds the `lb`'s -128 beside it. The single port changed neither result — it only served the two reads in consecutive cycles instead of one. Width never changes what a program computes. And a structural hazard is a fixed fact about this datapath, not about the program: the only cure is more hardware — a second memory port — which this machine does not have, on purpose. So the one door costs a cycle here, and never the answer.",
+        "expert": "The two loads produce the same two bytes — -128 in t1, +128 in t2 — at width 1 and at width 2. A structural hazard cannot be forwarded around or reordered away in this machine: unlike a data hazard it is not about WHEN a value exists but about HOW MANY copies of a unit the datapath was built with. Widening bought two of everything cheap to replicate and left the expensive, shared resources single — one memory port here, one branch unit next. Pairing pays wherever the program offers two instructions that need neither the same value nor the same scarce unit; two loads fail the second test as surely as a dependent pair fails the first."
+      }
+    }
+  ]
+}

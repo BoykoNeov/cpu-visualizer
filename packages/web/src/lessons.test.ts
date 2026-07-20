@@ -613,8 +613,9 @@ describe('authored lessons (INV-6)', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
     // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
     // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); the
-    // three-lesson cache track (M6 step 7); and the first two superscalar lessons (M8 steps 1–2),
-    // the wide machine's pairing payoff and its first refusal. Multi-cycle deliberately has none: its story is "one instruction,
+    // three-lesson cache track (M6 step 7); and the first three superscalar lessons (M8 steps 1–3),
+    // the wide machine's pairing payoff, its first (data) refusal, and its first structural refusal.
+    // Multi-cycle deliberately has none: its story is "one instruction,
     // phases spread over cycles", which the single-cycle lessons already narrate correctly when the
     // model is swapped under them (pinned by the cross-model suite below).
     //
@@ -626,7 +627,7 @@ describe('authored lessons (INV-6)', () => {
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
-    expect(LESSONS.length).toBe(13);
+    expect(LESSONS.length).toBe(14);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -1930,6 +1931,107 @@ describe('pair-that-cant — the dependent pair is refused (M8 step 2)', () => {
     // unlike two-at-once there is nothing more to pin here.)
     const expert = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
     expect(expert, 'the expert tier must quote the retire count it claims').toContain('34');
+  });
+});
+
+/**
+ * `one-door`'s oracle (M8 step 3) — the wide machine's THIRD beat, and its first STRUCTURAL refusal.
+ * Where `pair-that-cant` refused a pair for what the younger NEEDED (a data hazard), this refuses one
+ * for what the younger IS — a memory access — because the datapath has a single data-memory port.
+ *
+ * The sweep is blind in the same two ways as step 2, plus one sharper. `byte-loads` at width 2 emits
+ * THREE stalls — `intra-pair-raw` (the `la` pseudo-op's internal), `intra-pair-raw` (the first load
+ * reading the `la`'s `t0`), then the single `mem-port` — so a right-type/wrong-occurrence anchor
+ * lands on a DATA hazard and the lesson silently teaches the wrong thing. Pinning `reason === 'mem-
+ * port'` is the whole proof: the engine refused this pair for STRUCTURE, not data, which is exactly
+ * the claim the narration makes. It also proves the two loads are maximally independent — a data
+ * refusal would have fired instead if they were not.
+ *
+ * The refused instruction is the younger load `lbu t2, 0(t0)` (pc 12); its older partner `lb t1,
+ * 0(t0)` (pc 8) issues. Both are genuine memory ops — asserted by reading who sits in ID beside the
+ * refusal and confirming each drives a `mem-read` — so the contended resource is the PORT, the one
+ * unit width did not replicate, not anything the two instructions compute.
+ */
+describe('one-door — two loads, one memory port (M8 step 3)', () => {
+  const LBU_PC = 12; // `lbu t2, 0(t0)` — the younger load, refused for the port
+  const LB_PC = 8; // `lb t1, 0(t0)` — the older load, which issues
+  const lesson = (): Lesson => byId('one-door');
+
+  /** The lesson's own declared machine with only the width varied — everything else from the JSON. */
+  const record = (issueWidth: number): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('one-door must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, issueWidth });
+  };
+
+  it('opens on the superscalar at width 2 — a refusal only a two-wide machine can make', () => {
+    expect(lesson().model).toBe('superscalar');
+    expect(lesson().config?.issueWidth).toBe(2);
+  });
+
+  it('THE REFUSAL: mem-port on the younger load, between two genuine memory ops', () => {
+    const trace = record(2);
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Step 0 is the STRUCTURAL refusal. The reason being `mem-port` and NOT `intra-pair-raw` is the
+    // entire proof: the engine held the pair for the port, not for a value — so the two loads are
+    // maximally independent, and the two earlier intra-pair-raw stalls (which a slipped anchor would
+    // land on) are exactly what this pin rules out.
+    const refusal = anchored[0]!;
+    const refusalEvent = anchoredEvent(trace, refusal) as TraceEvent & { instr: string };
+    expect(refusalEvent).toMatchObject({ type: 'stall', reason: 'mem-port' });
+    // ...and it names the YOUNGER load (pc 12), the one held; slot 0 is never refused for pairing.
+    expect(anchoredPc(trace, refusal)).toBe(LBU_PC);
+
+    // The structural signature: the refusal is between two genuine MEMORY ops. The refused younger is
+    // the `lbu`; its older partner is whoever sits in ID.0 the same cycle — the `lb` (pc 8). Both
+    // drive a `mem-read`, which is what makes the single PORT the resource they contend for.
+    const cycle = trace.find((c) => c.cycle === refusal.cycle)!;
+    const older = cycle.instructions.find((i) => i.location === 'ID.0')!.id;
+    expect(pcById(trace).get(older)).toBe(LB_PC);
+    const memReaders = new Set(
+      trace
+        .flatMap((c) => c.events)
+        .filter((e) => e.type === 'mem-read')
+        .map((e) => e.instr),
+    );
+    expect(memReaders.has(older), 'the older partner is a memory op').toBe(true);
+    expect(memReaders.has(refusalEvent.instr), 'the refused younger is a memory op').toBe(true);
+  });
+
+  it('the refusal is width-exclusive: no pair means no port contention', () => {
+    // Lawfully dead at width 1 (like pair-that-cant's data refusal): one load issues per cycle, so the
+    // single port is never contended and there is no candidate pair. Dead at width 1, alive at width
+    // 2 — the axis the lesson rests on.
+    const w1 = anchorLesson(lesson(), record(1));
+    expect(w1[0]!.cycle, 'width 1 forms no pair, so nothing contends for the port').toBeNull();
+  });
+
+  it('same answer, held or not: the two bytes land identically at both widths', () => {
+    const [w1, w2] = [record(1), record(2)];
+
+    // The closing anchors on the refused `lbu`'s OWN result — +128 into t2 (reg 7) — alive at both
+    // widths. It is what the program computed, not how it ran: the held instruction still delivers.
+    for (const trace of [w1, w2]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'reg-write', reg: 7, value: 128 });
+    }
+
+    // Both byte results the closing narration quotes — -128 in t1, +128 in t2 — derived from the
+    // engine at both widths, not trusted. The single port serialized the reads; it changed neither
+    // answer, which is the whole "width is not a correctness knob" claim made concrete.
+    const wrote = (trace: readonly CycleTrace[], reg: number, value: number): boolean =>
+      trace
+        .flatMap((c) => c.events)
+        .some((e) => e.type === 'reg-write' && e.reg === reg && e.value === value);
+    for (const trace of [w1, w2]) {
+      expect(wrote(trace, 6, -128), 'lb → t1 = -128').toBe(true);
+      expect(wrote(trace, 7, 128), 'lbu → t2 = +128').toBe(true);
+    }
+    // The expert tier states both bytes as fact; asserted so a silently-wrong value reddens.
+    const expert = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
+    expect(expert, 'the closing must quote both byte results').toContain('-128');
+    expect(expert).toContain('+128');
   });
 });
 

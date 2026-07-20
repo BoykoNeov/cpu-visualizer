@@ -169,11 +169,34 @@ value:55}` → cycle 41). Anchors chosen arithmetic-fixed (`result:19`, `value:5
       closing 120/34-retires at both widths. No cycle counts quoted in prose (the payoff is the
       dependency, not speed), so — unlike step 1 — nothing more to pin. `npm test` + `lint` + `tsc -b` + `build` all green. Browser pass deferred to step 6.
 
-- [ ] **3. Lesson — "One door for memory" (`mem-port`).** `program: byte-loads`, same config. Anchor
-      the single `mem-port` refusal (present exactly once in the dump). Teach the STRUCTURAL hazard:
-      two memory instructions cannot issue together because there is one data-memory port — the
-      lesson the tier "gets for free" (`processor.ts:1416`), distinct from the data hazard of step 2.
-      Acceptance: as above; oracle pins `reason: 'mem-port'`.
+- [x] **3. Lesson — "One door for memory" (`mem-port`).** DONE 2026-07-20 (2445 tests).
+      `one-door.json` shipped: `program: byte-loads`, same config as steps 1/2 (superscalar,
+      forwarding on, static-not-taken, cache null, `issueWidth: 2` → w2 = 9 cycles, w1 = 10). Two
+      steps: the refusal (`{ event: 'stall', where: { reason: 'mem-port' } }`, UNIQUE so no `nth` →
+      cycle 3, `lbu t2, 0(t0)` at pc 12 refused because `lb t1, 0(t0)` at pc 8 beside it holds the one
+      data-memory port) and the closing "same answer" (`reg-write reg:7 value:128` → cycle 7, the
+      REFUSED `lbu`'s own result lands). All re-dumped under THIS config (throwaway `zz-m8-dump.test.ts`,
+      since deleted; `temp\m8\byte-loads-w2.txt`). **The design's spine is the CONTRAST with step 2:
+      `intra-pair-raw` refuses a pair for what the younger NEEDS (data); `mem-port` refuses it for what
+      the younger IS (a memory op) — decided at issue by CLASS, before any address forms.** These two
+      loads are MAXIMALLY INDEPENDENT (same address, different destination regs, no shared result), yet
+      still refused — the pure structural hazard, held for structure not data. **Advisor-confirmed
+      finding: pinning `reason === 'mem-port'` IS the proof of independence** — `byte-loads` at w2
+      emits THREE stalls (two `intra-pair-raw` from the `la` pseudo-op + the reader's first load reading
+      `la`'s `t0`, then the one `mem-port`), and a data refusal would have fired first if the two loads
+      weren't independent; so the reason string alone rules out the slip AND certifies "structural."
+      The oracle adds the structural SIGNATURE the reason can't carry: both the refused younger and its
+      ID.0 partner (read from `instructions[]` on the refusal cycle — no `at()` helper in
+      `lessons.test.ts`) drive a `mem-read`, proving the contended unit is the PORT. Width-exclusive
+      (dead at w1: one load per cycle, no contention). No cycle counts in prose (like step 2 — 10→9
+      undersells a dependency-bound program; the payoff is the structural rule, not speed); the closing
+      pins both byte results (-128/+128) at both widths, the concrete "width is not a correctness knob."
+      **Wiring was the APPEND case (step 5's note): `one-door` added 3rd in the "The wide machine"
+      track's `lessons` array; the only glob-vs-hardcoded guard that fired was `LESSONS.length`
+      (13→14) — the `LESSON_ORDER` toEqual auto-derives from `index.json`, and no track-NAME guard
+      fired since no track was added.** `session.test.ts`'s all-lessons opening loop covered the new
+      lesson automatically (asserts `issueWidth === 2`). `npm test` + `lint` + `tsc -b` + `build` all
+      green. Browser pass deferred to step 6.
 
 - [ ] **4. Lesson — "One branch unit" (`branch-slot`).** `program: paired-branches` (step 0), same
       config. Anchor the `branch-slot` refusal the new program provokes. Teach the other structural
