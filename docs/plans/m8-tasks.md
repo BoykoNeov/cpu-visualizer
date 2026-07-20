@@ -1,0 +1,190 @@
+# Milestone 8 — The superscalar lesson track
+
+**Status: NOT STARTED, 2026-07-20. Nothing built. The design is grounded in a real width-1/width-2
+trace dump of the whole corpus (see "The dump" below), not in memory — the anchors and every quoted
+number will come from that dump per (program × config), following the pinned repo rule. No engine or
+trace change is expected: the superscalar engine (M7) and the lesson machinery (M5) both already
+exist; this milestone is CONTENT plus one new corpus program.**
+
+Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap) and §13 (the curriculum system).
+The load-bearing constraints are INV-6 (lessons anchor to trace EVENTS, not cycle numbers), INV-7
+(one ISA, one example-program library), INV-5 (lawful simplification — each step authors all three
+depth tiers), and INV-8 (a new corpus program is differentially tested on every model).
+
+## Why this milestone, and why now
+
+M7 shipped the superscalar **engine and its whole visual layer** — the widened datapath, the pairing
+readout, the IPC tile — but **no lessons**. `content/lessons/index.json` has three tracks (_The
+language_, _The machine_, _The cache_) and nothing on superscalar. M6 closed its tier with a matching
+lesson track (its step 7); M7 did not. So the width toggle is _observable_ but not _teachable_.
+
+This is also the spec's stated precondition for the next tier. §12 calls out-of-order "the north
+star and the genuine cliff" and says outright: **do not approach it until the in-order experience is
+completely nailed.** A superscalar the learner can watch but not be _taught_ is not nailed. This
+milestone is the cheap move that discharges that precondition before tier 5.
+
+What is genuinely new here: **`session.ts:198` says it in the code — this is the FIRST lesson ever to
+run on `model: superscalar`.** The lesson machinery is proven (M5), but never with this model, and
+never at `issueWidth: 2`. The M7-step-6 sweep added the `issueWidth` axis to `positionsFor`
+(`lessons.test.ts`) precisely so the first superscalar lesson would be swept at full coverage — that
+scaffolding is in place and unused, waiting for exactly this.
+
+## The dump (the design's factual ground)
+
+Ran the superscalar engine over the whole corpus at width 1 and width 2 (a throwaway
+`zz-m8-dump.test.ts`, since deleted; outputs in `M:\claud_projects\temp\m8\`). The load-bearing
+facts, at **forwarding ON, cache OFF, predict not-taken** unless noted:
+
+| program           | w1 cycles | w2 cycles | IPC w1 → w2   | w2 refusals                            |
+| ----------------- | --------- | --------- | ------------- | -------------------------------------- |
+| `sum-loop`        | 56        | 44        | 0.607 → 0.773 | **none** — pairs cleanly               |
+| `array-sum`       | 51        | 42        | 0.667 → 0.810 | `intra-pair-raw` ×11                   |
+| `array-sum-twice` | 208       | 178       | 0.644 → 0.753 | `intra-pair-raw` ×50                   |
+| `byte-loads`      | 10        | 9         | 0.600 → 0.667 | `intra-pair-raw` ×2, **`mem-port` ×1** |
+
+Two findings that shape the plan:
+
+1. **`branch-slot` has no witness in the corpus.** Across all 7 programs × 8 config positions
+   (forwarding × prediction × the two widths), the `branch-slot` refusal reason fires **zero times**.
+   The rule is "no two control transfers issue together" (`processor.ts:1420`), and no shipped
+   program ever places two adjacent — `branch-flavors.s` separates every branch with an `mv`. The
+   engine can refuse for it, the datapath draws it, the readout names it, and _nothing can reach it_.
+   **Decision (user, 2026-07-20): add a 4th corpus program to provoke it** rather than teach around
+   it — so the lesson set covers all three refusal reasons the machine has. **The provocation is
+   already CONFIRMED against a dump** (not assumed): a candidate with two adjacent `bne x0,x0` as
+   instructions 0 and 1 emits `{"reason":"branch-slot","stage":"ID","instr":"i1"}` at cycle 1, both
+   branches not-taken so NO flush coexists — the clean, flush-free witness. 7 cycles, `a0 = 42`. The
+   fetch-group alignment that this rests on (the two transfers must land in one issue group) is
+   guaranteed by making them the first two instructions; setup ahead of them would shift it.
+
+2. **Memory's remembered cycle numbers are for the wrong config.** The pinned note recalls
+   "`array-sum` cycle 10 = `intra-pair-raw`"; in _this_ lesson's config (cache off, forwarding on) the
+   first `intra-pair-raw` is at **cycle 1**. That is the M7-step-8 trap — "an observed cycle is only
+   valid for the config it was observed in" — waiting to fire again. **Every anchor comes from the
+   dump, re-dumped under each lesson's exact declared config; no `nth`/`where` is typed from memory.**
+
+## Headline decision — anchor on the refusal `stall`; do NOT revive the `issue` event
+
+The teachable superscalar moments split by how they anchor, and that split IS the design:
+
+- **A refusal anchors cleanly.** `{ event: 'stall', where: { reason: 'intra-pair-raw' } }` (or
+  `mem-port` / `branch-slot`). The engine emits these as ordinary `stall` events with a pairing
+  reason string (`processor.ts:1300`) — confirmed present in the dump. This is the meat of the track.
+- **A SUCCESSFUL pair has no event of its own.** The `issue` event was DECLINED WITH PROOF in M7
+  (step 8's headline: M4 spent 1 schema field of 5, M6 and M7 spent 0). We do **not** revive it. A
+  "pairing works" lesson anchors by _counting ordinary events on the paired cycle_ — e.g.
+  `instr-fetch nth:2` lands on the cycle a pair is fetched together, `alu-op nth:k` on the cycle
+  they are both in EX. The exact counts come from the dump, per the pinned "dump the real stream
+  before pinning `nth`" rule (M6 step 7).
+
+**If a beat genuinely cannot be anchored on an existing event, STOP and surface it** — that is a real
+signal, not a licence to invent an event. The house record is against new events, and the readout was
+the last chance to prove one undrawable; it did not.
+
+Scope lever the reviewer signs off on: **a FOUR-lesson track** (_The wide machine_, working title),
+one per teachable beat — pairing works, the dependent pair, the one memory port, the one branch unit
+— plus the one new corpus program that makes the fourth reachable. All content + one `.s` file; no
+engine, no trace, no view code.
+
+## Build order (each step testable before the next)
+
+- [ ] **0. The `branch-slot` corpus program.** Author a small `.s` (working name
+      `paired-branches.s`) whose two control transfers are ADJACENT so they land in one issue group
+      at width 2 and the older refuses the younger for `branch-slot`. Design it against a fresh dump,
+      not by eyeball: the cleanest witness is **two adjacent not-taken branches** (both proceed, no
+      flush muddying the trace) — e.g. `beq`/`bne` against `x0` that fall through — followed by a
+      deterministic tail and an `ecall`. Keep it tiny and give it an unmistakable architectural
+      result. **This program widens the shared corpus (INV-7), so it is swept by every model**, which
+      forces three hand-derived additions, each a KNOWN loud failure if omitted: - `packages/engine/conformance/src/conformance.ts` — a `RESULT_ORACLES` headline (model-
+      independent, hand-computed; the equality check runs regardless but the oracle is the root of
+      trust). - `packages/engine/pipeline/src/timing.test.ts` — a `TIMING` entry (w1 shape). The "covers
+      every program in the corpus" guard fails loudly until it exists; derive every cell from the
+      closed form `cycles = N + 4 + S + P`, never from observed output. - `packages/engine/superscalar/src/timing.test.ts` — a `TIMING` entry (w1 **and** w2 shape:
+      `groups`/`pairs`/`blocked`/`doomed`/`betting`). Same guard, same discipline; the w2 entry is
+      where `branch-slot` finally appears in a derivation (two transfers ⇒ the younger is refused,
+      classified by CLASS not outcome — a not-taken branch still occupied the unit).
+      Acceptance: `npm test` green (conformance across all models at every config, both timing guards
+      satisfied), `npm run lint`, `tsc -b` green. INV-8 passes for the new program on every model.
+
+- [ ] **1. Lesson — "Two at once" (pairing works).** `program: sum-loop`, `model: superscalar`,
+      `config: { forwarding: true, branchPrediction: 'static-not-taken', cache: null, issueWidth: 2 }`.
+      Anchors: the opening pair fetched together, a mid-loop paired EX, and the closing
+      `reg-write reg:10 value:55` retire — all `nth`-counted from a re-dump of THIS config. Narration
+      (all three tiers) frames width 2 against width 1 as an explicit COUNTERFACTUAL: the reader is on
+      the 2-wide machine; "44 vs 56" and "IPC 0.77 vs 0.61" are quoted as the flip, not as the
+      reader's current run (the M4-step-4 defect — prose quoting a machine the reader is not on).
+      Acceptance: `lessons.test.ts` sweep green (every step anchors in ≥1 position, in order, no two
+      share a cycle); a narration oracle pins the headline numbers so a silently-wrong count is caught.
+
+- [ ] **2. Lesson — "The pair that can't" (`intra-pair-raw`).** `program: array-sum`, same config.
+      Anchor the FIRST `stall` with `reason: 'intra-pair-raw'` (cycle 1 in this config, per the dump —
+      NOT the remembered "cycle 10") and show the readout naming the reason while the map holds the
+      younger instruction. Teach: the second slot needs a value the first is still computing, so it
+      waits — the price of a real data dependency inside a candidate pair. Acceptance: as step 1;
+      oracle pins `reason: 'intra-pair-raw'` and the anchored cycle under the declared config.
+
+- [ ] **3. Lesson — "One door for memory" (`mem-port`).** `program: byte-loads`, same config. Anchor
+      the single `mem-port` refusal (present exactly once in the dump). Teach the STRUCTURAL hazard:
+      two memory instructions cannot issue together because there is one data-memory port — the
+      lesson the tier "gets for free" (`processor.ts:1416`), distinct from the data hazard of step 2.
+      Acceptance: as above; oracle pins `reason: 'mem-port'`.
+
+- [ ] **4. Lesson — "One branch unit" (`branch-slot`).** `program: paired-branches` (step 0), same
+      config. Anchor the `branch-slot` refusal the new program provokes. Teach the other structural
+      hazard: two control transfers cannot issue together because there is one branch unit — refused
+      by CLASS at issue, before any outcome is known. Acceptance: as above; oracle pins
+      `reason: 'branch-slot'`. This is the step that would have been UNAUTHORABLE without step 0, and
+      the sweep's `issueWidth` axis proves the anchor is real at width 2.
+
+- [ ] **5. Wire the track.** Add the four lesson ids to `content/lessons/index.json` under a new
+      track heading, in teaching order (pairing → the three refusals; refusals ordered easy-to-hard:
+      data dependency, then the two structural). Update `lessons.test.ts`'s hardcoded track-name
+      expectations (it names `'The language'` / `'The machine'`; the new heading joins them).
+      Acceptance: `lessonSections` returns the new track with all four lessons resolved and none under
+      `UNTRACKED_HEADING`; full `npm test`, `npm run lint`, `tsc -b`, `npm run build` green.
+
+- [ ] **6. Browser pass — the only net that sees this.** Per the repo's own record (9 of 10 view
+      steps shipped a browser-only defect; "the browser is the only net"), and because THIS is the
+      first lesson ever on `model: superscalar` (session.ts:198), the headless suite cannot see the
+      picker, the model load, or narration appearing. Drive the real dev server (identify the tab by
+      served `<title>`, never by port — this repo runs several Vite projects): confirm the new track
+      shows in the picker; selecting each lesson loads the superscalar model **at width 2** (not a
+      silent fall to width 1); narration appears at the anchored cycles; the readout/IPC tile agree
+      with the prose. Acceptance: a clean browser pass with the specific defect class ruled out
+      (model actually superscalar, width actually 2, no null-trace panel vanish at pre-run).
+
+## Acceptance criteria (mirror the spec §11 shape)
+
+- [ ] The picker shows a fourth track; each of its four lessons loads the superscalar model at
+      width 2 and plays through with narration on the correct events (INV-6).
+- [ ] The track teaches all THREE refusal reasons the machine can emit — `intra-pair-raw`,
+      `mem-port`, `branch-slot` — the last reachable only via the new corpus program.
+- [ ] Every cycle count / IPC in narration matches the engine under that lesson's declared config,
+      pinned by a narration oracle (not just an anchoring sweep — M4 step 4 proved anchoring is blind
+      to wrong words).
+- [ ] The new corpus program passes INV-8 on every model, and both timing guards (pipeline w1,
+      superscalar w1+w2) cover it with hand-derived cells.
+- [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean.
+
+## How this milestone can lie to itself
+
+- **INV-8 is a false safety net here (inherited from M7).** In-order superscalar retires in order, so
+  conformance passes even if pairing is wrong. It secures the new program's ARCHITECTURAL result; it
+  says nothing about whether the lesson's TIMING claims are true. The timing tables and the narration
+  oracles are the real nets — the sweep alone is not.
+- **The anchoring sweep is blind to pedagogy.** A step that fires at the wrong beat, or prose quoting
+  the wrong width's number, passes the sweep. That is why each lesson carries a positive narration
+  oracle by name (the M4-step-4 lesson: "51 cycles" shipped green over a transport reading 49).
+- **A remembered cycle is a config-specific fact.** Re-dump under each lesson's exact config before
+  pinning any `nth`/`where`; never carry a number across a config boundary (M7 step 8).
+
+## Decisions to pin (seeded with recommended answers)
+
+- **Track heading.** Working title _The wide machine_. (Alternatives: _Two at a time_, _The
+  superscalar_.) — pin during step 5.
+- **Lesson order within the track.** Pairing first (the payoff), then the three refusals easy-to-hard:
+  `intra-pair-raw` (data), `mem-port` (structural, memory), `branch-slot` (structural, control).
+  Ordering is content, declared in `index.json` (M5 step 0's rule).
+- **The `branch-slot` program's shape.** Two adjacent not-taken branches, tiny, unmistakable result.
+  Finalize against a fresh dump in step 0; keep it the corpus's clearest "two transfers, no flush".
+- **Do NOT add an `issue` event.** Re-affirmed; pairing anchors by counting existing events.
