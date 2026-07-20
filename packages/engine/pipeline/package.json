@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@cpu-viz/isa": "*",
-    "@cpu-viz/trace": "*"
+    "@cpu-viz/trace": "*",
+    "@cpu-viz/engine-common": "*"
   }
 }

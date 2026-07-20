@@ -2,10 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble } from '@cpu-viz/assembler';
-import { toProgramImage } from '@cpu-viz/engine-common';
-import { defaultConfig, type CacheConfig, type CycleTrace } from '@cpu-viz/trace';
-import { PipelineProcessor } from './index';
 import {
+  toProgramImage,
   access,
   blockBase,
   CACHE_LARGE,
@@ -15,7 +13,9 @@ import {
   lineTag,
   newCache,
   type CacheAccess,
-} from './cache';
+} from '@cpu-viz/engine-common';
+import { defaultConfig, type CacheConfig, type CycleTrace } from '@cpu-viz/trace';
+import { PipelineProcessor } from './index';
 
 /**
  * M6 step 1 — the timing shadow, pinned before anything rests on it.

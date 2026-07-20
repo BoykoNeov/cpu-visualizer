@@ -31,8 +31,13 @@ export {
  * (see `cache.ts`). The web control MUST build its `CacheConfig` from these rather than re-deriving
  * a geometry, or the small↔large flip could de-straddle `array-sum-twice.s` and the live scrub bar
  * would stop matching step 4's 340↔320.
+ *
+ * **The definitions moved to `@cpu-viz/engine-common` at M7 step 0** (superscalar needs the same
+ * cache, and models import no sibling model). They are re-exported from here UNCHANGED so every
+ * consumer above this package keeps its existing import — the ten `web` files that read this
+ * surface did not move a line.
  */
-export { CACHE_SMALL, CACHE_LARGE, LINE_SIZE_BYTES } from './cache';
+export { CACHE_SMALL, CACHE_LARGE, LINE_SIZE_BYTES } from '@cpu-viz/engine-common';
 
 /**
  * The cache grid view's decode toolkit (M6 step 6). The line here is between READING the cache and
@@ -43,6 +48,11 @@ export { CACHE_SMALL, CACHE_LARGE, LINE_SIZE_BYTES } from './cache';
  * `access`, `newCache` — stays package-private; nothing above this package may drive a cache, only
  * render one. Importing the decode rather than reimplementing it keeps the view's geometry exactly
  * the engine's — an off-by-one in `lineIndex` would silently mis-highlight a line.
+ *
+ * That boundary SURVIVES the M7 step 0 move intact. `engine-common` necessarily exports `access`
+ * and `newCache` too (models must be able to drive a cache), but this package still re-exports
+ * only the read surface, so "nothing above the engines may drive a cache" remains true of the
+ * import path the web actually uses.
  */
 export {
   type CacheState,
@@ -51,7 +61,7 @@ export {
   lineTag,
   blockBase,
   blockBaseOf,
-} from './cache';
+} from '@cpu-viz/engine-common';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const PIPELINE_MODEL_ID = 'pipeline';

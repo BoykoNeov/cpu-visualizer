@@ -1,6 +1,15 @@
 /**
  * Branch prediction — the ID-stage half (M4 step 0).
  *
+ * **Relocated to `engine-common` at M7 step 0, behaviour unchanged.** It was written for the
+ * pipeline but never depended on one: the two functions below read a decode and a pc, and nothing
+ * else. Superscalar needs the same claim from the same rules, and models here import no sibling
+ * model, so the definition moved down rather than being copied. Its tests stayed in
+ * `engine-pipeline` (`predict.test.ts`) — they sweep the corpus through a REAL `PipelineProcessor`
+ * to prove ID's target agrees with EX's, which is a claim about a model and cannot live in a
+ * package forbidden from importing one. The history below is the pipeline's; read `processor.ts`
+ * there for the EX side it mirrors.
+ *
  * **Why this file exists at all**, given M3's explicit refusal. `processor.ts` says, of the EX
  * stage: _"There is deliberately no BRANCHES set: 'is this a control transfer' is not a separate
  * classification here, it is whatever the EX switch resolved a `taken` answer for."_ That refusal

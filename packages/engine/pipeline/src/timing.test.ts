@@ -11,7 +11,7 @@ import {
   type TraceEvent,
 } from '@cpu-viz/trace';
 import { PipelineProcessor } from './index';
-import { CACHE_LARGE, CACHE_SMALL } from './cache';
+import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
 
 /**
  * The pinned timing table — the net for INV-8's blind spot (M3 step 3).

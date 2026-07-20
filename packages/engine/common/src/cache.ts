@@ -1,5 +1,16 @@
 /**
- * The D-cache — a **timing shadow** (M6 step 1), pure and called by nothing yet.
+ * The D-cache — a **timing shadow** (M6 step 1).
+ *
+ * **Relocated to `engine-common` at M7 step 0, behaviour unchanged.** Nothing here knows what a
+ * stage is: every function is pure in `(config, addr)` over a tag array this module owns. It lived
+ * in `engine-pipeline` only because the pipeline was the sole model with a cache; superscalar makes
+ * that accidental. Its tests stayed behind in `engine-pipeline` — the straddle they pin
+ * (`array-sum-twice.s` missing 5 times on 2 lines and 3 on 4) is measured by driving a real
+ * processor, which this package may not import. `CACHE_SMALL`/`CACHE_LARGE` moved with it so the
+ * shipped geometry keeps ONE definition across both models and the web toggle.
+ *
+ * The paragraph below says "called by nothing yet" — true when written at M6 step 1, and left
+ * standing because the reasoning it introduces is the reason the design works. Read it as history.
  *
  * **Why this file exists now, wired to nothing.** This is the M4-step-0 inertness pattern
  * (`predict.ts`): the model is complete, pure, and unit-tested in isolation, but the pipeline does

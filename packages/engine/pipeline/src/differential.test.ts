@@ -1,6 +1,6 @@
 import { runConformance } from '@cpu-viz/engine-conformance';
 import { defaultConfig, type CacheConfig, type ProcessorConfig } from '@cpu-viz/trace';
-import { CACHE_LARGE, CACHE_SMALL } from './cache';
+import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
 import { PipelineProcessor } from './index';
 
 /**

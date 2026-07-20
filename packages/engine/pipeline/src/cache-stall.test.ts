@@ -10,7 +10,7 @@ import {
   type ProcessorConfig,
 } from '@cpu-viz/trace';
 import { PipelineProcessor, type PipelineMicro } from './index';
-import { CACHE_LARGE, CACHE_SMALL, directMapped } from './cache';
+import { CACHE_LARGE, CACHE_SMALL, directMapped } from '@cpu-viz/engine-common';
 
 /**
  * M6 step 2 — the pipeline honors `config.cache`: the machine's FIRST variable-latency stage.

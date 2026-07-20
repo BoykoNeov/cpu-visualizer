@@ -55,8 +55,7 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget } from './predict';
-import { access, newCache, type CacheState } from './cache';
+import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
 import {
   defaultConfig,
   makeRegisters,

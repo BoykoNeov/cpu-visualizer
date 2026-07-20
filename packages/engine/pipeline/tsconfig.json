@@ -8,12 +8,16 @@
   "references": [
     { "path": "../../isa" },
     { "path": "../../trace" },
-    // Test-only edges, exactly as multi-cycle declares them. `assembler` + `common`
-    // (toProgramImage) drive the unit tests; `conformance` is the shared INV-8 differential
-    // harness (it pulls in the golden reference). Production code depends only on isa + trace
-    // and never imports the reference (INV-8: copy the idioms, don't import them).
-    { "path": "../../assembler" },
+    // `common` became a PRODUCTION edge at M7 step 0: `predict.ts` and `cache.ts` moved down
+    // there so superscalar can share them without importing a sibling model, so `processor.ts`
+    // now imports it directly. It was already listed (as a test-only edge for `toProgramImage`),
+    // which is why this line does not move — but the reason it is here changed, and the old
+    // comment claiming "production code depends only on isa + trace" would now be false.
     { "path": "../common" },
+    // Test-only edges, exactly as multi-cycle declares them. `assembler` drives the unit tests;
+    // `conformance` is the shared INV-8 differential harness (it pulls in the golden reference).
+    // Production code still never imports the reference (INV-8: copy the idioms, don't import).
+    { "path": "../../assembler" },
     { "path": "../conformance" }
   ]
 }

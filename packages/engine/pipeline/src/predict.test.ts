@@ -2,11 +2,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble } from '@cpu-viz/assembler';
-import { toProgramImage } from '@cpu-viz/engine-common';
+import { toProgramImage, isPredictable, speculativeTarget } from '@cpu-viz/engine-common';
 import { decode } from '@cpu-viz/isa';
 import { defaultConfig, type CycleTrace, type InstructionInstance } from '@cpu-viz/trace';
 import { PipelineProcessor } from './index';
-import { isPredictable, speculativeTarget } from './predict';
 
 /**
  * M4 step 0 — the ID-stage target, pinned before anything rests on it.

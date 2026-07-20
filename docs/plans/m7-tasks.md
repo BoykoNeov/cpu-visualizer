@@ -79,13 +79,25 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. Extract `predict.ts` + `cache.ts` into `engine-common`.** The refactor this milestone
-      finally justifies. Move both modules (85 + 209 lines) down a layer; `engine-pipeline`
-      re-exports its public cache READ surface exactly as it does today so no downstream import
-      changes. Nothing else moves — the forwarding and hazard logic is stage-walk-shaped and
-      stays in the pipeline. Acceptance: every existing suite green **unchanged** (not
-      re-baselined), `npm run lint` green, `tsc -b` green, and `engine-common`'s deny list still
-      forbids every model.
+- [x] **0. Extract `predict.ts` + `cache.ts` into `engine-common`.** ✅ Done (2026-07-20, 1358
+      tests — the pre-existing count, unmoved). Both modules moved down a layer with `git mv`,
+      behaviour untouched; each gained a relocation note explaining why it was always
+      model-independent. `engine-pipeline` re-exports the cache READ surface from its new home, so
+      **all ten `web` files that read that surface changed zero lines** — the "render a cache,
+      never drive one" boundary survives, because `engine-common` necessarily exports `access`/
+      `newCache` (models must drive a cache) but the pipeline still re-exports only the read half.
+      The forwarding and hazard logic deliberately did not move: it is stage-walk-shaped, and the
+      superscalar walk is a different shape. Two things worth recording. **(a) `common` was
+      already a tsconfig reference of `pipeline`, but as a declared TEST-ONLY edge** — it is now a
+      production edge, and the comment asserting "production code depends only on isa + trace"
+      would have become false while every check stayed green; corrected in place, and
+      `@cpu-viz/engine-common` added to `pipeline`'s `package.json`, where it had never been
+      declared even though tests already imported it. **(b) The deny list was verified by
+      PROVOKING it, not by reading it** — a temporary `import { PipelineProcessor }` in
+      `engine-common` was confirmed to fail lint with the INV-citing message, then reverted. A
+      config guard that is never fired is a guard whose regex is unproven.
+      Acceptance met: 1358 tests green with **zero assertions touched**, `npm run lint`, `tsc -b`,
+      and the web `tsc --noEmit` all green.
 
 - [ ] **1. The config seam — `issueWidth`.** Add `ProcessorConfig.issueWidth?: number` (absent /
       `1` = today's machines) and `ProcessorCapabilities.configurableIssueWidth`. **Inertness
@@ -93,6 +105,15 @@ shipped. **Do not re-plan those.** If the milestone must shed weight, the honest
       stays byte-identical. Acceptance: all four models' suites green with zero diffs; a test
       asserts single-cycle/multi-cycle/pipeline traces are identical with `issueWidth` set to 1
       and to 2 (they honor neither).
+
+> **Footgun found in step 0, to be paid in step 2.** The eslint deny lists enumerate models **by
+> name**, in three separate places (`engine-common`, `engine-conformance`, `reference`) — flat
+> config is last-match-wins per rule id with no array merge, which is why each list is a full
+> superset rather than an increment. So a new model does **not** inherit those guards: unless
+> `'engine-superscalar'` is added to all three, `engine-common` would be silently free to import
+> it, and the conformance harness — whose entire design is to import no engine-under-test — could
+> couple itself to the new model with lint still green. Add the name to all three lists in step 2,
+> and provoke at least one of them to prove the addition works.
 
 - [ ] **2. `engine/superscalar` — the model MVP.** `SuperscalarProcessor`, slot-shaped latches,
       the reverse stage walk widened, INV-4 ids minted per fetched instruction (two per cycle
