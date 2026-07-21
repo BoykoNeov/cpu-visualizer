@@ -109,9 +109,18 @@ same-program-flip the spec calls "where understanding clicks," in the M7 width-t
 this as the flagship; **ROB size is a secondary lever** (a small ROB fills and stalls dispatch — a
 visible structural limit), worth a config field but not the headline.
 
+**Issue width — superscalar OoO, built ONCE, width-parametric (`issueWidth`, default 2).** PINNED
+2026-07-21: build the real machine (out-of-order _and_ superscalar), not a scalar OoO core we would
+later rebuild. Width and out-of-order are orthogonal axes; holding one and flipping the other stays
+the clean same-program A/B. Because width is a config knob (M7's `issueWidth` precedent), **scalar OoO
+comes free at `issueWidth: 1`** — the clean textbook-Tomasulo teaching position, available as config,
+not a second build. The flagship in-order↔OoO toggle (below) holds width _fixed_; a future lesson
+milestone can teach the two axes separately without any rebuild. The added weight is real and named at
+step 1b (wide commit, multi-completion CDB arbitration, wide dispatch/flush).
+
 **Package strategy — a NEW `packages/engine/out-of-order`, extract-then-fork (the M7 precedent).**
 OoO is not a toggle on the superscalar: ROB + RS + rename + CDB is a different machine, not a wider
-stage walk. Reuse goes DOWN into `engine-common` (cache and predict already live there), never
+stage walk (the superscalar _width_ rides along as a config axis, but the scheduler itself is new). Reuse goes DOWN into `engine-common` (cache and predict already live there), never
 sideways (the zero-sibling-imports precedent holds). If any genuinely model-independent logic
 surfaces, extract it at step 0; otherwise step 0 is schema + config, not a refactor.
 
@@ -162,10 +171,12 @@ milestone must lose weight, it loses step 7, not step 6.
       register renaming, the ROB, and in-order commit, but **issue is in program order** (dispatch
       to RS/ROB in order, and issue to FUs strictly oldest-first with no reordering). This is the
       milestone's bisection anchor and gets its own commit. **Its net is timing, not INV-8:** an
-      in-order-issue OoO core must reproduce the superscalar/pipeline timing baseline over the corpus
-      × config — which de-risks "did I faithfully build the front-end, rename, ROB, and commit" BEFORE
-      out-of-order scheduling can muddy it, exactly as M7 step 2a reproduced M3's closed form before
-      pairing. INV-4 ids run fetch → commit; the ROB is populated and drains in order. Also due here
+      in-order-issue OoO core must reproduce the timing baseline over the corpus × config — and
+      because the model is **width-parametric** (`issueWidth`, default 2), that baseline is
+      **M7's superscalar timing at width 2 and M3's pipeline timing at width 1** (the "× config"
+      covers both) — which de-risks "did I faithfully build the front-end, rename, ROB, and commit"
+      BEFORE out-of-order scheduling can muddy it, exactly as M7 step 2a reproduced M3's closed form
+      before pairing. INV-4 ids run fetch → commit; the ROB is populated and drains in order. Also due here
       if not at step 0: the eslint deny-list additions. Acceptance: the in-order timing baseline
       holds over the corpus under every config combination; INV-8 differential green (weak, but a
       floor).
@@ -180,7 +191,11 @@ milestone must lose weight, it loses step 7, not step 6.
       older stores and does not bypass an aliasing older store). Under Option B, the RS also holds an
       instruction across its multi-cycle execute. This is where the core beats 1a: under a miss (or a
       slow op), independent instructions issue and complete around the waiting one, while commit
-      stays in order. **Every claim that names a specific cycle or a specific RS/ROB slot must be
+      stays in order. **The width cost is real and lands here (the price of "build it superscalar"):**
+      at `issueWidth` 2 the ROB commits ≥2 entries/cycle, the CDB arbitrates among **multiple
+      completions in one cycle** (not just the single-completer case), dispatch is wide, and
+      flush/recovery must unwind a wider frontier. Scalar OoO (`issueWidth: 1`) exercises none of
+      that — which is exactly why width stays a config knob, not a fork in the code. **Every claim that names a specific cycle or a specific RS/ROB slot must be
       WATCHED in a dump, not reasoned about** — the M7 lesson (a slot is not a stable lane) is
       sharper here, where an instruction's ROB entry, RS occupancy, and completion order are all
       independent moving parts. Acceptance: strictly fewer cycles than 1a on the money-shot
@@ -313,17 +328,54 @@ composition across surfaces is exactly the kind of thing only a click reveals.
 
 ## Decisions to pin (fill in as steps land — seeded with recommended answers)
 
-| Decision                          | Recommendation (seed)                                                                                                                                                                                                                                                              | Pinned answer                                          |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| **Benefit source (the headline)** | **Option B layered on A** — cache-miss MLP as the honest floor, plus a configurable FU-latency knob so classic Tomasulo's "RS waits on a slow op" story is vivid independent of the cache and de-risks the whole tier's dependence on the cache path. A is the conservative floor. | **PINNED 2026-07-21 (user).** Gate on step 1a cleared. |
-| Package strategy                  | New `engine/out-of-order`, extract-then-fork; reuse goes down into `engine-common`, never sideways (zero-sibling-imports precedent)                                                                                                                                                | _(open)_                                               |
-| Renaming style                    | **Classic speculative Tomasulo** — RS hold operand values/tags, register status via ROB tags, ROB for in-order commit + precise state + speculation recovery. The textbook the spec names; avoids a separate physical register file                                                | _(open)_                                               |
-| Flagship interaction              | In-order ↔ out-of-order **issue toggle** (falls out of the 1a/1b bisection); degenerate position = the in-order machine just learned; same-program flip in the M7 width-toggle pattern                                                                                             | _(open)_                                               |
-| Secondary lever                   | **ROB size** (small ROB fills, dispatch stalls — a visible structural limit). A config field, not the headline                                                                                                                                                                     | _(open)_                                               |
-| Issue / CDB determinism           | **Oldest-ready-first** for wakeup/select and CDB arbitration — deterministic, no seed needed (INV-1)                                                                                                                                                                               | _(open)_                                               |
-| Outstanding misses (MSHRs)        | Start at **2** (miss-under-miss enables the dramatic MLP money shot); make it a pinned constant or a config field. Finalize against the step-0 dump                                                                                                                                | _(open)_                                               |
-| New trace events                  | Add the minimum: `rename`, `dispatch`, `issue`, `cdb-broadcast`, `commit` (or reuse `instr-retire`). Force each only if a step-6/7 view cannot be drawn without it. House record breaks here — correctly                                                                           | _(open)_                                               |
-| `location` encoding               | `"ROB#k"` / `"RS#j"` plain strings (the spec's own §5 example) — like `"EX.0"`, likely no schema-type change, zero recorder change                                                                                                                                                 | _(open)_                                               |
-| Corpus additions                  | Decide at step 0 against a fresh dump: possibly (i) a bigger-window program to make ROB size pay off, (ii) a store→load-alias program for disambiguation (the corpus lacks one today). INV-7 intact                                                                                | _(open)_                                               |
-| View scope                        | Full: ROB/RS/rename tables (non-sheddable — the tier's picture) + bespoke datapath (the honest cut if weight must be shed). Inverts M7's "never cut the datapath"                                                                                                                  | _(open)_                                               |
-| Lessons                           | **Out of scope for M9** — a future M10, mirroring M7 (model+view) → M8 (lesson track)                                                                                                                                                                                              | _(open)_                                               |
+| Decision                          | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                         | Pinned answer                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Benefit source (the headline)** | **Option B layered on A** — cache-miss MLP as the honest floor, plus a configurable FU-latency knob so classic Tomasulo's "RS waits on a slow op" story is vivid independent of the cache and de-risks the whole tier's dependence on the cache path. A is the conservative floor.                                                                                                                            | **PINNED 2026-07-21 (user).** Gate on step 1a cleared.                                                  |
+| Issue width                       | **Superscalar OoO, width-parametric via `issueWidth`** (M7's config field), **default 2**. Build the machine ONCE; scalar OoO is free at `issueWidth: 1` (the clean textbook-Tomasulo teaching position, available as config, not a second build). Width and out-of-order stay orthogonal axes                                                                                                                | **PINNED 2026-07-21 (user).** "Build the machine once" — a future lesson can teach the axes separately  |
+| Package strategy                  | New `engine/out-of-order`, extract-then-fork; reuse goes down into `engine-common`, never sideways (zero-sibling-imports precedent)                                                                                                                                                                                                                                                                           | **PINNED 2026-07-21 (user).**                                                                           |
+| Renaming style                    | **Classic speculative Tomasulo** — RS hold operand values/tags, register status via ROB tags, ROB holds in-flight values + drives in-order commit + precise state + speculation recovery. The textbook the spec names; avoids a separate physical register file. **Built PRF-forward-compatible** (see the design note below the table) so a future PRF-style tier is a localized backend swap, NOT a rewrite | **PINNED 2026-07-21 (user), with PRF-forward-compat seams.**                                            |
+| Flagship interaction              | In-order ↔ out-of-order **issue toggle** at **fixed width** (falls out of the 1a/1b bisection); degenerate position = the in-order machine just learned; same-program flip in the M7 width-toggle pattern                                                                                                                                                                                                     | **PINNED 2026-07-21 (user).**                                                                           |
+| Secondary lever                   | **ROB size** (small ROB fills, dispatch stalls — a visible structural limit). A config field, not the headline                                                                                                                                                                                                                                                                                                | **PINNED 2026-07-21 (user).**                                                                           |
+| Issue / CDB determinism           | **Oldest-ready-first** for wakeup/select and CDB arbitration — deterministic, no seed needed (INV-1)                                                                                                                                                                                                                                                                                                          | **PINNED 2026-07-21 (user).**                                                                           |
+| Outstanding misses (MSHRs)        | Config field, **default 2** (miss-under-miss enables the dramatic MLP money shot). Shape pinned; exact default confirmed against the step-0 dump                                                                                                                                                                                                                                                              | **PINNED 2026-07-21 (user): config field, default 2; confirm value at step-0 dump.**                    |
+| New trace events                  | Add the minimum: `rename`, `dispatch`, `issue`, `cdb-broadcast`, `commit` (or reuse `instr-retire`). Force each only if a step-6/7 view cannot be drawn without it. House record breaks here — correctly                                                                                                                                                                                                      | _Already decided (YAGNI): the discipline IS the answer. Not reopened; force each at build time._        |
+| `location` encoding               | `"ROB#k"` / `"RS#j"` plain strings (the spec's own §5 example) — like `"EX.0"`, likely no schema-type change, zero recorder change                                                                                                                                                                                                                                                                            | **PINNED 2026-07-21 (user).**                                                                           |
+| Corpus additions                  | Decide at step 0 against a fresh dump: possibly (i) a bigger-window program to make ROB size pay off, (ii) a store→load-alias program for disambiguation (the corpus lacks one today). INV-7 intact                                                                                                                                                                                                           | _Deferred to step-0 dump by design. Not reopened._                                                      |
+| View scope                        | Full: ROB/RS/rename tables (non-sheddable — the tier's picture) + bespoke datapath (the honest cut if weight must be shed). Inverts M7's "never cut the datapath"                                                                                                                                                                                                                                             | **PINNED 2026-07-21 (user): intent pinned — tables non-sheddable, datapath is the sacrificial buffer.** |
+| Lessons                           | **Out of scope for M9** — a future M10, mirroring M7 (model+view) → M8 (lesson track)                                                                                                                                                                                                                                                                                                                         | **PINNED 2026-07-21 (user).**                                                                           |
+
+### Design note — building Tomasulo PRF-forward-compatible (pinned 2026-07-21)
+
+Classic speculative Tomasulo (ROB-holds-values) is what M9 builds. A future PRF-style tier (physical
+register file + rename map + free list; values in the PRF, not the ROB) should be a **localized
+backend swap, not a rewrite.** That is achievable for free because most of the machine is
+rename-style-agnostic by construction — and the small part that differs sits behind three seams that
+are just good design, so there is **no speculative-abstraction tax** paid now (honoring the standing
+"don't-foreclose but NOT build-for-it-now" flag: seams yes, a full abstract PRF interface **no**).
+
+**Rename-style-agnostic and reused as-is (≈80%):** the front-end (fetch/decode/predict/program image,
+`engine-common`), the **non-blocking LSU + memory disambiguation** (entirely orthogonal to rename
+style), the cache, the FU-latency knob, the **CDB plumbing**, the ROB's **ordering** logic
+(allocate → in-order commit → flush-to-a-point), the flush/recovery mechanism, and the generic
+key/value **table view components** (a future PRF table is another instance of the same component).
+
+**The irreducible delta (≈20%, the "rename backend"):** (1) where result values live — ROB entries
+vs. the PRF; (2) what the rename map points at — a ROB tag vs. a physical-reg id + a free list;
+(3) operand delivery timing — an RS _captures the value_ off the CDB at dispatch vs. holds a _tag_
+and _reads the PRF at issue_; (4) commit action — write the ARF vs. free the _old_ physical register.
+
+**The three cheap seams to build now** so that delta is a swap, not a hunt:
+
+1. **Keep `Tag` an opaque named type** — never hardcode "tag == ROB index" across the scheduler. In
+   classic Tomasulo the tag _happens_ to equal the ROB index; in PRF it is a separate namespace. A
+   named type lets wakeup/select compare tags without assuming they index the ROB.
+2. **Separate the ROB's _ordering_ from its _payload_** — the in-order queue (head/tail, allocate,
+   commit-in-order, flush) knows nothing about values; the value-or-old-mapping is a payload the
+   rename backend owns. Swapping backends never touches the ordering code.
+3. **One operand-read choke point and one commit choke point** — every operand read and every commit
+   goes through a single function, so "capture-at-dispatch vs. read-at-issue" and "write-ARF vs.
+   free-phys-reg" collapse to swapping _those_ functions.
+
+**Honest limit:** "minimal work later" = one module (the rename backend) reimplemented against a
+stable interface, plus a new PRF+free-list view table — NOT literally zero (the dispatch-capture vs.
+issue-read timing is a genuine behavioral difference). Everything around it survives untouched.
