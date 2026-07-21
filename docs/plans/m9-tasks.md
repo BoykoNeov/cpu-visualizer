@@ -185,7 +185,10 @@ milestone must lose weight, it loses step 7, not step 6.
       `processor.test.ts` files (mirroring the `issueWidth (M7 step 1)` block): full `CycleTrace[]`
       byte-identical between `defaultConfig` and `defaultConfig` + aggressive non-defaults
       (`outOfOrderIssue: true, robSize: 4, slowOpLatency: 20`) — the leak test a final-state check
-      cannot do. **eslint:** `engine-out-of-order` added to the three superset deny lists
+      cannot do. (The acceptance says "all five existing models"; inertness covers the **4
+      `Processor` models** — single/multi/pipeline/superscalar. The golden reference is config-blind
+      — its `run()` takes `RunOptions`, not `ProcessorConfig` — so it has no config to be inert
+      under; 4 is the complete testable set, not a gap.) **eslint:** `engine-out-of-order` added to the three superset deny lists
       (engine-common / conformance / reference — the M7 footgun); provoked on the reference (a bare
       `import '@cpu-viz/engine-out-of-order'` → the INV-8 boundary error, lint-only since the package
       does not exist) and reverted. The per-model reciprocal entries and the new OoO per-model block
