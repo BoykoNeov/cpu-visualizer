@@ -29,6 +29,7 @@ const STUB_CAPS: ProcessorCapabilities = {
   configurableBranchPrediction: false,
   configurableCache: false,
   configurableIssueWidth: false,
+  configurableOutOfOrder: false,
 };
 
 /** An empty image — the stub ignores it; `load()` just needs something to pass to `reset()`. */

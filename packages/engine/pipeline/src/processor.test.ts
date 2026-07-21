@@ -983,3 +983,25 @@ describe('issueWidth (M7 step 1)', () => {
     expect(PIPELINE_CAPABILITIES.configurableIssueWidth).toBe(false);
   });
 });
+
+/**
+ * M9 step 0 — the out-of-order config cluster (`outOfOrderIssue`, `robSize`, `slowOpLatency`) is
+ * inert here, whole-trace, in BOTH forwarding positions. The pipeline is the richest in-order
+ * machine (hazards, stalls, forwarding), so it is where a leaked OoO knob would most plausibly
+ * find a bubble to reorder around or a slow op to stretch — and the whole trace is what would see
+ * it, since in-order completion keeps final state identical either way. The knobs are aggressive
+ * non-defaults; `WIDTH_PROBE`'s dependent chain through a branch, a store and a load is reused.
+ */
+describe('out-of-order config cluster (M9 step 0)', () => {
+  const OOO = { outOfOrderIssue: true, robSize: 4, slowOpLatency: 20 };
+  it.each([
+    ['forwarding off', OFF],
+    ['forwarding on', ON],
+  ])('is inert — the whole trace is identical with the OoO knobs on (%s)', (_label, base) => {
+    expect(run(WIDTH_PROBE, { ...base, ...OOO })).toEqual(run(WIDTH_PROBE, base));
+  });
+
+  it('declares it does not honor the knobs', () => {
+    expect(PIPELINE_CAPABILITIES.configurableOutOfOrder).toBe(false);
+  });
+});

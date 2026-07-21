@@ -83,6 +83,38 @@ export interface ProcessorConfig {
    * toggle a fair same-program A/B rather than a model switch in disguise.
    */
   issueWidth?: number;
+  /**
+   * Out-of-order ISSUE (roadmap §12.5, M9) — the flagship same-program A/B. Absent or `false` is
+   * every machine built before M9, and also the M9 model's own degenerate position: dispatch and
+   * issue stay in program order (the in-order-issue base, step 1a). `true` turns on the scheduler
+   * — a ready instruction issues to a free FU ahead of an older one still waiting on an operand,
+   * while the ROB still commits in program order.
+   *
+   * Optional, following {@link issueWidth}'s precedent, not {@link cache}'s: adding it must not
+   * force a value into every config literal in the repo to say something none of them mean. **Only
+   * the out-of-order model honors it**; every earlier model ignores it and its trace is
+   * byte-identical whether it is set or not (the M4/M7 step-0 inertness contract). Gate the UI on
+   * {@link ProcessorCapabilities.configurableOutOfOrder}, never on this field's presence.
+   */
+  outOfOrderIssue?: boolean;
+  /**
+   * Reorder-buffer capacity (M9 secondary lever). A small ROB fills and stalls dispatch — a
+   * visible structural limit on how far the machine can look ahead for independent work. Absent
+   * lets the model choose its own default; only the out-of-order model reads it. Optional for the
+   * same reason as {@link outOfOrderIssue}.
+   */
+  robSize?: number;
+  /**
+   * Functional-unit latency for the designated slow operation (M9, the "Option B" knob). A config
+   * field, NOT an ISA change — programs run byte-for-byte unchanged (INV-7 intact) and the latency
+   * is part of the config so determinism holds (INV-1). RV32I has no multi-cycle arithmetic, so
+   * without this the only latency source is a cache miss; this makes the namesake Tomasulo story
+   * ("a reservation station waits N cycles on a slow op while independent work issues around it")
+   * vivid on any program. Absent means every FU is single-cycle (the honest RV32I floor). WHICH
+   * operation it lengthens is pinned when the scheduler is built (step 1b); only the out-of-order
+   * model reads it. Optional, same precedent as {@link outOfOrderIssue}.
+   */
+  slowOpLatency?: number;
   /** Only if a model needs deterministic randomness (INV-1: the seed is part of config). */
   seed?: number;
 }
@@ -117,6 +149,16 @@ export interface ProcessorCapabilities {
    * tinguishable from one that had simply not been considered.
    */
   readonly configurableIssueWidth: boolean;
+  /**
+   * Does it honor the out-of-order config cluster — {@link ProcessorConfig.outOfOrderIssue},
+   * {@link ProcessorConfig.robSize}, and {@link ProcessorConfig.slowOpLatency}? One flag gates the
+   * whole cluster because those knobs are all-or-nothing: they mean something only on a model with
+   * a ROB and reservation stations, and nothing on any in-order model. REQUIRED rather than
+   * optional, for the reason {@link configurableIssueWidth} is: adding it is then a compile error
+   * in every model's capabilities constant, so a model must state a stance rather than inherit a
+   * `false` nobody chose (the omission that caught two stub fixtures at M7 step 1).
+   */
+  readonly configurableOutOfOrder: boolean;
 }
 
 /**

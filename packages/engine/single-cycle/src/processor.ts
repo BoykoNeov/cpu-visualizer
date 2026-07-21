@@ -40,6 +40,7 @@ export const SINGLE_CYCLE_CAPABILITIES: ProcessorCapabilities = {
   configurableCache: false,
   // M7: one instruction per stage is this model's definition, not a setting.
   configurableIssueWidth: false,
+  configurableOutOfOrder: false,
 };
 
 export class SingleCycleProcessor implements Processor {

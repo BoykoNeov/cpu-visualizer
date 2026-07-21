@@ -81,6 +81,7 @@ export const MULTI_CYCLE_CAPABILITIES: ProcessorCapabilities = {
   configurableCache: false,
   // M7: one instruction per stage is this model's definition, not a setting.
   configurableIssueWidth: false,
+  configurableOutOfOrder: false,
 };
 
 /** Per-class phase plan — the source of the model's "varying cycle counts" (§12.1). */

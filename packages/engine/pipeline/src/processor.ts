@@ -221,6 +221,9 @@ export const PIPELINE_CAPABILITIES: ProcessorCapabilities = {
   configurableCache: true,
   // M7: one instruction per stage is this model's definition, not a setting.
   configurableIssueWidth: false,
+  // M9: in-order issue and completion are this model's definition; the ROB/RS cluster is a
+  // different machine, not a knob on this one.
+  configurableOutOfOrder: false,
 };
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);

@@ -133,11 +133,31 @@ describe('capabilities', () => {
       configurableBranchPrediction: true,
       configurableCache: true,
       configurableIssueWidth: true,
+      configurableOutOfOrder: false,
     });
   });
 
   it('is exposed on the instance', () => {
     expect(new SuperscalarProcessor().capabilities).toBe(SUPERSCALAR_CAPABILITIES);
+  });
+
+  /**
+   * M9 step 0 — the out-of-order config cluster (`outOfOrderIssue`, `robSize`, `slowOpLatency`) is
+   * inert here, whole-trace. Superscalar is the last and widest in-order model, so it is the one an
+   * OoO knob is most tempting to imagine "already half-supports" — it does not: width and
+   * out-of-order are orthogonal axes, and this pins that the wide in-order machine ignores the OoO
+   * cluster completely. Width is held FIXED (the default single-issue position) so the comparison
+   * isolates the OoO fields; `array-sum.s` carries a branch, loads and a store — the shape any such
+   * knob would reach. The knobs are aggressive non-defaults so a leak has something loud to move.
+   */
+  it('ignores the out-of-order config cluster — whole trace identical with the knobs on', () => {
+    const withOoo = runFile('array-sum.s', {
+      ...defaultConfig(),
+      outOfOrderIssue: true,
+      robSize: 4,
+      slowOpLatency: 20,
+    });
+    expect(withOoo).toEqual(runFile('array-sum.s'));
   });
 });
 

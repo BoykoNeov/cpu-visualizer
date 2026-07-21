@@ -212,6 +212,9 @@ export const SUPERSCALAR_CAPABILITIES: ProcessorCapabilities = {
   configurableBranchPrediction: true,
   configurableCache: true,
   configurableIssueWidth: true,
+  // M9: superscalar is wide but still in-order issue/completion; out-of-order is a different
+  // machine (a new package), not a wider stage walk. This is the axis M9 exists to break.
+  configurableOutOfOrder: false,
 };
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);

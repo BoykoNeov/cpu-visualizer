@@ -80,6 +80,7 @@ describe('single-cycle: model identity', () => {
       configurableBranchPrediction: false,
       configurableCache: false,
       configurableIssueWidth: false,
+      configurableOutOfOrder: false,
     });
   });
 });
@@ -518,5 +519,32 @@ describe('issueWidth (M7 step 1)', () => {
 
   it('declares it does not honor the knob', () => {
     expect(SINGLE_CYCLE_CAPABILITIES.configurableIssueWidth).toBe(false);
+  });
+});
+
+/**
+ * M9 step 0 — the out-of-order config cluster (`outOfOrderIssue`, `robSize`, `slowOpLatency`) is
+ * inert here, proven the whole-trace way for the same reason `issueWidth` was: these are timing
+ * knobs a single-cycle machine cannot honor, so a final-state check is exactly the assertion that
+ * could not fail — only the full trace can see a cycle count or an event order move if one leaked.
+ * The fields are set to aggressive NON-defaults (issue reordering ON, a small ROB, a 20-cycle slow
+ * op) so a leak has something loud to perturb; `WIDTH_PROBE`'s branch/store/load is reused because
+ * it is exactly the shape any such knob would reach.
+ */
+describe('out-of-order config cluster (M9 step 0)', () => {
+  it('is inert — the whole trace is identical with the OoO knobs set to aggressive non-defaults', () => {
+    const image = toProgramImage(asm(WIDTH_PROBE));
+    const trace = (config = defaultConfig()): CycleTrace[] => {
+      const p = new SingleCycleProcessor();
+      p.reset(image, config);
+      return runAll(p);
+    };
+    expect(
+      trace({ ...defaultConfig(), outOfOrderIssue: true, robSize: 4, slowOpLatency: 20 }),
+    ).toEqual(trace());
+  });
+
+  it('declares it does not honor the knobs', () => {
+    expect(SINGLE_CYCLE_CAPABILITIES.configurableOutOfOrder).toBe(false);
   });
 });
