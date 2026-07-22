@@ -254,6 +254,16 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   if (among.some((c) => c.issueWidth !== first.issueWidth)) {
     parts.push(`width ${config.issueWidth ?? 1}`);
   }
+  // `outOfOrderIssue` (M9 step 2) — same shape as `issueWidth`: optional boolean, `!==` is the
+  // whole comparison, and pre-M9 configs all leave it `undefined` so they stay silent for free.
+  // It shares `issueWidth`'s "invisible collision" risk for the same structural reason: in-order
+  // commit means both positions reach IDENTICAL final state by construction (that is the whole
+  // headline of "the differential is timing-blind" — see the out-of-order model's own
+  // `differential.test.ts`), so a title collision here would be two green columns with nothing to
+  // prompt a second look.
+  if (among.some((c) => c.outOfOrderIssue !== first.outOfOrderIssue)) {
+    parts.push(`order ${config.outOfOrderIssue ? 'out-of-order' : 'in-order'}`);
+  }
   return parts.join(', ');
 }
 

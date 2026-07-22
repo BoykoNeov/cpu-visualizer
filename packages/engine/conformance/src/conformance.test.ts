@@ -368,6 +368,66 @@ describe('the matrix enumerates the corpus once per config', () => {
       expect(c.title).toContain(c.config.forwarding ? 'forwarding on' : 'forwarding off');
     }
   });
+
+  /**
+   * M9 step 2 — the `outOfOrderIssue` axis, and the SAME invisible-collision shape as `issueWidth`
+   * (see that block's comment): in-order commit means both issue-order positions reach identical
+   * final architectural state by construction, so a title collision here would be two green columns
+   * with nothing to prompt a second look. The list below varies issue-order against a knob that is
+   * CONSTANT (cache is off throughout) for the same reason `FOUR_AXIS` does — a `configLabel` naming
+   * everything unconditionally cannot pass this by accident.
+   */
+  const ISSUE_ORDER_AXIS: ProcessorConfig[] = [false, true].flatMap((outOfOrderIssue) =>
+    (['none', 'static-not-taken', 'static-taken'] as const).map((branchPrediction) => ({
+      ...defaultConfig(),
+      forwarding: true,
+      branchPrediction,
+      outOfOrderIssue,
+    })),
+  );
+
+  it('keeps every case distinct when the matrix varies ISSUE ORDER too', () => {
+    const cases = conformanceCases(ISSUE_ORDER_AXIS);
+    // 2 orders × 3 predict = 6 configs.
+    expect(cases).toHaveLength(6 * corpusSize);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('names the varying issue order in every title, so a failure says which ORDER broke', () => {
+    for (const c of conformanceCases(ISSUE_ORDER_AXIS)) {
+      expect(c.title).toContain(c.config.outOfOrderIssue ? 'order out-of-order' : 'order in-order');
+    }
+  });
+
+  /**
+   * The other direction, pinning against the naive implementation: `outOfOrderIssue` is OPTIONAL,
+   * so every pre-M9 config leaves it `undefined` — an ungated clause would rename every title in
+   * the single-cycle, multi-cycle, pipeline and superscalar differential suites to carry an
+   * `order in-order` none of them means. MULTI_AXIS spreads `defaultConfig()`, so it is exactly that
+   * unset list.
+   */
+  it('stays silent about issue order when no config sets one, so pre-M9 suites read unchanged', () => {
+    for (const c of conformanceCases(MULTI_AXIS)) {
+      expect(c.title).not.toContain('order');
+    }
+  });
+
+  /** ...and silent when issue order is set but CONSTANT, mirroring the width guard above. */
+  it('stays silent about an issue order that is set but does not vary', () => {
+    const cases = conformanceCases([
+      { ...defaultConfig(), forwarding: true, outOfOrderIssue: false, branchPrediction: 'none' },
+      {
+        ...defaultConfig(),
+        forwarding: true,
+        outOfOrderIssue: false,
+        branchPrediction: 'static-taken',
+      },
+    ]);
+    for (const c of cases) {
+      expect(c.title).not.toContain('order');
+      expect(c.title).toContain(`predict ${c.config.branchPrediction}`);
+    }
+  });
 });
 
 /**

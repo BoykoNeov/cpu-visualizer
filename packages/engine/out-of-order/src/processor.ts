@@ -673,7 +673,7 @@ export class OutOfOrderProcessor implements Processor {
    * ordinary read afterward is correct with no forwarding path needed — the simplest design that
    * satisfies "does not bypass an aliasing older store").
    */
-  private disambiguationClear(load: RobEntry): boolean {
+  protected disambiguationClear(load: RobEntry): boolean {
     if (load.aluOut === null) {
       throw new Error(`out-of-order: ${load.decoded.mnemonic} disambiguates with no address yet`);
     }

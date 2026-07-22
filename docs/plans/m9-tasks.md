@@ -363,8 +363,8 @@ milestone must lose weight, it loses step 7, not step 6.
       only exercises `outOfOrderIssue: false` (1a) — the `true` side's differential net, across
       issue-order × prediction × cache × ROB size, is step 2's job, not retrofitted here.
 
-- [ ] **2. INV-8 differential net.** `runConformance(() => new OutOfOrderProcessor())` across the
-      corpus at every config combination (issue-order × prediction × cache × ROB size × — under B —
+- [x] **2. INV-8 differential net.** DONE 2026-07-22. `runConformance(() => new OutOfOrderProcessor())`
+      across the corpus at every config combination (issue-order × prediction × cache × ROB size × — under B —
       FU latency). **Read "how this milestone can lie to itself" before trusting this step.** Its
       value is split, unlike M7 where it was pure smoke: it is BLIND to scheduling/timing (in-order
       commit ⇒ conformance passes for free, even weaker than M7), but it has real TEETH for
@@ -372,6 +372,55 @@ milestone must lose weight, it loses step 7, not step 6.
       state, and the differential catches exactly that. Say both in the suite header. Acceptance:
       green; and one deliberate disambiguation mutation is confirmed to make it FAIL (the teeth are
       real only if provoked).
+
+      **Landed as: `differential.test.ts`'s CONFIGS now full-crosses `outOfOrderIssue` (`[false,
+      true]`) against the existing width × prediction × cache axes — 36 configs × 9 programs, all
+      green (`false` reproduces step 1a byte for byte; `true` newly proven equal to the reference at
+      every position, not just the one fixed config step 1b's own regression check used). ROB size
+      is deliberately NOT a fifth cross-product axis (advisor call, taken over the plan's literal
+      "× ROB size" phrasing): a timing-blind net gets near-zero marginal teeth from crossing a knob
+      whose only observable effect is WHEN dispatch stalls, since in-order commit preserves final
+      state at any depth for a correct machine. One TARGETED small-ROB config (`robSize: 1`) was
+      added instead, verified in a cycle dump to force the one state-space corner ROB size actually
+      touches — `disambiguationClear`'s "the aliasing older store already committed and left the
+      ROB" branch (at `robSize: 16` the store is always still present when `store-forward.s`'s
+      dependent load checks; at `robSize: 1` it has already retired the same cycle the load
+      dispatches). `configLabel` (`engine-conformance`'s shared harness) gained an `outOfOrderIssue`
+      axis mirroring `issueWidth`'s exact precedent (optional field, `!==` comparison, the same
+      "invisible collision" risk since both positions are green by construction) — plus the matching
+      guard tests in `conformance.test.ts` (distinct titles when it varies, silent when unset or
+      constant), the discipline every prior axis (forwarding/predict/cache/width) followed.
+
+      **The disambiguation-mutation acceptance line surfaced a real finding, not just a checkbox:**
+      `store-forward.s` — the corpus program authored at step 1b FOR this bug class — does NOT
+      expose it. Checked empirically (a scratch dump, not assumed): a `disambiguationClear`-disabled
+      variant of the model still computes the correct answer on `store-forward.s` at every
+      cache/width/missPenalty combination tried, because its store and load are immediately adjacent
+      and share the single memory port — oldest-first issue order plus matched per-request miss
+      costs on the same cache line keep the store's deferred write at least one cycle ahead of the
+      load's read regardless of the gate. (What `store-forward.s` actually pins, and pins correctly,
+      is the OTHER step-1b mechanism: the store write deferred to commit rather than issued at MEM
+      access.) A program that DOES expose the gate needs the older store's ADDRESS — not just its
+      write — to be the thing still unresolved: `disambiguation-mutation.test.ts` authors one
+      (an aliasing load with an immediately-ready address racing an older store whose base register
+      is gated behind a slow, cache-missing, unrelated load) and confirms, with a cache, `a0`
+      corrupts from 99 to 0 when `disambiguationClear` is forced to always clear — and does NOT
+      corrupt with the cache off, pinning that the corruption genuinely needs the miss-widened
+      window the plan's own "how this can lie to itself" section names, not just a hand-wave.
+      **Built as a PERMANENT regression test, not a provoke-then-revert pass** (an advisor call,
+      weighed against step 0's ephemeral eslint-guard precedent): disambiguation is the ONE
+      load-bearing property of an otherwise-weak differential net, which argues for a durable guard
+      rather than a one-time check that rots, unlike a static lint rule that cannot be committed
+      permanently broken. Mechanism: `disambiguationClear` changed from `private` to `protected`
+      (the one production change this step needed) so a tiny test-only subclass can override it —
+      the new test file cannot import `@cpu-viz/engine-reference` directly (the DAG boundary
+      `engine-conformance` enforces: no concrete model imports the reference or a sibling model),
+      so it checks against a hand-computed oracle (`a0 = 99`) the same way `conformance.ts`'s own
+      `RESULT_ORACLES` do, not a live reference run.
+
+      Full repo green: `npm test` (3169 tests, +9 in `differential.test.ts` net of the width/order
+      cross plus the ROB probe, +3 in the new `disambiguation-mutation.test.ts`, +6 conformance-harness
+      guard tests), `typecheck`, `lint`, `build` all green.
 
 - [ ] **3. The scheduling net — the real correctness net.** There is NO clean closed form here
       (unlike M3's `N+4+S` or M7's `G+L+P+M+4`) — the schedule depends on RS availability, CDB
