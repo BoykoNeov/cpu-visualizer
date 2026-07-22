@@ -1,0 +1,21 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../isa" },
+    { "path": "../../trace" },
+    // Production edge: the shared prediction + cache modules (M7 step 0), reused verbatim.
+    { "path": "../common" },
+    // Test-only edges, exactly as every other model declares them. `assembler` drives the unit
+    // tests; `conformance` is the shared INV-8 differential harness (it pulls in the golden
+    // reference). Production code never imports the reference (INV-8: copy the idioms, don't
+    // import them) — the ISA semantics below are mirrored from it and PROVEN faithful, not
+    // borrowed.
+    { "path": "../../assembler" },
+    { "path": "../conformance" }
+  ]
+}

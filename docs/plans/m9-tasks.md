@@ -201,19 +201,54 @@ milestone must lose weight, it loses step 7, not step 6.
       authored at **1b** (where the LSU exists to exercise it), not now; no bigger-window ROB-size
       program needed (`array-sum.s` already fills a small ROB). See the two settled rows below.
 
-- [ ] **1a. `engine/out-of-order` at IN-ORDER ISSUE — the faithful base.** The full front-end,
-      register renaming, the ROB, and in-order commit, but **issue is in program order** (dispatch
-      to RS/ROB in order, and issue to FUs strictly oldest-first with no reordering). This is the
-      milestone's bisection anchor and gets its own commit. **Its net is timing, not INV-8:** an
-      in-order-issue OoO core must reproduce the timing baseline over the corpus × config — and
-      because the model is **width-parametric** (`issueWidth`, default 2), that baseline is
-      **M7's superscalar timing at width 2 and M3's pipeline timing at width 1** (the "× config"
-      covers both) — which de-risks "did I faithfully build the front-end, rename, ROB, and commit"
-      BEFORE out-of-order scheduling can muddy it, exactly as M7 step 2a reproduced M3's closed form
-      before pairing. INV-4 ids run fetch → commit; the ROB is populated and drains in order. Also due here
-      if not at step 0: the eslint deny-list additions. Acceptance: the in-order timing baseline
-      holds over the corpus under every config combination; INV-8 differential green (weak, but a
-      floor).
+- [x] **1a. `engine/out-of-order` at IN-ORDER ISSUE — the faithful base.** DONE 2026-07-22. The
+      full front-end, register renaming, the ROB, and in-order commit, but **issue is in program
+      order** (dispatch to RS/ROB in order, and issue to FUs strictly oldest-first with no
+      reordering). This is the milestone's bisection anchor and gets its own commit. **Its net is
+      timing, not INV-8:** an in-order-issue OoO core must reproduce the timing baseline over the
+      corpus × config — and because the model is **width-parametric** (`issueWidth`, default 2),
+      that baseline is **M7's superscalar timing at width 2 and M3's pipeline timing at width 1**
+      (the "× config" covers both) — which de-risks "did I faithfully build the front-end, rename,
+      ROB, and commit" BEFORE out-of-order scheduling can muddy it, exactly as M7 step 2a reproduced
+      M3's closed form before pairing. INV-4 ids run fetch → commit; the ROB is populated and drains
+      in order. eslint deny-list additions landed with the package. **Acceptance MET:** the in-order
+      timing baseline holds over the corpus under every branch-prediction × cache × width
+      combination (`timing.test.ts`, 145 tests); INV-8 differential green (`differential.test.ts`,
+      146 tests, weak but a floor); unit + recorder suites green (11 + 10 tests). Full repo
+      `npm test`/`typecheck`/`lint`/`build` all green.
+
+      **Bugs found and fixed en route** (all via test-driven debugging against the M3/M7 timing
+      baseline, not reasoned about in advance): (1) a same-cycle zero-latency forward through the
+      rename map; (2) rename-map corruption when a younger same-cycle dispatch clobbers an older
+      instruction's already-decided source (fixed by capturing operands ONCE at dispatch, never
+      re-derived at issue); (3) `ecall` confirmed as a sticky halt at dispatch instead of issue,
+      causing a wrong-path shadow to hang the machine; (4) a stale `prevMapping` snapshot on flush
+      when the referenced producer had legitimately committed in the meantime; (5) a missing
+      "MEM pass-through" cycle for non-memory instructions (added the `'executed'` ROB state); (6)
+      branch-prediction bets fired at DISPATCH time, one cycle too early whenever the branch itself
+      had to wait on a broadcast (`array-sum.s`'s `bne t1,x0,loop`) — fixed by moving the bet to a
+      new `stageBet` pass that mirrors `stageIssueExecute`'s own resource-contest walk one cycle
+      ahead, so it also correctly handles a transfer co-issuing with an older ready instruction at
+      width > 1 (`branch-flavors.s`); (7) `ctx.memStall` was set unconditionally on a cache miss's
+      RELEASE cycle too, freezing the front end one cycle longer than M3's own `holdInMem` (which is
+      only ever called while still holding); (8) two bugs in `timing.test.ts` itself, not the
+      engine — `width2Total` was missing M7's own `+ 4`, and `call-return.s`'s pinned
+      `bettingGroupsOn` was transcribed from M7's `pairs` delta instead of its `groups` delta
+      (verified against a live run of the actual superscalar engine, not just arithmetic).
+
+      **A genuine, disclosed deviation from the approved plan:** dispatch is NOT bounded only by
+      ROB capacity and width, as the plan's architecture section states. A predictable transfer,
+      once dispatched, blocks dispatch of anything younger until it is bet on (`stageDispatch`'s
+      `hasUnresolvedBet` check) — otherwise decoupled dispatch would keep pulling fall-through
+      instructions into the ROB while the branch's own operand is still pending, and unlike a normal
+      wrong-path squash, those would never be caught if the eventual bet happens to match the actual
+      outcome. This is a genuine THIRD dispatch bound, coupled to branch prediction specifically —
+      the kind of thing the plan's architecture was explicitly designed to let 1b avoid reworking.
+      **Flagged as a 1b touch-point, not re-litigated now:** it is correct and covered by the timing
+      suite, but 1b's own dispatch/issue design should account for it rather than being surprised by
+      it. `M:\claud_projects\temp\m9\step1a-timing-derivation.md` is now STALE relative to what was
+      actually built — it never anticipated late-bet gating, the release-cycle `memStall` fix, or
+      width > 1 co-issue betting; treat it as a historical pre-check, not a spec of the final design.
 
 - [ ] **1b. The out-of-order scheduler — the model's soul.** Reservation stations with operand-tag
       tracking; wakeup/select (a ready instruction issues to a free FU, ties broken **oldest-first**

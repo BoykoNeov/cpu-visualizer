@@ -178,7 +178,14 @@ export default tseslint.config(
     // transitively through the model-agnostic conformance harness.
     files: ['packages/engine/single-cycle/**/*.ts'],
     rules: deny(
-      ['curriculum', 'web', 'engine-multi-cycle', 'engine-pipeline', 'engine-superscalar'],
+      [
+        'curriculum',
+        'web',
+        'engine-multi-cycle',
+        'engine-pipeline',
+        'engine-superscalar',
+        'engine-out-of-order',
+      ],
       'A concrete model never imports another model’s production code; the trace schema is the only shared surface.',
     ),
   },
@@ -192,6 +199,7 @@ export default tseslint.config(
         'engine-pipeline',
         'engine-superscalar',
         'engine-reference',
+        'engine-out-of-order',
       ],
       'A concrete model never imports another model’s production code, and multi-cycle copies the ISA idioms rather than importing the reference (INV-8).',
     ),
@@ -206,6 +214,7 @@ export default tseslint.config(
         'engine-multi-cycle',
         'engine-superscalar',
         'engine-reference',
+        'engine-out-of-order',
       ],
       'A concrete model never imports another model’s production code, and the pipeline copies the ISA idioms rather than importing the reference (INV-8).',
     ),
@@ -227,8 +236,27 @@ export default tseslint.config(
         'engine-multi-cycle',
         'engine-pipeline',
         'engine-reference',
+        'engine-out-of-order',
       ],
       'A concrete model never imports another model’s production code, and superscalar copies the ISA idioms rather than importing the reference (INV-8).',
+    ),
+  },
+  {
+    // Out-of-order (M9) is not a widening of any existing model — ROB + RS + rename + CDB is a
+    // different machine, not a wider stage walk. Reuse goes DOWN into `engine-common` only (same
+    // zero-sibling-imports precedent every other model follows), never sideways.
+    files: ['packages/engine/out-of-order/**/*.ts'],
+    rules: deny(
+      [
+        'curriculum',
+        'web',
+        'engine-single-cycle',
+        'engine-multi-cycle',
+        'engine-pipeline',
+        'engine-superscalar',
+        'engine-reference',
+      ],
+      'A concrete model never imports another model’s production code, and out-of-order copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {

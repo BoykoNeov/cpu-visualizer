@@ -12,6 +12,7 @@
     { "path": "packages/engine/multi-cycle" },
     { "path": "packages/engine/pipeline" },
     { "path": "packages/engine/superscalar" },
+    { "path": "packages/engine/out-of-order" },
     { "path": "packages/curriculum" }
   ]
 }
