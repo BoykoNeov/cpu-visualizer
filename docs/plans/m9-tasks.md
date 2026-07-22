@@ -422,19 +422,65 @@ milestone must lose weight, it loses step 7, not step 6.
       cross plus the ROB probe, +3 in the new `disambiguation-mutation.test.ts`, +6 conformance-harness
       guard tests), `typecheck`, `lint`, `build` all green.
 
-- [ ] **3. The scheduling net — the real correctness net.** There is NO clean closed form here
-      (unlike M3's `N+4+S` or M7's `G+L+P+M+4`) — the schedule depends on RS availability, CDB
-      arbitration, FU latency, and ROB occupancy. The buildable net is a hand-derived **per-instruction
-      lifecycle table**: for each instruction, the cycle it _dispatches_ → _issues to an FU_ →
-      _drives the CDB_ → _commits_, every cell derived from the pinned rules (oldest-ready-first
-      issue, CDB tie-break, FU latency, non-blocking-load handling, in-order commit). This is M3's
-      pc→cycle histogram and M7's assert-each-term-separately generalized to a per-instruction
-      lifecycle. Write the derivation on a worksheet (`M:\claud_projects\temp\`) BEFORE the test
-      file; a cell that cannot be derived is a bug or an unpinned rule. Assert each stage-cell so a
-      failing cell names the instruction AND the stage that moved. Mutation-check BOTH ways
-      (over-serializing the scheduler must fail timing while leaving conformance green; the whole
-      point of the tier). Acceptance: a full per-instruction lifecycle table for the corpus × the
-      key configs, every cell derived and asserted, none "whatever the engine printed."
+- [x] **3. The scheduling net — the real correctness net.** DONE 2026-07-22. There is NO clean
+      closed form here (unlike M3's `N+4+S` or M7's `G+L+P+M+4`) — the schedule depends on RS
+      availability, CDB arbitration, FU latency, and ROB occupancy. The buildable net is a
+      hand-derived **per-instruction lifecycle table**: for each instruction, the cycle it
+      _dispatches_ → _issues to an FU_ → _drives the CDB_ → _commits_, every cell derived from the
+      pinned rules (oldest-ready-first issue, CDB tie-break, FU latency, non-blocking-load handling,
+      in-order commit).
+
+      **Scope call, disclosed (advisor-guided, mirrors step 0/2's "advisor call over the plan's
+      literal phrasing"):** "the corpus × the key configs" done literally by hand is unbounded.
+      Instead: two programs, each traced COMPLETELY at the out-of-order config, chosen so between
+      them they cover every no-closed-form mechanism — `store-forward.s` (width 1, disambiguation +
+      store-defer, no independent reordering to complicate it) and `array-sum.s` (width 2,
+      static-taken, `CACHE_LARGE` — the flagship money shot). The in-order-issue lifecycle is already
+      pinned transitively by `timing.test.ts`'s closed-form net, so this step targets the
+      out-of-order path only. `scheduler.test.ts`'s existing wakeup/select/MSHR/disambiguation/CDB
+      scenarios pin one relative-cycle claim apiece; this step adds the two FULL lifecycle tables
+      the plan actually asks for.
+
+      **Discipline actually followed, not just claimed:** derived `store-forward.s`'s full 7-instruction,
+      11-cycle table from the stage-order rules BLIND (before running anything), including a subtle
+      same-cycle zero-latency dispatch-forward mechanism (an older entry's issue-this-cycle is
+      visible to a younger entry's dispatch-this-cycle, since `stageIssueExecute` runs before
+      `stageDispatch` within one `step()` call) — reconciled against one real dump afterward: **100%
+      match, zero corrections needed.** Used that validated confidence to derive `array-sum.s`
+      (setup + iteration 0 blind, matched the dump exactly through cycle 6; the rest via periodicity
+      + reconciliation per the advisor's explicit guidance — "derive the cadence and structure, then
+      reconcile against one dump, treating disagreements as findings," not single-step to certainty).
+
+      **Two genuine findings that survived reconciliation, not transcription:** (1) the fast
+      (pointer/counter/branch) chain and the slow (sum-reduction) chain compete for the SAME width-2
+      issue budget once the first miss releases — the OLDER reduction wins oldest-first priority
+      whenever both are ready the same cycle, stretching the fast chain's otherwise-4-cycle bet
+      period to 6 around the miss-recovery window (predicted from the rules, then confirmed in the
+      dump — not observed and rationalized after). (2) the two misses in `array-sum.s` do NOT
+      overlap (checked explicitly: the first releases at cycle 15, the second isn't even detected
+      until cycle 23) — `array-sum.s`'s money shot is "independent work races around ONE outstanding
+      miss," not miss-under-miss (that's `scheduler.test.ts`'s dedicated 2-MSHR program); conflating
+      the two would overclaim what this program demonstrates. Total: 41 cycles (0..40), matching the
+      step-1b log's pinned 61→41 exactly, derived from the M7 closed form (in-order side) and the
+      lifecycle table (out-of-order side), not assumed.
+
+      **Mutation check, both ways:** neutered `walkIssuable`'s out-of-order skip→stop (both sites),
+      collapsing wakeup/select to in-order issue policy. `array-sum.s` under the mutation: **61
+      cycles** — collapses EXACTLY onto the in-order-issue closed-form baseline, as predicted.
+      `differential.test.ts` (348 tests): all green under the mutation, confirming the net is exactly
+      as timing-blind as the plan's own "how this can lie to itself" warns. `scheduler.test.ts`'s own
+      timing-shaped assertions: 4 failures, the expected shape (a strict cycle inequality collapsing
+      to equality). Mutation reverted immediately after (`git checkout --`); no production change
+      survives from the check — a provoke-then-revert one-time teeth-proof (step 0's eslint-guard
+      precedent), not a permanent subclass override, since this is a cycle-count check, not a single
+      toggleable boolean like disambiguation's `protected` seam.
+
+      **Landed as:** `packages/engine/out-of-order/src/lifecycle.test.ts` (19 tests, asserting only
+      what the trace schema actually exposes — `lui`/`auipc`/`jal`/`ecall`/`ebreak` issue silently,
+      with no `alu-op`, and are explicitly NOT asserted at issue rather than force-fit to an event).
+      Full derivation, every cell's rationale, the reconciliation log, and the mutation-check numbers:
+      `M:\claud_projects\temp\m9\step3-lifecycle-derivation.md`. Full repo green: `npm test` (3188
+      tests, +19), `typecheck`, `lint`, `build`, `format:check` all green.
 
 - [ ] **4. Recorder / time-travel + `follow()` through the ROB — the INV-4 payoff.** Prove the
       recorder is UNTOUCHED (INV-3 paying off a fourth time — `follow()` keys on `id`, and
