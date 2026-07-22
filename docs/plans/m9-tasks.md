@@ -482,16 +482,63 @@ milestone must lose weight, it loses step 7, not step 6.
       `M:\claud_projects\temp\m9\step3-lifecycle-derivation.md`. Full repo green: `npm test` (3188
       tests, +19), `typecheck`, `lint`, `build`, `format:check` all green.
 
-- [ ] **4. Recorder / time-travel + `follow()` through the ROB — the INV-4 payoff.** Prove the
-      recorder is UNTOUCHED (INV-3 paying off a fourth time — `follow()` keys on `id`, and
-      `location` was always free-form, so `"ROB#3"` resolves for free, exactly as `"EX.0"` did at M7
-      step 5). The signature claim to pin: follow one instruction id as it moves out of order — into
-      an RS, waiting; issuing to an FU after a younger neighbour has already issued; broadcasting on
-      the CDB; sitting in the ROB completed-but-not-committed; and finally committing in program
-      order. Pin that completion order ≠ commit order on a program where they demonstrably differ
-      (the money-shot loop: a later independent load completes before an earlier stuck `add`, yet
-      commits after it). Acceptance: recorder suite green with zero production changes; the
-      out-of-order-complete / in-order-commit divergence pinned on a real recording.
+- [x] **4. Recorder / time-travel + `follow()` through the ROB — the INV-4 payoff.** DONE
+      2026-07-22. Recorder UNTOUCHED (INV-3 paying off a fourth time — `follow()` keys on `id`, and
+      `location` was always free-form, so `"ROB#3"` resolved for free, exactly as `"EX.0"` did at
+      M7 step 5) — zero production changes, confirmed by `git status` after the step.
+
+      **The real gap this step closed, found before writing anything (advisor-flagged):**
+      `recorder.test.ts` as it stood after step 1a never once set `outOfOrderIssue`, so nothing in
+      it had ever driven the scheduler *through the recorder* — every existing block was (correctly,
+      for when it was written) an in-order-issue regression baseline, not a proof this layer handles
+      true reordering. The step's scope is therefore genuinely new recorder-layer coverage, not a
+      restatement of `lifecycle.test.ts` (raw engine) or `scheduler.test.ts` (unit): (a) load → run →
+      back → scrub over a TRUE out-of-order recording; (b) the completion-order ≠ commit-order
+      divergence, read through the shipped `follow()`/`recorded` API; (c) INV-4 under conditions 1a's
+      suite never provoked — the same loop-body pc dispatched five times mints five distinct ids,
+      several in flight AT ONCE, plus one wrong-path speculative fetch of that same pc squashed
+      before ever reaching the ROB.
+
+      **The signature claim, landed exactly as scoped — two assertions, not one:** at the flagship
+      `array-sum.s` config (width 2, out-of-order, static-taken, `CACHE_LARGE`, `robSize: 32` —
+      identical to `lifecycle.test.ts`'s, deliberately not re-derived), iteration 0's reduction add
+      (ROB tag 5, OLDER) is stuck behind the load's miss and produces its result (`alu-op`) at cycle
+      16; iteration 0's counter decrement (tag 7, YOUNGER, independent of the miss) produces its
+      result at cycle 5 — **completion is OUT of program order.** Yet tag 5 retires at cycle 18 and
+      tag 7 at cycle 19 — **commit is IN program order**, the older always retiring first despite
+      completing last. (Tag 6, the pointer bump, ties tag 5 at commit — both retire in the same
+      width-2 batch — which is why tag 7 is the fixture that gives a STRICT inequality both
+      directions, not tag 6.) Per the advisor's sharpening: `follow()` itself only proves IDENTITY —
+      `location` is stably `"ROB#<tag>"` for an id's whole in-flight life (pinned at 1a), so the
+      reordering is invisible to `follow()` alone and lives entirely in the event stream. The payoff
+      is `follow()` (identity/contiguity) PLUS cross-id event comparison (the actual reordering),
+      never one without the other — stated as its own assertion in the suite, not left implicit.
+
+      **Honesty about teeth (advisor's fifth point, taken seriously rather than claimed by
+      ceremony):** the timing divergence itself is already caught by step 3's `walkIssuable`
+      skip→stop mutation — this step does not newly net that, and says so. What IS newly checked by
+      mutation here: neutering `walkIssuable`'s out-of-order skip→stop (both sites, step 3's exact
+      mutation, provoked again and reverted via `git checkout --`) collapses the flagship recording
+      to 61 cycles and the completion-order assertion (`youngerCompletes` expected `5`, actual `17`)
+      fails — confirming this suite's own two new claims have real teeth, not just replaying step
+      3's proof under a different API.
+
+      **The INV-4 finding, dumped and read before being asserted (not reasoned about in advance):**
+      the load's pc is fetched **six** times over the run, not five — five real dynamic iterations
+      that each dispatch, complete, and retire, plus **one** wrong-path speculative re-fetch of the
+      same pc (the final iteration's static-taken bet, which turns out wrong) that reaches `"IF"`
+      and is squashed before ever occupying a ROB tag, and — the strong "never happened" form the
+      pipeline models use for a flushed instruction — never emits `instr-retire`. Several of the five
+      real instances are concurrently in the ROB (the miss lets later iterations dispatch before the
+      stuck one resolves); each still resolves to a distinct id and a distinct `"ROB#<tag>"`, no
+      aliasing — confirmed, not assumed, exactly the identity guarantee a re-fetch bug at step 1b
+      would have broken.
+
+      **Landed as:** additions to `packages/engine/out-of-order/src/recorder.test.ts` (18 tests, up
+      from 10 — the original step-1a blocks are untouched, and the file header now explains why the
+      first two-thirds only ever exercises the in-order baseline while everything below "step 4"
+      is the first thing in the file to set `outOfOrderIssue: true`). Full repo green: `npm test`
+      (3196 tests, +8), `typecheck`, `lint`, `build`, `format:check` all green.
 
 - [ ] **5. Web enablement.** `models.ts` entry + `DatapathKind: 'out-of-order'` + the issue-order
       toggle and ROB-size control (and the FU-latency control under B), each gated on the matching
