@@ -1,8 +1,9 @@
 /**
  * The out-of-order RV32I core (roadmap §12.5, M9) — the fifth microarchitecture, and the first
- * whose architectural effect happens out of program order. `docs/plans/m9-tasks.md` step 1a: the
- * faithful base — renaming, the ROB, and in-order commit are real; issue is still strictly in
- * program order. Step 1b adds the wakeup/select scheduler on top.
+ * whose architectural effect happens out of program order. `docs/plans/m9-tasks.md` step 1a built
+ * the faithful base (renaming, the ROB, in-order commit, issue strictly in program order); step 1b
+ * added the scheduler itself — true wakeup/select issue, a non-blocking load/store unit, memory
+ * disambiguation, and CDB arbitration — gated behind {@link ProcessorConfig.outOfOrderIssue}.
  *
  * Implements the {@link Processor} interface (handoff §6) over the pure {@link ProgramImage};
  * `toProgramImage` (in `@cpu-viz/engine-common`) adapts an `AssembledProgram` into that image.
@@ -17,5 +18,5 @@ export { type Tag, type OperandSource, type RenameSlot } from './types';
 export const OUT_OF_ORDER_MODEL_ID = 'out-of-order';
 
 export const OUT_OF_ORDER_MODEL_DESCRIPTION =
-  'Out-of-order (Tomasulo) — register renaming, a reorder buffer, and in-order commit over ' +
-  'out-of-order completion. Step 1a: issue is still strictly in program order.';
+  'Out-of-order (Tomasulo) — register renaming, a reorder buffer, wakeup/select issue, a ' +
+  'non-blocking load/store unit, and in-order commit over out-of-order completion.';

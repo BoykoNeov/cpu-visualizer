@@ -487,6 +487,10 @@ describe('width 2 is a real machine', () => {
       // M8 step 0: two adjacent never-taken branches. Width 2 pairs the tail behind the one solo
       // `branch-slot` refusal (9 → 7); the refusal is the free slot-1 kind, so the gain is real.
       'paired-branches.s': { w1: 9, w2: 7 },
+      // M9 step 1b: store-then-dependent-load, added for out-of-order disambiguation. In this
+      // in-order-retiring superscalar it is an ordinary pairing/mem-port story (`timing.test.ts`'s
+      // `w2` entry derives both numbers from the pinned rules).
+      'store-forward.s': { w1: 11, w2: 9 },
       'sum-loop.s': { w1: 56, w2: 44 },
     };
     const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));

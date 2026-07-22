@@ -1,31 +1,41 @@
 /**
  * The out-of-order RV32I core (roadmap §12.5, M9) behind the {@link Processor} interface — the
  * FIFTH microarchitecture, and the first with a reorder buffer, register renaming, and a common
- * data bus. `docs/plans/m9-tasks.md` step 1a: the FAITHFUL BASE. Renaming, the ROB, and in-order
- * commit are all real; issue is still strictly in program order (no wakeup/select, no
- * reordering). Step 1b adds the scheduler on top without touching anything here except the issue
- * policy.
+ * data bus. `docs/plans/m9-tasks.md` step 1a built the FAITHFUL BASE (renaming, the ROB, in-order
+ * commit, but issue strictly in program order). Step 1b adds the scheduler itself: true
+ * wakeup/select issue, a non-blocking load/store unit (MSHR-gated miss-under-miss), memory
+ * disambiguation, CDB arbitration under contention, and store writes deferred to commit — all
+ * gated TOGETHER behind {@link ProcessorConfig.outOfOrderIssue} (see `this.outOfOrder`'s own doc):
+ * `false` still runs every line below exactly as 1a shipped it, byte for byte, which is both the
+ * regression net (`timing.test.ts` never sets the flag) and the mechanism the money shot rides on
+ * — the in-order branch still blocks on a miss, so flipping the flag is what makes independent
+ * work visibly race ahead. `true` is this file's new machinery; see `scheduler.test.ts` for one
+ * test per mechanism, each derived from a watched dump, never reasoned about in advance.
  *
- * ## Why this must be timing-identical to M3/M7
+ * ## Why the in-order branch must stay timing-identical to M3/M7
  *
  * A machine built from wholly different parts (ROB + reservation stations + a CDB, instead of
- * latches) has to prove it is not merely CORRECT but TIMING-NEUTRAL before step 1b's "OoO wins by
- * N cycles" claim means anything: this model, held to strict in-order issue, must reproduce M3's
- * closed form at `issueWidth: 1` and M7's at `issueWidth: 2`, cycle for cycle. See
- * `M:\claud_projects\temp\m9\step1a-timing-derivation.md` for the hand-derivation that checks
- * this BEFORE this file existed, on the representative patterns that could plausibly diverge.
+ * latches) has to prove it is not merely CORRECT but TIMING-NEUTRAL in its degenerate position
+ * before an "OoO wins by N cycles" claim means anything: held to strict in-order issue, it must
+ * reproduce M3's closed form at `issueWidth: 1` and M7's at `issueWidth: 2`, cycle for cycle. See
+ * `M:\claud_projects\temp\m9\step1a-timing-derivation.md` for the hand-derivation that checked
+ * this before the file existed (now stale relative to the final 1a design — treat as a historical
+ * pre-check, not a spec) and `timing.test.ts` for the net itself.
  *
  * ## Where M7's pairing rules went
  *
  * M7's three group-formation rules (no two memory ops pair, no two branches pair, no intra-pair
- * RAW) are NOT dispatch rules here — putting them there would force *removing* them again at step
- * 1b, which is scoped to change only the issue POLICY. Instead:
+ * RAW) are NOT dispatch rules here — dispatch stays uniform across both `outOfOrderIssue`
+ * positions. Instead:
  *
  *  - Dispatch is bounded only by ROB capacity and `width` — no instruction-mix rule.
  *  - The single memory port and single branch unit are ISSUE-time resource contests (oldest
- *    ready contender wins; the loser retries next cycle).
+ *    ready contender wins; the loser retries next cycle) — shared between both issue policies via
+ *    {@link walkIssuable}, which differs only in "stop" (in-order) vs. "skip" (out-of-order) at
+ *    the first non-selectable entry.
  *  - Intra-pair RAW needs no rule: the dependent instruction gets a TAG, not a stale value, and
- *    strict in-order issue already stops it from passing its own unresolved producer.
+ *    either issue policy already stops it from passing its own unresolved producer (in-order:
+ *    structurally; out-of-order: because nothing has broadcast the tag yet).
  *
  * ## Forwarding has no off-position here
  *
@@ -193,6 +203,23 @@ export class OutOfOrderProcessor implements Processor {
   private cacheConfig: CacheConfig | null = null;
   private cache: CacheState | null = null;
 
+  /**
+   * Step 1b's whole gate. `false` (absent) runs EVERY line below unchanged from step 1a — issue
+   * stays strictly in-order, memory stays blocking, stores write at MEM like every latch model.
+   * `true` switches on the out-of-order scheduler, the non-blocking LSU + disambiguation, deferred
+   * store writes, and CDB arbitration, ALL TOGETHER (`docs/plans/m9-tasks.md` step 1b, pinned with
+   * the user 2026-07-22): `timing.test.ts` is the only regression net for 1a's faithfulness, and it
+   * asserts `outOfOrderIssue` absent/false reproduces M3/M7 cycle for cycle — so the in-order branch
+   * of every stage below must stay byte-for-byte what 1a shipped. It is also *why the money shot
+   * works*: the in-order branch still blocks on a miss, so flipping this flag is what makes
+   * independent work visibly race ahead.
+   */
+  private outOfOrder = false;
+  /** Step 1b: outstanding-miss slots for the non-blocking LSU. Inert (never consulted) at 1a. */
+  private numMshrs = 2;
+  /** Step 1b: which entries (by tag number) currently hold a granted MSHR slot. Always empty at 1a. */
+  private missInFlight = new Set<number>();
+
   private rob = new Rob(16);
   private rename = new RenameTable();
   /** Fetched-but-not-dispatched occupants, compacted, oldest first — mirrors the superscalar's `ifSlot`. */
@@ -207,7 +234,14 @@ export class OutOfOrderProcessor implements Processor {
    * same-cycle iteration order accident would let a consumer processed later in the same walk see
    * its producer's result instantly — a zero-latency forward the derivation worksheet rules out.
    */
-  private pendingBroadcasts: { tag: Tag; value: number }[] = [];
+  private pendingBroadcasts: { tag: Tag; seq: number; value: number }[] = [];
+  /**
+   * Step 1b, out-of-order mode only: broadcasts that lost CDB arbitration last cycle (more
+   * completions than `width` CDB ports) and carry over to compete again — see the broadcast-apply
+   * step in {@link step}. Always empty in blocking (1a) mode, where every completion is applied
+   * immediately with no port limit (see that method's doc for why the limit must stay OoO-only).
+   */
+  private deferredBroadcasts: { tag: Tag; seq: number; value: number }[] = [];
 
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     const width = config.issueWidth ?? 2;
@@ -218,6 +252,10 @@ export class OutOfOrderProcessor implements Processor {
     this.predictTaken = config.branchPrediction === 'static-taken';
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
+    this.outOfOrder = config.outOfOrderIssue ?? false;
+    this.numMshrs = config.numMshrs ?? 2;
+    this.missInFlight = new Set();
+    this.deferredBroadcasts = [];
     this.registers = makeRegisters();
     this.memory = new SparseMemory();
     for (let i = 0; i < image.words.length; i++) {
@@ -277,7 +315,30 @@ export class OutOfOrderProcessor implements Processor {
     this.stageIssueExecute(ctx);
     // The broadcast: apply everything this cycle completed, waking waiters for NEXT cycle's issue
     // decision — never this one (see `pendingBroadcasts`'s doc).
-    for (const { tag, value } of this.pendingBroadcasts) this.rob.wake(tag, value);
+    //
+    // In-order (1a) mode: apply ALL of them, unlimited — exactly 1a's behaviour, no port count.
+    // This must stay true even though more than `width` completions CAN occur in one 1a cycle
+    // (e.g. two ALU pass-throughs plus one unrelated load's miss-release, at width 2) — M3/M7's
+    // latch datapaths have no CDB port limit either, so imposing one here would desync the
+    // in-order branch from the timing baseline it must match.
+    //
+    // Out-of-order (1b) mode: the CDB has exactly `width` ports (mirrors the issue width — as
+    // many broadcast lanes as issue lanes, the simplest defensible geometry) and the count CAN be
+    // exceeded once misses stop blocking the machine, so a real, deterministic arbitration exists:
+    // oldest-`seq`-first wins a port; anyone who loses carries over to compete again next cycle,
+    // still ranked by their original age. Losing a slot delays only when WAITERS see the value
+    // (via `rob.wake`) — the producer's own commit schedule is untouched, since commit reads
+    // `RobEntry.value` directly, never via broadcast.
+    if (!this.outOfOrder) {
+      for (const { tag, value } of this.pendingBroadcasts) this.rob.wake(tag, value);
+    } else {
+      const candidates = [...this.deferredBroadcasts, ...this.pendingBroadcasts].sort(
+        (a, b) => a.seq - b.seq,
+      );
+      const winners = candidates.slice(0, this.width);
+      this.deferredBroadcasts = candidates.slice(this.width);
+      for (const { tag, value } of winners) this.rob.wake(tag, value);
+    }
     this.stageDispatch(ctx);
     this.stageBet(ctx);
     const fetchedThisCycle = this.stageFetch(ctx);
@@ -314,7 +375,32 @@ export class OutOfOrderProcessor implements Processor {
         }
         this.rename.restore(e.rd, e.tag, previous);
       }
+      // Step 1b: a flushed entry may be mid-miss holding an MSHR slot, or sitting in
+      // `deferredBroadcasts` having already completed but lost CDB arbitration — both must be
+      // released/purged, or a wrong-path entry would permanently squat a scarce MSHR slot, or a
+      // stale broadcast could still fire (harmless to `rob.wake`, since no live waiter remains, but
+      // not something a flush should leave lying around). Both are no-ops in blocking (1a) mode:
+      // `mshrGranted` is never set true there, and `deferredBroadcasts` is always empty.
+      for (const e of flushed) {
+        if (e.mshrGranted) this.missInFlight.delete(tagNumber(e.tag));
+      }
+      this.deferredBroadcasts = this.deferredBroadcasts.filter((b) => b.seq <= squashSeq);
       if (flushed.length > 0) flushStages.push('dispatch');
+      // Step 1b: out-of-order issue breaks 1a's implicit guarantee behind `haltFetch` — that an
+      // architectural halt is only ever confirmed once every OLDER entry has already issued, so a
+      // halting `ecall` is never itself wrong-path. `ecall` reads no registers (`sourceRegs`
+      // returns nulls), so it is ALWAYS ready and can issue immediately once dispatched — including
+      // on a fetch-fall-through path behind an older, still-unresolved branch. If that branch later
+      // mispredicts, `flushAfter` above correctly removes the wrong-path `ecall` from the ROB, but
+      // the STICKY `haltFetch` flag it had already set has no other trigger to un-stick it — fetch
+      // would stay frozen forever even after the redirect to the correct path. Re-derive it from
+      // the ROB's own post-flush contents: a real (right-path) halt is never itself removed by this
+      // flush (it IS the squash source, seq === squashSeq, so `flushAfter`'s seq > squashSeq test
+      // spares it), so this can only ever CLEAR a stale, wrong-path halt — never a genuine one. A
+      // no-op in blocking (1a) mode, where strict in-order issue makes a wrong-path halt impossible.
+      if (this.haltFetch && !this.rob.all().some((e) => e.halt)) {
+        this.haltFetch = false;
+      }
     }
     if ((ctx.squash !== null || ctx.bet !== null) && fetchedThisCycle.some((f) => f !== null)) {
       flushStages.push('IF');
@@ -390,6 +476,19 @@ export class OutOfOrderProcessor implements Processor {
     const ready = this.rob.commitReady(this.width);
     const events: TraceEvent[] = [];
     for (const e of ready) {
+      // Step 1b, out-of-order mode only: a store's write to memory happens HERE, at commit — not
+      // at MEM access like every in-order model (including this one's own 1a/blocking branch).
+      // With out-of-order issue, a store's address+data can be computed speculatively past a
+      // still-unresolved older branch; if the write happened at MEM access, a later-discovered
+      // misprediction could never take it back (memory has no undo). Deferring to commit — which
+      // by construction only ever processes right-path entries, since a wrong-path one is removed
+      // by `flushAfter` long before it could reach the ROB head — is what makes speculation safe.
+      // See `writeStoreToMemory` for the write itself and `stageMemAccessOutOfOrder` for why the
+      // cache-timing PROBE still happens early (that mutates no architectural value, so it may
+      // safely stay speculative — see that method's doc).
+      if (this.outOfOrder && STORES.has(e.decoded.mnemonic)) {
+        this.writeStoreToMemory(e, events);
+      }
       if (e.rd !== 0) {
         if (e.value === null) {
           throw new Error(`out-of-order: ${e.decoded.mnemonic} commits x${e.rd} with no value`);
@@ -414,13 +513,53 @@ export class OutOfOrderProcessor implements Processor {
   /** Bridges `stageCommit`'s events into the shared `ctx.events` once `ctx` exists. */
   private pendingCommitEvents: TraceEvent[] = [];
 
+  /**
+   * Step 1b, out-of-order mode only: the deferred store write (see `stageCommit`'s call site).
+   * `aluOut`/`storeData` were latched back at issue (`executeEntry`) and have sat untouched in the
+   * ROB entry ever since — commit is simply the first moment it is safe to act on them.
+   */
+  private writeStoreToMemory(e: RobEntry, events: TraceEvent[]): void {
+    const mnemonic = e.decoded.mnemonic;
+    if (e.aluOut === null) {
+      throw new Error(`out-of-order: ${mnemonic} commits with no effective address latched`);
+    }
+    if (e.storeData === null) {
+      throw new Error(`out-of-order: ${mnemonic} commits with no store datum latched`);
+    }
+    const addr = e.aluOut >>> 0;
+    const value =
+      mnemonic === 'sb'
+        ? e.storeData & 0xff
+        : mnemonic === 'sh'
+          ? e.storeData & 0xffff
+          : e.storeData;
+    events.push({ type: 'mem-write', addr, value, instr: e.instr });
+    if (mnemonic === 'sb') this.memory.writeByte(addr, value);
+    else if (mnemonic === 'sh') this.memory.writeHalf(addr, value);
+    else this.memory.writeWord(addr, value);
+  }
+
   // -----------------------------------------------------------------------------------------
-  // MEM ACCESS + CDB BROADCAST — the single data-memory port, reused verbatim from
-  // `engine-common`'s cache: BLOCKING on a miss, freezing everything younger (1a keeps the exact
-  // fidelity M3/M7 have; a non-blocking LSU is step 1b's job).
+  // MEM ACCESS + CDB BROADCAST. Two whole policies, switched by `this.outOfOrder` (see that
+  // field's doc) — never mixed:
+  //
+  //  - In-order (1a, unchanged): the single data-memory port is BLOCKING on a miss, freezing
+  //    everything younger (`ctx.memStall`). A store writes memory right here.
+  //  - Out-of-order (1b): a non-blocking LSU. Each entry's miss is tracked independently
+  //    (`missCyclesRemaining` + an MSHR grant, `this.missInFlight`) instead of one shared
+  //    `ctx.memStall` — an unrelated ready entry is never frozen by someone else's miss. A load
+  //    additionally passes a memory-disambiguation gate before it may access memory at all
+  //    (`disambiguationClear`). A store's write is NOT here — see `stageCommit`/
+  //    `writeStoreToMemory` for why it is deferred — this stage only prices the store's cache
+  //    timing (a real MSHR-bearing miss can happen on a store too) and marks it `'completed'`.
   // -----------------------------------------------------------------------------------------
 
   private stageMemAccess(ctx: CycleCtx): void {
+    if (this.outOfOrder) this.stageMemAccessOutOfOrder(ctx);
+    else this.stageMemAccessInOrder(ctx);
+  }
+
+  private stageMemAccessInOrder(ctx: CycleCtx): void {
     for (const e of this.pendingCommitEvents) ctx.events.push(e);
     this.pendingCommitEvents = [];
 
@@ -457,6 +596,95 @@ export class OutOfOrderProcessor implements Processor {
       }
       this.completeMemAccess(ctx, e);
     }
+  }
+
+  /**
+   * Step 1b's non-blocking LSU. Same per-entry cache-timing shape as the in-order branch, but
+   * gated per-entry instead of machine-wide: a miss NEVER sets `ctx.memStall`, so an independent
+   * entry keeps completing on schedule while another sits mid-miss — the tier's whole benefit.
+   *
+   * MSHR handling: a newly DETECTED miss either GRANTS a slot immediately (if `this.missInFlight`
+   * has room) or QUEUES (`missCyclesRemaining` set, `mshrGranted` false) until one frees — checked
+   * fresh every cycle. Granting costs its own cycle with no decrement yet, deliberately mirroring
+   * the in-order branch's own "detect cycle" (no decrement the cycle a miss is first found) so a
+   * single miss with an MSHR free immediately takes exactly `missPenalty` cycles, same as 1a — the
+   * only observable difference for that one entry is that NOTHING ELSE freezes around it.
+   */
+  private stageMemAccessOutOfOrder(ctx: CycleCtx): void {
+    for (const e of this.pendingCommitEvents) ctx.events.push(e);
+    this.pendingCommitEvents = [];
+
+    for (const e of this.rob.all()) {
+      if (e.state === 'executed') {
+        e.state = 'completed';
+        continue;
+      }
+      if (e.state !== 'awaitingMem') continue;
+
+      const load = isLoad(e.decoded);
+      const store = STORES.has(e.decoded.mnemonic);
+
+      // A load may not even ATTEMPT its memory access while an older, still-in-flight store's
+      // address is unknown or aliases it — see `disambiguationClear`. Retried fresh every cycle;
+      // no state is touched while blocked, so there is nothing to undo if this load is later
+      // flushed.
+      if (load && !this.disambiguationClear(e)) continue;
+
+      if (e.missCyclesRemaining > 0) {
+        if (!e.mshrGranted) {
+          if (this.missInFlight.size >= this.numMshrs) continue; // every MSHR busy — stay queued
+          this.missInFlight.add(tagNumber(e.tag));
+          e.mshrGranted = true;
+          continue; // the grant cycle itself, no decrement yet (mirrors the detect cycle below)
+        }
+        const remaining = e.missCyclesRemaining - 1;
+        if (remaining > 0) {
+          e.missCyclesRemaining = remaining;
+          continue;
+        }
+        e.missCyclesRemaining = 0;
+        this.missInFlight.delete(tagNumber(e.tag));
+        e.mshrGranted = false;
+        // the release cycle: fall through to the real access this same cycle, as the in-order
+        // branch does.
+      } else {
+        const penalty = this.consultCache(ctx, e);
+        if (penalty > 0) {
+          e.missCyclesRemaining = penalty;
+          // Grant NOW if a slot is free, so a lone miss costs exactly `missPenalty` cycles total
+          // (detect+grant sharing this one cycle) — otherwise it queues for a later cycle's retry.
+          if (this.missInFlight.size < this.numMshrs) {
+            this.missInFlight.add(tagNumber(e.tag));
+            e.mshrGranted = true;
+          }
+          continue;
+        }
+      }
+      this.completeMemAccessOutOfOrder(ctx, e, load, store);
+    }
+  }
+
+  /**
+   * Memory disambiguation (step 1b): may `load` (already known to be a load in `'awaitingMem'`,
+   * so `load.aluOut` is already latched) go to memory yet? It may not bypass any OLDER store
+   * still sitting in the ROB (uncommitted): if that store's own address is not yet known, the
+   * load cannot rule out aliasing and must wait; if it IS known and matches, the load must wait
+   * for that exact store to retire (at which point `this.memory` already holds its value, so an
+   * ordinary read afterward is correct with no forwarding path needed — the simplest design that
+   * satisfies "does not bypass an aliasing older store").
+   */
+  private disambiguationClear(load: RobEntry): boolean {
+    if (load.aluOut === null) {
+      throw new Error(`out-of-order: ${load.decoded.mnemonic} disambiguates with no address yet`);
+    }
+    const addr = load.aluOut >>> 0;
+    for (const s of this.rob.all()) {
+      if (s.seq >= load.seq) continue; // only OLDER entries can alias
+      if (!STORES.has(s.decoded.mnemonic)) continue;
+      if (s.aluOut === null) return false; // an older store's address isn't known yet — wait
+      if (s.aluOut >>> 0 === addr) return false; // aliases an older, still-uncommitted store
+    }
+    return true;
   }
 
   private consultCache(ctx: CycleCtx, e: RobEntry): number {
@@ -496,7 +724,7 @@ export class OutOfOrderProcessor implements Processor {
         ctx.events.push({ type: 'mem-read', addr, value: raw, instr: e.instr });
         e.value =
           mnemonic === 'lb' ? (raw << 24) >> 24 : mnemonic === 'lh' ? (raw << 16) >> 16 : raw;
-        if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, value: e.value });
+        if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
       } else {
         if (e.storeData === null) {
           throw new Error(`out-of-order: ${mnemonic} reaches MEM with no store datum latched`);
@@ -516,44 +744,115 @@ export class OutOfOrderProcessor implements Processor {
     e.state = 'completed';
   }
 
+  /**
+   * Step 1b's counterpart to {@link completeMemAccess}: a load reads memory and broadcasts,
+   * exactly as the in-order branch does. A store does NOT write here — {@link stageCommit} /
+   * {@link writeStoreToMemory} do, once the store is known to be right-path. This is the one
+   * place the two branches' behaviour genuinely diverges beyond "blocking vs non-blocking timing."
+   */
+  private completeMemAccessOutOfOrder(
+    ctx: CycleCtx,
+    e: RobEntry,
+    load: boolean,
+    store: boolean,
+  ): void {
+    if (load) {
+      if (e.aluOut === null) {
+        throw new Error(`out-of-order: ${e.decoded.mnemonic} reaches MEM with no address latched`);
+      }
+      const addr = e.aluOut >>> 0;
+      const mnemonic = e.decoded.mnemonic;
+      const raw =
+        mnemonic === 'lb' || mnemonic === 'lbu'
+          ? this.memory.readByte(addr)
+          : mnemonic === 'lh' || mnemonic === 'lhu'
+            ? this.memory.readHalf(addr)
+            : this.memory.readWord(addr);
+      ctx.events.push({ type: 'mem-read', addr, value: raw, instr: e.instr });
+      e.value = mnemonic === 'lb' ? (raw << 24) >> 24 : mnemonic === 'lh' ? (raw << 16) >> 16 : raw;
+      if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
+    } else if (!store) {
+      throw new Error(`out-of-order: ${e.decoded.mnemonic} reached MEM as neither load nor store`);
+    }
+    e.state = 'completed';
+  }
+
   // -----------------------------------------------------------------------------------------
-  // ISSUE + EXECUTE — strict in-order, oldest-first, no reordering (1a's whole constraint). The
-  // single memory port and single branch unit are resource contests HERE, not dispatch rules —
-  // see the file header. A blocked entry stops the walk: nothing younger may pass it.
+  // ISSUE + EXECUTE. In-order (1a): strict program order, oldest-first, no reordering — a blocked
+  // entry stops the walk, nothing younger may pass it. Out-of-order (1b): true wakeup/select — a
+  // blocked entry is merely SKIPPED, so a ready younger entry may issue around it. Both share one
+  // walk (`walkIssuable`, below) so the two policies can never drift apart — see its doc.
   // -----------------------------------------------------------------------------------------
 
   private stageIssueExecute(ctx: CycleCtx): void {
-    if (ctx.memStall) return; // the whole front end freezes while a miss is being served
+    if (ctx.memStall) return; // in-order only: the whole front end freezes on a miss (never set when this.outOfOrder)
 
-    let issueBudget = this.width;
-    let memUsed = false;
-    let branchUsed = false;
-
-    for (const e of this.rob.all()) {
-      if (e.state !== 'waiting') continue; // already issued/completed — not this loop's concern
-      if (ctx.squash !== null) break; // an older entry just mispredicted; nothing younger issues
-      if (issueBudget <= 0) break;
-
-      const isMem = usesMemPort(e.decoded);
-      const isBranch = TRANSFERS.has(e.decoded.mnemonic);
-      if (isMem && memUsed) break;
-      if (isBranch && branchUsed) break;
-
-      // Readiness reads the operand sources CAPTURED AT DISPATCH (see `RobEntry.srcA`/`srcB`'s
-      // doc) — never re-derived here. Re-deriving live would let a younger same-cycle dispatch's
-      // rename claim corrupt this (older) instruction's already-decided source.
-      if ((e.srcA !== null && !e.srcA.ready) || (e.srcB !== null && !e.srcB.ready)) break;
-
-      issueBudget -= 1;
-      if (isMem) memUsed = true;
-      if (isBranch) branchUsed = true;
-
+    for (const e of this.walkIssuable(ctx)) {
       this.executeEntry(
         ctx,
         e,
         e.srcA !== null && e.srcA.ready ? e.srcA.value : 0,
         e.srcB !== null && e.srcB.ready ? e.srcB.value : 0,
       );
+      // `executeEntry` may just have set `ctx.squash` (a mispredict or a halt). `walkIssuable`
+      // reads `ctx` fresh every time this generator is resumed (JS generators re-run their body
+      // from the paused point, not from a snapshot), so the NEXT entry it offers already reflects
+      // that — in-order mode stops dead, out-of-order mode skips only entries younger than the
+      // squashing one (guaranteed by the oldest-first walk order: nothing not-yet-visited can be
+      // older than the entry that just squashed).
+    }
+  }
+
+  /**
+   * The shared resource-contest + readiness walk behind both real issue (above) and `stageBet`'s
+   * one-cycle-ahead prediction. Yields entries in the order they may issue THIS cycle, oldest
+   * ready-and-eligible one first (deterministic tie-break, INV-1 — no seed needed): a linear
+   * oldest-to-youngest scan that hands out `width` slots and the single mem-port/branch-unit
+   * resources on a first-come basis naturally IS oldest-first priority, not just a tie-break.
+   *
+   * `this.outOfOrder` is the only branch point, and it is exactly "stop vs. skip": in-order mode
+   * treats the first non-selectable entry as a wall (nothing younger may pass it, 1a's whole
+   * constraint); out-of-order mode treats it as merely occupied — this cycle — and keeps scanning
+   * for a ready younger entry (the wakeup/select this step adds). Everything else (readiness,
+   * resource accounting, squash-awareness) is identical, which is the point: `stageBet` predicting
+   * a DIFFERENT policy than `stageIssueExecute` actually runs was 1a's bug #6.
+   *
+   * A caller that only inspects the yielded entries (never calls `executeEntry`) — `stageBet` — is
+   * safe to fully drain in one pass: nothing in this generator mutates ROB/rename state, so no
+   * yielded entry's eligibility can retroactively change mid-walk from that caller's own actions.
+   */
+  private *walkIssuable(ctx: CycleCtx): Generator<RobEntry> {
+    let issueBudget = this.width;
+    let memUsed = false;
+    let branchUsed = false;
+
+    for (const e of this.rob.all()) {
+      if (e.state !== 'waiting') continue; // already issued/completed — not this walk's concern
+      if (issueBudget <= 0) break; // no width left for anyone, in-order or out-of-order
+
+      if (ctx.squash !== null) {
+        if (this.outOfOrder) continue;
+        break;
+      }
+
+      const isMem = usesMemPort(e.decoded);
+      const isBranch = TRANSFERS.has(e.decoded.mnemonic);
+      const resourceBlocked = (isMem && memUsed) || (isBranch && branchUsed);
+
+      // Readiness reads the operand sources CAPTURED AT DISPATCH (see `RobEntry.srcA`/`srcB`'s
+      // doc) — never re-derived here. Re-deriving live would let a younger same-cycle dispatch's
+      // rename claim corrupt this (older) instruction's already-decided source.
+      const ready = (e.srcA === null || e.srcA.ready) && (e.srcB === null || e.srcB.ready);
+
+      if (!ready || resourceBlocked) {
+        if (this.outOfOrder) continue;
+        break;
+      }
+
+      issueBudget -= 1;
+      if (isMem) memUsed = true;
+      if (isBranch) branchUsed = true;
+      yield e;
     }
   }
 
@@ -770,7 +1069,7 @@ export class OutOfOrderProcessor implements Processor {
       // `stageMemAccess`.
       e.state = 'executed';
       if (e.rd !== 0 && e.value !== null) {
-        this.pendingBroadcasts.push({ tag: e.tag, value: e.value });
+        this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
       }
       // The architectural halt is confirmed HERE, at issue — not at dispatch. Dispatch runs
       // decoupled and far ahead of issue in this design (that decoupling is the whole point), so a
@@ -888,37 +1187,20 @@ export class OutOfOrderProcessor implements Processor {
   // ready, non-transfer entry (e.g. `blt` co-issuing with the `mv` dispatched just ahead of it
   // in `branch-flavors.s`) — betting only when the transfer itself is head missed exactly that
   // case, since the older `mv` (not a transfer, so never bet on) was still occupying 'waiting'
-  // at the moment of the check. So this mirrors `stageIssueExecute`'s own walk — same budget,
-  // same resource contest, same "stop at the first not-ready entry" rule — to find whichever
-  // entries WOULD issue next cycle, and bets on the (at most one, the single branch unit)
-  // transfer among them.
+  // at the moment of the check. So this walks `walkIssuable` — the SAME generator
+  // `stageIssueExecute` runs, in-order or out-of-order alike — to find whichever entries WOULD
+  // issue next cycle, and bets on the (at most one, the single branch unit) transfer among them.
+  // Sharing the walk (not re-deriving it, as 1a's own version of this method did) is what keeps
+  // this prediction from drifting out of sync with what issue actually does once issue goes
+  // out-of-order at step 1b — exactly the failure mode 1a's bug #6 was.
   // -----------------------------------------------------------------------------------------
 
   private stageBet(ctx: CycleCtx): void {
     if (!this.predictTaken) return;
     if (ctx.squash !== null || ctx.bet !== null) return;
 
-    let issueBudget = this.width;
-    let memUsed = false;
-    let branchUsed = false;
-
-    for (const e of this.rob.all()) {
-      if (e.state !== 'waiting') continue;
-      if (issueBudget <= 0) break;
-
-      const ready = (e.srcA === null || e.srcA.ready) && (e.srcB === null || e.srcB.ready);
-      if (!ready) break; // strict in-order: nothing younger issues before this one does either
-
-      const isMem = usesMemPort(e.decoded);
-      const isBranch = TRANSFERS.has(e.decoded.mnemonic);
-      if (isMem && memUsed) break;
-      if (isBranch && branchUsed) break;
-
-      issueBudget -= 1;
-      if (isMem) memUsed = true;
-      if (isBranch) branchUsed = true;
-
-      if (!isBranch || e.predictedTaken) continue;
+    for (const e of this.walkIssuable(ctx)) {
+      if (!TRANSFERS.has(e.decoded.mnemonic) || e.predictedTaken) continue;
       const target = speculativeTarget(e.decoded, e.pc);
       if (target === null) continue; // not predictable (or a `jalr` — see `predict.ts`)
 

@@ -118,6 +118,16 @@ export interface ProcessorConfig {
    * model reads it. Optional, same precedent as {@link outOfOrderIssue}.
    */
   slowOpLatency?: number;
+  /**
+   * Outstanding-miss handling unit (MSHR) count for the non-blocking load/store unit (M9 step 1b).
+   * How many concurrent cache misses the out-of-order model may have in flight before a further
+   * miss must queue for a free slot — the structural cap on "miss-under-miss" memory-level
+   * parallelism. Deliberately deferred past step 0 (its only consumer, the non-blocking LSU, did
+   * not exist yet); absent defaults to 2, confirmed against the corpus (`array-sum.s`'s two
+   * consecutive independent loads are the miss-under-miss pair a default of 2 unlocks). Optional,
+   * same precedent as {@link outOfOrderIssue}; only the out-of-order model reads it.
+   */
+  numMshrs?: number;
   /** Only if a model needs deterministic randomness (INV-1: the seed is part of config). */
   seed?: number;
 }

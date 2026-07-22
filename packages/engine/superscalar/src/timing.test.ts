@@ -529,6 +529,46 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 7 retires, no branches (M9 step 1b — a store immediately followed by a dependent load of the
+   * SAME address, added for out-of-order memory disambiguation; this superscalar retires strictly
+   * in order so the pairing/port rules below are the whole story, no disambiguation needed here).
+   *    0 lui t0     4 addi t0,t0    8 addi t1,x0,99   12 sw t1,0(t0)
+   *   16 lw a0,0(t0) 20 addi a7,x0,10  24 ecall
+   *
+   * WIDTH 2, both positions (the pairing partition itself does not depend on forwarding — only
+   * WHICH cycles are free vs. blocked refusals does, exactly as `byte-loads.s`):
+   *   1 {lui@0}                  — `addi t0@4` reads the t0 it writes: INTRA-PAIR RAW.
+   *   2 {addi t0@4, addi t1@8}   — pair: `addi t1` reads only x0, no RAW on t0, neither is mem/branch.
+   *   3 {sw@12}                  — `lw@16` also wants the data port: MEM-PORT (free refusal once sw
+   *                                 issues; see below for why it costs 2 BLOCKED cycles under OFF).
+   *   4 {lw@16, addi a7@20}      — pair: only one memory op, `addi a7` reads only x0.
+   *   5 {ecall@24}               — alone, nothing left to pair with.
+   *   G = 5, Q = 2, L = 0 ⇒ cycles = 5 + 0 + 0 + 0 + 4 = **9**.
+   * OFF: the interlock adds 4 blocked cycles the pairing partition above does not touch — `sw@12`
+   *      must wait for `addi t1@8`'s WB (2 cycles) before it can even be READ, and it is the whole
+   *      group (slot 0), so both are BLOCKED, not free; `lw@16`'s own mem-port refusal stays free
+   *      once `sw` finally issues (the same free-vs-blocked split `byte-loads.s` shows). L = 4 ⇒
+   *      cycles = 5 + 4 + 0 + 0 + 4 = **13**.
+   * No transfers ⇒ doomed and betting are all zero in both positions.
+   */
+  'store-forward.s': {
+    retires: 7,
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // `ecall` is the last word of text — nothing behind it
+    stalls: { off: { 4: 2, 12: 2 }, on: {} },
+    // `sw` misses (no-write-allocate) and `lw` to the SAME never-before-touched address then
+    // compulsory-misses too (and installs). 2 misses at both sizes.
+    misses: { small: 2, large: 2 },
+    w2: {
+      groups: { off: 5, on: 5 },
+      pairs: { off: 2, on: 2 },
+      blocked: { off: 4, on: 0 },
+      doomed: { off: 0, on: 0 },
+      betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } }, // no transfers
+    },
+  },
+
+  /**
    * 2 prologue + 3 per iteration × 10 + 2 epilogue = 34 retires. `bnez` is taken 9 times.
    *    0 addi a0,x0,0   4 addi t0,x0,10
    *    8 add a0,a0,t0  12 addi t0,t0,-1  16 bne t0,x0,loop

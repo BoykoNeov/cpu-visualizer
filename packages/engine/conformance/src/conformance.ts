@@ -134,6 +134,10 @@ const RESULT_ORACLES: Record<
   // since an in-order superscalar retires in order), and 42 is only here so the equality net has a
   // non-reset value to check.
   'paired-branches.s': { regs: { 10: 42 } },
+  // A store to `cell` immediately followed by a dependent load of the SAME address: a0 (x10) must
+  // see the just-stored 99, never the stale 0 the `.data` segment starts with (M9 step 1b — memory
+  // disambiguation's one architecturally-visible failure mode).
+  'store-forward.s': { regs: { 10: 99 }, mem: { cell: 99 } },
 };
 
 const PROGRAMS = readdirSync(PROGRAMS_DIR)

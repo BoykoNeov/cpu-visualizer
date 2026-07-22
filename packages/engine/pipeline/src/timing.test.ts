@@ -440,6 +440,31 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 7 retires, no branches (M9 step 1b — a store immediately followed by a dependent load of the
+   * SAME address, added for out-of-order memory disambiguation; this pipeline is strictly in-order
+   * so the store's MEM stage always precedes the load's, and it needs no special handling here).
+   *    0 lui t0     4 addi t0,t0    8 addi t1,x0,99   12 sw t1,0(t0)
+   *   16 lw a0,0(t0) 20 addi a7,x0,10  24 ecall
+   *
+   * OFF: the `la` addi at 4 stalls 2 (RAW on t0, distance 1). `sw` at 12 stalls 2: it reads t1 from
+   *      the `addi` right before it (distance 1). `lw` at 16 reads t0 from the `la`'s addi, but that
+   *      producer is 3 instructions back — already retired far enough, no stall. S = 4.
+   * ON:  every RAW here is on a non-load producer (the `la`'s addi, `sw`'s own `addi t1`), so
+   *      forwarding covers all of them and the load-use rule never triggers (`lw`'s own consumer —
+   *      there is none; nothing after it reads a0). S = 0.
+   */
+  'store-forward.s': {
+    retires: 7,
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // `ecall` is the last word of text — nothing behind it
+    stalls: { off: { 4: 2, 12: 2 }, on: {} },
+    // `sw` misses (no-write-allocate — a store miss installs nothing, cache.ts) and `lw` to the
+    // SAME never-before-touched address then compulsory-misses too (and installs). 2 misses at
+    // both sizes: one address, one line, unaffected by cache geometry.
+    misses: { small: 2, large: 2 },
+  },
+
+  /**
    * 2 prologue + 3 per iteration × 10 + 2 epilogue = 34 retires. `bnez` is taken 9 times.
    *    0 addi a0,x0,0   4 addi t0,x0,10
    *    8 add a0,a0,t0  12 addi t0,t0,-1  16 bne t0,x0,loop

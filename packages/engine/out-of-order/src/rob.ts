@@ -65,6 +65,13 @@ export interface RobEntry {
   storeData: number | null;
   /** >0 while a load/store miss is being served; decremented each mem-access cycle. */
   missCyclesRemaining: number;
+  /**
+   * Step 1b, non-blocking mode only: has this entry's outstanding miss actually been GRANTED an
+   * MSHR slot? A miss may be DETECTED (`missCyclesRemaining` set) before a slot is free — it then
+   * sits queued (`missCyclesRemaining` frozen, this flag false) until `OutOfOrderProcessor` grants
+   * one. Always false in blocking (1a) mode, where every miss is granted implicitly.
+   */
+  mshrGranted: boolean;
 }
 
 /** The fields the allocator needs from a caller; everything else starts at its pending default. */
@@ -119,6 +126,7 @@ export class Rob {
       aluOut: null,
       storeData: null,
       missCyclesRemaining: 0,
+      mshrGranted: false,
     };
     this.nextSeq += 1;
     this.entries.push(entry);

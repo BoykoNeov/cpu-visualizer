@@ -250,27 +250,118 @@ milestone must lose weight, it loses step 7, not step 6.
       actually built — it never anticipated late-bet gating, the release-cycle `memStall` fix, or
       width > 1 co-issue betting; treat it as a historical pre-check, not a spec of the final design.
 
-- [ ] **1b. The out-of-order scheduler — the model's soul.** Reservation stations with operand-tag
-      tracking; wakeup/select (a ready instruction issues to a free FU, ties broken **oldest-first**
-      for determinism — INV-1, no seed needed); the CDB with deterministic arbitration (oldest
-      result wins a contested broadcast); speculation past branches with **ROB-based recovery**
-      (mispredict flushes the ROB tail and the rename map back to the branch, precise state); and the
-      **non-blocking load/store unit** — a load queue, outstanding-miss handling (MSHRs, count is a
-      config or a pinned constant), and **memory disambiguation** (a load checks the store queue /
-      older stores and does not bypass an aliasing older store). Under Option B, the RS also holds an
-      instruction across its multi-cycle execute. This is where the core beats 1a: under a miss (or a
-      slow op), independent instructions issue and complete around the waiting one, while commit
-      stays in order. **The width cost is real and lands here (the price of "build it superscalar"):**
-      at `issueWidth` 2 the ROB commits ≥2 entries/cycle, the CDB arbitrates among **multiple
-      completions in one cycle** (not just the single-completer case), dispatch is wide, and
-      flush/recovery must unwind a wider frontier. Scalar OoO (`issueWidth: 1`) exercises none of
-      that — which is exactly why width stays a config knob, not a fork in the code. **Every claim that names a specific cycle or a specific RS/ROB slot must be
-      WATCHED in a dump, not reasoned about** — the M7 lesson (a slot is not a stable lane) is
-      sharper here, where an instruction's ROB entry, RS occupancy, and completion order are all
-      independent moving parts. Acceptance: strictly fewer cycles than 1a on the money-shot
-      program(s) with byte-identical architectural results; a unit test per new mechanism (rename,
-      wakeup/select, CDB arbitration, non-blocking load, disambiguation, ROB flush-recovery);
-      disambiguation correctness pinned by a store→load-alias program.
+- [x] **1b. The out-of-order scheduler — the model's soul.** DONE 2026-07-22. Reservation stations
+      with operand-tag tracking; wakeup/select (a ready instruction issues to a free FU, ties broken
+      **oldest-first** for determinism — INV-1, no seed needed); the CDB with deterministic
+      arbitration (oldest result wins a contested broadcast); speculation past branches with
+      **ROB-based recovery** (mispredict flushes the ROB tail and the rename map back to the branch,
+      precise state); and the **non-blocking load/store unit** — outstanding-miss handling (MSHRs,
+      `numMshrs`, default 2), and **memory disambiguation** (a load checks older, still-in-flight
+      stores and does not bypass an aliasing one). Option B (the slow-op knob) is **NOT built at this
+      step** — `slowOpLatency` stays an unread config field, deferred past 1b as the advisor
+      recommended (build A — the honest cache-miss floor — first; B's op-to-slow needs a real
+      program to pick against, which doesn't exist without an OoO engine to dump). This is where the
+      core beats 1a: under a miss, independent instructions issue and complete around the waiting
+      one, while commit stays in order.
+
+      **The load-bearing structural call, made before any code (per the advisor, and matching the
+      instinct going in): gate the ENTIRE new machine on `ProcessorConfig.outOfOrderIssue`, so
+      `false` reproduces 1a byte-for-byte** — `timing.test.ts` never sets the flag, so it is the
+      regression net for free, and it is also *why the money shot works*: the in-order branch still
+      blocks on a miss, so flipping the flag is what makes independent work visibly race ahead.
+      Every new mechanism below lives behind that one boolean; the in-order code path is completely
+      unchanged from 1a (only `stageBet`/`stageIssueExecute` were refactored to share one walk — see
+      below — a behavior-preserving dedup, not a policy change).
+
+      **Built, in the sequence the advisor laid out, each watched in a dump before the next:**
+      (a) wired the flag as a pure gate, confirmed `timing.test.ts` (290 cases) still green with zero
+      new logic. (b) out-of-order issue: `stageIssueExecute`'s old duplicate-of-`stageBet` walk was
+      replaced by one shared generator, `walkIssuable` — in-order mode STOPS at the first
+      not-ready/resource-blocked entry (1a's policy, unchanged), out-of-order mode SKIPS it and keeps
+      scanning; `stageBet` now calls the same generator instead of hand-mirroring it, which is what
+      1a's own bug #6 said to fix once issue could reorder. (c) the non-blocking LSU: each
+      `RobEntry` gained `mshrGranted`; a newly DETECTED miss grants an MSHR slot immediately if one
+      is free (costing the SAME one detect cycle 1a's single-miss case costs) or queues
+      (`missCyclesRemaining` frozen) until one frees; a miss never sets `ctx.memStall`, so nothing
+      unrelated freezes. Got the money shot first, before touching disambiguation, per the advisor:
+      `array-sum.s`, cache on, static-taken, ran strictly fewer cycles out-of-order than in-order
+      with identical final registers and memory — the exact count moved slightly across the
+      remaining sub-steps (see the final pinned number below) but the inequality held from this
+      checkpoint on. (d) disambiguation + store-defer-to-commit, together (they need
+      each other: deferring writes to commit is what makes disambiguation's "wait for the aliasing
+      store" answer correct, since memory only gains the true value once that store retires). A load
+      in `'awaitingMem'` may not access memory while any OLDER store still in the ROB has an unknown
+      address (must wait) or a matching one (must wait for THAT store to commit — no forwarding path,
+      the advisor's simpler recommendation over store→load forwarding). Stores now write memory (and
+      emit `mem-write`) at `stageCommit`, never at MEM access — required once out-of-order issue can
+      let a store's address+data be computed speculatively past a still-unresolved older branch;
+      writing early would make a later-discovered misprediction unable to take it back. Authored
+      `content/programs/store-forward.s` (a store immediately followed by a dependent load of the
+      SAME address) — the corpus's first `sw`→aliasing-`lw`, and the one case where the deferred
+      write's window is actually visible: a naive engine would read the stale pre-store value.
+      (e) CDB arbitration: the CDB has exactly `width` ports (mirrors issue width — the simplest
+      defensible geometry); out-of-order mode sorts this cycle's completions plus any carried-over
+      losers by `RobEntry.seq` (never by `Tag` — the PRF-forward-compat seam explicitly forbids
+      arithmetic/ordering on a tag), takes the oldest `width` as winners, and defers the rest to
+      compete again next cycle. In-order mode applies every completion unconditionally, unlimited,
+      exactly 1a's behaviour — a real port limit there would desync it from M3/M7, since more than
+      `width` completions CAN occur in one 1a cycle (two ALU pass-throughs plus an unrelated load's
+      miss-release) with no port limit in the latch models either. Losing arbitration delays only
+      when WAITERS see the value; the producer's own commit is untouched, since commit reads
+      `RobEntry.value` directly, never via broadcast.
+
+      **A genuine correctness bug found via the flush-recovery test, not reasoned about in
+      advance — the sharpest finding of the step.** 1a's `haltFetch` is a STICKY flag: once an
+      `ecall`/`ebreak`/invalid-instruction sets it, nothing ever un-sets it, because 1a's strict
+      in-order issue makes that safe — a halt can only be CONFIRMED once every older entry has
+      already issued, so a halting instruction is never itself wrong-path. Out-of-order issue breaks
+      that guarantee: `ecall` reads no registers (`sourceRegs` returns nulls), so it is ALWAYS ready
+      and can issue the moment it dispatches — including on the fall-through fetched behind an
+      older, still-unresolved branch. If that branch later mispredicts, `flushAfter` correctly
+      removes the wrong-path `ecall` from the ROB, but the sticky `haltFetch` it had already set has
+      no other trigger to clear — fetch stayed frozen forever, even after the redirect to the correct
+      path (a real infinite loop, caught by the flush-recovery test timing out at `maxCycles`, not by
+      an assertion). Fixed by re-deriving `haltFetch` from the ROB's own post-flush contents
+      (`!this.rob.all().some(e => e.halt)`) after every flush: a genuine right-path halt is never
+      itself removed by the flush that discovers it (it IS the squash source, so `flushAfter`'s
+      `seq > squashSeq` test spares it), so this can only ever clear a STALE, wrong-path halt — a
+      no-op in blocking (1a) mode, where the scenario is structurally impossible.
+
+      **Acceptance MET.** Money shot: `array-sum.s` strictly fewer cycles out-of-order than in-order
+      (61 → 41, final pinned numbers, verified against the actual test run — not the phase-c
+      checkpoint value above, which shifted slightly once disambiguation/store-defer and CDB
+      arbitration landed), byte-identical final registers and memory (`scheduler.test.ts`). One test per new
+      mechanism, each derived from a watched dump: wakeup/select (an independent instruction issues
+      strictly before a load-stuck consumer, out-of-order only — co-issues with it, never ahead of
+      it, in-order); the non-blocking LSU (2 MSHRs strictly faster than 1 on two independent misses,
+      same final state — a direct, config-driven proof rather than a hand-timed one); memory
+      disambiguation (`store-forward.s`, a0 = 99 never the stale 0); CDB arbitration (two loads
+      completing the same cycle — forced via `missPenalty: 1` — the older's consumer wakes one cycle
+      after completion, the younger's one cycle after THAT); ROB flush-recovery under out-of-order
+      completion (a wrong-path instruction that finished before its own branch resolved is still
+      squashed, and never appears in any `reg-write` event — the strong form of "never happened");
+      renaming under out-of-order completion (a fast younger WAW write beats a slow older one in
+      final state, proven by first showing the younger really does execute first). **Plus one check
+      beyond the literal list, flagged by the advisor as the biggest remaining blind spot**: every
+      test above targets ONE hand-built or corpus scenario, so a scheduler bug corrupting results on
+      some OTHER program would pass unnoticed. `outOfOrderIssue: true` vs `false` computes
+      byte-identical final registers and memory over the WHOLE corpus at one fixed config
+      (static-taken, `CACHE_LARGE`, width 2) — a regression net, not step 2's exhaustive matrix, but
+      since `false` is already proven equal to the golden reference, this gives `true == reference`
+      transitively across every program without waiting for step 2. Green on all 9 (including the
+      new `store-forward.s`). Full repo `npm test` (2991 tests: +17 in `scheduler.test.ts`, +18 from
+      the new corpus program across every other model's suites), `typecheck`, `lint`, `build` all
+      green.
+
+      **Scope note:** the acceptance list does not name Option B, and it was not built — the
+      `slowOpLatency` config field stays inert (unread), exactly as it has been since step 0. This is
+      a disclosed deferral, not a gap: the advisor's sequencing put A (the cache-miss floor) first
+      because it is the harder, load-bearing half, and B's own pin says its op choice should be
+      "corpus-driven... picked once there's something to pick against" — i.e. once step 3's
+      per-instruction lifecycle table or a future lesson program motivates a specific choice. Step 2
+      (INV-8 differential) and step 3 (the scheduling net) are next; `differential.test.ts` still
+      only exercises `outOfOrderIssue: false` (1a) — the `true` side's differential net, across
+      issue-order × prediction × cache × ROB size, is step 2's job, not retrofitted here.
 
 - [ ] **2. INV-8 differential net.** `runConformance(() => new OutOfOrderProcessor())` across the
       corpus at every config combination (issue-order × prediction × cache × ROB size × — under B —
