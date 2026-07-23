@@ -208,20 +208,37 @@ cleanest to anchor**:
       third.
       **(a)** Run the matrix dump above; pin the flagship program+config and each beat's program+config
       in this file (fill "The dump" section). No lesson content yet.
-      **(b) Add the `configurableOutOfOrder` axis to `CONFIG_AXES`** in
-      `packages/web/src/lessons.test.ts` — gated on `caps.configurableOutOfOrder`, positions
-      `{ 'in-order issue' → outOfOrderIssue:false, 'out-of-order issue' → outOfOrderIssue:true }`. This
-      is the M7 precedent exactly (M7 step 6 added the `issueWidth` axis the step that made it
-      REACHABLE, not the step that first used it): no shipped lesson targets `out-of-order` today, so
-      the axis contributes nothing until step 1, and that is precisely why it goes in now — the first
-      OoO lesson would otherwise be swept at half coverage and nothing would say so. Decide during this
-      step whether `robSize` / `slowOpLatency` are ALSO swept axes (they are reachable shell controls
-      per M9) or held fixed per-lesson — the rule is REACHABILITY (an unswept reachable config is the
-      defect this project keeps finding); if the shell exposes a ROB-size control, that is a reachable
-      position and the axis must include it. Update the `positionsFor` guard test's hardcoded
-      expected-label list to add the `out-of-order` case (it currently has none — the model ships with
-      no lessons). Acceptance: `positionsFor('out-of-order')` enumerates the OoO cross-product; the
-      guard test pins the labels; full suites green. NO behavior change to any other model's sweep.
+      **(b) Add the `configurableOutOfOrder` axes to `CONFIG_AXES`** — DONE 2026-07-23. Two new axis
+      rows in `packages/web/src/lessons.test.ts`, both gated on `caps.configurableOutOfOrder`:
+      `outOfOrderIssue` `{ in-order issue → false, out-of-order issue → true }` and `robSize`
+      `{ rob 16 → 16, rob 4 → 4 }`, appended after the width axis. The M7 precedent exactly (M7 step 6
+      added the `issueWidth` axis the step that made it REACHABLE, not the step that first used it): no
+      shipped lesson targets `out-of-order` today, so these contribute nothing until step 2 — which is
+      precisely why they go in now. **The `robSize` / `slowOpLatency` decision, RESOLVED by reachability
+      (the shell + `useSimulator.ts`, not memory):** - **`robSize` IS a swept axis.** `App.tsx` renders `RobSizeControl` (positions 4 / 16) and
+      `useSimulator.ts` holds `setRobSize` / a `robSize` position — a reachable state, so an unswept
+      one would be the defect this project keeps finding. The two positions are the shell's own: 16
+      (engine default, `config.robSize ?? 16`, so it aliases "absent") and 4 (the window that fills
+      and stalls dispatch), default first. - **`slowOpLatency` is NOT swept — held per-lesson.** The reachability rule cuts the OTHER way:
+      grep of `App.tsx` AND `useSimulator.ts` found NO control, NO setter, and it is not even threaded
+      into the session config the shell records with. **The plan's "they are reachable shell controls
+      per M9" parenthetical was optimistic** — `slowOpLatency` shipped config-only and its engine
+      consumer only landed at M10 step 1 (this milestone). A slow-op lesson holds it fixed in its own
+      config (like the program itself); the timing it drives is the narration oracle's job, and the
+      sweep is toggle-blind to it anyway (the headline). - **⚠ Finding for step 3 (the slow-op lesson):** the lesson-OPENING path in `useSimulator.ts`
+      (`opening.cache` / `opening.issueWidth` / `opening.outOfOrderIssue` / `opening.robSize`) does
+      NOT thread `slowOpLatency` either. So a step-3 lesson declaring `slowOpLatency: N` will silently
+      record with it **absent (N=1)** in the BROWSER — the M8-style "shell records the wrong trace,
+      every anchoring test green" trap. Step 3 must add `slowOpLatency` to the opening-config plumbing
+      (and decide whether the shell needs a control at all, or the lesson pins it invisibly).
+
+      Result: `positionsFor('out-of-order')` = prediction(2) × cache(3) × width(2) × outOfOrderIssue(2)
+      × robSize(2) = **48** machines (NOT 96 — `configurableForwarding` is FALSE on the OoO model, the
+      CDB is the forward, so there is no forwarding axis). Added the `out-of-order` case to the
+      `positionsFor` guard `describe` (count 48 + axis order + endpoints + non-vacuity that both new
+      knobs vary + forwarding/`slowOpLatency` absent), mirroring the superscalar case. Full suites green
+      (3233 tests, +1), typecheck / lint clean; no behavior change to any other model's sweep (the
+      single-cycle/multi-cycle/pipeline-12/superscalar-24 guards are the canary and stayed green).
       **(c) CONDITIONAL — a new corpus program**, only if step 0(a)'s dump shows no shipped program with
       a clean+large OoO win. If added, it widens the shared corpus (INV-7) ⇒ swept by every model ⇒ the
       three M8-step-0 hand-derived additions fire as known loud failures: `conformance.ts`

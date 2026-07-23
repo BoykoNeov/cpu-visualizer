@@ -163,6 +163,45 @@ const CONFIG_AXES: readonly ConfigAxis[] = [
       { label: '2-wide', set: (c) => ({ ...c, issueWidth: 2 }) },
     ],
   },
+  {
+    // The fifth axis (M10 step 0) — out-of-order ISSUE, the M9 flagship A/B — added the step that
+    // makes it REACHABLE rather than the step that first uses it, exactly as M7 step 6 added the width
+    // axis before any superscalar lesson existed. The out-of-order model sets `configurableForwarding`
+    // FALSE (the CDB broadcast IS the forward — there is no honest off-position), so an OoO lesson is
+    // swept over prediction × cache × width × THIS cluster, not over a forwarding axis. No shipped
+    // lesson targets `out-of-order` today, so this contributes nothing yet — which is exactly why it
+    // goes in NOW: the first OoO lesson would otherwise be swept at a fraction of coverage and nothing
+    // would say so.
+    honored: (caps) => caps.configurableOutOfOrder,
+    positions: [
+      { label: 'in-order issue', set: (c) => ({ ...c, outOfOrderIssue: false }) },
+      { label: 'out-of-order issue', set: (c) => ({ ...c, outOfOrderIssue: true }) },
+    ],
+  },
+  {
+    // The sixth axis (M10 step 0) — ROB SIZE, the cluster's structural lever — gated on the SAME
+    // capability as issue-order (`configurableOutOfOrder` gates the whole OoO config cluster), but a
+    // SEPARATE axis because the cross product is the point: issue-order and ROB size are independently
+    // reachable. The shell renders BOTH the issue-order toggle and the ROB-size control under that one
+    // flag (App.tsx), and useSimulator holds a position for each (`setOutOfOrderIssue` / `setRobSize`),
+    // so each is a state a user can land in — and an unswept reachable state is the defect this project
+    // keeps finding. The two positions are the shell's own: 16 (the engine default, `config.robSize ??
+    // 16`, so it aliases "absent") and 4 (the small window that fills and stalls dispatch), default
+    // first.
+    //
+    // `slowOpLatency` is the cluster's THIRD config field and is deliberately NOT an axis: the reach-
+    // ability rule cuts the other way for it. The shell exposes no control and useSimulator threads no
+    // position for it (verified M10 step 0), so it is not a state a user can reach — the plan's
+    // "reachable shell controls per M9" parenthetical was optimistic; `slowOpLatency` shipped config-
+    // only and its engine consumer landed at M10 step 1. A lesson that needs a slow op holds it fixed
+    // in its own config, the way the program itself is fixed, and the timing it drives is the narration
+    // oracle's job — not the sweep's (the headline: the event multiset is toggle-invariant anyway).
+    honored: (caps) => caps.configurableOutOfOrder,
+    positions: [
+      { label: 'rob 16', set: (c) => ({ ...c, robSize: 16 }) },
+      { label: 'rob 4', set: (c) => ({ ...c, robSize: 4 }) },
+    ],
+  },
 ];
 
 /**
@@ -383,6 +422,43 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
     // the same value under two different labels — the failure a length check alone cannot see.
     const widths = new Set(positionsFor('superscalar').map((p) => p.config.issueWidth));
     expect(widths).toEqual(new Set([1, 2]));
+  });
+
+  /**
+   * The out-of-order model's count (M10 step 0) — the case that gives the two new OoO axes something
+   * to fail on, for the same reason the superscalar case does the width axis: `positionsFor` is only
+   * ever called with a lesson's declared model, and no shipped lesson declares `out-of-order` yet, so
+   * without this case the issue-order and ROB-size axes could be dropped, mis-gated, or given one
+   * position and every test here would stay green — the exact staleness shape the two cases above
+   * record.
+   *
+   * FIVE honored knobs, but `configurableForwarding` is FALSE on this model (the CDB broadcast IS the
+   * forward — no off-position), so the product is prediction(2) × cache(3) × width(2) ×
+   * outOfOrderIssue(2) × robSize(2) = 48, NOT the superscalar's 24 with a forwarding axis on top.
+   * Asserted as a COUNT plus the axis order and the endpoints, like the superscalar case: at this size
+   * a literal list stops being read and starts being pasted, and what is worth pinning is that BOTH
+   * new axes are in the product (the flagship toggle and the ROB-size lever), innermost, that
+   * `slowOpLatency` is NOT (no shell control — held per-lesson), and that forwarding is absent.
+   */
+  it('gives the out-of-order model prediction × cache × width × the OoO cluster — 48 machines', () => {
+    const labels = positionsFor('out-of-order').map((p) => p.label);
+    expect(labels).toHaveLength(48);
+    expect(labels[0]).toBe('predict not-taken, cache off, 1-wide, in-order issue, rob 16');
+    expect(labels[47]).toBe('predict taken, cache large, 2-wide, out-of-order issue, rob 4');
+    // Non-vacuity: BOTH new knobs genuinely vary across the sweep rather than every position carrying
+    // one value under two labels — the failure a length check alone cannot see (the width case's move,
+    // twice). Read off the configs, which is what would agree while the labels lied.
+    const issue = new Set(positionsFor('out-of-order').map((p) => p.config.outOfOrderIssue));
+    expect(issue).toEqual(new Set([false, true]));
+    const robs = new Set(positionsFor('out-of-order').map((p) => p.config.robSize));
+    expect(robs).toEqual(new Set([4, 16]));
+    // Forwarding is absent — the OoO model does not honor it (the CDB is the forward), so unlike the
+    // superscalar there is no `forwarding on/off` axis and no such label. The thing that halves 96→48.
+    expect(labels.every((l) => !l.includes('forwarding'))).toBe(true);
+    // `slowOpLatency` never appears: it is held per-lesson, not swept, so no config carries it here.
+    expect(positionsFor('out-of-order').every((p) => p.config.slowOpLatency === undefined)).toBe(
+      true,
+    );
   });
 
   it('the positions are DISTINCT configs, not twelve labels on one machine', () => {
