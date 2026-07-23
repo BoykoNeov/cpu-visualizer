@@ -612,6 +612,51 @@ const TIMING: Readonly<Record<string, Timing>> = {
       betting: { off: { groups: 0, pairs: -9 }, on: { groups: 0, pairs: -9 } },
     },
   },
+
+  /**
+   * 4 prologue + 4 per iteration × 6 + 2 epilogue = 30 retires; `bnez` taken 5 times (M10 step 3 —
+   * the slow-op witness; the `sll` is a single-cycle ALU op here). Same width-1 schedule as `sum-loop`
+   * with a four-instruction body.
+   *    0 addi t1,x0,6   4 addi a0,x0,0   8 addi t5,x0,3  12 addi t6,x0,2
+   *   16 sll t3,t5,t6  20 add a0,a0,t3  24 addi t1,t1,-1 28 bne t1,x0,loop
+   *   32 addi a7,x0,10 36 ecall
+   *
+   * WIDTH 2 — the one place this program's shape departs from `sum-loop`. The body's HEAD carries an
+   * intra-pair RAW `sum-loop` does not have: `add@20` reads t3 from `sll@16` right in front of it, so
+   * that pair is refused and the `sll` issues ALONE in slot 0 — every iteration, not just the first.
+   *   1 {addi t1@0, addi a0@4}    2 {addi t5@8, addi t6@12}   — prologue, two clean pairs
+   *   3 {sll@16}                  — REFUSED: `add@20` needs t3, so the shift issues single
+   *   4 {add@20, addi t1@24}      — pair: `add` writes a0, `addi` reads t1, no intra-pair RAW
+   *   5 {bne@28, addi a7@32}      — pair: `bne` taken, mispredicts ⇒ the fall-through `addi a7@32`
+   *                                 mate is squashed (doomed) and fetch redirects to `sll@16`.
+   *   Iterations 1–5 repeat groups 3–5 (each a single + two pairs, one mate doomed). Iteration 6's
+   *   `bne` falls through, so its `addi a7@32` mate SURVIVES; then {ecall@36} issues alone.
+   *   G = 2 (prologue) + 5×3 + 3 (iter 6) + 1 (ecall) = 21. Q = 2 + 5×2 + 2 = 14 (the seven singles
+   *   are the six `sll`s and the lone `ecall`). L = 0. Check: 21 + 0 + 10 + 0 + 4 = 35 ✓.
+   * OFF: the interlock splits no pair — every refusal is in slot 0 (the `sll` reads t5/t6, the `add`
+   *      reads t3, the `bne` reads t1) — but blocks the whole group. Iteration 1's `sll` blocks 2
+   *      (prologue t5/t6), every `add` blocks 2 (t3), every `bne` blocks 2 (t1): L = 2 + 6×2 + 6×2 =
+   *      26 ⇒ cycles = 21 + 26 + 10 + 4 = 61.
+   * BETTING: 5 correct taken bets each steer fetch to `sll@16` a cycle early, so the doomed
+   *      `addi a7@32` mate is never fetched — each {bne, mate} pair becomes a {bne} single: Q −5,
+   *      groups unmoved. The sixth bets WRONG (predicted taken, falls through) and kills the LIVE
+   *      `addi a7@32`, which is re-issued after the redirect and re-pairs with `ecall` — group count
+   *      unmoved, the lost pair handed straight back. Totals: G +0, Q −5.
+   */
+  'slow-op-loop.s': {
+    retires: 30,
+    transfers: { takenPredictable: 5, notTaken: 1, takenUnpredictable: 0 },
+    flushes: { branchTaken: 5, halt: 0 },
+    stalls: { off: { 16: 2, 20: 12, 28: 12 }, on: {} },
+    misses: { small: 0, large: 0 }, // register-only shift-accumulate loop
+    w2: {
+      groups: { off: 21, on: 21 },
+      pairs: { off: 14, on: 14 },
+      blocked: { off: 26, on: 0 },
+      doomed: { off: 5, on: 5 },
+      betting: { off: { groups: 0, pairs: -5 }, on: { groups: 0, pairs: -5 } },
+    },
+  },
 };
 
 function asm(source: string): AssembledProgram {

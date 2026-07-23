@@ -491,6 +491,10 @@ describe('width 2 is a real machine', () => {
       // in-order-retiring superscalar it is an ordinary pairing/mem-port story (`timing.test.ts`'s
       // `w2` entry derives both numbers from the pinned rules).
       'store-forward.s': { w1: 11, w2: 9 },
+      // M10 step 3: the slow-op shift-accumulate loop. Single-cycle `sll` here, so an ordinary
+      // pairing story — width 2 pairs the counter beside the `add` and the branch beside its mate
+      // (44 → 35); `timing.test.ts`'s `w2` entry derives both from the pinned rules.
+      'slow-op-loop.s': { w1: 44, w2: 35 },
       'sum-loop.s': { w1: 56, w2: 44 },
     };
     const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));

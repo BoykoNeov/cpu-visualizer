@@ -490,6 +490,35 @@ const TIMING: Readonly<Record<string, Timing>> = {
     // A register-only accumulator: no loads or stores ⇒ M = 0 at every size.
     misses: { small: 0, large: 0 },
   },
+
+  /**
+   * 4 prologue + 4 per iteration × 6 + 2 epilogue = 30 retires. `bnez` is taken 5 times (i = 5…1)
+   * and declines on the 6th (M10 step 3 — the slow-op witness; under this pipeline the `sll` is an
+   * ordinary single-cycle ALU op, so this reads exactly like `sum-loop` with a wider body).
+   *    0 addi t1,x0,6   4 addi a0,x0,0   8 addi t5,x0,3  12 addi t6,x0,2
+   *   16 sll t3,t5,t6  20 add a0,a0,t3  24 addi t1,t1,-1 28 bne t1,x0,loop
+   *   32 addi a7,x0,10 36 ecall
+   *
+   * OFF: iteration 1's `sll` at 16 stalls 2 — it reads t6 from the `li` at 12 immediately before it
+   *      (distance-1 RAW) — but no LATER iteration's does, because t5/t6 are loop-invariant and
+   *      long retired by the time the loop comes round (the same first-iteration-only asymmetry
+   *      `sum-loop`'s first `add` shows). The `add` at 20 stalls 2 EVERY iteration (it reads t3 from
+   *      the `sll` one instruction ahead), and the `bne` at 28 stalls 2 EVERY iteration (it reads
+   *      t1 from the `addi t1` one ahead) — the same distance-1 operand RAW `sum-loop`'s branch has,
+   *      now with the load-carried `add` beside it. S = 2 + 2×6 + 2×6 = 26.
+   * ON:  no loads anywhere ⇒ every RAW is on a non-load producer, forwarding covers all of them,
+   *      the load-use rule never triggers ⇒ S = 0.
+   */
+  'slow-op-loop.s': {
+    retires: 30,
+    // `bnez t1, loop` goes 5 times (t1 = 5…1) and declines on the 6th. Direct conditional branch, so
+    // all five taken transfers are predictable; nothing indirect.
+    transfers: { takenPredictable: 5, notTaken: 1, takenUnpredictable: 0 },
+    flushes: { branchTaken: 5, halt: 0 }, // every taken branch has the fall-through live behind it; ecall is last
+    stalls: { off: { 16: 2, 20: 12, 28: 12 }, on: {} },
+    // A register-only shift-accumulate loop: no loads or stores ⇒ M = 0 at every size.
+    misses: { small: 0, large: 0 },
+  },
 };
 
 function asm(source: string): AssembledProgram {

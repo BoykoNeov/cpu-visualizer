@@ -187,6 +187,19 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     blockedOn: 0,
     bettingGroupsOn: 0,
   },
+  // M10 step 3 — the slow-op witness. Copied from `pipeline`'s TIMING (retires, transfers, misses)
+  // and `superscalar`'s w2 (groupsOn, blockedOn, bettingGroupsOn). sOn = 0: register-only, no loads,
+  // nothing forwarding-on stalls. Under this in-order-issue net the `sll` is a single-cycle op
+  // (`slowOpLatency` defaults to 1); the toggle payoff lives in `slow-op.test.ts`, not here.
+  'slow-op-loop.s': {
+    retires: 30,
+    sOn: 0,
+    transfers: { takenPredictable: 5, notTaken: 1, takenUnpredictable: 0 },
+    misses: { small: 0, large: 0 },
+    groupsOn: 21,
+    blockedOn: 0,
+    bettingGroupsOn: 0,
+  },
 };
 
 const missesAt = (pinned: Pinned, cache: CacheSize): number =>

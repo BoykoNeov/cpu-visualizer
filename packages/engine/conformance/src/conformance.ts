@@ -138,6 +138,11 @@ const RESULT_ORACLES: Record<
   // see the just-stored 99, never the stale 0 the `.data` segment starts with (M9 step 1b — memory
   // disambiguation's one architecturally-visible failure mode).
   'store-forward.s': { regs: { 10: 99 }, mem: { cell: 99 } },
+  // Six iterations of a shift-accumulate loop: a0 (x10) = 6 * (3 << 2) = 6 * 12 = 72; the counter
+  // t1 (x6) lands on 0. Result is model-independent (the `sll` slow-op latency is a pure TIMING
+  // knob — M10 step 3), so this equality holds on every model at every config, INV-8's blindness to
+  // the latency being exactly the point.
+  'slow-op-loop.s': { regs: { 10: 72, 6: 0 } },
 };
 
 const PROGRAMS = readdirSync(PROGRAMS_DIR)
