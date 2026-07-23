@@ -24,6 +24,11 @@
   },
   {
     "track": "The out-of-order machine",
-    "lessons": ["work-slides-ahead", "commit-in-order", "reservation-station-holds"]
+    "lessons": [
+      "work-slides-ahead",
+      "racing-ahead-of-the-miss",
+      "commit-in-order",
+      "reservation-station-holds"
+    ]
   }
 ]

@@ -1,0 +1,45 @@
+{
+  "id": "racing-ahead-of-the-miss",
+  "title": "Racing ahead of the miss",
+  "program": "strided-sum",
+  "model": "out-of-order",
+  "config": {
+    "forwarding": false,
+    "branchPrediction": "static-not-taken",
+    "cache": {
+      "lineSize": 16,
+      "numLines": 4,
+      "missPenalty": 10
+    },
+    "issueWidth": 1,
+    "outOfOrderIssue": true,
+    "robSize": 16
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "mem-read", "where": { "value": 7 } },
+      "narration": {
+        "essentials": "The first element finally arrives — but the second load's miss started before it did.",
+        "detailed": "This program walks records that are 16 bytes apart, exactly one cache line, so every single load lands on a fresh line and misses. The first one missed at cycle 7 and its value, 7, only arrives now at cycle 17. Here is what matters: the SECOND load's miss already began at cycle 14, three cycles before this one finished. The pointer bump `addi t0, t0, 16` does not need the loaded value, so out-of-order issue ran it early, which made the next address ready, which let the next miss start while this one was still in flight. Two misses were outstanding at once. In-order issue starts the second miss at cycle 25 — only after this one has fully resolved.",
+        "expert": "The load/store unit is non-blocking: a miss occupies a miss-status holding register (MSHR) for the penalty and frees the issue port, so the scheduler keeps offering ready work. The address chain is what makes overlap possible — `addi t0, t0, 16` depends only on the previous pointer, never on `t2`, so it is always ready and out-of-order issue runs it under the miss. The next `lw` then has its address, dispatches, consults the cache, misses, and takes the second MSHR. In-order issue cannot reach any of it: a miss freezes the front end outright, so the pointer bump is never even dispatched while the load is outstanding and the second address does not exist yet. Same cache, same penalty, same two MSHRs — only the issue policy decides whether they are ever used at the same time."
+      }
+    },
+    {
+      "trigger": { "event": "mem-read", "where": { "value": 20 } },
+      "narration": {
+        "essentials": "The second element lands at cycle 24 instead of 35 — its wait happened underneath the first one's.",
+        "detailed": "The second record's value, 20, is here at cycle 24. In-order issue does not have it until cycle 35. Nothing made the memory faster — this miss still cost the full ten-cycle penalty. It simply spent most of that penalty at the same time as the first load's, instead of politely queueing behind it. That is the difference between paying ten plus ten and paying ten overlapped with ten. From here the pattern repeats: every iteration's miss is launched while its predecessor is still outstanding, so the loop pays for roughly one miss per iteration's worth of work rather than one miss end-to-end.",
+        "expert": "This is memory-level parallelism, and it is a strictly bigger lever than the one the previous lesson showed. There, independent arithmetic filled the shadow of a single miss; the misses themselves never overlapped, so the memory system was still visited one stall at a time. Here the independent work is the ADDRESS computation, so what slides into the shadow is another cache miss — the machine now has two requests in flight and the memory latencies pipeline instead of serializing. The ceiling is the MSHR count: with two registers the machine sustains two outstanding misses, which is exactly what the reorder buffer shows. Raise the MSHR count and a longer miss stream would overlap further; drop it to one and this lesson's win disappears while the scheduler stays out-of-order, which is the honest way to see that this speedup is bought jointly by the scheduler AND the non-blocking cache."
+      }
+    },
+    {
+      "trigger": { "event": "mem-write", "where": { "value": 80 } },
+      "narration": {
+        "essentials": "Same total — 80 — in 62 cycles instead of 111.",
+        "detailed": "The walk is done and 80, the sum of { 7, 20, -3, 50, 6 }, is written to memory. Every machine reaches that same total; what changed is how much of the waiting happened in parallel. This out-of-order run took 62 cycles where in-order issue needs 111 — an IPC of 0.55 against 0.31, and nearly half the runtime gone. This is the largest win the toggle produces anywhere in the collection, and the reason is precisely that the stalls being overlapped are the expensive ones. Flip the toggle to in-order and watch the 80 stay exactly where it is while the cycle count climbs to 111.",
+        "expert": "34 instructions retire in both positions — issue order is a throughput knob, never a correctness one, and the reorder buffer enforces that by committing in program order regardless of what order execution finished in. That is 34 / 62 = 0.55 IPC out of order against 34 / 111 = 0.31 in order. Compare this with the flagship's 71 to 59 on the unit-stride walk: there, three of every four loads hit in the line their predecessor brought in, so there was only ever one miss at a time to hide work under. This program's stride defeats spatial locality on purpose — six compulsory misses, nothing ever re-read, no cache size that helps — which leaves overlapping the misses with each other as the only remaining lever. Out-of-order issue supplies it, and the payoff scales with the cost of the stall being hidden rather than with the amount of independent arithmetic lying around."
+      }
+    }
+  ]
+}

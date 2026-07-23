@@ -663,12 +663,13 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // The out-of-order machine's membership (M10), by name for the same reason: "is this lesson about
     // out-of-order issue" is pedagogy, not derivable — it runs on `out-of-order` at `outOfOrderIssue:
     // true`, but so could a lesson really about, say, the cache observed on an OoO machine. The track
-    // claims the flagship "work slides ahead" (step 2), the in-order-commit lesson "finish early,
-    // commit in order" (step 5), and the reservation-station slow-op lesson (step 3); later OoO beats
-    // append here.
+    // claims the flagship "work slides ahead" (step 2), the cache-miss money shot "racing ahead of the
+    // miss" (step 4), the in-order-commit lesson "finish early, commit in order" (step 5), and the
+    // reservation-station slow-op lesson (step 3); later OoO beats append here.
     const ooo = LESSON_TRACKS.find((t) => t.track === 'The out-of-order machine');
     expect([...(ooo?.lessons ?? [])].sort()).toEqual([
       'commit-in-order',
+      'racing-ahead-of-the-miss',
       'reservation-station-holds',
       'work-slides-ahead',
     ]);
@@ -734,11 +735,13 @@ describe('authored lessons (INV-6)', () => {
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
     // The out-of-order machine (M10) opens with the flagship "work slides ahead", the crown jewel
     // where a younger independent instruction executes past an older one stalled on a cache miss; adds
-    // "finish early, commit in order" (step 5) — the same array-sum trace seen through the reorder
-    // buffer, where instructions finish out of order but retire in program order; and "the reservation
-    // station holds" (step 3) — the Tomasulo namesake, a slow op held across several execute cycles
-    // while independent work issues around it; the renaming beat, if it anchors, appends to that track.
-    expect(LESSONS.length).toBe(18);
+    // "racing ahead of the miss" (step 4) — the same lever aimed at the ADDRESS chain, so the next
+    // MISS starts under the current one and the memory latencies overlap; "finish early, commit in
+    // order" (step 5) — the same array-sum trace seen through the reorder buffer, where instructions
+    // finish out of order but retire in program order; and "the reservation station holds" (step 3) —
+    // the Tomasulo namesake, a slow op held across several execute cycles while independent work
+    // issues around it. The renaming beat was DROPPED with proof (step 6), so this track is final.
+    expect(LESSONS.length).toBe(19);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -778,6 +781,7 @@ describe('authored lessons (INV-6)', () => {
       'cache-spatial',
       'cache-temporal',
       'commit-in-order',
+      'racing-ahead-of-the-miss',
       'work-slides-ahead',
     ]);
     for (const { id, cache } of declared) {
@@ -3010,5 +3014,202 @@ describe('commit-in-order — finish out of order, retire in program order (M10 
       const cycles = anchored.flatMap((a) => (a.cycle === null ? [] : [a.cycle]));
       expect(new Set(cycles).size, 'each step anchors to a distinct cycle').toBe(cycles.length);
     }
+  });
+});
+
+/**
+ * `racing-ahead-of-the-miss`'s oracle (M10 step 4) — the cache-miss money shot, and the ONE lesson
+ * in the track whose subject is the memory system rather than the scheduler alone. Same M10 headline
+ * as its siblings: the event MULTISET is invariant under `outOfOrderIssue` (the OoO engine emits no
+ * `stall`/`forward`), so "the anchor fired" proves nothing about WHICH machine ran and every claim
+ * lives in the cycle each event landed on — which only an oracle reads.
+ *
+ * **What makes this lesson different from the flagship, and why the distinction needs pinning.**
+ * `work-slides-ahead` hides independent ARITHMETIC in the shadow of one miss; on its unit-stride
+ * `array-sum` the misses are ~30 cycles apart and NEVER overlap (M10 step 0's finding — there is no
+ * miss-under-miss anywhere in the pre-M10 corpus). This lesson aims the same lever at the ADDRESS
+ * chain on a stride-per-line walk, so what slides into the shadow is another MISS. The prose claims
+ * genuine overlap, so the oracle proves genuine overlap two independent ways: by the cycle ordering
+ * of the second miss against the first's release, AND by counting entries actually sitting in the
+ * load/store unit at the same time.
+ *
+ * **The sweep is blind here in one EXTRA way (cf. the RS lesson's unswept latency).** `cache` IS a
+ * swept axis, and at cache-OFF this program has no misses at all — both toggle positions run 51
+ * cycles and the entire subject of the lesson evaporates. So `positionsFor` records this lesson in
+ * positions where nothing it says is true, and the anchors still resolve in order there (they are
+ * three program-order-separated events). Only the oracle below fixes the cache at the declared
+ * LARGE geometry and reads the cycles the browser actually plays.
+ */
+describe('racing-ahead-of-the-miss — the second miss starts under the first (M10 step 4)', () => {
+  const lesson = (): Lesson => byId('racing-ahead-of-the-miss');
+
+  /** The lesson's own declared machine with only the issue-order toggle varied — the rest from JSON. */
+  const record = (outOfOrderIssue: boolean): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared)
+      throw new Error('racing-ahead-of-the-miss must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, outOfOrderIssue });
+  };
+
+  it('opens on the out-of-order machine at width 1, cache large, issuing OUT of order', () => {
+    expect(lesson().model).toBe('out-of-order');
+    expect(lesson().program).toBe('strided-sum');
+    expect(lesson().config?.outOfOrderIssue).toBe(true);
+    expect(lesson().config?.issueWidth).toBe(1);
+    expect(lesson().config?.cache).toBe(CACHE_LARGE);
+  });
+
+  /** The cycle of the sole `mem-read` with this value — asserts uniqueness, which is the anchor's claim. */
+  const memReadCycle = (trace: readonly CycleTrace[], value: number): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) => (e.type === 'mem-read' && e.value === value ? [c.cycle] : [])),
+    );
+    expect(hits, `mem-read value:${value} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** Every cycle on which a cache MISS was detected, in order — the moment each miss BEGINS. */
+  const missCycles = (trace: readonly CycleTrace[]): number[] =>
+    trace.flatMap((c) =>
+      c.events.flatMap((e) => (e.type === 'cache-access' && !e.hit ? [c.cycle] : [])),
+    );
+
+  /** Cycles on which more than one entry sits in the load/store unit — a literal miss-under-miss. */
+  const overlapCycles = (trace: readonly CycleTrace[]): number[] =>
+    trace.flatMap((c) => {
+      const micro = c.state.micro as unknown as { rob?: readonly { state?: string }[] } | undefined;
+      const waiting = (micro?.rob ?? []).filter((e) => e.state === 'awaitingMem').length;
+      return waiting > 1 ? [c.cycle] : [];
+    });
+
+  it('THE MISS-UNDER-MISS: the second miss begins at cycle 14, before the first releases at 17', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The head load misses and releases at cycle 17 in BOTH positions — it is the head of the
+    // program, so nothing reorders ahead of it. This is the fixed point the overlap is measured
+    // against, exactly as the flagship measures its reorder against the same load's release.
+    expect(memReadCycle(inOrder, 7)).toBe(17);
+    expect(memReadCycle(ooo, 7)).toBe(17);
+
+    // Both positions detect the FIRST miss at the same cycle 7 — the divergence is entirely about
+    // when the SECOND one is allowed to start.
+    expect(missCycles(inOrder)[0]).toBe(7);
+    expect(missCycles(ooo)[0]).toBe(7);
+
+    // Out of order: the second miss begins at cycle 14, THREE cycles before the first one's value
+    // arrives — the two are in flight together. This is the lesson's entire subject.
+    expect(missCycles(ooo)[1]).toBe(14);
+    expect(missCycles(ooo)[1]).toBeLessThan(memReadCycle(ooo, 7));
+
+    // In order: the second miss cannot begin until the first has fully resolved — cycle 25, AFTER
+    // the release at 17. A miss freezes the front end, so the pointer bump that would produce the
+    // next address is never even dispatched while the load is outstanding.
+    expect(missCycles(inOrder)[1]).toBe(25);
+    expect(missCycles(inOrder)[1]).toBeGreaterThan(memReadCycle(inOrder, 7));
+
+    // ...and the same fact counted a SECOND, independent way: entries genuinely co-resident in the
+    // load/store unit. Out of order there are overlapping pairs (two MSHRs, so never more than two);
+    // in order there is never more than one outstanding miss in the whole run. A cycle-ordering
+    // argument alone could be satisfied by a re-detected single miss; this cannot.
+    expect(overlapCycles(inOrder), 'in-order issue never has two misses outstanding').toEqual([]);
+    expect(overlapCycles(ooo).length, 'out-of-order issue overlaps misses').toBeGreaterThan(0);
+    expect(overlapCycles(ooo)).toContain(14);
+
+    // The opening step's prose states these cycles as fact. Token-checked at the default tier — the
+    // M4-step-4 net (a wrong cycle in prose is invisible to the anchoring sweep, which only checks
+    // that the event fired). "cycle 7" rather than "7" so it cannot match inside another number.
+    const opening = resolveNarration(lesson().steps[0]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 7', 'cycle 14', 'cycle 17', 'cycle 25']) {
+      expect(opening, `the opening narration must quote "${token}"`).toContain(token);
+    }
+  });
+
+  it('THE PAYOFF: the second element lands at cycle 24 out of order, 35 in order', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The overlap made visible in the value stream: the second record's field arrives eleven cycles
+    // earlier, having spent most of its ten-cycle penalty concurrently with the first load's rather
+    // than queued behind it. The event fires in both positions — only the cycle moved.
+    expect(memReadCycle(ooo, 20)).toBe(24);
+    expect(memReadCycle(inOrder, 20)).toBe(35);
+    expect(memReadCycle(ooo, 20)).toBeLessThan(memReadCycle(inOrder, 20));
+
+    // The prose's claim is specifically that the miss was OVERLAPPED, not shortened: the penalty is
+    // unchanged, so the gap from this miss's start to its release is the same in both positions.
+    // Without this the beat could be satisfied by a faster cache, which is not what the toggle does.
+    expect(memReadCycle(ooo, 20) - missCycles(ooo)[1]!).toBe(
+      memReadCycle(inOrder, 20) - missCycles(inOrder)[1]!,
+    );
+
+    const middle = resolveNarration(lesson().steps[1]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 24', 'cycle 35']) {
+      expect(middle, `the payoff narration must quote "${token}"`).toContain(token);
+    }
+  });
+
+  it('same answer, fewer cycles: 80 stored either way, 62 vs 111 (IPC 0.55 vs 0.31)', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The closing payoff, alive in both — it is what the program computed, not how it ran.
+    for (const trace of [inOrder, ooo]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'mem-write', value: 80 });
+    }
+
+    // The two totals the closing narration quotes as fact — derived from the declared machine, not
+    // trusted. `record` fixes the config and varies only the toggle, so prose and engine cannot
+    // drift apart without this line going red.
+    expect(inOrder.length).toBe(111);
+    expect(ooo.length).toBe(62);
+
+    // The IPCs, COMPUTED from the retire counts rather than typed, then matched against the prose.
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(inOrder)).toBe(34); // issue order is not a correctness knob — 34 retire either way
+    expect(retired(ooo)).toBe(34);
+    const ipcInOrder = (retired(inOrder) / inOrder.length).toFixed(2); // 34 / 111 = 0.31
+    const ipcOoo = (retired(ooo) / ooo.length).toFixed(2); // 34 / 62 = 0.55
+    expect([ipcInOrder, ipcOoo]).toEqual(['0.31', '0.55']);
+
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    for (const token of ['62', '111', ipcInOrder, ipcOoo]) {
+      expect(closing, `closing narration must quote ${token}`).toContain(token);
+    }
+  });
+
+  it('is a BIGGER win than the flagship — the claim the expert tier makes explicitly', () => {
+    // The lesson's expert tier says this beats `work-slides-ahead`'s 71 -> 59 and says WHY (stride
+    // defeats spatial locality, so every load misses and overlapping misses is the only lever left).
+    // Pinned so the comparison cannot rot if either program's timing ever moves — the two lessons
+    // are separately authored and nothing else relates their numbers.
+    const flagship = (outOfOrderIssue: boolean): number => {
+      const l = byId('work-slides-ahead');
+      return recordLesson(l, { ...l.config!, outOfOrderIssue }).length;
+    };
+    const [flagIn, flagOoo] = [flagship(false), flagship(true)];
+    expect([flagIn, flagOoo]).toEqual([71, 59]);
+    const [mineIn, mineOoo] = [record(false).length, record(true).length];
+    expect(mineIn - mineOoo, 'this lesson saves more cycles than the flagship').toBeGreaterThan(
+      flagIn - flagOoo,
+    );
+
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
+    for (const token of ['71', '59']) {
+      expect(closing, `the expert tier must quote the flagship's ${token}`).toContain(token);
+    }
+  });
+
+  it('the cache is what makes the toggle bite — with it OFF the lesson has no subject', () => {
+    // The extra blindness this lesson has that the flagship's oracle did not need to state: `cache`
+    // IS a swept axis, and `positionsFor` records this lesson at cache-off where the program has no
+    // misses, both positions run identically, and every claim above is false. The anchors still
+    // resolve in order there (they are program-order-separated), so the sweep stays green over a
+    // machine the prose does not describe. Pinned here so that blindness is a KNOWN, tested fact
+    // rather than a surprise — and so a future change that made cache-off diverge would surface.
+    const declared = lesson().config!;
+    const noCache = (outOfOrderIssue: boolean): number =>
+      recordLesson(lesson(), { ...declared, cache: null, outOfOrderIssue }).length;
+    expect(noCache(false)).toBe(51);
+    expect(noCache(true)).toBe(51);
   });
 });
