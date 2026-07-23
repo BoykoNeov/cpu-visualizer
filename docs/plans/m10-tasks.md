@@ -1,9 +1,11 @@
 # Milestone 10 — The out-of-order lesson track
 
-**Status: IN PROGRESS, 2026-07-23. Steps 0, 1, 2, 3, 4, 5 DONE and pushed; step 6 (renaming) DROPPED
+**Status: IN PROGRESS, 2026-07-23. Steps 0, 1, 2, 3, 4, 5, 7 DONE and pushed; step 6 (renaming) DROPPED
 with proof. The OoO track is FINAL at four lessons — `[work-slides-ahead, racing-ahead-of-the-miss,
-commit-in-order, reservation-station-holds]`. Remaining: step 7 (wire — already satisfied
-incrementally by each lesson step) and step 8 (the browser pass over the whole track).
+commit-in-order, reservation-station-holds]`. Step 7 (wire) needed NO code change — it was an audit that
+named the test pinning each acceptance item, and DECLINED a full-sequence teaching-order test on the
+cache track's own "a pin earns its place only if the prose lies when reordered" discriminator (see step
+7). Remaining: step 8 alone (the browser pass over the whole track).
 Scope PINNED by the user (2026-07-23): "Both, sequenced" —
 first an ENGINE step wiring `slowOpLatency` (M9's decided-but-never-implemented "Option B"), THEN the
 fullest lesson track covering BOTH latency sources (the slow-op Tomasulo namesake AND the cache-miss
@@ -592,7 +594,34 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
       `index.json` change (renaming was never wired). Remaining M10: step 4 (deferred miss-under-miss
       program) → step 7 (wire — already satisfied for these 3) → step 8 (browser).
 
-- [ ] **7. Wire the track.** Mostly done incrementally by the lesson steps (the glob forces it). What remains:
+- [x] **7. Wire the track. DONE 2026-07-23 — VERIFIED, with one test DECLINED on the project's own
+      discriminator. No code change was needed.** Every deliverable this step named had already been paid
+      for by the lesson steps (the glob forces it — a lesson file cannot exist un-wired), so the work here
+      was auditing that each is pinned by a NAMED test rather than assumed, and declining the one addition
+      that looked owed. Facts worth carrying forward: - **Every step-7 acceptance item is pinned, and here is which test does it** (checked by reading,
+      not by "the suite is green"): the by-name track membership — `lessons.test.ts:669` in "files each
+      lesson under the track its SUBJECT belongs to", naming all four ids sorted; the track NAME and its
+      position after "The wide machine" — `:584` (the full track-name list) and again at `:706`; totality
+      with no `UNTRACKED_HEADING` — `:701` ("the shipped picker groups every lesson and invents no
+      heading"), which is this step's stated acceptance verbatim; the full teaching ORDER — `:517`
+      ("LESSONS is exactly the index, in the index's order — exhaustive in BOTH directions"). - **⚠ A full-sequence test for the OoO track was DECLINED with reason (advisor-endorsed).** The
+      obvious-looking deliverable was a "teaches the OoO track in its authored SEQUENCE" test mirroring
+      the cache track's `spatial → temporal → conflict`. **The cache test's own comment states the
+      discriminator that forbids it: an order pin earns its place only when a prose sentence LIES if you
+      reorder** ("the order is forced by the prose, not by taste, which is what makes it assertable").
+      Applied pair-by-pair: flagship→racing DOES lie when reordered (racing's step-2 expert opens "a
+      strictly bigger lever than the one the previous lesson showed") — and that pin already exists at
+      `:3202`, which incidentally locks flagship=0 and racing=1. commit-in-order and
+      reservation-station-holds back-reference NEITHER each other nor anything else: RS's "the reorder
+      buffer enforces it by committing in program order" is self-contained prose, true whether or not
+      commit-in-order ran first. So `flagship < racing < commit < RS` would assert two orderings that
+      only taste forces — the exact anti-pattern the cache comment rejects, and a test that would redden
+      on a lawful editorial reorder. **The precedent is direct: M8's four-lesson wide-machine track
+      shipped with membership + per-lesson describes and NO full-sequence test.** RS-last stays the
+      editorial decision `index.json` already records (step 5 moved it there). - **Also re-verified for the acceptance criteria below:** zero `nth` anchors across all four OoO
+      lesson files (`grep -c nth` = 0 in each; every trigger is a program-unique `where`), and the full
+      gate is green — **4036 tests**, `typecheck` / `lint` / `format:check` / `build` all clean.
+      ORIGINAL PLAN TEXT: Mostly done incrementally by the lesson steps (the glob forces it). What remains:
       the by-name track-membership assertion in `lessons.test.ts`'s "files each lesson under the track
       its SUBJECT belongs to — asserted by name" test (the one net a mis-file slips past — `lessonSections()`
       totality stays green even under a wrong-track filing, because `LESSON_ORDER` derives from the same
@@ -617,14 +646,17 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
 - [ ] The picker shows a new OoO track; each of its lessons loads `model: out-of-order` at
       `issueWidth: 1` with `outOfOrderIssue: true`, and plays through with narration on the correct
       events (INV-6). Confirmed in the browser (step 6).
-- [ ] The flagship lesson's cycle-count / IPC counterfactual (in-order vs out-of-order) matches the
+- [x] The flagship lesson's cycle-count / IPC counterfactual (in-order vs out-of-order) matches the
       engine at BOTH toggle positions, pinned by a by-name narration oracle — NOT the anchoring sweep,
-      which is toggle-blind by construction (the headline).
-- [ ] Every anchor uses a program-unique `where`, not `nth` (so it tracks the same instruction across
-      the toggle and the sweep).
-- [ ] The sweep covers the OoO config cluster: `positionsFor('out-of-order')` enumerates the honored
+      which is toggle-blind by construction (the headline). **DONE (step 2's oracle, `lessons.test.ts`
+      "same answer, fewer cycles: 120 stored either way, 59 vs 71"); every other OoO lesson carries its
+      own counterfactual oracle too.**
+- [x] Every anchor uses a program-unique `where`, not `nth` (so it tracks the same instruction across
+      the toggle and the sweep). **VERIFIED step 7: zero `nth` in all four OoO lesson files.**
+- [x] The sweep covers the OoO config cluster: `positionsFor('out-of-order')` enumerates the honored
       OoO positions and every lesson is swept over all of them, anchoring in order with resolvable
-      narration in each (INV-6 across configs).
+      narration in each (INV-6 across configs). **DONE (step 0b, pinned by `lessons.test.ts:443` — 48
+      machines, axis order, endpoints, non-vacuity, forwarding/`slowOpLatency` absent).**
 - [x] The renaming beat either anchors cleanly on an existing event (+ table/narration) or is dropped
       with the reason recorded — no `rename`/`issue`/`commit` event added. **DROPPED 2026-07-23 with a
       proven structural reason (step 6); no event invented.**
