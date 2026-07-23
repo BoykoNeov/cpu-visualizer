@@ -320,9 +320,42 @@ cleanest to anchor**:
       should also surface `fuCyclesRemaining` as a `RobEntryView` field so the `MicroTablePanel` shows
       the FU countdown (advisor's "a win" — currently only the `'executing'` label shows).
 
-- [ ] **2. Lesson — the flagship toggle ("Work slides ahead").** `model: out-of-order`, `issueWidth: 1`,
-      `outOfOrderIssue: true`, **program `array-sum`, config cache LARGE (PINNED by the user 2026-07-23,
-      71→59).** Anchor on `alu-op where result:268435460` (pc=24 pointer bump to `&arr[1]`, c19→c8) or
+- [x] **2. Lesson — the flagship toggle ("Work slides ahead"). DONE & pushed 2026-07-23** (3338 tests).
+      `content/lessons/work-slides-ahead.json` — `model: out-of-order`, `issueWidth: 1`,
+      `outOfOrderIssue: true`, `robSize: 16`, `forwarding: false` (neutral = `defaultConfig()`, so it does
+      not trip the "only names honored knobs" guard despite OoO's `configurableForwarding: false`),
+      `branchPrediction: static-not-taken`, cache LARGE. New track **"The out-of-order machine"** appended
+      to `index.json` with this one id. Facts worth carrying forward, NOT re-derivable from the diff: - **The pinned anchor value 268435460 is NOT program-unique — switched to the counter `result:4`
+      (advisor-confirmed).** Under OoO `alu-op result:268435460` matches BOTH the pc=24 pointer bump
+      (c8) AND the next iteration's pc=16 load-address add (c13), so it resolves only via `nth:1` —
+      violating the headline's own "anchor by program-unique `where`, never `nth`". The counter's first
+      decrement `addi t1,t1,-1` (5→4) produces `alu-op {op:'add', result:4}` exactly ONCE in every
+      config (sums are 5/22/18/118/120, bumps are 0x10000000+, bne is 0/1), so it tracks the SAME
+      instruction across the toggle. It moves **c9 (OoO) / c20 (in-order)**, under the head load's miss
+      (`mem-read value:5` at c17 in BOTH). The middle beat is `result:118` (4th running sum, unique,
+      strictly between the counter and the store in every config), the close is `mem-write value:120`. - **The reorder FLIPS trace-order between toggle positions, so the two reordered instructions
+      cannot BOTH be steps** (the runner requires non-decreasing anchor order per position). The three
+      steps are all FIXED-program-order events — iteration-1 counter (c9/c20) < iteration-4 sum
+      (c30/c42) < store — monotonic in ALL 48 sweep positions incl. cache-off/rob-4/width-2. The head
+      load's `mem-read` (c17) sits BETWEEN the counter's two positions (c9 OoO, c20 in-order), so it
+      CANNOT be a step ordered against the counter — anchor it only inside the oracle, never as a step. - **The oracle is the primary net (headline: the event multiset is toggle-invariant, sweep is
+      blind).** Dedicated `describe` in `lessons.test.ts` records the declared machine at both toggle
+      positions (`record(outOfOrderIssue)`, forcing the toggle itself like M8's `record(issueWidth)`),
+      pins the reorder (counter c9 vs c20, `< mem-read 17` OoO / `> 17` in-order), the critical-path
+      beat (118 late in both, chain length set by the cache not the scheduler), and the counterfactual
+      (71/59 cycles, IPC 0.48/0.58 computed from 34 retires, closing prose token-checked). Mutation-
+      checked: flipping the JSON's `outOfOrderIssue` to false reddens ONLY the opening guard (the
+      counterfactual tests force the toggle themselves, correctly). - **`session.test.ts` opening loop extended** to assert `outOfOrderIssue` + `robSize`, arriving with
+      `outOfOrderIssue:false, robSize:4` so the flagship (declares true/16) makes a `lessonOpening`
+      plumbing leak failable — the M8-step-1 move (the sweep bypasses `lessonOpening` and cannot see
+      the opening config; the failure mode is the engine reading `outOfOrderIssue ?? false` and silently
+      recording the IN-ORDER trace with every anchoring test green). The opening plumbing itself was
+      already wired at M9 step 5 (no change needed). - **Wiring guards updated** (all found by grep before editing): `LESSONS.length` 15→16; both track-
+      name arrays (~line 584 + ~line 691); the cache-canonicalization id list (work-slides-ahead is the
+      4th cache-declaring lesson); the by-name track-membership test (new track set). `positionsFor
+    ('out-of-order')`=48 was already in place from step 0(b). ORIGINAL PLAN TEXT for reference:
+      `model: out-of-order`, `issueWidth: 1`, `outOfOrderIssue: true`, **program `array-sum`, config cache
+      LARGE (PINNED by the user 2026-07-23, 71→59).** Anchor on `alu-op where result:268435460` (pc=24 pointer bump to `&arr[1]`, c19→c8) or
       the counter `alu-op where result:4` (pc=28, c20→c9) — both program-unique, both never-dead across
       the sweep (only the cycle moves). The oracle pins BOTH toggle positions' cycle counts (71 / 59)
       and that the younger op executed before the older load's `mem-read` (c17). THE crown-jewel lesson,

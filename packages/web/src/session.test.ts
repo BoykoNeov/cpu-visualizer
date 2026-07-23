@@ -221,8 +221,19 @@ describe('a lesson opens on the model + config it declares', () => {
     // arrival width would open it at 1, and its whole narration — "44 vs 56", "IPC 0.77 vs 0.61" —
     // is a lie the moment the reader is on a 1-wide machine (the milestone's headline failure mode:
     // the engine's `issueWidth ?? 1` default reads 56/56 with every anchoring test still green).
+    //
+    // Arriving with the OoO cluster set AWAY from the flagship's declaration too (M10 step 2): issue
+    // IN-order and ROB 4, so the first `out-of-order` lesson — which declares `outOfOrderIssue: true`
+    // and `robSize: 16` — makes both OoO lines failable. This is the milestone's headline failure
+    // mode made concrete: the engine reads a missing `outOfOrderIssue` as `false`, so a plumbing leak
+    // would open the flagship on the IN-ORDER machine while every anchoring test stays green (the
+    // event multiset is toggle-invariant), and the whole lesson — "cycle 9 vs 20", "59 vs 71" — is a
+    // lie the reader is not looking at.
     for (const lesson of LESSONS) {
-      const opening = lessonOpening(lesson, arrivingWith(true, 'static-taken', CACHE_SMALL));
+      const opening = lessonOpening(
+        lesson,
+        arrivingWith(true, 'static-taken', CACHE_SMALL, 1, false, 4),
+      );
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
       if (lesson.config === undefined) continue;
       expect(opening.forwarding, `${lesson.id} opens in its declared forwarding position`).toBe(
@@ -239,6 +250,15 @@ describe('a lesson opens on the model + config it declares', () => {
       // declared 2 must survive the opening whole, exactly like the other three knobs.
       expect(opening.issueWidth, `${lesson.id} opens at its declared width`).toBe(
         lesson.config.issueWidth ?? 1,
+      );
+      // The M9/M10 OoO cluster (step 2), same OPTIONAL-field reading as `issueWidth`: an omitted knob
+      // means the engine's own default (`?? false` / `?? 16`), and a declared value must survive the
+      // opening whole. Failable because the arrival above sets both away from the flagship's config.
+      expect(opening.outOfOrderIssue, `${lesson.id} opens in its declared issue order`).toBe(
+        lesson.config.outOfOrderIssue ?? false,
+      );
+      expect(opening.robSize, `${lesson.id} opens at its declared ROB size`).toBe(
+        lesson.config.robSize ?? 16,
       );
     }
   });

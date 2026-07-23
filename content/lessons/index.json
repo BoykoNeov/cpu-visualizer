@@ -21,5 +21,9 @@
   {
     "track": "The wide machine",
     "lessons": ["two-at-once", "pair-that-cant", "one-door", "one-branch-unit"]
+  },
+  {
+    "track": "The out-of-order machine",
+    "lessons": ["work-slides-ahead"]
   }
 ]

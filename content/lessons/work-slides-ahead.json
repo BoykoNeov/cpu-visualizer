@@ -1,0 +1,45 @@
+{
+  "id": "work-slides-ahead",
+  "title": "Work slides ahead",
+  "program": "array-sum",
+  "model": "out-of-order",
+  "config": {
+    "forwarding": false,
+    "branchPrediction": "static-not-taken",
+    "cache": {
+      "lineSize": 16,
+      "numLines": 4,
+      "missPenalty": 10
+    },
+    "issueWidth": 1,
+    "outOfOrderIssue": true,
+    "robSize": 16
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 4 } },
+      "narration": {
+        "essentials": "A younger instruction runs while an older one is still waiting on a slow memory load.",
+        "detailed": "Here is the whole idea. The loop's head load `lw t2, 0(t0)` just missed in the cache — its value will not arrive for about ten cycles, at cycle 17. The `add a0, a0, t2` right behind it needs that value, so it cannot move. But `addi t1, t1, -1`, the loop counter, needs nothing from memory at all. Out-of-order issue spots that and runs it NOW, at cycle 9, while the load is still outstanding — the counter drops from 5 to 4 with the miss unresolved. Flip the toggle to in-order issue and this same decrement is pinned to cycle 20, stuck in line behind the waiting add.",
+        "expert": "The load occupies its load/store unit for the miss penalty and frees the issue port, so the scheduler keeps offering ready work. The dependent `add` sits in its reservation station waiting for `t2` on the common data bus; the counter's `addi` has both operands, so wakeup/select issues it around the stalled add. In-order issue refuses exactly this: it will not look past the first not-ready instruction in program order, so the ready counter waits for a load it never depended on. Same instructions, same reservation stations — only the issue policy differs, and that is the entire delta the toggle controls."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 118 } },
+      "narration": {
+        "essentials": "The running total can only advance as each load arrives — it is the real bottleneck.",
+        "detailed": "While the counter and the pointer race ahead, the running sum in `a0` cannot. Each `add a0, a0, t2` needs both the previous sum and the element the current load just fetched, so this chain moves exactly one load at a time — no faster out of order than in. Here it reaches 118, the sum of the first four elements, still one load short of the final answer. This dependent chain is the true critical path: out-of-order issue fills the gaps around it, but cannot compress it.",
+        "expert": "The reduction is a loop-carried dependency threaded through `a0`, and every link also waits on a fresh `mem-read`, so its length is set by the cache, not the scheduler. Independent work — the pointer bump, the counter, the branch — overlaps the miss latency, which is where the cycles are saved; the reduction itself gains nothing, because there is no independent slack inside a chain. This is the honest ceiling on the win: out-of-order issue overlaps latency with useful work, and the useful work is bounded below by the longest dependency chain the program contains."
+      }
+    },
+    {
+      "trigger": { "event": "mem-write", "where": { "value": 120 } },
+      "narration": {
+        "essentials": "Same total — 120 — reached in 59 cycles instead of 71.",
+        "detailed": "The loop is done and 120, the sum of { 5, 17, -4, 100, 2 }, is written to memory — the same total any machine reaches. Issue order never changes what a program computes, only how much waiting it can hide behind useful work. Count the cost: this out-of-order run finished in 59 cycles where in-order issue needs 71, an IPC of 0.58 against 0.48. Flip the toggle back to in-order and watch the 120 stay put while the cycle count climbs to 71.",
+        "expert": "34 instructions retire either way — issue order is a throughput knob, not a correctness one, and the reorder buffer guarantees it by committing in program order no matter what order execution finished in. That is 34 / 59 = 0.58 IPC out of order against 34 / 71 = 0.48 in order. The speedup comes entirely from overlapping the two cache misses' ten-cycle penalties with independent issue; it is sub-linear because the loop-carried reduction cannot be overlapped with itself. Out-of-order issue buys you the slack around a stall, never the stall's own critical path."
+      }
+    }
+  ]
+}

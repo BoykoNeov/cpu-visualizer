@@ -586,6 +586,7 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The machine',
       'The cache',
       'The wide machine',
+      'The out-of-order machine',
     ]);
   });
 
@@ -658,6 +659,13 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'pair-that-cant',
       'two-at-once',
     ]);
+
+    // The out-of-order machine's membership (M10), by name for the same reason: "is this lesson about
+    // out-of-order issue" is pedagogy, not derivable — it runs on `out-of-order` at `outOfOrderIssue:
+    // true`, but so could a lesson really about, say, the cache observed on an OoO machine. The track
+    // claims exactly the flagship "work slides ahead"; later OoO beats append here.
+    const ooo = LESSON_TRACKS.find((t) => t.track === 'The out-of-order machine');
+    expect([...(ooo?.lessons ?? [])].sort()).toEqual(['work-slides-ahead']);
   });
 
   it('shows every lesson in the picker, even one the index forgot', () => {
@@ -693,13 +701,14 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The machine',
       'The cache',
       'The wide machine',
+      'The out-of-order machine',
     ]);
     expect(sections.flatMap((s) => s.lessons.map((l) => l.id))).toEqual(LESSONS.map((l) => l.id));
   });
 });
 
 describe('authored lessons (INV-6)', () => {
-  it('ships the language tours, the two µarch flagships, the cache track, and the wide machine', () => {
+  it('ships the language tours, the two µarch flagships, the cache track, the wide machine, and the OoO flagship', () => {
     // Six single-cycle tours (M1's "2–3 lessons" target, plus M5's front door, its sign-extension
     // lesson, and the comparison lesson that is the same law one surface over); the two pipeline
     // flagships — one per SINGLE-STATE toggle the pipeline honors (forwarding, prediction); the
@@ -717,7 +726,10 @@ describe('authored lessons (INV-6)', () => {
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
-    expect(LESSONS.length).toBe(15);
+    // The out-of-order machine (M10) opens with one flagship — "work slides ahead", the crown jewel
+    // where a younger independent instruction executes past an older one stalled on a cache miss;
+    // later OoO beats (the reservation station, in-order commit, renaming) append to that track.
+    expect(LESSONS.length).toBe(16);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -748,10 +760,14 @@ describe('authored lessons (INV-6)', () => {
       l.config && l.config.cache !== null ? [{ id: l.id, cache: l.config.cache }] : [],
     );
     // Non-vacuity: the cache track means there ARE such lessons, so this is not asserting over [].
+    // The OoO flagship (M10) is the fourth cache-declaring lesson — it opens at CACHE_LARGE, the one
+    // config family where out-of-order issue does anything (the miss is what independent work slides
+    // past), so its declared geometry must canonicalize to the shipped constant like the cache track's.
     expect(declared.map((d) => d.id).sort()).toEqual([
       'cache-conflict',
       'cache-spatial',
       'cache-temporal',
+      'work-slides-ahead',
     ]);
     for (const { id, cache } of declared) {
       expect(
@@ -2445,5 +2461,149 @@ describe('cache-conflict — the size flip, guided (M6 step 7)', () => {
     const a = anchorLesson(lesson(), large);
     expect(a[1]!.cycle, 'an eviction fired on a cache with room to spare').toBeNull();
     expect(a[2]!.cycle, 'arr[0] re-missed on a cache large enough to keep it').toBeNull();
+  });
+});
+
+/**
+ * `work-slides-ahead`'s oracle (M10 step 2) — the FIRST lesson ever on `model: out-of-order`, the
+ * crown jewel of the OoO track, and the milestone's whole thesis made guided. The generic sweep
+ * proves each step fires and reads in order; it is BLINDER here than anywhere before it, and both
+ * things this lesson exists to say have to be pinned by name.
+ *
+ * **Why the sweep is blind — the M10 headline.** The event MULTISET is invariant under the
+ * `outOfOrderIssue` toggle: the same `alu-op`s, `mem-read`s and `mem-write` fire in BOTH positions,
+ * and ONLY the cycle each lands on differs (the OoO engine emits no `stall`/`forward` event — the
+ * CDB broadcast IS the forward). So "the anchor fired" proves nothing about WHICH machine ran, and
+ * INV-8 is doubly useless (it retires in program order either way, so final state is identical). The
+ * lesson's entire claim — a younger instruction executed while an older one waited, and the program
+ * finished sooner — lives in the CYCLE each event landed on, which only an oracle reads.
+ *
+ * **(1) The reorder, by name.** The counter's decrement (`addi t1, t1, -1`, 5 -> 4 — a
+ * program-unique `alu-op` value, so it tracks the SAME instruction across the toggle, never an `nth`
+ * that would drift) slides from cycle 20 in order to cycle 9 out of order, UNDER the head load's
+ * miss, whose `mem-read` lands at cycle 17 either way. In order it waits the miss out (cycle 20 >
+ * 17); out of order it runs while the miss is outstanding (cycle 9 < 17). The same event, moved.
+ *
+ * **(2) The counterfactual numbers, derived not trusted.** The closing narration quotes "59 vs 71"
+ * and "IPC 0.58 vs 0.48" AS FACT — the exact M4-step-4 trap (`forwarding-bubble` once shipped "51
+ * cycles" over a transport reading 49). So both totals are recorded from the engine at each toggle
+ * position under the lesson's own declared config, the IPCs are COMPUTED from retire counts, and the
+ * closing prose is asserted to contain those exact tokens.
+ */
+describe('work-slides-ahead — the out-of-order flagship, work slides past the miss (M10 step 2)', () => {
+  const lesson = (): Lesson => byId('work-slides-ahead');
+
+  /** The lesson's own declared machine with only the issue-order toggle varied — the rest from JSON. */
+  const record = (outOfOrderIssue: boolean): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared)
+      throw new Error('work-slides-ahead must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, outOfOrderIssue });
+  };
+
+  it('opens on the out-of-order machine at width 1, cache large, issuing OUT of order', () => {
+    // The declared opening. `lessonOpening` honoring this is what `session.test.ts` guards on the
+    // load path; here it is the precondition for every cycle number below being about the machine the
+    // prose describes. The cache is CACHE_LARGE by IDENTITY — `canonicalize` mapped the JSON geometry
+    // to the shipped constant at load, which is also what lets the shell's cache toggle light.
+    expect(lesson().model).toBe('out-of-order');
+    expect(lesson().config?.outOfOrderIssue).toBe(true);
+    expect(lesson().config?.issueWidth).toBe(1);
+    expect(lesson().config?.cache).toBe(CACHE_LARGE);
+  });
+
+  /** The cycle of the sole `alu-op` with this `op`/`result` — asserts uniqueness, which is the anchor's. */
+  const aluCycle = (trace: readonly CycleTrace[], op: string, result: number): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'alu-op' && e.op === op && e.result === result ? [c.cycle] : [],
+      ),
+    );
+    expect(hits, `alu-op ${op} result:${result} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** The cycle of the head load's `mem-read` (element value 5, program-unique). */
+  const memReadCycle = (trace: readonly CycleTrace[]): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) => (e.type === 'mem-read' && e.value === 5 ? [c.cycle] : [])),
+    );
+    expect(hits, 'the first element load (value 5) is program-unique').toHaveLength(1);
+    return hits[0]!;
+  };
+
+  it('THE REORDER: the counter slides under the miss — cycle 9 out of order vs 20 in order', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The head load misses and its `mem-read` lands at cycle 17 REGARDLESS of issue order — it is the
+    // head of the program, so nothing reorders ahead of it. This is the fixed point the reorder is
+    // measured against: independent work slides UNDER this, it does not move it.
+    expect(memReadCycle(inOrder)).toBe(17);
+    expect(memReadCycle(ooo)).toBe(17);
+
+    // In order: the counter's decrement (5 -> 4) is pinned to cycle 20 — behind the waiting `add`,
+    // AFTER the load it never depended on finally resolved. The stall it inherited is pure policy.
+    expect(aluCycle(inOrder, 'add', 4)).toBe(20);
+    expect(aluCycle(inOrder, 'add', 4)).toBeGreaterThan(memReadCycle(inOrder));
+
+    // Out of order: the SAME decrement slides to cycle 9 — BEFORE the load's `mem-read` at 17, while
+    // the miss is still outstanding. This is the lesson's whole subject, and the sweep cannot see it:
+    // the `alu-op result:4` fires in both positions, only its cycle moved.
+    expect(aluCycle(ooo, 'add', 4)).toBe(9);
+    expect(aluCycle(ooo, 'add', 4)).toBeLessThan(memReadCycle(ooo));
+    expect(aluCycle(ooo, 'add', 4)).toBeLessThan(aluCycle(inOrder, 'add', 4));
+  });
+
+  it('THE CRITICAL PATH: the reduction trickles one load at a time, no faster out of order', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The lesson's honest ceiling, step 1: while independent work races ahead, the loop-carried sum
+    // in `a0` cannot — each `add a0, a0, t2` waits on both the previous sum and a fresh load. Its
+    // fourth partial (5 + 17 - 4 + 100 = 118, program-unique) is reached late in BOTH positions,
+    // because the chain's length is set by the cache, not the scheduler. Out-of-order issue fills
+    // AROUND it; it does not compress it — which is why the win below is sub-linear.
+    const reductionOoo = aluCycle(ooo, 'add', 118);
+    const reductionInOrder = aluCycle(inOrder, 'add', 118);
+    // It is still ahead out of order (the misses before it overlapped independent work), but not by
+    // the margin the counter moved — the chain is the bottleneck the reorder cannot cross.
+    expect(reductionOoo).toBeLessThan(reductionInOrder);
+    // ...and it lands strictly AFTER the reordered counter in both positions (the counter is iteration
+    // 1's, this is iteration 4's), which is what makes the two steps independently reachable.
+    expect(reductionOoo).toBeGreaterThan(aluCycle(ooo, 'add', 4));
+    expect(reductionInOrder).toBeGreaterThan(aluCycle(inOrder, 'add', 4));
+  });
+
+  it('same answer, fewer cycles: 120 stored either way, 59 vs 71 (IPC 0.58 vs 0.48)', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The closing payoff, alive in both — it is what the program computed, not how it ran. The store
+    // of 120 is the lesson's last anchored step (`mem-write where value:120`, program-unique).
+    for (const trace of [inOrder, ooo]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'mem-write', value: 120 });
+    }
+
+    // The two totals the closing narration quotes as fact — derived from the declared machine, not
+    // trusted. Under any other cache these would move (out of order === in order with the cache off,
+    // the whole reason M10 lives at cache-on); `record` fixes the config and varies only the toggle,
+    // so prose and engine cannot drift apart without this line going red.
+    expect(inOrder.length).toBe(71);
+    expect(ooo.length).toBe(59);
+
+    // The IPCs, COMPUTED from the retire counts rather than typed, then matched against the prose.
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(inOrder)).toBe(34); // issue order is not a correctness knob — 34 retire either way
+    expect(retired(ooo)).toBe(34);
+    const ipcInOrder = (retired(inOrder) / inOrder.length).toFixed(2); // 34 / 71 = 0.48
+    const ipcOoo = (retired(ooo) / ooo.length).toFixed(2); // 34 / 59 = 0.58
+    expect([ipcInOrder, ipcOoo]).toEqual(['0.48', '0.58']);
+
+    // The prose states all four numbers. Asserted against the DEFAULT tier (what the reader sees), so
+    // a silently-wrong count — the M4-step-4 defect, green under every anchoring test — reddens here.
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    for (const token of ['71', '59', ipcInOrder, ipcOoo]) {
+      expect(closing, `closing narration must quote ${token}`).toContain(token);
+    }
   });
 });
