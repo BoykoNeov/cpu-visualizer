@@ -12,12 +12,13 @@ import { loadSource } from './simulator';
  * that make the table's claims checkable rather than merely asserted.
  */
 describe('the model table', () => {
-  it('lists the four microarchitectures built so far, with unique ids', () => {
+  it('lists the five microarchitectures built so far, with unique ids', () => {
     expect(MODELS.map((m) => m.id)).toEqual([
       'single-cycle',
       'multi-cycle',
       'pipeline',
       'superscalar',
+      'out-of-order',
     ]);
   });
 
@@ -71,14 +72,32 @@ describe('the model table', () => {
   it('names exactly which models honor each config knob', () => {
     const honoring = (flag: (c: ProcessorCapabilities) => boolean) =>
       MODELS.filter((m) => flag(m.capabilities)).map((m) => m.id);
+    // The out-of-order core joins prediction, cache and issue-width — it has hazards it bets on, it
+    // caches, and it is width-parametric (`issueWidth`, default 2). It DELIBERATELY does NOT join
+    // forwarding: register renaming makes a forwarding knob meaningless, so its engine reports
+    // `configurableForwarding: false` (the reflex "it has hazards so it forwards" is the trap this
+    // list catches).
     expect(honoring((c) => c.configurableForwarding)).toEqual(['pipeline', 'superscalar']);
-    expect(honoring((c) => c.configurableBranchPrediction)).toEqual(['pipeline', 'superscalar']);
-    expect(honoring((c) => c.configurableCache)).toEqual(['pipeline', 'superscalar']);
-    // The one knob that is NOT shared, and the reason the width toggle appears on exactly one model
-    // (M7 step 6). The other three engines do not merely leave `issueWidth` unmoved — they ignore it,
-    // pinned as whole-trace inertness in each of their suites at step 1. A second model arriving with
-    // this true without that proof is what should fail here.
-    expect(honoring((c) => c.configurableIssueWidth)).toEqual(['superscalar']);
+    expect(honoring((c) => c.configurableBranchPrediction)).toEqual([
+      'pipeline',
+      'superscalar',
+      'out-of-order',
+    ]);
+    expect(honoring((c) => c.configurableCache)).toEqual([
+      'pipeline',
+      'superscalar',
+      'out-of-order',
+    ]);
+    // Issue width was the one knob that was NOT shared through M7 (M7 step 6); the out-of-order core
+    // is the SECOND model to honor it — superscalar OoO, built once, width-parametric (M9). The three
+    // pre-M7 engines do not merely leave `issueWidth` unmoved — they ignore it (whole-trace inertness,
+    // pinned in each of their suites). A model arriving with this true without that proof is what
+    // should fail here.
+    expect(honoring((c) => c.configurableIssueWidth)).toEqual(['superscalar', 'out-of-order']);
+    // The out-of-order config cluster — `outOfOrderIssue`, `robSize`, `slowOpLatency` — gated by one
+    // flag (M9 step 0). Only the OoO model honors it; every other engine's constant sets it false, so
+    // the issue-order toggle and the ROB-size control appear on exactly this model and nowhere else.
+    expect(honoring((c) => c.configurableOutOfOrder)).toEqual(['out-of-order']);
   });
 
   /**
@@ -100,6 +119,12 @@ describe('the model table', () => {
       // be the exact failure this test hunts — that diagram draws one instruction per stage, so a
       // superscalar trace would light it into a picture the machine contradicts (INV-5).
       ['superscalar', 'superscalar'],
+      // `'none'` on purpose at step 5, exactly as the superscalar was `'none'` here through M7 step 6.
+      // A `DatapathKind` value asserts a diagram of that kind EXISTS; the bespoke OoO datapath is M9
+      // step 7, where the union member, App's dispatch arm, and this value flip together (and this
+      // table reddening is the reminder to do all three). Until then App falls through to the
+      // placeholder, and the tier's picture comes from the pipeline map + the step-6 tables.
+      ['out-of-order', 'none'],
     ]);
   });
 

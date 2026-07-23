@@ -13,6 +13,12 @@ import {
   MULTI_CYCLE_MODEL_ID,
 } from '@cpu-viz/engine-multi-cycle';
 import {
+  OutOfOrderProcessor,
+  OUT_OF_ORDER_CAPABILITIES,
+  OUT_OF_ORDER_MODEL_DESCRIPTION,
+  OUT_OF_ORDER_MODEL_ID,
+} from '@cpu-viz/engine-out-of-order';
+import {
   PipelineProcessor,
   PIPELINE_CAPABILITIES,
   PIPELINE_MODEL_ID,
@@ -108,6 +114,28 @@ export const MODELS: readonly ModelChoice[] = [
     // bespoke diagram that nothing drew, while App silently fell through to the placeholder.
     datapath: 'superscalar',
     capabilities: SUPERSCALAR_CAPABILITIES,
+  },
+  {
+    id: OUT_OF_ORDER_MODEL_ID,
+    label: 'Out-of-order',
+    // The engine's OWN one-liner, like the superscalar above — a description re-typed in the shell is
+    // a second place for the same claim to go stale.
+    description: OUT_OF_ORDER_MODEL_DESCRIPTION,
+    make: () => new OutOfOrderProcessor(),
+    // `'none'` DELIBERATELY, exactly as the superscalar sat at `'none'` through M7 step 6: a
+    // `DatapathKind` value means "a diagram of this kind EXISTS", and the bespoke OoO datapath is M9
+    // step 7. This is a disclosed deviation from the M9 plan's literal `DatapathKind: 'out-of-order'`
+    // in step 5 — that phrasing is step-7 shorthand. Declaring it here now would make the datapath
+    // table in `models.test.ts` assert a diagram nothing draws (the exact "row → WRONG diagram"
+    // failure that test hunts), while App silently fell through to the placeholder anyway. The union
+    // member, App's dispatch arm, and this value all flip TOGETHER at step 7 — the superscalar
+    // precedent, and `models.test.ts` reddening is the reminder to do all three at once.
+    //
+    // Step 5's own picture comes from the pipeline MAP (gated on trace overlap, not the model), which
+    // renders an out-of-order recording for free (INV-3) — the bespoke datapath is the sheddable half
+    // of this tier (the plan's inverted scope lever), the tables (step 6) are the star surface.
+    datapath: 'none',
+    capabilities: OUT_OF_ORDER_CAPABILITIES,
   },
 ];
 

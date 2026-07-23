@@ -1,10 +1,14 @@
 # Milestone 9 — out-of-order execution: Tomasulo, the ROB, and register renaming
 
-**Status: NOT STARTED, 2026-07-21. The north star and, per the spec, "the genuine cliff." Nothing
-built yet. This document is the plan; the headline benefit-source fork (below) — the one decision that
-reshapes the model — was **pinned 2026-07-21 as Option B on A**, clearing the gate on step 1a. Scope mirrors M7:
-this milestone is the MODEL + the VIEW; the OoO lesson track is a future milestone (M10), exactly as
-M8 was the superscalar lesson track after M7 built the superscalar.**
+**Status: STEPS 0–5 DONE (2026-07-23). The north star and, per the spec, "the genuine cliff." The
+engine is complete (config seam → in-order base → the OoO scheduler → INV-8 differential → the
+scheduling net → recorder/`follow()` through the ROB) and the model is now DRIVABLE IN THE BROWSER
+(step 5, web enablement — browser-verified). Remaining: step 6 (the `MicroTablePanel` — ROB/RS/rename
+tables, the tier's star surface, non-sheddable) and step 7 (the bespoke OoO datapath — the honest
+scope cut). The headline benefit-source fork was **pinned 2026-07-21 as Option B on A** (Option B's
+`slowOpLatency` remains a deferred, unread knob — see steps 1b/5). Scope mirrors M7: this milestone is
+the MODEL + the VIEW; the OoO lesson track is a future milestone (M10), exactly as M8 was the
+superscalar lesson track after M7 built the superscalar.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap, tier 5). The load-bearing
 constraints are the architectural invariants (§3) and the trace schema (§5). The spec is explicit
@@ -540,16 +544,61 @@ milestone must lose weight, it loses step 7, not step 6.
       is the first thing in the file to set `outOfOrderIssue: true`). Full repo green: `npm test`
       (3196 tests, +8), `typecheck`, `lint`, `build`, `format:check` all green.
 
-- [ ] **5. Web enablement.** `models.ts` entry + `DatapathKind: 'out-of-order'` + the issue-order
-      toggle and ROB-size control (and the FU-latency control under B), each gated on the matching
-      capability flag like every other config control. The transport, register/memory/source panels,
-      scrub, lessons, and sandbox come free via INV-3. The **pipeline map also comes free** and gains
-      a new reading: a row (an instruction) now progresses out of order relative to its neighbours —
-      the map already keys cells off `location` and instruction id, so out-of-order stage
-      progression renders with zero map change (the same "it just absorbs it" the map has delivered
-      since M3 step 7). Acceptance: the model is selectable; the map renders an out-of-order
-      recording; the issue-order toggle is present on OoO and absent on the in-order models.
-      **Browser eyeball required.**
+- [x] **5. Web enablement.** DONE 2026-07-23. `models.ts` entry (the fifth model row) + the
+      issue-order toggle and ROB-size control, each gated on the `configurableOutOfOrder` capability
+      flag like every other config control. The transport, register/memory/source panels, scrub,
+      lessons, and sandbox came free via INV-3; the **pipeline map came free** and gained the new
+      reading exactly as predicted — a row progresses out of order relative to its neighbours with
+      ZERO map change, because it already keys cells off `location` (`"ROB#3"`, free-form since M3)
+      and instruction id. **Browser-verified** (the real net for this step): the model is selectable;
+      the map renders a genuine out-of-order recording (`lw ROB#24` stuck on a miss cycles 22–35
+      while younger `lui`/`addi`/`sw`/`ecall` dispatch and progress at 27–41 around it); the
+      issue-order + ROB controls are present on OoO and ABSENT on the superscalar (which keeps
+      forwarding/predict/cache/width); and the **flagship flip works — in-order→out-of-order on
+      `array-sum` (cache large, static-taken, width 2) without reloading drops cycle 60 → 41**, the
+      map redrawing the independent-work-races-ahead picture live.
+
+      **Three disclosed deviations from the step's literal phrasing, each with precedent:**
+      (1) **`datapath: 'none'`, NOT `DatapathKind: 'out-of-order'`.** A `DatapathKind` value asserts
+      a diagram of that kind EXISTS; the bespoke OoO datapath is step 7. Declaring it now would make
+      `models.test.ts`'s datapath table assert a diagram nothing draws (the "row → WRONG diagram"
+      failure that table hunts) while App fell through to the placeholder anyway — so the union member,
+      App's dispatch arm, and the value flip TOGETHER at step 7, exactly as the superscalar sat at
+      `'none'` through M7 step 6. The step-5 picture is the pipeline map (gated on trace overlap, not
+      the model) plus the "Out-of-order datapath — coming soon" placeholder. (2) **NO FU-latency
+      control.** Option B's `slowOpLatency` is still unread by the engine (deferred since step 1b), so
+      a control for it would be "a control that cannot move anything" — worse than none. Deferred to
+      when B's engine behavior lands, mirroring 1b/2/3's Option-B deferral. (3) **`configurableForwarding`
+      stays `['pipeline','superscalar']`** — OoO does NOT gain a forwarding toggle, because register
+      renaming makes the knob meaningless and its engine reports the flag false (the reflex "it has
+      hazards so it forwards" is the trap `models.test.ts`'s per-knob set caught).
+
+      **A latent gap fixed en route, found only because the web package's new `"*"` dependency forced
+      real npm resolution:** `packages/engine/out-of-order` was added to the tsconfig references and
+      the vitest aliases at step 1a but NEVER to the npm `workspaces` array — so `npm install` tried to
+      fetch `@cpu-viz/engine-out-of-order` from the registry (E404). Tests/typecheck never noticed
+      because vitest uses its own aliases and `tsc -b` uses project references, not node resolution.
+      Added to `workspaces` (DAG order, after superscalar); install then linked it cleanly.
+
+      **Opening defaults, pinned against a live width-1/width-2 × OoO-on/off probe** (not guessed):
+      issue-order opens **in-order** (the degenerate machine the reader just learned), ROB opens
+      **full (16, the engine default)** where the money shot is visible, ROB small is **4** (chokes
+      `array-sum` back toward in-order). The issue-order flip drops cycles at BOTH widths (69→57 at
+      width 1, 61→42 at width 2 — total-cycle counts), so opening at the shared width-1 position still
+      demonstrates the flip from the cold-start reachable state — the advisor's one load-bearing
+      pre-write check. ROB size is a CONDITIONAL lever like the cache (flat on `sum-loop`/`store-forward`,
+      moves only `array-sum`), not universal like width — the control's titles disclose this.
+
+      **Landed as:** `models.ts` (+row, +import; `DatapathKind` union untouched), `models.test.ts`
+      (four→five, the three capability-set updates + the new `configurableOutOfOrder` check + the
+      datapath-table row), `session.ts`/`session.test.ts` (`LessonOpening` + `lessonOpening` gain
+      `outOfOrderIssue`/`robSize` on `issueWidth`'s optional precedent), `useSimulator.ts` (state +
+      refs + config threading + two setters, the fifth/sixth knobs riding M3's config seam with no
+      widening), `App.tsx` (+`IssueOrderToggle`, +`RobSizeControl`, gated on `configurableOutOfOrder`),
+      `App.test.tsx` (+two shape-test blocks pinning the opening positions), plus the web-package
+      wiring (`package.json` dep, `tsconfig.json` path, `vite.config.ts` alias, root `package.json`
+      workspaces). Full repo green: `npm test` (3203 tests, +7), `typecheck`, `lint`, `build`,
+      `format:check` all green, and the browser eyeball clean on the first pass.
 
 - [ ] **6. The micro-structure tables — `MicroTablePanel` (ROB, RS, rename map).** THE star surface
       of this tier, and the deliverable `superscalar-visuals.md` §3 designed and deferred to here.
@@ -577,9 +626,11 @@ milestone must lose weight, it loses step 7, not step 6.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] Load the money-shot program on the OoO model with the miss/slow-op present, flip the issue-order
+- [x] Load the money-shot program on the OoO model with the miss/slow-op present, flip the issue-order
       toggle from in-order to out-of-order without reloading: the pipeline map shows independent
-      instructions sliding ahead of a waiting one, and the cycle count drops.
+      instructions sliding ahead of a waiting one, and the cycle count drops. **MET — browser-verified
+      at step 5 (2026-07-23): `array-sum`, cache large, static-taken, width 2, flip in-order→out-of-order
+      drops cycle 60 → 41, `lw ROB#24` stuck on a miss 22–35 while younger work runs 27–41 around it.**
 - [ ] The ROB table commits instructions **in program order** while the RS / completion state shows at
       least one younger instruction finishing **ahead of** an older waiting one — out-of-order
       completion, in-order retirement, visible side by side.

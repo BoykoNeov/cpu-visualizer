@@ -117,6 +117,33 @@ export interface Simulator {
    * in each model's suite at step 1, not assumed.
    */
   issueWidth: number;
+  /**
+   * Whether the driving engine issues out of order (`ProcessorConfig.outOfOrderIssue`) — M9's
+   * FLAGSHIP toggle, the FIFTH knob to ride M3's config seam with no widening: session level, handed
+   * to every model, gated only as a CONTROL on `capabilities.configurableOutOfOrder`.
+   *
+   * Two positions, two real machines — the in-order↔out-of-order ISSUE flip at fixed width. Opens
+   * **false** (in-order): the degenerate position is the machine the reader just learned (the M9
+   * bisection's 1a base reproduces M3/M7 cycle for cycle), and flipping it on is the reveal —
+   * independent work slides ahead of a miss-stalled instruction and the cycle count drops
+   * (`array-sum.s`, cache on: 69→57 at width 1, 61→42 at width 2). Always a boolean here even though
+   * the field is optional; the shell holds a position and the engine's `?? false` makes `false` agree
+   * with the default.
+   */
+  outOfOrderIssue: boolean;
+  /**
+   * The reorder-buffer size the driving engine is configured with (`ProcessorConfig.robSize`) — M9's
+   * SECONDARY, structural lever: a small ROB fills and dispatch stalls, a visible structural limit.
+   * Session level, gated as a CONTROL on `capabilities.configurableOutOfOrder` (the same flag as the
+   * issue-order toggle — one flag gates the whole OoO config cluster).
+   *
+   * Opens at **16**, the engine's own default (`config.robSize ?? 16`), so the money shot is visible
+   * the moment out-of-order issue is flipped on; shrinking it to the small position (4) is the
+   * secondary experiment that chokes the benefit back toward in-order. Like the cache and unlike
+   * width, it is a CONDITIONAL lever — it only binds on a program with independent work stuck behind
+   * a long-latency miss to reach (flat on `sum-loop`/`store-forward`, moves on `array-sum`).
+   */
+  robSize: number;
   /** The lesson whose steps are attached, or `null` in free-play / after a sandbox fork (§13). */
   activeLesson: Lesson | null;
   /**
@@ -236,6 +263,22 @@ export interface Simulator {
    * timeline.
    */
   setIssueWidth: (width: number) => void;
+  /**
+   * Flip `ProcessorConfig.outOfOrderIssue` and re-record the current source under it — the same
+   * shape as {@link setIssueWidth}, for the same reason: the trace genuinely changes (independent
+   * work reorders around a stall and the run gets shorter), so a fresh recording IS the mechanism.
+   * The no-op guard is a plain `===` on the boolean — each position is a distinct machine, so no
+   * behavior-vs-value subtlety like {@link setBranchPrediction}'s.
+   */
+  setOutOfOrderIssue: (on: boolean) => void;
+  /**
+   * Set `ProcessorConfig.robSize` and re-record the current source under it — same shape as
+   * {@link setIssueWidth}. The no-op guard is a plain `===` on the number. Note this re-records even
+   * for a program the ROB size does not move (the conditional-lever caveat): the guard is on the
+   * requested VALUE, not on whether the trace will differ, exactly as {@link setCache} re-records a
+   * cache flip on a program with no reuse to capture.
+   */
+  setRobSize: (size: number) => void;
   /** Load an example program by name (free-play); parks the cursor at the pre-run state. */
   select: (name: string) => void;
   /** Start following an authored lesson: load its program and attach its steps. */
@@ -299,6 +342,18 @@ export function useSimulator(): Simulator {
   // position; the engine's own `?? 1` is what makes that position agree with the default.
   const [issueWidth, setIssueWidthState] = useState(1);
   const issueWidthRef = useRef(issueWidth);
+  // Out-of-order issue, mirroring the four knobs above (M9 step 5). Opens FALSE (in-order) — the
+  // flagship's degenerate position is the machine the reader just learned, so the first picture
+  // matches it and the flip to out-of-order is the reveal (independent work slides ahead of a stall,
+  // cycles drop). A literal `false` rather than `defaultConfig()`, like `issueWidth`: the field is
+  // OPTIONAL, so `defaultConfig()` leaves it undefined and "undefined" is not a togglable position.
+  const [outOfOrderIssue, setOutOfOrderIssueState] = useState(false);
+  const outOfOrderIssueRef = useRef(outOfOrderIssue);
+  // ROB size, the secondary structural lever (M9 step 5). Opens at 16 — the engine's own default
+  // (`config.robSize ?? 16`), the position where the money shot is visible once OoO is flipped on;
+  // shrinking it is the follow-up experiment. A literal, same reasoning as `issueWidth`/OoO above.
+  const [robSize, setRobSizeState] = useState(16);
+  const robSizeRef = useRef(robSize);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -315,6 +370,8 @@ export function useSimulator(): Simulator {
         branchPrediction: branchPredictionRef.current,
         cache: cacheRef.current,
         issueWidth: issueWidthRef.current,
+        outOfOrderIssue: outOfOrderIssueRef.current,
+        robSize: robSizeRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -377,6 +434,8 @@ export function useSimulator(): Simulator {
         branchPrediction: branchPredictionRef.current,
         cache: cacheRef.current,
         issueWidth: issueWidthRef.current,
+        outOfOrderIssue: outOfOrderIssueRef.current,
+        robSize: robSizeRef.current,
       });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
@@ -389,6 +448,10 @@ export function useSimulator(): Simulator {
       setCacheState(opening.cache);
       issueWidthRef.current = opening.issueWidth;
       setIssueWidthState(opening.issueWidth);
+      outOfOrderIssueRef.current = opening.outOfOrderIssue;
+      setOutOfOrderIssueState(opening.outOfOrderIssue);
+      robSizeRef.current = opening.robSize;
+      setRobSizeState(opening.robSize);
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -486,6 +549,38 @@ export function useSimulator(): Simulator {
     [loadInto],
   );
 
+  const setOutOfOrderIssue = useCallback(
+    (on: boolean) => {
+      if (on === outOfOrderIssueRef.current) return; // already there — keep the cursor where it is
+      outOfOrderIssueRef.current = on; // read by loadInto below (and every later load)
+      setOutOfOrderIssueState(on);
+      // Re-record whatever is loaded under the new issue policy. Same shape as `setForwarding`: the
+      // source is the exact running text, so re-loading keeps the session and any active lesson
+      // intact while changing only whether the machine issues out of order. The lesson re-anchors
+      // against the new recording — its steps anchor to EVENTS, so they survive the cycle numbers
+      // moving underneath them (INV-6), which they do here whenever independent work reorders.
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
+  const setRobSize = useCallback(
+    (size: number) => {
+      if (size === robSizeRef.current) return; // already there — keep the cursor where it is
+      robSizeRef.current = size; // read by loadInto below (and every later load)
+      setRobSizeState(size);
+      // Re-record whatever is loaded at the new ROB size. Same shape as `setIssueWidth`. Unlike a
+      // width change this may re-record a byte-identical timeline (the conditional-lever caveat — the
+      // ROB only binds when independent work is stuck behind a miss), but the guard is on the VALUE,
+      // not on whether the trace will differ, exactly as `setCache` re-records a cache flip on a
+      // program with no reuse. Both positions are still distinct machines the reader chose between.
+      const source = loaded.current?.source;
+      if (source != null) loadInto(source);
+    },
+    [loadInto],
+  );
+
   // Load a program on mount so the shell is never empty. Prefer `sum-loop` — a short
   // counting loop is the clearest first teaching example; `add` (which sorts first) halts
   // by running off text-end, so its final pc is an out-of-range value that reads as odd.
@@ -538,6 +633,8 @@ export function useSimulator(): Simulator {
     branchPrediction,
     cache,
     issueWidth,
+    outOfOrderIssue,
+    robSize,
     programName: originNameOf(session),
     activeLesson,
     anchoredSteps,
@@ -558,6 +655,8 @@ export function useSimulator(): Simulator {
     setBranchPrediction,
     setCache,
     setIssueWidth,
+    setOutOfOrderIssue,
+    setRobSize,
     select,
     startLesson,
     loadEdited,

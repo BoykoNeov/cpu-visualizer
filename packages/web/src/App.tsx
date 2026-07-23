@@ -294,6 +294,12 @@ export function App(): React.JSX.Element {
           {activeModel.capabilities.configurableIssueWidth ? (
             <WidthToggle width={sim.issueWidth} setWidth={sim.setIssueWidth} />
           ) : null}
+          {activeModel.capabilities.configurableOutOfOrder ? (
+            <IssueOrderToggle on={sim.outOfOrderIssue} setOn={sim.setOutOfOrderIssue} />
+          ) : null}
+          {activeModel.capabilities.configurableOutOfOrder ? (
+            <RobSizeControl size={sim.robSize} setSize={sim.setRobSize} />
+          ) : null}
         </div>
       </div>
 
@@ -1155,6 +1161,139 @@ export function WidthToggle(props: {
             {position === 2 ? '2-wide' : '1-wide'}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The issue-order toggle (M9 step 5) — the out-of-order tier's FLAGSHIP experiment (§12.5), and the
+ * FIFTH control to change the machine rather than the picture. It rides M3's config seam exactly as
+ * forwarding, prediction, the cache and width did — the same finding a fifth time: a whole new tier
+ * needed no widening of the seam it was handed.
+ *
+ * **Two positions, and BOTH are honest machines — the thing this control has to get right, twice
+ * over.** The in-order position is not a different model wearing a new name: it is the SAME
+ * out-of-order engine with its scheduler forced to issue strictly in program order (the M9 bisection's
+ * 1a base), which reproduces the M3 pipeline (at width 1) and the M7 superscalar (at width 2) cycle
+ * for cycle. That is what makes the flip a same-program A/B on ONE machine rather than a model switch
+ * in disguise, and it is why issue-order is a config knob here instead of a sixth row in the model
+ * picker. It opens **in-order** — the degenerate case the reader just learned — so the first picture
+ * matches it and flipping to out-of-order is the reveal.
+ *
+ * Rendered only where `capabilities.configurableOutOfOrder` is true, so it exists for the out-of-order
+ * core and nothing else — every other engine's constant sets the flag false, and none of them reads
+ * `outOfOrderIssue` at all (whole-trace inertness, pinned in each of their processor suites at M9
+ * step 0).
+ *
+ * The `title`s carry where the honesty budget goes: out-of-order only pays off when there is a
+ * long-latency event (a cache miss) with independent work reachable behind it — so the drama needs a
+ * program like `array-sum.s` with the cache ON. On a program with no stall to schedule around, the
+ * flip changes nothing, exactly as it should.
+ */
+export function IssueOrderToggle(props: {
+  on: boolean;
+  setOn: (on: boolean) => void;
+}): React.JSX.Element {
+  const { on, setOn } = props;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        Issue order
+      </span>
+      <div className="seg">
+        {([false, true] as const).map((position) => (
+          <button
+            key={String(position)}
+            className={position === on ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setOn(position)}
+            aria-pressed={position === on}
+            title={
+              position
+                ? 'Out-of-order issue — a ready instruction starts as soon as a functional unit is free, even if an OLDER one is still waiting on a cache miss or a slow operand. Commit stays in program order through the reorder buffer, so the architectural result is unchanged; only the schedule moves. This is where the tier earns its name: with the cache on, watch independent work slide past a stalled load and the cycle count drop.'
+                : 'In-order issue — the same machine, but the scheduler starts instructions strictly oldest-first, so a stalled instruction holds up everything behind it. This is the 5-stage pipeline (1-wide) or the superscalar (2-wide) you already know, which is what makes it the baseline the out-of-order flip is measured against.'
+            }
+          >
+            {position ? 'out-of-order' : 'in-order'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The ROB-size control (M9 step 5) — the out-of-order tier's SECONDARY, structural lever. The
+ * reorder buffer is the window of in-flight instructions; when it fills, dispatch stalls, so a small
+ * ROB cannot reach the independent work waiting behind a miss and the out-of-order benefit shrinks
+ * back toward in-order. A visible structural limit, not the headline — which is why it is a two-
+ * position control, not a gradient.
+ *
+ * Rendered only where `capabilities.configurableOutOfOrder` is true (the same flag as the issue-order
+ * toggle — one flag gates the whole OoO config cluster).
+ *
+ * **This is a CONDITIONAL lever, like the cache and unlike width — the honesty budget the `title`s
+ * carry.** Width makes every corpus program strictly faster; the ROB only binds on a program that
+ * has independent work stuck behind a long-latency miss to REACH. On `array-sum.s` with the cache on
+ * it moves the count (full 16 → small 4 is 42 → 57 cycles at width 2); on `sum-loop.s` and
+ * `store-forward.s` the window never fills and both positions record byte-for-byte the same, exactly
+ * as the cache is a no-op on a program with no reuse to capture. Opens on **16**, the engine's own
+ * default, so the money shot is visible the moment out-of-order issue is on; the small position is
+ * the follow-up experiment.
+ */
+export function RobSizeControl(props: {
+  size: number;
+  setSize: (size: number) => void;
+}): React.JSX.Element {
+  const { size, setSize } = props;
+  const positions: { label: string; value: number; title: string }[] = [
+    {
+      label: 'small',
+      value: 4,
+      title:
+        'A 4-entry reorder buffer. Small enough that on an array walk it fills before dispatch can reach the next, independent load — so dispatch stalls and the out-of-order benefit mostly vanishes (array-sum with the cache on runs about as slowly as in-order). The visible structural limit: a machine can only reorder within the window it can hold.',
+    },
+    {
+      label: 'full',
+      value: 16,
+      title:
+        'A 16-entry reorder buffer — the default. Wide enough to hold the next iteration’s independent load in flight while an older one is stuck on a cache miss, which is what lets out-of-order issue run it ahead and the cycle count drop. Only helps a program with independent work to reach past a stall — a program that never stalls fills the same either way.',
+    },
+  ];
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          fontSize: '0.72rem',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          color: T.ink3,
+        }}
+      >
+        ROB
+      </span>
+      <div className="seg">
+        {positions.map((position) => {
+          const lit = position.value === size;
+          return (
+            <button
+              key={position.label}
+              className={lit ? 'seg-btn seg-btn--on' : 'seg-btn'}
+              onClick={() => setSize(position.value)}
+              aria-pressed={lit}
+              title={position.title}
+            >
+              {position.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

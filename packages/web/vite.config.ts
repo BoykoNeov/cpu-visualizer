@@ -28,6 +28,7 @@ export default defineConfig({
       // claimed this list mirrors vitest.config.ts; now it does.
       '@cpu-viz/engine-pipeline': pkg('../engine/pipeline/src/index.ts'),
       '@cpu-viz/engine-superscalar': pkg('../engine/superscalar/src/index.ts'),
+      '@cpu-viz/engine-out-of-order': pkg('../engine/out-of-order/src/index.ts'),
     },
   },
 });

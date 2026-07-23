@@ -74,6 +74,21 @@ export interface LessonOpening {
    * exception — see {@link lessonOpening}.
    */
   issueWidth: number;
+  /**
+   * Whether to record with out-of-order issue (M9 step 5), the flagship toggle. Total here for the
+   * same reason as {@link issueWidth}: `ProcessorConfig.outOfOrderIssue` is optional and the engine
+   * reads its absence as `false` (`config.outOfOrderIssue ?? false`), so a declared config that omits
+   * it MEANS in-order — never "leave the user's position untouched" (the per-knob leak M4 step 4
+   * caught). M9 lessons are a future milestone (M10), so no lesson declares it yet; the rule is
+   * threaded now so it is right before one does.
+   */
+  outOfOrderIssue: boolean;
+  /**
+   * The ROB size to record at (M9 step 5) — the secondary structural lever. Total for the same
+   * reason as {@link issueWidth}: `ProcessorConfig.robSize` is optional and the engine reads its
+   * absence as 16 (`config.robSize ?? 16`), so a declared config that omits it MEANS 16.
+   */
+  robSize: number;
 }
 
 /**
@@ -174,6 +189,8 @@ export function lessonOpening(
     branchPrediction: BranchPrediction;
     cache: ProcessorConfig['cache'];
     issueWidth: number;
+    outOfOrderIssue: boolean;
+    robSize: number;
   },
 ): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
@@ -197,5 +214,10 @@ export function lessonOpening(
     // the browser caught (a lesson's own prose quoting cycle counts from a machine the reader was
     // not on). A superscalar lesson does not exist yet; the rule has to be right before it does.
     issueWidth: lesson.config.issueWidth ?? 1,
+    // The M9 knobs (step 5), same all-or-nothing rule and same optional-field reading as `issueWidth`:
+    // a declared config that omits them means the engine's own default (`?? false` / `?? 16`), never
+    // "leave the user's position untouched". No M9 lesson exists yet (M10); the rule is right first.
+    outOfOrderIssue: lesson.config.outOfOrderIssue ?? false,
+    robSize: lesson.config.robSize ?? 16,
   };
 }

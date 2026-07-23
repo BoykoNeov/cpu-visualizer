@@ -88,16 +88,22 @@ describe('a lesson opens on the model + config it declares', () => {
     branchPrediction: BranchPrediction = 'none',
     cache: ProcessorConfig['cache'] = null,
     issueWidth = 1,
+    outOfOrderIssue = false,
+    robSize = 16,
   ): {
     forwarding: boolean;
     branchPrediction: BranchPrediction;
     cache: ProcessorConfig['cache'];
     issueWidth: number;
+    outOfOrderIssue: boolean;
+    robSize: number;
   } => ({
     forwarding,
     branchPrediction,
     cache,
     issueWidth,
+    outOfOrderIssue,
+    robSize,
   });
 
   it('honors the declared model — a lesson is prose about ONE machine, not just anchors', () => {
@@ -119,6 +125,8 @@ describe('a lesson opens on the model + config it declares', () => {
       branchPrediction: 'none',
       cache: null,
       issueWidth: 1,
+      outOfOrderIssue: false,
+      robSize: 16,
     });
   });
 
