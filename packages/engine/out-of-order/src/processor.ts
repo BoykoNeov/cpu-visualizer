@@ -1270,15 +1270,15 @@ export class OutOfOrderProcessor implements Processor {
    * The per-cycle `micro` snapshot the step-6 `MicroTablePanel` folds over (INV-3). INDEPENDENT of
    * every other cycle — see `micro.ts`'s header for why the ROB needs a fresh object per entry and
    * not a `.slice()` of the array (the repo's signature time-travel bug: `state`/`value` are mutated
-   * in place and the array is `shift()`ed on commit). The cache is single-buffered and mutated in
-   * place too, so it is deep-copied exactly as the superscalar's snapshot does.
+   * in place and the array is `shift()`ed on commit). The cache is deliberately NOT exposed here —
+   * see {@link OutOfOrderMicro}'s doc for why (the shared cache grid depends on pipeline-shaped
+   * `exMem` state this model lacks).
    */
   private snapshotMicro(): OutOfOrderMicro {
     return {
       robCapacity: this.rob.maxSize,
       rob: this.rob.all().map((e) => copyRobEntry(e)),
       rename: this.rename.snapshot().map(renameSlotView),
-      cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
     };
   }
 }

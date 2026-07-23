@@ -27,6 +27,14 @@
  * test here can see a click — `renderToStaticMarkup`, no jsdom). Rows are themselves follow targets,
  * exactly like the map's cells, so a reader can pick an instruction on whichever surface they are
  * looking at.
+ *
+ * ## Not gated on the depth dial — a conscious non-choice
+ *
+ * This panel renders identically at every depth tier, matching the register/memory STATE-panel
+ * precedent (those don't gate on tier either): the tables ARE the tier's picture, so hiding them at a
+ * lower tier would leave the out-of-order model with nothing. `superscalar-visuals.md` §3 once mused
+ * about expert-tier scoreboard contents, but the M9 plan is authoritative and does not ask for
+ * tier-gating here. (The DATAPATH, step 7, is the surface that will obey the dial.)
  */
 
 import type { CycleTrace } from '@cpu-viz/trace';

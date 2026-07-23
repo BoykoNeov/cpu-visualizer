@@ -628,9 +628,20 @@ milestone must lose weight, it loses step 7, not step 6.
         aliased snapshot would show `completed` at both.
       - **Trap 2 (silent gate collision) — the OoO `micro` shape has NO `width` field**, so
         `PairingReadout`'s `typeof micro.width === 'number'` gate never fires for it; the panel gates
-        on `micro.rob` being an array instead (`hasMicroTables`). `micro.cache` IS exposed
-        (consciously — every cached model shows the grid, and the OoO money shot is about misses), so
-        the existing cache grid lights for OoO for free (INV-3).
+        on `micro.rob` being an array instead (`hasMicroTables`).
+      - **The cache is NOT re-exported into `micro` — a reversal of the first attempt, advisor-caught
+        before the follow-up commit.** The initial version exposed `micro.cache` (reasoning: every
+        cached model shows the grid, and the OoO money shot is about misses). But the shared cache
+        grid (`cache-grid.ts`) was built for the PIPELINE `micro` shape — it derives its `filling`
+        freeze countdown from `micro.exMem.missCyclesRemaining`, which this model lacks. Optional
+        chaining meant no crash, but the fill never computes, so a line would read RESIDENT for the
+        whole miss penalty while the ROB table above it shows the load still `executing` — a cross-
+        surface contradiction on the exact surface (the miss) that is the tier's drama. "Appears for
+        free via INV-3" is NOT free when the consumer reads pipeline-shaped fields. Conservative fix
+        (advisor-recommended): drop `micro.cache`, restoring step 5's shipped behavior (no OoO cache
+        grid). Browser-reverified: with cache=large the grid is ABSENT while the three tables render
+        and the money shot still runs 41 cycles (the cache is functionally on, just not drawn). A
+        faithful OoO cache grid (fill derived from the MSHR/miss state) is its own future piece.
       - **The RS table is a PROJECTION, not a new structure.** Classic speculative Tomasulo holds
         operand values in the ROB itself, so a `'waiting'` ROB entry IS the reservation-station-
         equivalent (`rob.ts`); the RS table is the not-yet-issued (`state === 'waiting'`) subset. No

@@ -31,7 +31,6 @@
  */
 
 import type { DecodedInstruction } from '@cpu-viz/isa';
-import type { CacheState } from '@cpu-viz/engine-common';
 import type { RobState } from './rob';
 
 /** A source operand as the view reads it: a captured value, or the tag it is still waiting on. */
@@ -66,8 +65,17 @@ export interface RobEntryView {
 /**
  * The out-of-order core's `micro` shape. Distinct from `SuperscalarMicro` BY CONSTRUCTION — it has
  * no `width` field, so `PairingReadout`'s gate (`typeof micro.width === 'number'`) never fires for
- * it; the `MicroTablePanel` gates on {@link rob} being an array instead. `cache` mirrors the other
- * cached models so the existing cache grid appears for the OoO money shot (cache-on) for free (INV-3).
+ * it; the `MicroTablePanel` gates on {@link rob} being an array instead.
+ *
+ * **No `cache` field, deliberately (step 6).** The shared cache grid (`web/src/cache-grid.ts`) was
+ * built for the PIPELINE `micro` shape: it derives its `filling` freeze countdown from
+ * `micro.exMem.missCyclesRemaining`, which this model does not have. Exposing `cache` here would
+ * light that grid for OoO but leave it unable to draw the fill — a line would read RESIDENT for the
+ * whole miss penalty while the ROB table right above shows the load still `executing`, a cross-
+ * surface contradiction on the exact surface (the miss) that is the tier's drama. So the cache is
+ * NOT re-exported into `micro`; drawing a faithful OoO cache grid (fill derived from the MSHR/miss
+ * state) is its own piece of work, not a step-6 side effect. The miss is already visible in the ROB
+ * table (the load sits `executing` for its penalty) and the pipeline map.
  */
 export interface OutOfOrderMicro {
   /** The configured ROB capacity — how many entries the window can hold, for the occupancy read. */
@@ -76,6 +84,4 @@ export interface OutOfOrderMicro {
   readonly rob: readonly RobEntryView[];
   /** The rename map indexed by architectural register (length 32); most read `committed`. */
   readonly rename: readonly RenameSlotView[];
-  /** The D-cache lines, or null when no cache is configured — feeds the shared cache grid. */
-  readonly cache: CacheState | null;
 }

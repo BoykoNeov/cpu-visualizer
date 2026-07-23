@@ -221,14 +221,16 @@ describe('TraceRecorder × out-of-order: `micro` is populated and snapshotted pe
   // file — safe to reference here because every use is inside an `it` callback, run after load).
   const arraySum = readFileSync(`${PROGRAMS_DIR}array-sum.s`, 'utf8');
 
-  it('exposes the ROB, the 32-slot rename map, the cache, and the ROB capacity', () => {
+  it('exposes the ROB, the 32-slot rename map, and the ROB capacity', () => {
     const rec = recorderFor(arraySum, OOO_ARRAY_SUM);
     rec.runToEnd();
     rec.scrubTo(6); // mid-run: the ROB is populated, the first load is mid-miss
     const micro = rec.currentState().micro as OutOfOrderMicro;
     expect(micro.rob.length).toBeGreaterThan(0);
     expect(micro.rename).toHaveLength(32);
-    expect(micro.cache).not.toBeNull(); // CACHE_LARGE is on
+    // No `cache` field — deliberately not re-exported (see `micro.ts`); the shared cache grid is
+    // pipeline-shaped and cannot draw this model's miss fill.
+    expect('cache' in micro).toBe(false);
     expect(micro.robCapacity).toBe(32);
     // Every ROB view carries the follow key (INV-4 id) and its tag, the two things the panel and
     // the rename-map cross-highlight need.
