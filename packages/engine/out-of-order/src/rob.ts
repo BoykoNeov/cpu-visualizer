@@ -3,17 +3,24 @@ import { makeTag, tagsEqual, type OperandSource, type RenameSlot, type Tag } fro
 
 /**
  * The ROB's per-entry state machine. `'waiting'` is dispatched-but-not-issued (the reservation-
- * station-equivalent at this step — see the file header). `'awaitingMem'` is a load/store whose
- * address is known but whose data access hasn't happened (or is mid-miss). `'executed'` is a
- * NON-memory instruction whose value is already known and already broadcast (a waiting consumer
- * may already have captured it) but which is not yet eligible to COMMIT — the pass-through cycle
- * every latch model's MEM stage gives every instruction for free, memory or not (M3/M7's EX/MEM
- * latch holds a value one cycle before MEM/WB does; without this state an ALU instruction would
- * retire one cycle sooner than the closed form pins, which the timing suite catches immediately).
- * `'completed'` means the value (if any), `nextPc`, and `halt` are all final AND the entry is
- * eligible to commit.
+ * station-equivalent at this step — see the file header). `'executing'` is a NON-memory op that has
+ * ISSUED but whose multi-cycle functional unit has not yet produced a result — the `slowOpLatency`
+ * hold (M10, "Option B"): the ALU analogue of `'awaitingMem'`/`missCyclesRemaining`. It occupies the
+ * (unbounded) FU for `fuCyclesRemaining` more cycles, having already freed the issue port — which is
+ * exactly what lets `walkIssuable` (it only offers `'waiting'` entries) slide independent younger work
+ * past it. Its `value` is null until the FU completes, so a freshly-dispatching consumer reads it as
+ * not-ready and waits for the CDB broadcast. Only reachable when `slowOpLatency >= 2`; without it no
+ * entry ever enters this state and the machine is byte-for-byte what M9 shipped. `'awaitingMem'` is a
+ * load/store whose address is known but whose data access hasn't happened (or is mid-miss).
+ * `'executed'` is a NON-memory instruction whose value is already known and already broadcast (a
+ * waiting consumer may already have captured it) but which is not yet eligible to COMMIT — the
+ * pass-through cycle every latch model's MEM stage gives every instruction for free, memory or not
+ * (M3/M7's EX/MEM latch holds a value one cycle before MEM/WB does; without this state an ALU
+ * instruction would retire one cycle sooner than the closed form pins, which the timing suite catches
+ * immediately). `'completed'` means the value (if any), `nextPc`, and `halt` are all final AND the
+ * entry is eligible to commit.
  */
-export type RobState = 'waiting' | 'awaitingMem' | 'executed' | 'completed';
+export type RobState = 'waiting' | 'executing' | 'awaitingMem' | 'executed' | 'completed';
 
 /**
  * The ROB's payload for one in-flight instruction (PRF-forward-compat seam #2: this is the part
@@ -65,6 +72,14 @@ export interface RobEntry {
   storeData: number | null;
   /** >0 while a load/store miss is being served; decremented each mem-access cycle. */
   missCyclesRemaining: number;
+  /**
+   * >0 while a slow (`slowOpLatency`) non-memory op is still in its multi-cycle functional unit;
+   * decremented each cycle by `stageFuAdvance`, and at 0 the op runs its ALU and broadcasts. Set to
+   * `slowOpLatency - 1` (the EXTRA cycles beyond the default latency-1) at issue, so `slowOpLatency`
+   * absent or 1 never enters the `'executing'` state and this stays 0 (the parity guard). Always 0
+   * for memory ops, transfers, and every op when the knob is off.
+   */
+  fuCyclesRemaining: number;
   /**
    * Step 1b, non-blocking mode only: has this entry's outstanding miss actually been GRANTED an
    * MSHR slot? A miss may be DETECTED (`missCyclesRemaining` set) before a slot is free — it then
@@ -131,6 +146,7 @@ export class Rob {
       aluOut: null,
       storeData: null,
       missCyclesRemaining: 0,
+      fuCyclesRemaining: 0,
       mshrGranted: false,
     };
     this.nextSeq += 1;

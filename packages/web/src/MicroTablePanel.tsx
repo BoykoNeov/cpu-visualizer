@@ -58,16 +58,18 @@ export function hasMicroTables(recording: readonly CycleTrace[]): boolean {
 }
 
 /**
- * The user-facing state word for a ROB entry, collapsing the engine's four-state machine to the
- * three the reader needs. `'awaitingMem'` is a load/store executing in the memory unit;
- * `'executed'`/`'completed'` both mean the value exists (the one-cycle pass-through difference
- * between them is a timing artifact, not a distinction worth a separate word).
+ * The user-facing state word for a ROB entry, collapsing the engine's five-state machine to the
+ * three the reader needs. `'awaitingMem'` is a load/store executing in the memory unit and
+ * `'executing'` is a slow (`slowOpLatency`) op still in its functional unit — both read as
+ * "executing"; `'executed'`/`'completed'` both mean the value exists (the one-cycle pass-through
+ * difference between them is a timing artifact, not a distinction worth a separate word).
  */
 function stateView(state: RobEntryView['state']): { label: string; hue: string } {
   switch (state) {
     case 'waiting':
       return { label: 'waiting', hue: T.ink3 };
     case 'awaitingMem':
+    case 'executing':
       return { label: 'executing', hue: T.accent };
     case 'executed':
     case 'completed':

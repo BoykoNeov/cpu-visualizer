@@ -220,6 +220,13 @@ export class OutOfOrderProcessor implements Processor {
   private outOfOrder = false;
   /** Step 1b: outstanding-miss slots for the non-blocking LSU. Inert (never consulted) at 1a. */
   private numMshrs = 2;
+  /**
+   * M10 ("Option B"): total functional-unit latency for the designated slow op (`sll`) — 1 means
+   * single-cycle (the default, byte-for-byte M9). `>= 2` is what makes the `[slow -> dep -> indep]`
+   * shape diverge under the issue toggle: the slow op holds its FU, its DEPENDENT is the not-ready
+   * `'waiting'` wall in-order mode can't pass, and out-of-order mode slides independent work past it.
+   */
+  private slowOpLatency = 1;
   /** Step 1b: which entries (by tag number) currently hold a granted MSHR slot. Always empty at 1a. */
   private missInFlight = new Set<number>();
 
@@ -257,6 +264,7 @@ export class OutOfOrderProcessor implements Processor {
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.outOfOrder = config.outOfOrderIssue ?? false;
     this.numMshrs = config.numMshrs ?? 2;
+    this.slowOpLatency = config.slowOpLatency ?? 1;
     this.missInFlight = new Set();
     this.deferredBroadcasts = [];
     this.registers = makeRegisters();
@@ -315,6 +323,7 @@ export class OutOfOrderProcessor implements Processor {
     const committed = this.stageCommit();
     this.pendingBroadcasts = [];
     this.stageMemAccess(ctx);
+    this.stageFuAdvance(ctx);
     this.stageIssueExecute(ctx);
     // The broadcast: apply everything this cycle completed, waking waiters for NEXT cycle's issue
     // decision — never this one (see `pendingBroadcasts`'s doc).
@@ -780,6 +789,42 @@ export class OutOfOrderProcessor implements Processor {
     e.state = 'completed';
   }
 
+  /**
+   * Is this the designated slow op, AND is the slow-op knob engaged? `sll` (register shift) is the
+   * RV32I stand-in for a multi-cycle functional unit — `mul`/`div` would need the M extension, which
+   * INV-7 forbids. Deliberately mnemonic-specific (not the shared ALU op string, which `slli` also
+   * uses): the slow one is a single, teachable INSTRUCTION. Only ever true for a pure value-producer,
+   * which is load-bearing — see the deferral note in {@link stageIssueExecute}. False whenever
+   * `slowOpLatency < 2`, so the default machine never defers anything (the parity guard).
+   */
+  private isSlowOp(d: DecodedInstruction): boolean {
+    return this.slowOpLatency >= 2 && d.mnemonic === 'sll';
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // FU ADVANCE (M10). The ALU analogue of `stageMemAccess`'s miss service: count down every
+  // `'executing'` slow op's remaining FU cycles, and when one reaches 0 run its `executeEntry`
+  // (which fires the `alu-op`, latches the value, and queues the CDB broadcast). Runs BEFORE
+  // `stageIssueExecute` — exactly like `stageMemAccess` — so a slow op set `'executing'` THIS cycle
+  // is not counted down until NEXT cycle, giving it `slowOpLatency` full FU cycles. A no-op (nothing
+  // is ever `'executing'`) unless `slowOpLatency >= 2`.
+  // -----------------------------------------------------------------------------------------
+
+  private stageFuAdvance(ctx: CycleCtx): void {
+    for (const e of this.rob.all()) {
+      if (e.state !== 'executing') continue;
+      e.fuCyclesRemaining -= 1;
+      if (e.fuCyclesRemaining <= 0) {
+        this.executeEntry(
+          ctx,
+          e,
+          e.srcA !== null && e.srcA.ready ? e.srcA.value : 0,
+          e.srcB !== null && e.srcB.ready ? e.srcB.value : 0,
+        );
+      }
+    }
+  }
+
   // -----------------------------------------------------------------------------------------
   // ISSUE + EXECUTE. In-order (1a): strict program order, oldest-first, no reordering — a blocked
   // entry stops the walk, nothing younger may pass it. Out-of-order (1b): true wakeup/select — a
@@ -791,6 +836,17 @@ export class OutOfOrderProcessor implements Processor {
     if (ctx.memStall) return; // in-order only: the whole front end freezes on a miss (never set when this.outOfOrder)
 
     for (const e of this.walkIssuable(ctx)) {
+      // M10: a slow op ISSUES here (it consumed this cycle's issue slot in `walkIssuable`) but does
+      // NOT execute yet — it enters the FU for `slowOpLatency - 1` more cycles, freeing the issue
+      // port. `stageFuAdvance` runs `executeEntry` when the FU completes, which is where its `alu-op`
+      // fires and its value broadcasts. Deferring is only ever done for a pure value-producer (`sll`,
+      // guarded by `isSlowOp`) — deferring a transfer/halt would defer `ctx.squash` and corrupt
+      // speculation.
+      if (this.isSlowOp(e.decoded)) {
+        e.state = 'executing';
+        e.fuCyclesRemaining = this.slowOpLatency - 1;
+        continue;
+      }
       this.executeEntry(
         ctx,
         e,
