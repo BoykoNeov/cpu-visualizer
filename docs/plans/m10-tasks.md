@@ -231,15 +231,36 @@ cleanest to anchor**:
       corpus guard fires too. Acceptance for (c): `npm test` green across all models at every config,
       all timing guards satisfied, INV-8 passes for the new program on every model.
 
-- [ ] **1. ENGINE — wire `slowOpLatency` (Option B).** The design in "The engine step" above,
-      confirmed with the advisor first. Deliverables: the `executing` state + `fuCyclesRemaining` hold
-      in `rob.ts`/`processor.ts`; the designated slow op; `slowOpLatency`-absent reproduces today's
-      trace byte-for-byte (the M3/M7-parity timing suite stays green); `slowOpLatency`-present is
-      deterministic. Hand-derive the slow-op cells for `out-of-order/src/timing.test.ts` from the closed
-      form; mutation-check both ways (a mutation that ignores the latency must leave INV-8 green and fail
-      the timing suite — the M9 discipline). Re-run the step-0 dump WITH the mechanism live to pin the
-      slow-op flagship program+config+numbers. Acceptance: `npm test` (incl. differential INV-8 on every
-      model, timing parity + new slow-op cells), `lint`, `tsc -b`, `build` all green.
+- [x] **1. ENGINE — wire `slowOpLatency` (Option B).** DONE & pushed 2026-07-23 (`72c63f3`, 3232
+      tests). `rob.ts`: added the `'executing'` RobState + `fuCyclesRemaining` field. `processor.ts`:
+      `this.slowOpLatency = config.slowOpLatency ?? 1`; `isSlowOp` (mnemonic `sll`, gated `>= 2`);
+      `stageFuAdvance` (before `stageIssueExecute`, mirroring `stageMemAccess`); the deferral in
+      `stageIssueExecute` (slow op → `'executing'` + `fuCyclesRemaining = N-1`, `executeEntry` deferred
+      to completion). `MicroTablePanel.tsx`: the new state folds to "executing" (the engine change
+      forced this view fix — a TS2366 exhaustiveness break, caught by repo-wide typecheck, exactly the
+      risk the pre-edit state-site audit flagged). Facts worth carrying forward, NOT re-derivable from
+      the diff: - **The straight-line `[slow→dep→indep]` shape shows the reorder but NOT a cycle saving** —
+      in-order COMMIT gates the tail regardless of execution order (the indep op that slid ahead still
+      commits after the dep, in program order). Confirmed by dump: N=8 straight-line is 21 cycles in
+      BOTH toggle positions even though OoO executes the indep add at c9 vs in-order at c16. **The win
+      only compounds in a LOOP**, where each iteration's slow op overlaps the next's — mirroring
+      exactly why array-sum's cache win is real. So the flagship slow-op program (step 3) MUST be a
+      loop: `[slow(loop-invariant inputs, independent across iters) → dep(loop-carried) → indep(counter)]`.
+      Dumped loop: N=1 44/44 (parity), N=4 62→47 (−15), N=8 86→53 (−33), `a0=72` in every position.
+      **The advisor's `[slow→dep→indep]` shape is necessary but not sufficient — it also needs the
+      independent work to COMPOUND (a loop), or in-order commit erases the benefit.** This is the one
+      design fact the advisor's analysis under-specified, found empirically. - **`fuCyclesRemaining = N-1` (extra cycles), not N** — a single-cycle op already broadcasts the
+      cycle it issues, so latency N means N-1 EXTRA cycles. This is what makes N=1 ≡ absent exactly;
+      an off-by-one here (`= N`) would make N=1 slower than the default and break parity. - **N=2 shows delta 0 on the loop, N≥3 wins** — a small latency is hidden for free by the loop's
+      other per-iteration work in both modes; only when the latency exceeds what in-order can absorb
+      does OoO's overlap pay. A teachable detail for step 3's prose (don't pick N=2 for the flagship). - **Timing:** the OoO side has no closed form (the lifecycle test, not `timing.test.ts`, is its
+      net), so slow-op correctness is pinned in the new `slow-op.test.ts` by concrete cycle counts +
+      the +7 fire-at-completion gap, not a `TIMING` table cell. `timing.test.ts` stays purely the
+      in-order M3/M7-parity net (untouched, green). Mutation-checked: disabling the deferral leaves
+      differential/INV-8 **green** and fails **3/4** slow-op tests (parity correctly still passes). - **Still to do within the engine's orbit (fold into step 3):** re-dump the loop program with
+      per-event execution order to pick the flagship `where` anchors; consider whether the slow op
+      should also surface `fuCyclesRemaining` as a `RobEntryView` field so the `MicroTablePanel` shows
+      the FU countdown (advisor's "a win" — currently only the `'executing'` label shows).
 
 - [ ] **2. Lesson — the flagship toggle ("Work slides ahead").** `model: out-of-order`, `issueWidth: 1`,
       `outOfOrderIssue: true`, the flagship program+config from the re-dump (slow-op OR cache-miss,
