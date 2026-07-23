@@ -1,15 +1,15 @@
 # Milestone 9 — out-of-order execution: Tomasulo, the ROB, and register renaming
 
-**Status: STEPS 0–6 DONE (2026-07-23). The north star and, per the spec, "the genuine cliff." The
-engine is complete (config seam → in-order base → the OoO scheduler → INV-8 differential → the
-scheduling net → recorder/`follow()` through the ROB), the model is DRIVABLE IN THE BROWSER (step 5,
-web enablement), and the tier's STAR SURFACE — the `MicroTablePanel` (ROB/RS/rename tables) — is now
-built and browser-verified (step 6: `MachineState.micro` populated, the step-0 YAGNI trigger firing
-on schedule). Remaining: ONLY step 7 (the bespoke OoO datapath — the honest scope cut, the sheddable
-half). The headline benefit-source fork was **pinned 2026-07-21 as Option B on A** (Option B's
-`slowOpLatency` remains a deferred, unread knob — see steps 1b/5). Scope mirrors M7: this milestone is
-the MODEL + the VIEW; the OoO lesson track is a future milestone (M10), exactly as M8 was the
-superscalar lesson track after M7 built the superscalar.**
+**Status: COMPLETE — ALL STEPS 0–7 DONE (2026-07-23). The north star and, per the spec, "the genuine
+cliff," fully landed. The engine (config seam → in-order base → the OoO scheduler → INV-8 differential
+→ the scheduling net → recorder/`follow()` through the ROB), the web enablement (step 5, the flagship
+in-order↔out-of-order flip), the tier's STAR SURFACE (step 6, the `MicroTablePanel` — ROB/RS/rename
+tables), and now the bespoke OoO datapath (step 7, the sheddable half that never had to be shed) are
+all built and browser-verified. The headline benefit-source fork was **pinned 2026-07-21 as Option B
+on A** (Option B's `slowOpLatency` remains a deferred, unread knob — the disclosed deferral held
+through every step; a future increment). Scope mirrored M7: this milestone was the MODEL + the VIEW;
+the OoO lesson track is a future milestone (M10), exactly as M8 was the superscalar lesson track after
+M7 built the superscalar.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap, tier 5). The load-bearing
 constraints are the architectural invariants (§3) and the trace schema (§5). The spec is explicit
@@ -660,15 +660,79 @@ milestone must lose weight, it loses step 7, not step 6.
       repo green: `npm test` (3211 tests, +8), `typecheck`, `lint`, `build`, `format:check`. NOT
       sheddable — it is the tier's picture.
 
-- [ ] **7. The bespoke OoO datapath — `datapath-out-of-order.ts`.** The schematic: front-end → rename
-      → RS clusters → FUs → CDB → ROB → commit, per the `new-model-datapath.md` playbook (pure
-      geometry + activation, thin `DatapathDiagram` wrapper, no new colors in TSX). The CDB is the
-      interesting new wire — one bus, many listeners — and the follow-ring is how "this instruction's
-      result" reads on it. Reuse the lane-hue channel decision from M7 step 7 (wire = stage, box =
-      unit, ring = identity) rather than re-deriving it. **This is the honest scope cut** (see the
-      headline's inverted lever): if the milestone must shed weight, it sheds THIS, not step 6.
-      Acceptance: geometry/activation unit tests + coherence/contraction litmuses ported from the
-      existing datapath suites; **browser eyeball**.
+- [x] **7. The bespoke OoO datapath — `datapath-out-of-order.ts`.** DONE 2026-07-23. The fifth
+      hand-authored geometry: a shared front-end (PC → instr mem → decode/rename) dispatching into
+      the reorder buffer and the reservation stations, which issue to a functional-unit pool and a
+      load/store unit whose results ride the common data bus back to the RS and ROB, with the ROB head
+      committing in program order into the register file. Wire = region hue, box = shared pool
+      (hue-neutral), follow-ring = identity on the lit wires — the M7 step-7 channel pins reused, not
+      re-derived. **This is the honest scope cut** (the headline's inverted lever) — and it stayed the
+      last piece, so the tier never had to shed it.
+
+      **The one load-bearing design call, advisor-vetted before any geometry: activation folds
+      `state.micro` (box occupancy) AND `events` (the flow), the ONLY datapath that reads `micro`.**
+      An out-of-order `location` is uniformly `"ROB#tag"` — it carries no structural stage, because
+      there isn't a stage, there is a ROB entry whose STATE (`waiting → executing → completed`) is its
+      position. So box occupancy (ROB, RS) folds from the SAME `micro` snapshot the step-6 tables read
+      at this cursor (the superscalar's "NEVER `micro`" warning genuinely doesn't apply — its `micro`
+      is latch state a cycle ahead; the OoO ROB snapshot is the cursor's own state, verified at step
+      6), while the flow wires light from this cycle's `events`. **The coherence of that pairing was
+      DUMPED and read on `array-sum` around the first miss BEFORE a line of geometry was written**
+      (`temp/m9/step7-coherence-dump.mjs` logic, run as a throwaway colocated test): at cycle 16 the
+      events (`alu add(i5)` R/I result, `alu add(i25)` — a `lw` ADDRESS, `retire(i4)`) and the ROB
+      states (`#5 executed`, `#25 awaitingMem`, `#4` already gone) tell one story. The three findings
+      that shaped the code, all from that dump: (1) a load's `alu-op` is an ADDRESS → issues to the
+      LSU, a branch's is a COMPARISON → no CDB result, only an R/I `alu-op` (or a load's `mem-read`)
+      is a bus RESULT — the same `LOADS`/`STORES`/`BRANCHES` split the superscalar uses; (2) a
+      `retire(id)` names an entry ALREADY gone from `micro` (removed post-commit) — the commit wire
+      draws the departing instruction, coherent as "it has retired"; (3) the CDB is TWO-PHASE (producer
+      writes its ROB entry at cycle i, waiters capture at i+1 per `rob.ts` `wake()`) — drawn wholly at
+      the PRODUCE cycle, attributed to the producer, asserting no cycle-precise wakeup (that is step
+      3's job).
+
+      **Three advisor calls that changed the build, each disclosed:** (a) **do NOT build a
+      prev-cycle-diff for dispatch** — events self-describe issue/commit/flush/fetch; only dispatch
+      lacks a single-cycle signal, and an IF-driven dispatch wire would mislight exactly when a full
+      ROB is meant to show it CHOKING (the ROB-size lever), so `rename → ROB` / `rename → RS` are drawn
+      as static SKELETON (never lit as flow; `activate` throws if asked to light one) and the boxes
+      they join light from their own occupancy. Browser-clean, so the targeted seq-diff fallback was
+      never needed. (b) **phase-hue stands on its own grammar** — NOT justified by "matches the map"
+      (the map rows by `location`, not phase columns; the pipeline map's OoO cells are not
+      PHASE_COLORS in the IF..WB sense). (c) **coherence litmus only; contraction-lawfulness is N/A** —
+      the OoO structure is all essential (no `minTier`, no contraction wires), so that litmus was
+      deliberately NOT force-fit into the suite.
+
+      **Structural, not per-lane.** The ROB/RS/FU are drawn as single POOLS, exactly as the tables
+      treat them — a superscalar-OoO at `issueWidth: 2` runs two ALUs, but the trace never says which
+      physical unit a shared `alu-op` used, so drawing two boxes could not honestly attribute it. Issue
+      width restructures the CADENCE (the tables/map show it), not this diagram — so unlike the
+      superscalar's three axes, this view has ONE of substance: the depth tier's REPRESENTATION (values
+      at `detailed`+). The single config gate is the predictor's bet redirect (`rename → PC`), absent
+      when the machine does not bet (INV-5); the ROB-based recovery redirect (`rob → PC`) is ungated —
+      every machine can mispredict a taken branch.
+
+      **models.ts** flipped `out-of-order` from `'none'` to its own kind, together with the union
+      member and App's dispatch arm — `models.test.ts`'s datapath-table row reddening was the reminder
+      to do all three at once (the superscalar precedent).
+
+      **Acceptance MET.** `datapath-out-of-order.test.ts` (17 tests): the empty pre-run state, ROB/RS
+      occupancy from micro, the fetch / execute-split / memory / CDB-fan / commit / redirect / bet
+      claims, the follow attribution, coherence over a spread of programs (every lit wire is real with
+      both endpoints lit, and never a skeleton wire), representation tiers, and the geometry litmuses
+      (bounds, no overlap, axis-aligned, endpoints-on-edge, no collinear overlap — two real geometry
+      bugs caught and fixed while authoring: a duplicate `alu-cdb` endpoint and a `cdb-rob`/`rename-rs`
+      collinear overlap). **Browser-verified** at the flagship `array-sum` config (width 2, OoO,
+      static-taken, cache large → 41 cycles), reading the live SVG, not just eyeballing: at cycle 16
+      exactly 8 wires light with FOUR distinct region hues — `pc-imem` blue (fetch) → `imem-rename`
+      green (decode) → `rs-alu`/`rs-lsu` amber (execute; an R/I `add` AND a `lw` address issuing
+      together) → `alu-cdb`/`cdb-rs`/`cdb-rob`/`rob-regfile` purple (broadcast + commit), matching the
+      dump cell-for-cell; following ROB#5 rings its full path across FOUR datapath wires (`rs-alu` →
+      `alu-cdb` → `cdb-rs` + `cdb-rob`) AND lights its ROB table row — the click-only cross-surface
+      follow composition; essentials tier drops all value labels (0 vs 6 at detailed); the `rob-pc`
+      recovery redirect lights at cycle 5 (the dump's FLUSH); the bet `rename-pc` wire is drawn under
+      predict-taken and absent otherwise; and the OoO config controls are present while the forwarding
+      control is absent (renaming makes it meaningless). Full repo green: `npm test` (3228 tests, +17),
+      `typecheck`, `lint`, `build`, `format:check`. **M9 IS COMPLETE.**
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
@@ -691,12 +755,18 @@ milestone must lose weight, it loses step 7, not step 6.
       in-flight ROB tag before it is committed, and a WAR/WAW pair that would stall an in-order
       machine does not stall here. **MET — the rename-map table shows arch reg → in-flight tag (e.g.
       `t0 → ROB#16`), browser-verified at step 6.**
-- [ ] INV-8 differential passes on the full corpus at every config combination, AND a deliberate
+- [x] INV-8 differential passes on the full corpus at every config combination, AND a deliberate
       memory-disambiguation bug is confirmed to break it (the one place the differential has teeth).
-- [ ] Every cycle count asserted in the step-3 lifecycle table is derived from a stated rule, not
+      **MET at step 2 — `differential.test.ts` full-crosses `outOfOrderIssue`; `disambiguation-mutation.test.ts`
+      confirms a `disambiguationClear`-disabled model corrupts `a0` 99 → 0 (only with the cache on).**
+- [x] Every cycle count asserted in the step-3 lifecycle table is derived from a stated rule, not
       observed; over-serializing the scheduler fails timing while leaving the differential green.
-- [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green; the two view steps
-      browser-verified.
+      **MET at step 3 — `lifecycle.test.ts`'s two full tables derived blind then reconciled; the
+      `walkIssuable` skip→stop mutation collapses `array-sum` 41 → 61 (in-order baseline) while the
+      differential stays green — the timing-blind net proven timing-blind.**
+- [x] All suites green; `npm run lint`, `tsc -b`, `npm run build` green; the two view steps
+      browser-verified. **MET — 3228 tests green; steps 5/6 (web + tables) and 7 (datapath) all
+      browser-verified.**
 
 ## How this milestone can lie to itself
 
