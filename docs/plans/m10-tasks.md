@@ -1,6 +1,10 @@
 # Milestone 10 — The out-of-order lesson track
 
-**Status: PLANNED, 2026-07-23. Not started. Scope PINNED by the user (2026-07-23): "Both, sequenced" —
+**Status: IN PROGRESS, 2026-07-23. Steps 0, 1, 2, 3, 4, 5 DONE and pushed; step 6 (renaming) DROPPED
+with proof. The OoO track is FINAL at four lessons — `[work-slides-ahead, racing-ahead-of-the-miss,
+commit-in-order, reservation-station-holds]`. Remaining: step 7 (wire — already satisfied
+incrementally by each lesson step) and step 8 (the browser pass over the whole track).
+Scope PINNED by the user (2026-07-23): "Both, sequenced" —
 first an ENGINE step wiring `slowOpLatency` (M9's decided-but-never-implemented "Option B"), THEN the
 fullest lesson track covering BOTH latency sources (the slow-op Tomasulo namesake AND the cache-miss
 money shot). This is NO LONGER content-only — the step-0 dump proved `slowOpLatency` ships inert and
@@ -425,8 +429,61 @@ result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-or
       (`recordedCycles−1`), NOT the `PairingReadout`. The pipeline map visibly shows the `sll` holding
       its wide ~8-cycle ROB band while the counter/branch issue around it (OoO) vs serialized (in-order).
 
-- [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss"). RESOLVED 2026-07-23: build
-      a new miss-under-miss corpus program (DEFERRED to a later session).** The SECOND-PASS dump proved
+- [x] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss"). DONE & pushed 2026-07-23**
+      (4035 tests), as TWO independently-green commits (`28ba482` corpus+ripple, `f060eeb`
+      lesson+oracle). The deferred miss-under-miss program was built and the beat landed. Facts worth
+      carrying forward, NOT re-derivable from the diff: - **NEW corpus program `content/programs/strided-sum.s` — `array-sum`'s TWIN.** Byte-for-byte
+      the same instruction stream; the ONLY source changes are the pointer bump (`addi t0,t0,16` vs
+      `,4`) and distinct `.data` values (7, 20, -3, 50, 6 → a0 = 80, framed as five 16-byte records
+      with one summed field each). Stride = one cache LINE, so every load hits a fresh block and
+      misses, and the `sw` to `total` misses a sixth block — **6 misses at BOTH sizes** (all
+      compulsory, nothing ever re-read, so cache size buys nothing). **This made the whole INV-8
+      ripple near-mechanical: every cell is array-sum's own entry with ONLY `misses` changed 2→6**
+      (conformance a0=80/t1=0/total=80; pipeline TIMING; superscalar TIMING w2 — the partition is
+      dependency-shaped and cache-blind, so groups/pairs/blocked/doomed/betting are IDENTICAL; OoO
+      PINNED; pairing `{w1:51, w2:42}` = array-sum's, because that table runs cache-OFF where the
+      miss stream is silent). All four tables first-run green. - **⚠ THE cell that was NOT "array-sum + count", caught by the advisor before it was written:
+      array-sum's store HITS, this one MISSES, and NO existing test pinned whether the M3/M7 engines
+      charge `missPenalty` for a no-write-allocate store miss.** That is the difference between
+      `misses {6,6}` (M=60) and `{5,5}` (M=50). Verified by running the pipeline AND superscalar
+      (w1+w2) engines directly before committing any cell: cache-off is byte-identical to array-sum
+      (72 off / 51 on), and every extra miss is +10 cycles (pipeline on/large 111 = 71+40, off/large
+      132 = 92+40; superscalar w2 on/large 102 = 62+40). The store miss IS charged by all three. - **The toggle effect is REAL and the biggest in the collection: 111 → 62 (−49)**, vs the
+      flagship's 71 → 59 (−12). Concurrency confirmed by counting `awaitingMem` ROB entries per
+      cycle: out of order there are overlapping pairs at [13–16, 20–23, 27–30, 34–37] (max 2 = the
+      MSHR count); **in order there is NEVER more than one outstanding miss in the whole run.** The
+      trap the plan warned about was avoided exactly as designed — the second miss is GATED behind
+      the in-order `memStall` front-end freeze, so the naïve "both positions overlap" failure never
+      appeared. - **Lesson `content/lessons/racing-ahead-of-the-miss.json`**, wired at OoO track **position 2**
+      (right after the flagship, so the two cache lessons escalate together): the track is now
+      `[work-slides-ahead, racing-ahead-of-the-miss, commit-in-order, reservation-station-holds]`.
+      3 beats, all anchored on program-unique `where` values in strict PROGRAM order across
+      iterations — so **unlike the flagship, no reorder can flip them** and the "two reordered
+      instructions cannot both be steps" constraint never binds: `mem-read value:7` (c17 in BOTH
+      positions) → `mem-read value:20` (c24 OoO / c35 in-order) → `mem-write value:80` (62 vs 111,
+      IPC 0.55 vs 0.31). The miss-under-miss itself is a `cache-access` at c14 vs c25, which lives
+      in the ORACLE (its only program-unique field is a raw address). - **THE distinctness the advisor flagged, carried by both prose and oracle.** The flagship hides
+      independent ARITHMETIC in ONE miss's shadow and its misses never overlap (step 0's
+      no-miss-under-miss finding). This lesson aims the same lever at the ADDRESS chain, so what
+      slides into the shadow is another MISS — genuine memory-level parallelism, MSHR-bounded at 2.
+      Without that framing the two lessons read as the same lesson twice. - **The oracle proves the overlap TWO independent ways** (the M10 headline makes it the primary
+      net): the second miss's cycle against the first's release, AND counting entries genuinely
+      co-resident in the load/store unit (`micro.rob` `awaitingMem` — empty in order, contains c14
+      out of order). A cycle-ordering argument alone could be satisfied by a re-detected single
+      miss; the co-residency count cannot. Plus an **unchanged-penalty** check (release − detect is
+      equal in both positions, so the claim is "overlapped", not "shortened" — a faster cache would
+      not satisfy it), the counterfactual totals, IPCs computed from retire counts, prose
+      token-checks, and a bigger-win-than-the-flagship comparison that pins 71/59 too. - **⚠ This lesson's EXTRA sweep blindness, pinned as a test rather than left as a surprise.**
+      Unlike the RS lesson (whose `slowOpLatency` is unswept), `cache` IS a swept axis — so
+      `positionsFor` records this lesson at cache-OFF, where the program has **no misses at all**,
+      both toggle positions run **51** cycles, and nothing the prose says is true. The anchors still
+      resolve in order there (they are program-order-separated), so the sweep stays green over a
+      machine the prose does not describe. The oracle fixes the cache at the declared LARGE geometry
+      and adds an explicit cache-off `51 === 51` pin. - **No shell wiring was needed:** `EXAMPLE_PROGRAMS` globs `content/programs/*.s`, so
+      `strided-sum` appears in the free-play picker automatically, and the lesson-opening path
+      already threads `cache`/`outOfOrderIssue`/`robSize` (M9 step 5 + M10 step 2). Mutation-checked:
+      perturbing a quoted cycle in the prose reddens the token check.
+      ORIGINAL PLAN TEXT: The SECOND-PASS dump proved
       the original premise unrealizable on the shipped corpus — NO miss-under-miss anywhere at width 1
       (misses ~30 cycles apart, the 10-cycle penalty never overlaps; a unit-stride walk over a 4-word
       line structurally cannot produce concurrent misses; the M9 `numMshrs` docblock is wrong). The user
@@ -571,8 +628,11 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
 - [x] The renaming beat either anchors cleanly on an existing event (+ table/narration) or is dropped
       with the reason recorded — no `rename`/`issue`/`commit` event added. **DROPPED 2026-07-23 with a
       proven structural reason (step 6); no event invented.**
-- [ ] If a new corpus program was added: it passes INV-8 on every model, and every timing guard that
+- [x] If a new corpus program was added: it passes INV-8 on every model, and every timing guard that
       enumerates the corpus (pipeline, superscalar, out-of-order) covers it with hand-derived cells.
+      **TWO were added — `slow-op-loop.s` (step 3) and `strided-sum.s` (step 4)** — each with the full
+      ripple (conformance `RESULT_ORACLES`, pipeline/superscalar/out-of-order timing tables, the
+      superscalar pairing headline), every cell hand-derived and first-run green.
 - [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean (any
       prose-vs-picture finding fixed in-scope by rewording).
 
