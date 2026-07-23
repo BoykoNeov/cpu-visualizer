@@ -401,7 +401,7 @@ cleanest to anchor**:
       (both neutral → dodge the "only names honored knobs" guard). 3-beat arc, anchors program-unique
       AND latency-invariant (the sweep records at latency 1): counter `add result:5` (avoids the `li`
       values 6/0/3/2/10; c8 OoO vs c15 in-order, `sll` completes c13 both) → 2nd partial `add
-    result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-order) → final
+result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-order) → final
       `add result:72` (same answer, 53 vs 86, IPC 0.57/0.35). The `sll result:12` is NOT
       program-unique (repeats each iteration) → oracle-only, never a step. - **⚠ THE net unique to this lesson (advisor-endorsed):** `slowOpLatency` is unswept, so
       `positionsFor` records this lesson at latency 1 in ALL 48 positions — the reorder VANISHES
@@ -449,12 +449,53 @@ cleanest to anchor**:
       (program-unique value); oracle pins the counterfactual and that the second `cache-access`/`mem-read`
       overlaps the first miss.
 
-- [ ] **5. Lesson — in-order commit ("Finish early, commit in order").** The ROB's precise-state job:
-      instructions COMPLETE out of order (their `alu-op`/`mem-read` land in a non-program order) but
-      RETIRE in program order (`instr-retire` events monotone in program order). Anchor on an
-      `instr-retire` `where` (program-unique) at the head; the oracle pins that some `alu-op` fired
-      out-of-order-of-retirement earlier — the completion/commit order divergence IS the lesson. Rides
-      whichever of step 3/4's programs shows the cleanest out-of-order completion. Width 1.
+- [x] **5. Lesson — in-order commit ("Finish early, commit in order"). DONE & pushed 2026-07-23**
+      (3739 tests). `content/lessons/commit-in-order.json` — the ROB's precise-state job, taught on the
+      SAME array-sum machine as the flagship (cache-large, OoO, width 1) seen through the commit stream
+      instead of the execute stream. Facts worth carrying forward, NOT re-derivable from the diff: - **⚠ SCHEMA FINDING (advisor) — the plan's own step-5 anchor plan was NOT achievable.** The plan
+      said "anchor on an `instr-retire where` (program-unique)". `instr-retire` carries ONLY
+      `{ instr }`, and `instr` is the fetch-order id (`i0`/`i4`/`i7`…, `id: \`i${seq++}\``in
+   `processor.ts:1303`) — an `nth`-in-disguise (fetch position), exactly the anchor the M10 headline
+    forbids because it drifts across the sweep's speculation. So there is NO program-unique field on
+    a retire event. The STEPS anchor on program-unique `alu-op`values like every other OoO lesson;
+    the retire-order claim lives in the ORACLE, which reads the id off each event and joins
+   `alu-op`→ id →`instr-retire`WITHIN one recorded config (where the id IS stable, INV-4). The
+      beat is anchorable — just not on a retire event. This is a real signal surfaced, not worked
+      around (the headline's own rule).
+  - **⚠ PROGRAM DEVIATION (advisor) — "rides step 3/4's program" was stale.** The plan steered step 5
+    onto "whichever of step 3/4's program shows the cleanest completion". Step 4 is DEFERRED, leaving
+    only slow-op-loop (step 3's) — but that is the RS lesson's program and RS is pinned LAST, so
+    using it here would introduce the slow shift before the lesson that explains it. Used`array-sum` instead: understood cold from the flagship, so step 5 isolates the one new concept (retirement).
+    Reusing the flagship trace is fine because the oracle claim (retire order) is genuinely new — the
+    flagship's oracle never checks it.
+  - **THE framing trap the advisor caught (correctness, not style).** "Retire in program order" is
+    true in BOTH toggle positions — the ROB always commits in order, AND in-order issue never
+    scrambled execution to begin with (the dependent`add`blocks the independent ops from issuing).
+    So the lesson is NOT "OoO retires in order, in-order also retires in order" (which makes the
+    toggle look INERT — the exact self-undermining shape the flagship's middle beat once had). It is:
+    **OoO SCRAMBLES the finishing order and the ROB puts it back; in-order never produced a scramble
+    to fix.** The oracle's discriminator is`aluCycle(inOrder,'add',4)===20 > memRead(inOrder,5)===17` (in-order counter finishes AFTER the load — no scramble) vs`9 < 17`OoO.
+  - **The anchors** (program-unique, monotonic in all 48 positions, DIFFERENTIATED from the
+    flagship's`4`/`118`/`value:120`per the advisor): iter-2 counter`add result:3`(OoO c16 / in-
+    order c28) → iter-3 sum`add result:18`(c22/c34) → iter-5 final sum`add result:120`(c48/c60,
+    an`alu-op`so distinct from the flagship's`mem-write value:120`). The dramatic iteration-1
+    facts (counter executes c9, retires c22, after load i4's `mem-read` c17 / retire c18) live in the
+    NARRATION + oracle, not as steps — the load's c17 sits between the counter's two toggle positions
+    (c9 OoO / c20 in-order) so it can never be a step ordered against it (the flagship's constraint).
+  - **The oracle is stronger than the flagship's** (`lessons.test.ts`new`describe`): (a) the
+    retired-id stream is STRICTLY ASCENDING in BOTH positions (the ROB invariant, parsed from the
+    `iN` ids — asserted both ways precisely so the lesson can't claim in-order commit is an OoO
+    feature); (b) the execute-early/retire-late pair via the id-join (counter c9 exec < load c17
+    exec, but counter c22 retire > load c18 retire); (c) the OoO-only scramble discriminator; plus
+    prose token-checks (`cycle 9`/`17`/`22`/`18`, `120`, and `59`/`71`in the expert tier — this
+    lesson keeps the cycle-count numbers in the EXPERT tier since its subject is ORDER, not speed).
+  - **Teaching-order TODO from step 3 — DONE.** Moved`reservation-station-holds`to the END of the
+    OoO track in`index.json`; the track is now `[work-slides-ahead, commit-in-order,
+reservation-station-holds]`, matching the pinned order flagship → (renaming) → in-order-commit →
+    RS-last (renaming inserts at position 2 if it lands). The membership guard is a SORTED set so no
+    order change there; `LESSONS.length` 17→18, the cache-canonicalization id list (commit-in-order
+    is the 5th cache-declaring lesson), and the by-name OoO membership set all updated. Wiring guards
+    found by grep before editing, as always.
 
 - [ ] **6. Lesson (CONDITIONAL) — renaming ("A new name for a register").** The un-anchorable beat (see
       "The un-anchorable beat") — confirm against the dump before authoring: anchor on the second

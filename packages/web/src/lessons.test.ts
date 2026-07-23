@@ -663,10 +663,12 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // The out-of-order machine's membership (M10), by name for the same reason: "is this lesson about
     // out-of-order issue" is pedagogy, not derivable — it runs on `out-of-order` at `outOfOrderIssue:
     // true`, but so could a lesson really about, say, the cache observed on an OoO machine. The track
-    // claims the flagship "work slides ahead" (step 2) and the reservation-station slow-op lesson
-    // (step 3); later OoO beats append here.
+    // claims the flagship "work slides ahead" (step 2), the in-order-commit lesson "finish early,
+    // commit in order" (step 5), and the reservation-station slow-op lesson (step 3); later OoO beats
+    // append here.
     const ooo = LESSON_TRACKS.find((t) => t.track === 'The out-of-order machine');
     expect([...(ooo?.lessons ?? [])].sort()).toEqual([
+      'commit-in-order',
       'reservation-station-holds',
       'work-slides-ahead',
     ]);
@@ -731,11 +733,12 @@ describe('authored lessons (INV-6)', () => {
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
     // The out-of-order machine (M10) opens with the flagship "work slides ahead", the crown jewel
-    // where a younger independent instruction executes past an older one stalled on a cache miss, and
-    // adds "the reservation station holds" (step 3) — the Tomasulo namesake, a slow op held across
-    // several execute cycles while independent work issues around it; later OoO beats (in-order commit,
-    // renaming) append to that track.
-    expect(LESSONS.length).toBe(17);
+    // where a younger independent instruction executes past an older one stalled on a cache miss; adds
+    // "finish early, commit in order" (step 5) — the same array-sum trace seen through the reorder
+    // buffer, where instructions finish out of order but retire in program order; and "the reservation
+    // station holds" (step 3) — the Tomasulo namesake, a slow op held across several execute cycles
+    // while independent work issues around it; the renaming beat, if it anchors, appends to that track.
+    expect(LESSONS.length).toBe(18);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -766,13 +769,15 @@ describe('authored lessons (INV-6)', () => {
       l.config && l.config.cache !== null ? [{ id: l.id, cache: l.config.cache }] : [],
     );
     // Non-vacuity: the cache track means there ARE such lessons, so this is not asserting over [].
-    // The OoO flagship (M10) is the fourth cache-declaring lesson — it opens at CACHE_LARGE, the one
-    // config family where out-of-order issue does anything (the miss is what independent work slides
-    // past), so its declared geometry must canonicalize to the shipped constant like the cache track's.
+    // The two OoO lessons on array-sum (M10) — the flagship "work slides ahead" and the in-order-commit
+    // "commit in order" — both open at CACHE_LARGE, the one config family where out-of-order issue does
+    // anything (the miss is what independent work slides past / commits behind), so their declared
+    // geometry must canonicalize to the shipped constant like the cache track's.
     expect(declared.map((d) => d.id).sort()).toEqual([
       'cache-conflict',
       'cache-spatial',
       'cache-temporal',
+      'commit-in-order',
       'work-slides-ahead',
     ]);
     for (const { id, cache } of declared) {
@@ -2792,6 +2797,213 @@ describe('reservation-station-holds — the slow op held while independent work 
     // — where the reorder happens and two anchors could in principle collide or invert. Pinned in both
     // toggle positions: the runner navigates by cursor, so steps must anchor in non-decreasing order
     // and to distinct cycles or an earlier step becomes unreachable.
+    for (const trace of [record(false), record(true)]) {
+      const anchored = anchorLesson(lesson(), trace);
+      expect(anchorOrderViolations(anchored)).toEqual([]);
+      const cycles = anchored.flatMap((a) => (a.cycle === null ? [] : [a.cycle]));
+      expect(new Set(cycles).size, 'each step anchors to a distinct cycle').toBe(cycles.length);
+    }
+  });
+});
+
+/**
+ * `commit-in-order`'s oracle (M10 step 5) — the reorder buffer's precise-state job, taught on the
+ * SAME array-sum trace the flagship uses, seen through the commit stream instead of the execute
+ * stream. The headline is the flagship's, sharpened by the advisor into the framing this lesson had
+ * to avoid falling into: "retire in program order" is true in BOTH toggle positions (the ROB always
+ * commits in order, and in-order issue never scrambled execution to begin with — the dependent `add`
+ * blocks every independent op from issuing). So the lesson is NOT "out of order retires in order,
+ * in order also retires in order" (which makes the toggle look inert, the exact self-undermining
+ * shape the flagship's middle beat once had). The lesson is: **out-of-order issue SCRAMBLES the
+ * finishing order, and the reorder buffer puts it back; in-order issue never produced a scramble to
+ * fix.** The ROB's work is out-of-order's alone.
+ *
+ * **The schema finding this beat forced (record it in the plan).** The plan's step-5 line said
+ * "anchor on an `instr-retire where` (program-unique)". It is NOT achievable: `instr-retire` carries
+ * only `{ instr }`, and `instr` is the fetch-order id (`i0`, `i4`, `i7`…) — an `nth`-in-disguise
+ * (fetch position), exactly the anchor the M10 headline forbids because it drifts across the sweep's
+ * speculation. So the STEPS anchor on program-unique `alu-op` values like every other OoO lesson, and
+ * the retire-order claim lives here in the oracle — which reads the id off each event and joins
+ * `alu-op` → id → `instr-retire` WITHIN one recorded config, where the id IS stable (INV-4). The beat
+ * is still anchorable; it is just not anchorable on a retire event.
+ *
+ * **What makes this distinct from the flagship's oracle, not re-narrated array-sum:** the flagship
+ * never checks retire order at all. This one asserts (a) the retired-id stream is strictly ascending
+ * — a direct read of in-order commit — in BOTH positions; (b) the execute-early/retire-late pair via
+ * the id-join (iteration-1 counter executes cycle 9, retires cycle 22, AFTER the older load retires
+ * cycle 18, while its execution cycle 9 PRECEDES the load's `mem-read` cycle 17); and (c) the
+ * discriminator — that scramble exists ONLY out of order (in order the counter executes at cycle 20,
+ * AFTER the load, so finishing order already equals program order).
+ */
+describe('commit-in-order — finish out of order, retire in program order (M10 step 5)', () => {
+  const lesson = (): Lesson => byId('commit-in-order');
+
+  /** The lesson's own declared machine with only the issue-order toggle varied — the rest from JSON. */
+  const record = (outOfOrderIssue: boolean): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('commit-in-order must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, outOfOrderIssue });
+  };
+
+  /** The cycle of the sole `alu-op` with this op/result — asserts uniqueness, the anchor's contract. */
+  const aluCycle = (trace: readonly CycleTrace[], op: string, result: number): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'alu-op' && e.op === op && e.result === result ? [c.cycle] : [],
+      ),
+    );
+    expect(hits, `alu-op ${op} result:${result} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** The {cycle, id} of the sole `alu-op` matching — the id is the INV-4 fetch id (`i7`), stable within a run. */
+  const alu = (
+    trace: readonly CycleTrace[],
+    op: string,
+    result: number,
+  ): { cycle: number; id: string } => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'alu-op' && e.op === op && e.result === result
+          ? [{ cycle: c.cycle, id: e.instr }]
+          : [],
+      ),
+    );
+    expect(hits, `alu-op ${op} result:${result} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** The {cycle, id} of the sole `mem-read` with this value — the head load's value is program-unique. */
+  const memRead = (trace: readonly CycleTrace[], value: number): { cycle: number; id: string } => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'mem-read' && e.value === value ? [{ cycle: c.cycle, id: e.instr }] : [],
+      ),
+    );
+    expect(hits, `mem-read value:${value} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** The cycle at which the instruction with this id retires — its sole `instr-retire`. */
+  const retireCycle = (trace: readonly CycleTrace[], id: string): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) => (e.type === 'instr-retire' && e.instr === id ? [c.cycle] : [])),
+    );
+    expect(hits, `${id} retires exactly once`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** Fetch-id numbers in the order instructions retire — parsed from the `iN` ids (INV-4). */
+  const retiredIdNums = (trace: readonly CycleTrace[]): number[] =>
+    trace.flatMap((c) =>
+      c.events.flatMap((e) => (e.type === 'instr-retire' ? [Number(e.instr.slice(1))] : [])),
+    );
+
+  it('opens on the out-of-order machine at width 1, cache large, issuing OUT of order', () => {
+    expect(lesson().model).toBe('out-of-order');
+    expect(lesson().config?.outOfOrderIssue).toBe(true);
+    expect(lesson().config?.issueWidth).toBe(1);
+    expect(lesson().config?.cache).toBe(CACHE_LARGE);
+  });
+
+  it('COMMIT IN ORDER: the retired-id stream is strictly ascending — in BOTH toggle positions', () => {
+    // The reorder buffer commits only its head, and only in program order, so the fetch ids retire in
+    // strictly ascending order NO MATTER the issue policy (the gaps are squashed speculation, which
+    // never retires). This is the ROB invariant, and the advisor's framing trap made concrete: it is
+    // true both ways, so it is NOT the toggle's discriminator — it is the safety the discriminator (the
+    // scramble, below) is made safe by. Asserting it both ways is what stops the lesson from claiming
+    // in-order commit is an out-of-order feature.
+    for (const trace of [record(false), record(true)]) {
+      const ids = retiredIdNums(trace);
+      expect(ids.length, '34 instructions retire').toBe(34);
+      for (let i = 1; i < ids.length; i++) {
+        expect(
+          ids[i]!,
+          `retire ${i} (${ids[i]}) is younger than retire ${i - 1} (${ids[i - 1]})`,
+        ).toBeGreaterThan(ids[i - 1]!);
+      }
+    }
+  });
+
+  it('THE SCRAMBLE, and that it is out-of-order’s alone: counter finishes before the load it follows', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The iteration-1 counter (`addi t1, t1, -1`, 5 -> 4 — program-unique) and the head load (`lw`,
+    // value 5 — program-unique). In PROGRAM order the load is written first: its fetch id is smaller.
+    const counterOoo = alu(ooo, 'add', 4);
+    const loadOoo = memRead(ooo, 5);
+    expect(Number(counterOoo.id.slice(1)), 'the counter is written AFTER the load').toBeGreaterThan(
+      Number(loadOoo.id.slice(1)),
+    );
+
+    // Out of order: the counter FINISHES (cycle 9) before the older load even produces its value
+    // (`mem-read` cycle 17) — finishing order is the reverse of program order. THE scramble, and the
+    // whole reason a reorder buffer is needed. The sweep cannot see it (both events fire either way).
+    expect(counterOoo.cycle).toBe(9);
+    expect(loadOoo.cycle).toBe(17);
+    expect(counterOoo.cycle).toBeLessThan(loadOoo.cycle);
+
+    // ...but it RETIRES (cycle 22) AFTER the load retires (cycle 18): finished first, committed last.
+    // The completion/commit divergence IS the lesson, and only the id-join reads it.
+    expect(retireCycle(ooo, loadOoo.id)).toBe(18);
+    expect(retireCycle(ooo, counterOoo.id)).toBe(22);
+    expect(retireCycle(ooo, counterOoo.id)).toBeGreaterThan(retireCycle(ooo, loadOoo.id));
+
+    // The discriminator (the advisor's framing trap, guarded). In ORDER the SAME counter executes at
+    // cycle 20 — AFTER the load's `mem-read` at 17 — because the dependent `add` blocks it from
+    // issuing early. There is no scramble to put back: finishing order already equals program order.
+    // This is what makes in-order commit trivial there and load-bearing here.
+    expect(aluCycle(inOrder, 'add', 4)).toBe(20);
+    expect(memRead(inOrder, 5).cycle).toBe(17);
+    expect(aluCycle(inOrder, 'add', 4)).toBeGreaterThan(memRead(inOrder, 5).cycle);
+
+    // The two beats' prose states these cycles as fact (the M4-step-4 net — a wrong cycle is invisible
+    // to the anchoring sweep and only reddens here). Checked as "cycle N" so "9" cannot match in "59".
+    const scramble = resolveNarration(lesson().steps[0]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 9', 'cycle 17']) {
+      expect(scramble, `the scramble narration must quote "${token}"`).toContain(token);
+    }
+    const held = resolveNarration(lesson().steps[1]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 9', 'cycle 22', 'cycle 18']) {
+      expect(held, `the commit narration must quote "${token}"`).toContain(token);
+    }
+  });
+
+  it('same order out as in: 120 stored either way, the reorder invisible (59 vs 71)', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The final sum (120, program-unique among `alu-op`s — the store's `mem-write` is a different
+    // event) is the lesson's last anchored step, at cycle 48 out of order.
+    for (const trace of [inOrder, ooo]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'alu-op', op: 'add', result: 120 });
+    }
+    expect(aluCycle(ooo, 'add', 120)).toBe(48);
+
+    // Same answer, and the cycle counts the closing prose quotes — derived from the declared machine at
+    // both toggle positions, not trusted. 34 retire either way (issue order is a throughput knob), and
+    // the reorder-buffer commit stream is what makes those 34 land in program order regardless.
+    expect(inOrder.length).toBe(71);
+    expect(ooo.length).toBe(59);
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(inOrder)).toBe(34);
+    expect(retired(ooo)).toBe(34);
+
+    // The closing beat's default tier states the total; its expert tier states both counterfactual
+    // numbers (this lesson keeps the numbers in the expert tier — its subject is ORDER, not speed).
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    expect(closing, 'the closing default tier quotes the total').toContain('120');
+    const closingExpert = resolveNarration(lesson().steps.at(-1)!.narration, 'expert')!;
+    for (const token of ['59', '71']) {
+      expect(closingExpert, `the closing expert tier must quote ${token}`).toContain(token);
+    }
+  });
+
+  it('the step anchors stay monotonic and distinct in both toggle positions', () => {
+    // Steps are iteration-2 counter (result 3), iteration-3 sum (result 18), iteration-5 sum (result
+    // 120) — three program-order-separated unique values, so they anchor in non-decreasing order and
+    // to distinct cycles in every position the runner might navigate (incl. the in-order sweep ones).
     for (const trace of [record(false), record(true)]) {
       const anchored = anchorLesson(lesson(), trace);
       expect(anchorOrderViolations(anchored)).toEqual([]);

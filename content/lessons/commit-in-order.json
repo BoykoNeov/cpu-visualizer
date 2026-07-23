@@ -1,0 +1,45 @@
+{
+  "id": "commit-in-order",
+  "title": "Finish early, commit in order",
+  "program": "array-sum",
+  "model": "out-of-order",
+  "config": {
+    "forwarding": false,
+    "branchPrediction": "static-not-taken",
+    "cache": {
+      "lineSize": 16,
+      "numLines": 4,
+      "missPenalty": 10
+    },
+    "issueWidth": 1,
+    "outOfOrderIssue": true,
+    "robSize": 16
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 3 } },
+      "narration": {
+        "essentials": "Out-of-order issue lets a later instruction finish long before an earlier one.",
+        "detailed": "Watch the order instructions FINISH, not the order they were written. In the first iteration the counter `addi t1, t1, -1` finished executing at cycle 9 — while the load `lw t2, 0(t0)` written ahead of it, stuck on a cache miss, did not produce its value until cycle 17. The younger instruction completed first, the older load last. By here, in the second iteration, it has happened again: this counter is done while earlier work is still in flight. Nothing about the program's written order survives in the order instructions actually finish. Flip the toggle to in-order issue and the scramble vanishes — there nothing may execute until the instruction before it does, so finishing order IS program order and there is nothing for the machine to put back.",
+        "expert": "Under out-of-order issue a reservation station releases an instruction the cycle its operands are ready, so functional units complete in data-ready order, not program order — and those finished results pile up in the reorder buffer as completed-but-not-yet-retired entries, exactly what the ROB column of the table shows. In-order issue produces no such pile: it will not look past the first not-ready instruction in program order, so the dependent `add` stalls every independent instruction behind it and they execute in the order they were written. The scramble is the out-of-order machine's alone; it is the thing the ROB exists to undo."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 18 } },
+      "narration": {
+        "essentials": "The reorder buffer holds each finished instruction until every older one has left, so results commit in program order.",
+        "detailed": "Finishing early does not mean leaving early. That first-iteration counter, done at cycle 9, did not RETIRE until cycle 22 — it sat in the reorder buffer, complete, while the load and the add written ahead of it caught up. The load retired first at cycle 18, then the add, and only then the counter at cycle 22. The reorder buffer commits strictly in the order the program was written, however scrambled the finishing order was. That is what makes out-of-order execution safe: from the outside, every register and memory update lands in program order, as if nothing had been reordered at all.",
+        "expert": "The reorder buffer commits only its head, and only in program order, so an instruction's architectural effects become visible exactly when every older instruction's already have. This is what precise state means: if the missing load had faulted, the counter's result computed thirteen cycles earlier must never have been architecturally visible, and the in-order commit guarantees it was not. The completion/commit divergence you are watching — execute at cycle 9, retire at cycle 22 — is the reorder buffer's entire reason to exist. In-order issue needs none of it: having never let a younger instruction finish first, its buffer commits in the same order execution completed."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 120 } },
+      "narration": {
+        "essentials": "The whole program commits in written order and stores the same 120 — the reorder was invisible from outside.",
+        "detailed": "The final sum, 120, is computed at cycle 48, and the tail of the program — the store and the exit — drains out of the reorder buffer in program order behind it. Every instruction left the machine in the exact order the program wrote them, even though many finished out of that order. The total written to memory, 120, is identical to what any in-order machine computes. Out-of-order execution changed only how fast the work finished, never the order in which its effects became visible.",
+        "expert": "Thirty-four instructions retire in ascending program order in BOTH toggle positions — the reorder buffer makes execution order unobservable, so issue order is a throughput knob and never a correctness one. What the toggle changed is only WHEN each instruction finished executing: out of order the loop's independent work slid under the misses and the run finished in 59 cycles against in-order's 71. The reorder buffer hid every bit of that reordering behind a commit stream that looks, from memory and the register file, exactly like a machine that ran the program one instruction at a time."
+      }
+    }
+  ]
+}
