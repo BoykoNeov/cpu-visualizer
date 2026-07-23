@@ -519,6 +519,32 @@ const TIMING: Readonly<Record<string, Timing>> = {
     // A register-only shift-accumulate loop: no loads or stores ⇒ M = 0 at every size.
     misses: { small: 0, large: 0 },
   },
+
+  /**
+   * `array-sum`'s TWIN: byte-for-byte the same instruction stream and hazards — the ONLY source
+   * difference is the pointer bump (`addi t0,t0,16` vs `,4`) and distinct `.data` values, neither of
+   * which touches timing (M10 step 4). So every non-cache field is copied from `array-sum` verbatim;
+   * only `misses` differs, and that is the entire point of the program.
+   *    0 lui t0        4 addi t0,t0     8 addi t1,x0,5    12 addi a0,x0,0
+   *   16 lw t2,0(t0)  20 add a0,a0,t2  24 addi t0,t0,16   28 addi t1,t1,-1   32 bne t1,x0,loop
+   *   36 lui t3       40 addi t3,t3    44 sw a0,0(t3)     48 addi a7,x0,10    52 ecall
+   *
+   * OFF: identical to `array-sum` — the `la` addi at 4 stalls 2; per iteration `add`@20 waits on the
+   *      `lw` (2) and `bne`@32 waits on `addi t1`@28 (2), ×5 = 20; the epilogue `la` addi at 40
+   *      stalls 2 and `sw`@44 waits on it (2). S = 2 + 20 + 4 = 26.
+   * ON:  only the load-use survives: `add`@20, one cycle per iteration ⇒ S = 5.
+   */
+  'strided-sum.s': {
+    retires: 34,
+    transfers: { takenPredictable: 4, notTaken: 1, takenUnpredictable: 0 },
+    flushes: { branchTaken: 4, halt: 0 },
+    stalls: { off: { 4: 2, 20: 10, 32: 10, 40: 2, 44: 2 }, on: { 20: 5 } },
+    // The MISS-STREAM (the mirror image of `array-sum`'s locality). Stride = one 16-byte line, so
+    // each of the five `lw`s touches a fresh block and misses; the `sw` to `total` is a sixth fresh
+    // block and misses too (no-write-allocate still prices the penalty). Nothing is EVER re-read, so
+    // every miss is compulsory — 6 at BOTH sizes, no reuse for a bigger cache to buy back.
+    misses: { small: 6, large: 6 },
+  },
 };
 
 function asm(source: string): AssembledProgram {

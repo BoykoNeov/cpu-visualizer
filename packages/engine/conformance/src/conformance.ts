@@ -143,6 +143,11 @@ const RESULT_ORACLES: Record<
   // knob — M10 step 3), so this equality holds on every model at every config, INV-8's blindness to
   // the latency being exactly the point.
   'slow-op-loop.s': { regs: { 10: 72, 6: 0 } },
+  // Sum one field from each of five 16-byte records: 7 + 20 + -3 + 50 + 6 = 80 in a0 (x10), stored
+  // to `total`; the counter t1 (x6) lands on 0. Same arithmetic on every model — the stride-per-line
+  // access pattern this program exists for is a pure TIMING fact (a compulsory miss every iteration,
+  // and the miss-under-miss the out-of-order model overlaps — M10 step 4), invisible to INV-8.
+  'strided-sum.s': { regs: { 10: 80, 6: 0 }, mem: { total: 80 } },
 };
 
 const PROGRAMS = readdirSync(PROGRAMS_DIR)

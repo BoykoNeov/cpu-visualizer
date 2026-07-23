@@ -495,6 +495,10 @@ describe('width 2 is a real machine', () => {
       // pairing story — width 2 pairs the counter beside the `add` and the branch beside its mate
       // (44 → 35); `timing.test.ts`'s `w2` entry derives both from the pinned rules.
       'slow-op-loop.s': { w1: 44, w2: 35 },
+      // M10 step 4: `array-sum`'s stride-per-line twin. This table runs cache-OFF, where the miss
+      // stream is silent and the program is byte-for-byte array-sum's schedule — same 51 → 42 pairing
+      // win; the misses (and the out-of-order miss-under-miss) only show with the cache on.
+      'strided-sum.s': { w1: 51, w2: 42 },
       'sum-loop.s': { w1: 56, w2: 44 },
     };
     const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));

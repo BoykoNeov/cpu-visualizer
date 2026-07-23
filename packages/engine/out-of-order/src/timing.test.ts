@@ -200,6 +200,19 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     blockedOn: 0,
     bettingGroupsOn: 0,
   },
+  // M10 step 4 — the miss-stream witness. `array-sum`'s TWIN: every field except `misses` is copied
+  // from that entry above (same instruction stream, same hazards, cache-blind). The stride-per-line
+  // access misses on all five loads AND the store ⇒ 6 at both sizes. Under THIS in-order-issue net
+  // the misses serialize (the parity check); the out-of-order overlap is the lesson's oracle, not here.
+  'strided-sum.s': {
+    retires: 34,
+    sOn: 5,
+    transfers: { takenPredictable: 4, notTaken: 1, takenUnpredictable: 0 },
+    misses: { small: 6, large: 6 },
+    groupsOn: 25,
+    blockedOn: 5,
+    bettingGroupsOn: 1,
+  },
 };
 
 const missesAt = (pinned: Pinned, cache: CacheSize): number =>

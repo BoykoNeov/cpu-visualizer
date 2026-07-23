@@ -657,6 +657,47 @@ const TIMING: Readonly<Record<string, Timing>> = {
       betting: { off: { groups: 0, pairs: -5 }, on: { groups: 0, pairs: -5 } },
     },
   },
+
+  /**
+   * `array-sum`'s TWIN (M10 step 4). Byte-for-byte the same instruction stream — only the pointer
+   * bump immediate (`addi t0,t0,16` vs `,4`) and the `.data` values differ, neither of which touches
+   * the pairing partition or any stall. So every field EXCEPT `misses` is copied from `array-sum`
+   * verbatim, including the whole width-2 derivation below; only the miss stream changes.
+   *    0 lui t0        4 addi t0,t0     8 addi t1,x0,5    12 addi a0,x0,0
+   *   16 lw t2,0(t0)  20 add a0,a0,t2  24 addi t0,t0,16   28 addi t1,t1,-1   32 bne t1,x0,loop
+   *   36 lui t3       40 addi t3,t3    44 sw a0,0(t3)     48 addi a7,x0,10    52 ecall
+   *
+   * OFF: S = 26 (`la` addi@4 = 2; per iter `add`@20 = 2 and `bne`@32 = 2, ×5 = 20; epilogue `la`
+   *      addi@40 = 2 and `sw`@44 = 2). ON: only the load-use survives ⇒ S = 5.
+   *
+   * WIDTH 2 — identical to `array-sum` (the partition is dependency-shaped, cache-blind):
+   *   1 {lui@0}                — `addi@4` reads t0 the lui writes: INTRA-PAIR RAW.
+   *   2 {addi@4, addi t1@8}    3 {addi a0@12, lw@16}   4 · (BLOCKED: `add@20` needs the lw's t2)
+   *   5 {add@20, addi t0@24}   6 {addi t1@28}          7 {bne@32, lui t3@36}  (bne taken ⇒ lui doomed)
+   *   Period 7 = 4 groups + 1 blocked + 2 penalty; five iterations, four taken; the fifth bne falls
+   *   through so its lui t3 mate SURVIVES. Epilogue: 36 {addi t3@40}, 37 {sw@44, addi a7@48},
+   *   38 {ecall}. G = 6 + 4×4 + 3 = 25, Q = 13, L = 5. cycles(on,off-cache) = 25 + 5 + 8 + 0 + 4 = 42.
+   * OFF: the interlock refuses `(addi a0@12, lw@16)` (the lw waits on t0@4) so the lw issues alone —
+   *      the one place forwarding moves the PARTITION: G = 26, Q = 12, L = 27. cycles = 26+27+8+4 = 65.
+   * BETTING: 4 correct bets kill mates doomed anyway (Q −4); the 5th bets wrong so its lui t3 mate is
+   *      re-issued and cannot re-pair (`addi t3@40` reads the t3 it writes) ⇒ G +1, Q −1. Totals G +1, Q −5.
+   */
+  'strided-sum.s': {
+    retires: 34,
+    transfers: { takenPredictable: 4, notTaken: 1, takenUnpredictable: 0 },
+    flushes: { branchTaken: 4, halt: 0 },
+    stalls: { off: { 4: 2, 20: 10, 32: 10, 40: 2, 44: 2 }, on: { 20: 5 } },
+    // The MISS-STREAM: stride = one line ⇒ each of the five `lw`s misses a fresh block, and the `sw`
+    // to `total` misses a sixth. Nothing is re-read ⇒ every miss compulsory ⇒ 6 at BOTH sizes.
+    misses: { small: 6, large: 6 },
+    w2: {
+      groups: { off: 26, on: 25 },
+      pairs: { off: 12, on: 13 },
+      blocked: { off: 27, on: 5 },
+      doomed: { off: 4, on: 4 },
+      betting: { off: { groups: 1, pairs: -5 }, on: { groups: 1, pairs: -5 } },
+    },
+  },
 };
 
 function asm(source: string): AssembledProgram {
