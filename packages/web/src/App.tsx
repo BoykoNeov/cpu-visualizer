@@ -12,6 +12,7 @@ import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
+import { OutOfOrderDatapath } from './OutOfOrderDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
 import { MicroTablePanel, hasMicroTables } from './MicroTablePanel';
@@ -429,6 +430,20 @@ export function App(): React.JSX.Element {
                         forwarding: sim.forwarding,
                         predictTaken: predictsTaken(sim.branchPrediction),
                       }}
+                      followed={followed}
+                    />
+                  ) : activeModel.datapath === 'out-of-order' ? (
+                    // The out-of-order datapath (M9 step 7), and the first whose activation reads
+                    // `state.micro` (box occupancy — an OoO `location` is uniformly `"ROB#tag"` and
+                    // carries no stage) as well as `events` (the flow). The one config gate is the
+                    // predictor's bet redirect; issue width and forwarding do NOT restructure a
+                    // pool-based diagram (renaming makes forwarding meaningless, and the FU/ROB/RS are
+                    // drawn as pools, not per-lane), so this view takes only the predict behaviour.
+                    <OutOfOrderDatapath
+                      trace={sim.cycleTrace}
+                      cycleKey={sim.cursor}
+                      tier={tier}
+                      config={{ predictTaken: predictsTaken(sim.branchPrediction) }}
                       followed={followed}
                     />
                   ) : activeModel.datapath === 'superscalar' ? (

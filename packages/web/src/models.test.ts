@@ -119,12 +119,14 @@ describe('the model table', () => {
       // be the exact failure this test hunts — that diagram draws one instruction per stage, so a
       // superscalar trace would light it into a picture the machine contradicts (INV-5).
       ['superscalar', 'superscalar'],
-      // `'none'` on purpose at step 5, exactly as the superscalar was `'none'` here through M7 step 6.
-      // A `DatapathKind` value asserts a diagram of that kind EXISTS; the bespoke OoO datapath is M9
-      // step 7, where the union member, App's dispatch arm, and this value flip together (and this
-      // table reddening is the reminder to do all three). Until then App falls through to the
-      // placeholder, and the tier's picture comes from the pipeline map + the step-6 tables.
-      ['out-of-order', 'none'],
+      // Flipped from `'none'` at M9 step 7, together with the union member and App's dispatch arm —
+      // this table reddening was the reminder to do all three, exactly as it was for the superscalar.
+      // `datapath-out-of-order.ts` now exists: a shared front-end dispatching into the ROB and the
+      // reservation stations, which issue to a functional-unit pool and a load/store unit whose
+      // results ride the common data bus back to the RS and ROB. Reusing any in-order diagram here
+      // would be the failure this test hunts — none of them draw a ROB, an RS or a CDB, so an
+      // out-of-order trace would light a picture the machine contradicts (INV-5).
+      ['out-of-order', 'out-of-order'],
     ]);
   });
 

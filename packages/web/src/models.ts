@@ -43,7 +43,13 @@ import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
  * the web shell dispatches on this discriminator rather than a plain has/has-not flag. `'none'`
  * falls back to a placeholder for models whose datapath isn't built yet.
  */
-export type DatapathKind = 'single-cycle' | 'multi-cycle' | 'pipeline' | 'superscalar' | 'none';
+export type DatapathKind =
+  | 'single-cycle'
+  | 'multi-cycle'
+  | 'pipeline'
+  | 'superscalar'
+  | 'out-of-order'
+  | 'none';
 
 /** A selectable microarchitecture: its id, a display label, and how to make a fresh engine. */
 export interface ModelChoice {
@@ -122,19 +128,20 @@ export const MODELS: readonly ModelChoice[] = [
     // a second place for the same claim to go stale.
     description: OUT_OF_ORDER_MODEL_DESCRIPTION,
     make: () => new OutOfOrderProcessor(),
-    // `'none'` DELIBERATELY, exactly as the superscalar sat at `'none'` through M7 step 6: a
-    // `DatapathKind` value means "a diagram of this kind EXISTS", and the bespoke OoO datapath is M9
-    // step 7. This is a disclosed deviation from the M9 plan's literal `DatapathKind: 'out-of-order'`
-    // in step 5 — that phrasing is step-7 shorthand. Declaring it here now would make the datapath
-    // table in `models.test.ts` assert a diagram nothing draws (the exact "row → WRONG diagram"
-    // failure that test hunts), while App silently fell through to the placeholder anyway. The union
-    // member, App's dispatch arm, and this value all flip TOGETHER at step 7 — the superscalar
-    // precedent, and `models.test.ts` reddening is the reminder to do all three at once.
+    // Its OWN hand-authored geometry (M9 step 7): a shared front-end dispatching into the reorder
+    // buffer and reservation stations, which issue to a functional-unit pool and a load/store unit
+    // whose results ride the common data bus back to the RS and ROB, with the ROB committing in order
+    // into the register file. This value sat at `'none'` through step 6 on purpose (the superscalar
+    // precedent) — a `DatapathKind` means "a diagram of this kind EXISTS", so flipping it early would
+    // have made the datapath table in `models.test.ts` assert a diagram nothing drew. It flips now,
+    // together with the union member and App's dispatch arm. Deliberately NOT reusing any sibling's
+    // diagram: an out-of-order trace lights structures (ROB, RS, CDB) no in-order diagram has, so any
+    // reuse would draw a contradictory picture (INV-5), the same reason no prior model reused another.
     //
-    // Step 5's own picture comes from the pipeline MAP (gated on trace overlap, not the model), which
-    // renders an out-of-order recording for free (INV-3) — the bespoke datapath is the sheddable half
-    // of this tier (the plan's inverted scope lever), the tables (step 6) are the star surface.
-    datapath: 'none',
+    // This is the SHEDDABLE half of the tier (the plan's inverted scope lever) — the ROB/RS/rename
+    // tables (step 6) are the star surface; the pipeline MAP already renders the out-of-order
+    // recording for free (INV-3). The datapath is the last piece, not the load-bearing one.
+    datapath: 'out-of-order',
     capabilities: OUT_OF_ORDER_CAPABILITIES,
   },
 ];
