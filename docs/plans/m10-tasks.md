@@ -85,14 +85,16 @@ not cleanly anchor** — the arch-register → tag mapping lives only in `Machin
 table the `MicroTablePanel` draws), and nothing in the event stream names a WAR/WAW that renaming
 dissolved. Per the headline's own rule, this is surfaced NOW rather than discovered mid-authoring:
 
-- **Resolution (seeded, confirm against the dump in the renaming step):** anchor the renaming step on
-  the SECOND writer's `alu-op` (a program-unique `where`, e.g. the second write to the same arch
-  register) — an event that genuinely exists — and let the narration + the rename table in the
-  `MicroTablePanel` carry the "same name, two tags, no false wait" point. The oracle pins that the two
-  writers both `alu-op` and that the younger did not wait on the older (their cycles under OoO).
-- **If even that will not anchor cleanly** (e.g. no corpus program has a clean WAR/WAW independent
-  enough to show the payoff), **drop the beat to a 3-lesson track** and say so — do not stretch an
-  anchor or add a `rename` event to save it.
+- **RESOLVED 2026-07-23 — DROPPED with proof (see step 6).** The seeded resolution (anchor on the
+  second writer, narration + rename table carry "same name, two tags, no false wait") did NOT survive
+  the dump. The structural finding: renaming's payoff is only observable when the OLDER same-register
+  writer is stalled by a latency source, and the only two sources (cache miss / slow op) each make
+  THEMSELVES the salient cause — so renaming is always the hidden enabler behind a louder cause, never
+  the visible star. The one textbook-clean case (`sll t3`, two shifts in flight) is the RS lesson's
+  program (off-limits). The array-sum `t2` case that looked anchorable is caused by the issue policy +
+  the front-end freeze, NOT renaming (identical in both toggle positions) — a toggle lesson there would
+  re-tell the flagship. So the plan's own drop criterion is met with proof; the track is 3 lessons and
+  NO `rename` event was invented. Full detail in step 6.
 
 ## The dump (the design's factual ground) — FIRST PASS RUN 2026-07-23
 
@@ -497,10 +499,41 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
     is the 5th cache-declaring lesson), and the by-name OoO membership set all updated. Wiring guards
     found by grep before editing, as always.
 
-- [ ] **6. Lesson (CONDITIONAL) — renaming ("A new name for a register").** The un-anchorable beat (see
-      "The un-anchorable beat") — confirm against the dump before authoring: anchor on the second
-      writer's `alu-op`, narration + the rename table carry the WAR/WAW-dissolved point. **If it will not
-      anchor cleanly, DROP it** and record why here (no `rename` event invented). Width 1.
+- [x] **6. Lesson (CONDITIONAL) — renaming ("A new name for a register"). DROPPED 2026-07-23, with
+      proof — the track is 3 lessons.** Ran a throwaway rename dump (`zz-m10-rename-dump.test.ts`,
+      deleted; outputs under `M:\claud_projects\temp\m10-renaming\`) scanning the whole corpus on the OoO
+      model at width 1 for "two live ROB entries share the same `rd`" (one arch register, two distinct
+      in-flight tags — the renaming payoff), and the array-sum `t2` counterfactual in BOTH toggle
+      positions. **The structural finding that meets the plan's own drop criterion ("no corpus program
+      has a clean WAR/WAW independent enough to show the payoff") with proof — advisor-endorsed:** - **Renaming's payoff is unobservable without a latency source to stall the OLDER same-register
+      writer, and the only two latency sources each make THEMSELVES the salient cause.** At
+      single-cycle ALU latency two writes to one register just land a cycle apart — nothing reorders,
+      the rename-table change is invisible. To get "younger same-reg writer finishes first" the older
+      one must be stalled, and the only stalls are the cache miss (→ array-sum `t2`) and the slow op
+      (→ slow-op-loop `t3`). The dump confirms empirically: the ONLY two INDEPENDENT same-register
+      reorderings in the entire corpus are array-sum `t2` (cache salient) and slow-op-loop `t3`
+      (slow-op salient — AND it is the RS lesson's program, pinned LAST, off-limits per the step-5
+      teaching-order finding). Every other two-tag case (`a0`/`t0`/`t1`) is a loop-carried TRUE
+      dependency where nothing reorders. So renaming is structurally ALWAYS the hidden enabler behind
+      a louder cause, never the visible star. - **There is NO honest toggle counterfactual for renaming.** The array-sum `t2` reorder looks
+      anchorable — under OoO `mem-read value:17` (iter-2 `lw t2`, a cache HIT) fires c14, BEFORE
+      `mem-read value:5` (iter-1 `lw t2`, the MISS) at c17; under in-order value:5 fires first (c17),
+      value:17 later (c25), and `t2` NEVER appears in two live tags at all. **But that reorder is
+      caused by the ISSUE POLICY + the front-end freeze, NOT by renaming** (which is ON and identical
+      in both toggle positions). Under in-order a miss sets `ctx.memStall`, which freezes BOTH
+      `stageDispatch` (`processor.ts:1153`) and `stageIssueExecute` (`:836`) — so the second `lw t2`
+      is never even DISPATCHED while the first misses, and the second `t2` tag never exists. Renaming
+      isn't "unused" in-order; the front-end freeze prevents the second dispatch entirely. A
+      toggle-A/B renaming lesson would therefore just RE-TELL the flagship (work slides under a miss)
+      with a load standing in for the counter — the genuinely renaming-specific content (the rename
+      table, `t2` in two tags) is NOT a toggle story and has no A/B, only the rename table as a static
+      witness. - **Decision:** dropping is a stronger, honest, durable deliverable than a lesson where renaming
+      is the least-visible of three simultaneous causes on the third-consecutive array-sum machine.
+      **No `rename`/`issue`/`commit` event invented** (the house record holds — the milestone's
+      characteristic-failure temptation declined with proof, exactly as M8 step 8 declined `issue`).
+      The OoO track stays `[work-slides-ahead, commit-in-order, reservation-station-holds]`; no
+      `index.json` change (renaming was never wired). Remaining M10: step 4 (deferred miss-under-miss
+      program) → step 7 (wire — already satisfied for these 3) → step 8 (browser).
 
 - [ ] **7. Wire the track.** Mostly done incrementally by the lesson steps (the glob forces it). What remains:
       the by-name track-membership assertion in `lessons.test.ts`'s "files each lesson under the track
@@ -535,8 +568,9 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
 - [ ] The sweep covers the OoO config cluster: `positionsFor('out-of-order')` enumerates the honored
       OoO positions and every lesson is swept over all of them, anchoring in order with resolvable
       narration in each (INV-6 across configs).
-- [ ] The renaming beat either anchors cleanly on an existing event (+ table/narration) or is dropped
-      with the reason recorded — no `rename`/`issue`/`commit` event added.
+- [x] The renaming beat either anchors cleanly on an existing event (+ table/narration) or is dropped
+      with the reason recorded — no `rename`/`issue`/`commit` event added. **DROPPED 2026-07-23 with a
+      proven structural reason (step 6); no event invented.**
 - [ ] If a new corpus program was added: it passes INV-8 on every model, and every timing guard that
       enumerates the corpus (pipeline, superscalar, out-of-order) covers it with hand-derived cells.
 - [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean (any
