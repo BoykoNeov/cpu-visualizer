@@ -401,7 +401,7 @@ cleanest to anchor**:
       (both neutral → dodge the "only names honored knobs" guard). 3-beat arc, anchors program-unique
       AND latency-invariant (the sweep records at latency 1): counter `add result:5` (avoids the `li`
       values 6/0/3/2/10; c8 OoO vs c15 in-order, `sll` completes c13 both) → 2nd partial `add
-      result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-order) → final
+    result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-order) → final
       `add result:72` (same answer, 53 vs 86, IPC 0.57/0.35). The `sll result:12` is NOT
       program-unique (repeats each iteration) → oracle-only, never a step. - **⚠ THE net unique to this lesson (advisor-endorsed):** `slowOpLatency` is unswept, so
       `positionsFor` records this lesson at latency 1 in ALL 48 positions — the reorder VANISHES
@@ -411,11 +411,17 @@ cleanest to anchor**:
       which pins the CDB-wakeup causally) and token-checks the prose (M4-step-4 net). - **Teaching-order TODO:** RS is currently wedged at track position 2 (after the flagship). The
       plan's pinned order is flagship → renaming → in-order commit → **RS namesake LAST**. When steps
       5/6 land, MOVE `reservation-station-holds` to the end of the OoO track in `index.json` (and
-      update the membership guard's expectation — it is a sorted set, so no order change there). - **⚠ STILL UNTESTED (step 8 must-verify): the `useSimulator` ref threading.** No jsdom ⇒ "3633
-      green" proves the CONTENT is right and `lessonOpening` returns 8, NOT that the shell RECORDS at
-      latency 8. Slow-op step-8 checklist: the lesson opens showing **53** cycles (the `sll` visibly
-      occupying its FU in the `MicroTablePanel`); flipping the toggle to in-order shows **86** at the
-      same latency; picking a free-play program afterward reverts to single-cycle (the leak-guard).
+      update the membership guard's expectation — it is a sorted set, so no order change there). - **✅ REF THREADING BROWSER-VERIFIED 2026-07-23 (was "STILL UNTESTED").** No jsdom ⇒ "3633
+      green" only proved the CONTENT is right and `lessonOpening` returns 8, NOT that the shell RECORDS
+      at latency 8 — so drove the **shipped bundle** (`vite preview`) via CDP. All three ordered
+      observations PASS (rig `M:/claud_projects/temp/m10-step8/eyeball.mjs`, screenshots there):
+      (1) lesson opens → **53** cycles (scrub-max+1; the ref-threading proof — 44 would mean broken);
+      (2) flip issue-order → in-order → **86** (latency SURVIVES the flip, not reset by it);
+      (3) free-play `slow-op-loop` on OoO → **44** (a latency-1 figure — `select` reset the ref to 1,
+      leak-guard fires). **Readout finding:** the OoO model has **no IPC tile** (that gate needs
+      `micro.width`, which OoO omits) — the computed cycle count is the **scrub bar's max**
+      (`recordedCycles−1`), NOT the `PairingReadout`. The pipeline map visibly shows the `sll` holding
+      its wide ~8-cycle ROB band while the counter/branch issue around it (OoO) vs serialized (in-order).
 
 - [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss"). RESOLVED 2026-07-23: build
       a new miss-under-miss corpus program (DEFERRED to a later session).** The SECOND-PASS dump proved
