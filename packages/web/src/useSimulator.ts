@@ -354,6 +354,13 @@ export function useSimulator(): Simulator {
   // shrinking it is the follow-up experiment. A literal, same reasoning as `issueWidth`/OoO above.
   const [robSize, setRobSizeState] = useState(16);
   const robSizeRef = useRef(robSize);
+  // Slow-op latency (M10 step 3) — the OoO engine's `slowOpLatency` knob. A REF ONLY, no React
+  // state, no interface field, no control: it is honored by the engine but neither swept nor
+  // user-adjustable (step 0b), so nothing renders it and nothing re-renders when it moves. Its ONLY
+  // writers are `startLesson` (from the lesson's declared opening) and the free-play loads
+  // (`select` / `loadEdited`), which reset it to 1 so a lesson's latency cannot leak into a program
+  // the user picks next — there is no toggle to undo it. Opens at 1 (the engine's `?? 1`, no slow op).
+  const slowOpLatencyRef = useRef(1);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -372,6 +379,7 @@ export function useSimulator(): Simulator {
         issueWidth: issueWidthRef.current,
         outOfOrderIssue: outOfOrderIssueRef.current,
         robSize: robSizeRef.current,
+        slowOpLatency: slowOpLatencyRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -412,6 +420,10 @@ export function useSimulator(): Simulator {
     (name: string) => {
       const example = EXAMPLE_PROGRAMS.find((p) => p.name === name);
       if (!example) return;
+      // Free-play: no lesson to declare a slow-op latency, and no control to adjust one, so reset it
+      // to 1 (no slow op). This is what stops a slow-op lesson's latency leaking into the next program
+      // the user picks — the one knob with no toggle to undo it (see the ref's declaration).
+      slowOpLatencyRef.current = 1;
       setSession(exampleSession(name));
       setLoadGen((g) => g + 1);
       loadInto(example.source);
@@ -436,6 +448,7 @@ export function useSimulator(): Simulator {
         issueWidth: issueWidthRef.current,
         outOfOrderIssue: outOfOrderIssueRef.current,
         robSize: robSizeRef.current,
+        slowOpLatency: slowOpLatencyRef.current,
       });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
@@ -452,6 +465,9 @@ export function useSimulator(): Simulator {
       setOutOfOrderIssueState(opening.outOfOrderIssue);
       robSizeRef.current = opening.robSize;
       setRobSizeState(opening.robSize);
+      // No state/control for this one (see the ref's declaration) — the lesson's declared latency
+      // just becomes what `loadInto` records with, below.
+      slowOpLatencyRef.current = opening.slowOpLatency;
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -462,7 +478,9 @@ export function useSimulator(): Simulator {
   const loadEdited = useCallback(
     (source: string) => {
       // The fork (§13): detach any active lesson, then record the edited program. Functional
-      // update so the origin is derived from whatever session was current.
+      // update so the origin is derived from whatever session was current. Reset the slow-op latency
+      // to 1 for the same reason `select` does — a sandbox is free-play, with no control to adjust it.
+      slowOpLatencyRef.current = 1;
       setSession((prev) => forkToSandbox(prev));
       loadInto(source);
     },

@@ -89,6 +89,20 @@ export interface LessonOpening {
    * absence as 16 (`config.robSize ?? 16`), so a declared config that omits it MEANS 16.
    */
   robSize: number;
+  /**
+   * The slow-op functional-unit latency to record at (M10 step 3) — the out-of-order model's
+   * `slowOpLatency` knob. Total for the same reason as {@link issueWidth}: the field is optional and
+   * the engine reads its absence as 1 (`config.slowOpLatency ?? 1`, one cycle = no slow op), so a
+   * declared config that omits it MEANS 1.
+   *
+   * **Unlike every knob above it, this one has NO shell control** (step 0b: it is honored by the OoO
+   * engine but is neither swept nor user-adjustable — the reachability rule that made `outOfOrderIssue`
+   * a swept axis cut the other way here). So it is threaded ONLY so a lesson that declares a slow op
+   * records with it, never so a user can flip it. The hook holds it in a ref, not React state, and
+   * resets it to 1 on any free-play load so a lesson's latency can't leak into a program the user
+   * picks next (there is no toggle to undo it) — see `useSimulator`.
+   */
+  slowOpLatency: number;
 }
 
 /**
@@ -191,6 +205,7 @@ export function lessonOpening(
     issueWidth: number;
     outOfOrderIssue: boolean;
     robSize: number;
+    slowOpLatency: number;
   },
 ): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
@@ -219,5 +234,9 @@ export function lessonOpening(
     // "leave the user's position untouched". No M9 lesson exists yet (M10); the rule is right first.
     outOfOrderIssue: lesson.config.outOfOrderIssue ?? false,
     robSize: lesson.config.robSize ?? 16,
+    // The M10 slow-op knob (step 3), same optional-field reading: omitted ⇒ 1 (the engine's `?? 1`,
+    // one cycle = no slow op). This is the ONE opening knob with no shell control — the slow-op
+    // lesson pins it here, invisibly, and it is reset to 1 on free-play loads (see `useSimulator`).
+    slowOpLatency: lesson.config.slowOpLatency ?? 1,
   };
 }

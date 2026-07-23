@@ -90,6 +90,7 @@ describe('a lesson opens on the model + config it declares', () => {
     issueWidth = 1,
     outOfOrderIssue = false,
     robSize = 16,
+    slowOpLatency = 1,
   ): {
     forwarding: boolean;
     branchPrediction: BranchPrediction;
@@ -97,6 +98,7 @@ describe('a lesson opens on the model + config it declares', () => {
     issueWidth: number;
     outOfOrderIssue: boolean;
     robSize: number;
+    slowOpLatency: number;
   } => ({
     forwarding,
     branchPrediction,
@@ -104,6 +106,7 @@ describe('a lesson opens on the model + config it declares', () => {
     issueWidth,
     outOfOrderIssue,
     robSize,
+    slowOpLatency,
   });
 
   it('honors the declared model — a lesson is prose about ONE machine, not just anchors', () => {
@@ -127,6 +130,7 @@ describe('a lesson opens on the model + config it declares', () => {
       issueWidth: 1,
       outOfOrderIssue: false,
       robSize: 16,
+      slowOpLatency: 1,
     });
   });
 
@@ -232,7 +236,7 @@ describe('a lesson opens on the model + config it declares', () => {
     for (const lesson of LESSONS) {
       const opening = lessonOpening(
         lesson,
-        arrivingWith(true, 'static-taken', CACHE_SMALL, 1, false, 4),
+        arrivingWith(true, 'static-taken', CACHE_SMALL, 1, false, 4, 3),
       );
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
       if (lesson.config === undefined) continue;
@@ -259,6 +263,15 @@ describe('a lesson opens on the model + config it declares', () => {
       );
       expect(opening.robSize, `${lesson.id} opens at its declared ROB size`).toBe(
         lesson.config.robSize ?? 16,
+      );
+      // The M10 slow-op knob (step 3), same OPTIONAL-field reading: an omitted latency means 1 (the
+      // engine's `?? 1`), a declared one must survive whole. Failable because the arrival above sets
+      // it to 3 — a value no lesson declares — so a lessonOpening that leaked the arrival instead of
+      // reading the lesson would redden here. This is the ONLY headless net on the slow-op plumbing:
+      // the useSimulator threading itself (ref set/read/reset) is browser-only ([[browser-is-the-only-net]]),
+      // so a slow-op lesson silently recording at latency 1 in the shell is a step-8 must-verify.
+      expect(opening.slowOpLatency, `${lesson.id} opens at its declared slow-op latency`).toBe(
+        lesson.config.slowOpLatency ?? 1,
       );
     }
   });
