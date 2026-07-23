@@ -134,6 +134,47 @@ config / cycle-count / IPC number below is still a **placeholder** for the deepe
 (execution order, program-unique `where` anchors) each chosen lesson needs — and the slow-op numbers do
 not exist yet at all (the mechanism is unbuilt).
 
+## The dump — SECOND PASS (per-event execution order) RUN 2026-07-23
+
+Re-dumped both flagship candidates with per-event execution order in both toggle positions (throwaway
+`out-of-order/src/zz-m10-dump.test.ts`, outputs `M:\claud_projects\temp\m10\dump.txt` +
+`dump-step4.txt`). **Flagship PINNED by the user 2026-07-23: `array-sum`, cache large, `outOfOrderIssue`
+true (71→59).** Chosen over the slow-op loop for de-risking (already corpus, cache already plumbed, so
+step 2 is pure content) and UI coherence (the shipped `IssueOrderToggle` title already frames the
+flagship as "with the cache on, watch independent work slide past a stalled load"). The slow-op-loop
+flagship variant is recorded as **deferred additional work** (a later session, not this one — same as
+the slow-op corpus program step 3 needs).
+
+**The per-event facts (array-sum cache-large), for the flagship + steps 4/5 anchors:**
+
+- **"Work slides ahead" (flagship, step 2).** Under IN-ORDER the head load (`lw` pc=16) misses at c7
+  and its `mem-read` lands c17 (10-cycle penalty); everything waits — `addi t0` (pc=24) at c19, `addi
+t1` (pc=28) at c20. Under OoO those independent ops slide UNDER the miss: `addi t0` at **c8**, `addi
+t1` at **c9**, `bne` at c10 — while the load is still outstanding. Clean program-unique anchors (never
+  dead across the sweep, only the cycle moves — consistent with the headline): `alu-op where
+result:268435460` (pc=24, the pointer bump to `&arr[1]` = 0x10000004; c19→c8) or the counter `alu-op
+where result:4` (pc=28, first decrement 5→4; c20→c9).
+- **In-order commit (step 5) — clean on array-sum.** pc=24 (`addi t0`) EXECUTES at c8 but RETIRES at
+  c21 (after pc=16 retires c18 and pc=20 retires c20). Execution reordered, commit strictly in program
+  order. Anchor on an `instr-retire where` at the head + the oracle that the corresponding `alu-op`
+  fired out-of-retirement-order earlier.
+
+**⚠ FINDING that reshapes step 4 — there is NO miss-under-miss anywhere in the corpus at width 1.** The
+step-4 re-dump (user chose "re-dump for a real miss-under-miss" 2026-07-23) hunted `array-sum`
+cache-small, `array-sum-twice` cache-large AND cache-small, with a concurrent-miss detector. It fired
+**zero** times. The misses are ALWAYS ~30 cycles apart (`array-sum`: c7, c37; `array-sum-twice`: c8,
+c38, c68, …), far longer than the **10-cycle** `missPenalty`. The reason is structural: the corpus
+programs are all **unit-stride** sums over a **16-byte (4-word) line**, so a line misses once then hits
+3×, and a full line's worth of loop work (~30 cycles) separates one line's miss from the next's. A
+second miss can never begin while the first is still outstanding. **Miss-under-miss would require a
+stride ≥ line size (every load a new line) with minimal intervening work — no such corpus program
+exists.** Corollary: the M9 `numMshrs` docblock claim ("`array-sum`'s two consecutive independent loads
+are the miss-under-miss pair a default of 2 unlocks", `trace/src/processor.ts` ~127) is **FALSE** —
+`array-sum`'s loads are never concurrent misses; `numMshrs ≥ 2` is not actually exercised by the
+corpus. (A one-line comment correction is worth making; flagged, not yet done.) **Step 4's stated
+"miss-under-miss money shot" is therefore not realizable on the shipped corpus — its resolution is an
+open decision (see step 4 below).**
+
 ## The engine step — wiring `slowOpLatency` (M9's "Option B")
 
 The mechanism has a ready template in the SAME file: the non-blocking load-miss path
@@ -280,8 +321,12 @@ cleanest to anchor**:
       the FU countdown (advisor's "a win" — currently only the `'executing'` label shows).
 
 - [ ] **2. Lesson — the flagship toggle ("Work slides ahead").** `model: out-of-order`, `issueWidth: 1`,
-      `outOfOrderIssue: true`, the flagship program+config from the re-dump (slow-op OR cache-miss,
-      whichever anchors cleanest — pin here). THE crown-jewel lesson, the OoO analogue of M3's forwarding
+      `outOfOrderIssue: true`, **program `array-sum`, config cache LARGE (PINNED by the user 2026-07-23,
+      71→59).** Anchor on `alu-op where result:268435460` (pc=24 pointer bump to `&arr[1]`, c19→c8) or
+      the counter `alu-op where result:4` (pc=28, c20→c9) — both program-unique, both never-dead across
+      the sweep (only the cycle moves). The oracle pins BOTH toggle positions' cycle counts (71 / 59)
+      and that the younger op executed before the older load's `mem-read` (c17). THE crown-jewel lesson,
+      the OoO analogue of M3's forwarding
       toggle and M7's width toggle: out-of-order issue lets a younger independent instruction execute
       while an older one waits (on the slow op / a cache miss), so independent work slides ahead and IPC
       rises. Counterfactual: in-order issue stalls everything behind the waiting op. Anchor on a
@@ -304,14 +349,22 @@ cleanest to anchor**:
       the beat "Both, sequenced" bought — the classic textbook picture, vivid on the chosen program at
       width 1. Oracle pins the N-cycle gap and that independent younger work issued during it.
 
-- [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss").** The Option-A witness the
-      dump proved real (`array-sum` cache-large 71→59, or `array-sum-twice`): under a load miss, a second
-      INDEPENDENT load (its address is the already-computed pointer) issues and even misses UNDER the
-      first miss (miss-under-miss, `numMshrs` ≥ 2), so the loads race ahead of the trickling reduction.
-      `config`: cache on, `issueWidth: 1`, `outOfOrderIssue: true`. Anchor on the second load's `mem-read`
-      `where` (program-unique addr/value); oracle pins the 71→59 counterfactual and that the second
-      `cache-access`/`mem-read` overlaps the first miss. The physical-latency complement to step 3's
-      configured latency — same phenomenon, two honest sources.
+- [ ] **4. Lesson — the cache-miss money shot. ⚠ BLOCKED — premise disproven by the SECOND-PASS dump.**
+      The stated beat ("a second INDEPENDENT load misses UNDER the first — miss-under-miss, `numMshrs` ≥
+      2 — so loads race ahead of the trickling reduction") **does not occur anywhere in the corpus at
+      width 1** (see "The dump — SECOND PASS": misses are always ~30 cycles apart, the 10-cycle penalty
+      never overlaps; a unit-stride walk over a 4-word line structurally cannot produce concurrent
+      misses). The user chose "re-dump for a real miss-under-miss" (2026-07-23) and the re-dump returned
+      NONE. Since the flagship (step 2) is now ALSO `array-sum` cache-large, a step-4 lesson on the same
+      program can only add the miss-under-miss angle — which is unrealizable. **OPEN DECISION (surfaced
+      to the user, awaiting answer):**
+      (a) **Drop / fold** — the flagship already carries "work slides under a single miss"; drop the
+      dedicated cache lesson (track shrinks) or reframe step 4 to a distinct cache angle if one
+      exists. (b) **New stride-walk corpus program** engineered so each load hits a NEW line within
+      the 10-cycle penalty ⇒ genuine concurrent misses; real work + the full INV-8 corpus-widening
+      ripple, so **deferred to a later session** (like the slow-op program). (c) something else.
+      Until resolved, step 4 is not authorable. Do NOT pin an anchor claiming miss-under-miss on the
+      existing corpus — it would be a lie the sweep cannot catch (the event multiset is toggle-blind).
 
 - [ ] **5. Lesson — in-order commit ("Finish early, commit in order").** The ROB's precise-state job:
       instructions COMPLETE out of order (their `alu-op`/`mem-read` land in a non-program order) but
@@ -393,10 +446,17 @@ cleanest to anchor**:
   renaming (why the reorder is legal), then in-order commit (why it is safe / precise), then the RS
   slow-op namesake (the mechanism), if it survives the dump. Ordering is content, declared in
   `index.json`.
-- **Flagship program + config.** From the step-0 dump — the largest, cleanest OoO win at width 1.
-  Cache-on array-walk (M9 money shot) vs `slowOpLatency`-on any program; the dump decides.
-- **New corpus program?** A dump output, not an assumption. Add only if no shipped program shows a
-  clean+large OoO win; then pay the full INV-8 corpus-widening ripple.
+- **Flagship program + config.** PINNED 2026-07-23: `array-sum`, cache LARGE, `outOfOrderIssue: true`
+  (71→59). The dump weighed it against the slow-op loop and the user chose the cache-miss witness (de-
+  risk + UI coherence — see "The dump — SECOND PASS").
+- **Slow-op-as-flagship — DEFERRED ADDITIONAL WORK (user, 2026-07-23).** The slow-op loop makes the
+  cleanest textbook picture (86→53) but needs a new corpus program (INV-8 ripple) + the `slowOpLatency`
+  lesson-opening plumbing; recorded here as work for a LATER session, not this one. The slow-op corpus
+  program is needed by step 3 regardless, so this deferral rides step 3's schedule.
+- **New corpus program?** A dump output, not an assumption. NONE needed for the flagship (`array-sum` is
+  a clean, existing witness). A slow-op program IS needed for step 3 (deferred, above); a miss-under-
+  miss program MAY be needed for step 4 (open — see step 4). Each pays the full INV-8 ripple when it
+  lands.
 - **Do NOT add an `issue` / `stall` / `rename` / `commit` event.** Re-affirmed. Every beat anchors on an
   existing event + a narration oracle, or is dropped.
 - **Sweep axis scope.** `configurableOutOfOrder` gates the `outOfOrderIssue` axis (2 positions). Whether
