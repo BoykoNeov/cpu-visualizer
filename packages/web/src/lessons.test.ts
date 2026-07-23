@@ -3199,6 +3199,23 @@ describe('racing-ahead-of-the-miss — the second miss starts under the first (M
     }
   });
 
+  it('sits immediately after the flagship — the prose says "the previous lesson" and means it', () => {
+    // The middle beat's expert tier opens "a strictly bigger lever than the one the previous lesson
+    // showed" and then describes `work-slides-ahead` by its content. That is a claim about TEACHING
+    // ORDER living in prose, which no other test reaches — reorder the track and the sentence
+    // silently starts pointing at whatever landed in front of it. Pinned here so the ordering
+    // decision and the prose that depends on it cannot drift apart.
+    const track = LESSON_TRACKS.find((t) => t.track === 'The out-of-order machine')!;
+    const at = track.lessons.indexOf('racing-ahead-of-the-miss');
+    expect(at, 'this lesson is in the out-of-order track').toBeGreaterThan(0);
+    expect(track.lessons[at - 1], 'the lesson before it is the flagship it refers back to').toBe(
+      'work-slides-ahead',
+    );
+    expect(resolveNarration(lesson().steps[1]!.narration, 'expert')).toContain(
+      'the previous lesson',
+    );
+  });
+
   it('the cache is what makes the toggle bite — with it OFF the lesson has no subject', () => {
     // The extra blindness this lesson has that the flagship's oracle did not need to state: `cache`
     // IS a swept axis, and `positionsFor` records this lesson at cache-off where the program has no
