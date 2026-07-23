@@ -663,9 +663,13 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // The out-of-order machine's membership (M10), by name for the same reason: "is this lesson about
     // out-of-order issue" is pedagogy, not derivable — it runs on `out-of-order` at `outOfOrderIssue:
     // true`, but so could a lesson really about, say, the cache observed on an OoO machine. The track
-    // claims exactly the flagship "work slides ahead"; later OoO beats append here.
+    // claims the flagship "work slides ahead" (step 2) and the reservation-station slow-op lesson
+    // (step 3); later OoO beats append here.
     const ooo = LESSON_TRACKS.find((t) => t.track === 'The out-of-order machine');
-    expect([...(ooo?.lessons ?? [])].sort()).toEqual(['work-slides-ahead']);
+    expect([...(ooo?.lessons ?? [])].sort()).toEqual([
+      'reservation-station-holds',
+      'work-slides-ahead',
+    ]);
   });
 
   it('shows every lesson in the picker, even one the index forgot', () => {
@@ -726,10 +730,12 @@ describe('authored lessons (INV-6)', () => {
     // nobody can see the point of should not ship; a knob with three distinct points earns three.
     // The wide machine (M8) is a track for the same reason: width is one toggle but three refusal
     // reasons plus the pairing payoff, four teachable beats no one of which subsumes the others.
-    // The out-of-order machine (M10) opens with one flagship — "work slides ahead", the crown jewel
-    // where a younger independent instruction executes past an older one stalled on a cache miss;
-    // later OoO beats (the reservation station, in-order commit, renaming) append to that track.
-    expect(LESSONS.length).toBe(16);
+    // The out-of-order machine (M10) opens with the flagship "work slides ahead", the crown jewel
+    // where a younger independent instruction executes past an older one stalled on a cache miss, and
+    // adds "the reservation station holds" (step 3) — the Tomasulo namesake, a slow op held across
+    // several execute cycles while independent work issues around it; later OoO beats (in-order commit,
+    // renaming) append to that track.
+    expect(LESSONS.length).toBe(17);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -2626,6 +2632,171 @@ describe('work-slides-ahead — the out-of-order flagship, work slides past the 
     const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
     for (const token of ['71', '59', ipcInOrder, ipcOoo]) {
       expect(closing, `closing narration must quote ${token}`).toContain(token);
+    }
+  });
+});
+
+/**
+ * `reservation-station-holds`'s oracle (M10 step 3) — the Tomasulo namesake, and the first lesson
+ * to ride the `slowOpLatency` knob step 1 wired. Same headline as the flagship's: the event multiset
+ * is invariant under the `outOfOrderIssue` toggle (the OoO engine emits no `stall`/`forward`), so the
+ * sweep is blind to WHICH machine ran and every claim lives in the cycle each event landed on.
+ *
+ * **One net exists here that the flagship did not need.** `slowOpLatency` is NOT a sweep axis (step
+ * 0b — honored by the engine but neither swept nor user-controllable), so `positionsFor` records
+ * this lesson with the shift SINGLE-CYCLE (latency 1) in all 48 positions. The reorder the lesson is
+ * about only happens at the declared latency 8, which no swept position visits — so this oracle is
+ * the ONLY place the latency-8 recording's anchor order, cycle counts, and prose are checked at all.
+ *
+ * **(1) The hold.** The head `sll` occupies its functional unit for eight cycles; its result does not
+ * broadcast until cycle 13, in BOTH toggle positions (it is loop-invariant, nothing reorders ahead of
+ * it). Out of order the independent counter (`addi t1`, 6 -> 5) runs at cycle 8 — DURING that hold,
+ * five cycles before the shift finishes — while in order the same decrement waits until cycle 15,
+ * after the shift and the add it never depended on.
+ *
+ * **(2) The wakeup.** The dependent `add` cannot beat the shift; it waits in its reservation station
+ * and wakes the cycle the common data bus broadcasts. Iteration two's shift broadcasts at cycle 19
+ * and the add runs at cycle 20 (out of order) — versus cycle 27 in order, where the iterations cannot
+ * overlap.
+ *
+ * **(3) The counterfactual, derived not trusted.** 72 either way; 53 cycles out of order against 86
+ * in order; IPC 0.57 vs 0.35, computed from the 30 retires. The M4-step-4 net (`forwarding-bubble`
+ * once shipped "51 cycles" over a transport reading 49): both totals are recorded from the declared
+ * machine and the prose is token-checked against them.
+ */
+describe('reservation-station-holds — the slow op held while independent work issues (M10 step 3)', () => {
+  const lesson = (): Lesson => byId('reservation-station-holds');
+
+  /** The lesson's own declared machine with only the issue-order toggle varied — the rest from JSON. */
+  const record = (outOfOrderIssue: boolean): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared)
+      throw new Error('reservation-station-holds must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, outOfOrderIssue });
+  };
+
+  /** The cycle of the sole `alu-op` with this op/result — asserts uniqueness, the anchor's contract. */
+  const aluCycle = (trace: readonly CycleTrace[], op: string, result: number): number => {
+    const hits = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'alu-op' && e.op === op && e.result === result ? [c.cycle] : [],
+      ),
+    );
+    expect(hits, `alu-op ${op} result:${result} is program-unique`).toHaveLength(1);
+    return hits[0]!;
+  };
+
+  /** Every cycle an `alu-op` with this op/result fires — the shift repeats (result 12) each iteration. */
+  const aluCycles = (trace: readonly CycleTrace[], op: string, result: number): number[] =>
+    trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'alu-op' && e.op === op && e.result === result ? [c.cycle] : [],
+      ),
+    );
+
+  it('opens on the out-of-order machine at width 1, no cache, with a slow op declared', () => {
+    expect(lesson().model).toBe('out-of-order');
+    expect(lesson().config?.outOfOrderIssue).toBe(true);
+    expect(lesson().config?.issueWidth).toBe(1);
+    expect(lesson().config?.cache).toBeNull();
+    // The knob this lesson exists for — and the one with no shell control, so `session.test.ts`'s
+    // opening loop is the net that it actually reaches the recording (here it is a declared fact).
+    expect(lesson().config?.slowOpLatency).toBe(8);
+  });
+
+  it('THE HOLD: the counter runs during the shift’s eight-cycle occupancy — cycle 8 out of order vs 15 in order', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The first shift completes at cycle 13 REGARDLESS of issue order — it is the loop head and
+    // loop-invariant, so nothing reorders ahead of it. The fixed point the reorder is measured
+    // against: independent work slides UNDER this, it does not move it.
+    expect(aluCycles(inOrder, 'sll', 12)[0]).toBe(13);
+    expect(aluCycles(ooo, 'sll', 12)[0]).toBe(13);
+
+    // In order: the counter's decrement (6 -> 5) is pinned to cycle 15 — behind the shift and the
+    // add it never depended on, AFTER the shift finally broadcast. The wait it inherited is policy.
+    expect(aluCycle(inOrder, 'add', 5)).toBe(15);
+    expect(aluCycle(inOrder, 'add', 5)).toBeGreaterThan(aluCycles(inOrder, 'sll', 12)[0]!);
+
+    // Out of order: the SAME decrement runs at cycle 8 — five cycles BEFORE the shift finishes, while
+    // the reservation station still holds the dependent add. The lesson's whole subject, and the
+    // sweep cannot see it (the `alu-op result:5` fires in both positions, only its cycle moved).
+    expect(aluCycle(ooo, 'add', 5)).toBe(8);
+    expect(aluCycle(ooo, 'add', 5)).toBeLessThan(aluCycles(ooo, 'sll', 12)[0]!);
+
+    const hold = resolveNarration(lesson().steps[0]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 8', 'cycle 13', 'cycle 15', 'eight']) {
+      expect(hold, `the hold narration must quote "${token}"`).toContain(token);
+    }
+  });
+
+  it('THE WAKEUP: the dependent add wakes the cycle after the shift broadcasts — cycle 20 out of order vs 27 in order', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The second iteration's shift broadcasts at cycle 19; the add waiting on it wakes at cycle 20 —
+    // the reservation station releasing its instruction the moment the common data bus carries t3.
+    expect(aluCycles(ooo, 'sll', 12)[1]).toBe(19);
+    expect(aluCycle(ooo, 'add', 24)).toBe(20);
+    expect(aluCycle(ooo, 'add', 24), 'woken by the broadcast the next cycle').toBe(
+      aluCycles(ooo, 'sll', 12)[1]! + 1,
+    );
+
+    // In order the same partial sum does not land until cycle 27 — later, because every iteration's
+    // independent work is stacked in front of it instead of overlapping the wait.
+    expect(aluCycle(inOrder, 'add', 24)).toBe(27);
+    expect(aluCycle(ooo, 'add', 24)).toBeLessThan(aluCycle(inOrder, 'add', 24));
+    // ...and strictly after the reordered counter in both positions (iteration 1's counter, this is
+    // iteration 2's sum), which is what makes the two steps independently reachable by the cursor.
+    expect(aluCycle(ooo, 'add', 24)).toBeGreaterThan(aluCycle(ooo, 'add', 5));
+    expect(aluCycle(inOrder, 'add', 24)).toBeGreaterThan(aluCycle(inOrder, 'add', 5));
+
+    const wake = resolveNarration(lesson().steps[1]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 19', 'cycle 20', 'cycle 27']) {
+      expect(wake, `the wakeup narration must quote "${token}"`).toContain(token);
+    }
+  });
+
+  it('same answer, fewer cycles: 72 either way, 53 vs 86 (IPC 0.57 vs 0.35)', () => {
+    const [inOrder, ooo] = [record(false), record(true)];
+
+    // The final partial (6 × 12 = 72, program-unique) is the lesson's last anchored step.
+    for (const trace of [inOrder, ooo]) {
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'alu-op', op: 'add', result: 72 });
+    }
+
+    // The two totals the closing narration quotes as fact — derived from the declared machine at each
+    // toggle position (both at the SAME slow-op latency 8), not trusted. At latency 1 these collapse
+    // to 44/44 (the parity `slow-op.test.ts` pins), which is the whole reason the sweep is blind.
+    expect(inOrder.length).toBe(86);
+    expect(ooo.length).toBe(53);
+
+    // IPC COMPUTED from the retire counts rather than typed, then matched against the prose.
+    const retired = (trace: readonly CycleTrace[]): number =>
+      trace.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    expect(retired(inOrder)).toBe(30); // issue order is not a correctness knob — 30 retire either way
+    expect(retired(ooo)).toBe(30);
+    const ipcInOrder = (retired(inOrder) / inOrder.length).toFixed(2); // 30 / 86 = 0.35
+    const ipcOoo = (retired(ooo) / ooo.length).toFixed(2); // 30 / 53 = 0.57
+    expect([ipcInOrder, ipcOoo]).toEqual(['0.35', '0.57']);
+
+    const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
+    for (const token of ['53', '86', ipcInOrder, ipcOoo]) {
+      expect(closing, `closing narration must quote ${token}`).toContain(token);
+    }
+  });
+
+  it('the step anchors stay monotonic and distinct at the declared slow-op latency', () => {
+    // The one net unique to this lesson. `positionsFor` records at latency 1 (slowOpLatency is not an
+    // axis), so NOTHING else checks anchor order at the latency-8 recording the browser actually plays
+    // — where the reorder happens and two anchors could in principle collide or invert. Pinned in both
+    // toggle positions: the runner navigates by cursor, so steps must anchor in non-decreasing order
+    // and to distinct cycles or an earlier step becomes unreachable.
+    for (const trace of [record(false), record(true)]) {
+      const anchored = anchorLesson(lesson(), trace);
+      expect(anchorOrderViolations(anchored)).toEqual([]);
+      const cycles = anchored.flatMap((a) => (a.cycle === null ? [] : [a.cycle]));
+      expect(new Set(cycles).size, 'each step anchors to a distinct cycle').toBe(cycles.length);
     }
   });
 });

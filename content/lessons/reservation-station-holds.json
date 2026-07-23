@@ -1,0 +1,42 @@
+{
+  "id": "reservation-station-holds",
+  "title": "The reservation station holds",
+  "program": "slow-op-loop",
+  "model": "out-of-order",
+  "config": {
+    "forwarding": false,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 1,
+    "outOfOrderIssue": true,
+    "robSize": 16,
+    "slowOpLatency": 8
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 5 } },
+      "narration": {
+        "essentials": "A slow shift ties up its unit for eight cycles; the counter, which needs nothing from it, runs anyway.",
+        "detailed": "The loop's head `sll t3, t5, t6` is a long-latency shift — it holds its functional unit for eight cycles, and its result will not broadcast until cycle 13. The `add a0, a0, t3` right behind it needs t3, so it sits in its reservation station and waits. But `addi t1, t1, -1`, the counter, needs neither the shift nor its result. Out-of-order issue runs it at cycle 8 — five cycles before the shift even finishes. Flip the toggle to in-order issue and this same decrement is pinned to cycle 15, stuck in line behind the shift and the add it never depended on.",
+        "expert": "The slow op occupies its functional unit for its whole latency but frees the issue port the cycle it issues, so the scheduler keeps offering ready work. The dependent `add` waits in its reservation station for t3 to appear on the common data bus; the counter's `addi` already holds both operands, so wakeup/select issues it around the waiting add. This is the reservation station's whole purpose — an instruction parks there with its ready operands captured and blocks no one behind it. In-order issue refuses exactly this: it will not look past the first not-ready instruction in program order, so a decrement that needs nothing waits out a shift it never touched."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 24 } },
+      "narration": {
+        "essentials": "When the shift finally broadcasts its result, the waiting add wakes and runs the next cycle.",
+        "detailed": "The dependent add cannot beat the shift — it needs t3, so it waits on the common data bus. When the second iteration's shift broadcasts at cycle 19, the add wakes and runs at cycle 20, producing the running total 24. That is the reservation station doing its job: holding the add, ready, until its last operand arrives, then releasing it the very next cycle. In order, the same partial sum does not land until cycle 27 — every iteration's independent work is stacked in front of it instead of overlapping the wait.",
+        "expert": "The common data bus broadcast is the wakeup: the moment the shift's result appears, every reservation station waiting on that tag latches it and its instruction becomes ready. Iteration two's add wakes on that broadcast and issues the next cycle. Because each iteration's counter and branch already cleared out of the way, the next shift is already in flight while this add runs — the iterations overlap, and the reductions stream in on the shifts' schedule rather than one whole iteration apart. There is no `forward` event to watch for because the broadcast IS the forward; the bus carries the result straight from the producing unit to every waiting station."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 72 } },
+      "narration": {
+        "essentials": "Same total — 72 — reached in 53 cycles instead of 86.",
+        "detailed": "Six iterations, each adding twelve, leave 72 — the same total any machine computes. Issue order never changes the answer, only how much of each slow shift's wait it can fill with useful work. Out of order, the counters and branches run during the shifts and the iterations overlap, finishing in 53 cycles — an IPC of 0.57. In order, nothing may pass a waiting instruction, so every iteration pays the shift's full latency in series: 86 cycles, 0.35 IPC, for the identical result. Flip the toggle back and watch the 72 stay put while the cycle count climbs.",
+        "expert": "Thirty instructions retire either way — issue order is a throughput knob, not a correctness one, and the reorder buffer enforces it by committing in program order no matter what order execution finished in. That is 30 / 53 = 0.57 IPC out of order against 30 / 86 = 0.35 in order. The gain is exactly the shift latency the independent work hides: each iteration's counter, branch, and the next shift proceed while the current shift holds, so the eight-cycle occupancies overlap instead of summing. A dependent reduction chain still cannot overlap itself — but out-of-order issue was never buying that; it buys the slack around the stall, and here the stall is a reservation station holding a slow result the rest of the loop did not have to wait for."
+      }
+    }
+  ]
+}
