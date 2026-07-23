@@ -27,6 +27,17 @@ export class RenameTable {
     return slot;
   }
 
+  /**
+   * A shallow copy of the whole map, for the per-cycle `micro` snapshot (step 6). Shallow is
+   * sufficient — a slot is REPLACED (`claim`/`commit`/`restore` all assign `this.slots[reg] = …`),
+   * never mutated in place — so the copied array can never alias a future edit, unlike the ROB's
+   * entries which ARE mutated and need per-entry copies. `RenameSlot` values are themselves
+   * immutable, so they ride along by reference.
+   */
+  snapshot(): readonly RenameSlot[] {
+    return this.slots.slice();
+  }
+
   /** Dispatch claims `reg` for a fresh tag. Refuses `x0` — nothing may rename the hardwired zero. */
   claim(reg: number, tag: Tag): void {
     if (reg === 0) {

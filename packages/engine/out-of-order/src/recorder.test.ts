@@ -9,7 +9,7 @@ import {
   type CycleTrace,
   type ProcessorConfig,
 } from '@cpu-viz/trace';
-import { OutOfOrderProcessor } from './index';
+import { OutOfOrderProcessor, type OutOfOrderMicro, type RobState } from './index';
 
 /**
  * Time-travel over the out-of-order model. The first two-thirds of this file (through "the width
@@ -23,11 +23,12 @@ import { OutOfOrderProcessor } from './index';
  *
  * Those suites spend most of their length on two things this model does not have:
  *
- *  - **Slot arrays / `micro`.** `MachineState.micro` stays unset all the way through step 4 (see
- *    `rob.ts`'s file header) — there is no per-slot latch state to prove doesn't alias across
- *    cycles, and no "a slot is not a stable lane" story to tell, because there is no slot. An
- *    in-flight instruction's `location` is `"ROB#<tag>"` for its ENTIRE dispatch-to-commit
- *    lifetime — the opposite claim from superscalar's, and the one this file pins instead.
+ *  - **Slot arrays.** There is no per-slot latch and no "a slot is not a stable lane" story to
+ *    tell, because there is no slot: an in-flight instruction's `location` is `"ROB#<tag>"` for its
+ *    ENTIRE dispatch-to-commit lifetime — the opposite claim from superscalar's, and the one this
+ *    file pins instead. (`MachineState.micro` IS populated as of step 6 — the ROB/rename/cache the
+ *    `MicroTablePanel` folds over — and the step-6 block below proves those snapshots don't alias
+ *    across cycles, the one shape of the slot-aliasing bug that survives into this model.)
  *  - **Pairing/refusal mechanics.** There is no `pairing.test.ts` sibling here — dispatch has no
  *    instruction-mix rule (the file header explains where those rules actually live at 1a).
  *
@@ -40,8 +41,11 @@ import { OutOfOrderProcessor } from './index';
  *  3. INV-4 over concurrent in-flight instructions at `issueWidth: 2` — distinct tags, distinct
  *     ids, no aliasing.
  *  4. The width toggle, through the shipped API — same architectural answer, fewer cycles.
- *  5. `state.micro` is genuinely absent, not merely unchecked — a schema-shape assertion, since
- *     "no schema change at 1a" is a claim this file can make concrete.
+ *  5. `state.micro` — absent at 1a, POPULATED at step 6. The block below (originally the "micro is
+ *     genuinely absent" schema-shape assertion) now pins the opposite: the ROB/rename/cache the
+ *     `MicroTablePanel` reads are present AND snapshotted independently per cycle (a `RobEntry` is
+ *     mutated in place and shift()ed on commit, so an aliased snapshot would replay every cycle as
+ *     final state — the repo's signature time-travel bug, here proven headless).
  *
  * ## Step 4 — what none of the above ever exercised
  *
@@ -210,17 +214,74 @@ describe('TraceRecorder × out-of-order: `location` is STABLE while in flight', 
   });
 });
 
-describe('TraceRecorder × out-of-order: no `micro` state at step 1a', () => {
-  it('never exposes micro state through the recording', () => {
-    // The plan's explicit YAGNI call: the ROB/rename map are real private engine state, but
-    // nothing consumes them through the trace yet, so `MachineState.micro` stays unset — a
-    // schema-shape claim this test makes concrete rather than merely unchecked.
-    const rec = recorderFor(readFileSync(`${PROGRAMS_DIR}sum-loop.s`, 'utf8'), W2);
+describe('TraceRecorder × out-of-order: `micro` is populated and snapshotted per cycle (step 6)', () => {
+  // Step 6 makes `MachineState.micro` the data source for the `MicroTablePanel`, so this block
+  // pins the OPPOSITE of what it did at 1a: the ROB/rename/cache are present, AND each cycle's
+  // snapshot is independent. It runs at the flagship `OOO_ARRAY_SUM` config (defined lower in the
+  // file — safe to reference here because every use is inside an `it` callback, run after load).
+  const arraySum = readFileSync(`${PROGRAMS_DIR}array-sum.s`, 'utf8');
+
+  it('exposes the ROB, the 32-slot rename map, the cache, and the ROB capacity', () => {
+    const rec = recorderFor(arraySum, OOO_ARRAY_SUM);
     rec.runToEnd();
-    expect(rec.currentState().micro).toBeUndefined();
-    for (const t of rec.recorded) {
-      expect(t.state.micro).toBeUndefined();
+    rec.scrubTo(6); // mid-run: the ROB is populated, the first load is mid-miss
+    const micro = rec.currentState().micro as OutOfOrderMicro;
+    expect(micro.rob.length).toBeGreaterThan(0);
+    expect(micro.rename).toHaveLength(32);
+    expect(micro.cache).not.toBeNull(); // CACHE_LARGE is on
+    expect(micro.robCapacity).toBe(32);
+    // Every ROB view carries the follow key (INV-4 id) and its tag, the two things the panel and
+    // the rename-map cross-highlight need.
+    for (const e of micro.rob) {
+      expect(typeof e.id).toBe('string');
+      expect(typeof e.tag).toBe('number');
     }
+  });
+
+  // Trap 1, the repo's signature time-travel bug: a `RobEntry`'s `state`/`value` are reassigned on
+  // the same object each cycle and `Rob.entries` is shift()ed on commit, so a `.slice()` of the
+  // array (instead of a fresh view per entry) would make every recorded cycle replay FINAL state.
+  // Final-state conformance cannot see that — only reading a snapshot at an EARLIER cursor can. Tag
+  // numbers are the monotonic `seq` (never reused), so each is a stable handle to one dynamic
+  // instruction across the whole recording.
+  it('a ROB entry reads `waiting` at an early cursor and a completed state later — not aliased to final', () => {
+    const rec = recorderFor(arraySum, OOO_ARRAY_SUM);
+    rec.runToEnd();
+
+    // Accumulate, per tag, every state observed across the whole recording. Under aliasing every
+    // snapshot shares the one live object, so no tag could EVER be seen `waiting` after the run —
+    // the whole map would collapse to final states.
+    const statesByTag = new Map<number, Set<RobState>>();
+    for (const t of rec.recorded) {
+      const micro = t.state.micro as OutOfOrderMicro;
+      for (const e of micro.rob) {
+        const seen = statesByTag.get(e.tag) ?? new Set<RobState>();
+        seen.add(e.state);
+        statesByTag.set(e.tag, seen);
+      }
+    }
+    const progressed = [...statesByTag.values()].filter(
+      (s) => s.has('waiting') && (s.has('completed') || s.has('executed') || s.has('awaitingMem')),
+    );
+    expect(progressed.length).toBeGreaterThan(0);
+
+    // And the same claim through the SCRUB API, on one concrete tag: the load ROB tag 0 (the very
+    // first fetched `lw`) is `waiting`/`awaitingMem` while its miss is outstanding and `completed`
+    // once it commits — read at two different cursors, which must disagree.
+    const stateOf = (cycle: number, tag: number): RobState | undefined => {
+      rec.scrubTo(cycle);
+      const micro = rec.currentState().micro as OutOfOrderMicro;
+      return micro.rob.find((e) => e.tag === tag)?.state;
+    };
+    // Find, from the recording, the first and last cycle tag 0 is present.
+    const present = rec.recorded.filter((t) =>
+      (t.state.micro as OutOfOrderMicro).rob.some((e) => e.tag === 0),
+    );
+    const firstCycle = present[0]!.cycle;
+    const lastCycle = present[present.length - 1]!.cycle;
+    expect(lastCycle).toBeGreaterThan(firstCycle);
+    expect(stateOf(firstCycle, 0)).not.toBe(stateOf(lastCycle, 0));
+    expect(stateOf(lastCycle, 0)).toBe('completed'); // the cycle before it commits
   });
 });
 

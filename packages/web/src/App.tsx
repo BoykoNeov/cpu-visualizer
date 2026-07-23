@@ -14,6 +14,7 @@ import { PipelineDatapath } from './PipelineDatapathView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { narrationView, type NarrationView } from './narration';
 import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
+import { MicroTablePanel, hasMicroTables } from './MicroTablePanel';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { PairingReadout } from './PairingReadoutView';
@@ -157,6 +158,11 @@ export function App(): React.JSX.Element {
   const showIssue = sim.recorded.some(
     (t) => typeof (t.state.micro as { width?: unknown } | undefined)?.width === 'number',
   );
+  // The micro-structure tables (M9 step 6) — the out-of-order tier's star surface, gated on the same
+  // kind of TRACE fact as its neighbours: the recording carries an OoO `micro` (a ROB array). It
+  // appears exactly for the out-of-order model and for nothing else, without this file naming it
+  // (INV-3) — the same shape as the map's overlap gate and the issue readout's slotted-latch gate.
+  const showMicro = hasMicroTables(sim.recorded);
 
   return (
     <main
@@ -373,6 +379,27 @@ export function App(): React.JSX.Element {
                           followed={followed}
                           onFollow={setFollowed}
                           onSeek={sim.scrubTo}
+                        />
+                      ),
+                    },
+                  ] satisfies Slot[])
+                : []),
+              /* The micro-structure tables (M9 step 6) — the out-of-order tier's star surface, placed
+                 directly under the map and above the datapath because it IS the picture here: the OoO
+                 datapath is still the "coming soon" placeholder (step 7), and even once it lands the
+                 tables are the non-sheddable half (the plan inverts M7's "never cut the datapath").
+                 Gated on a TRACE fact (an OoO `micro`), so it appears for the out-of-order model and
+                 nothing else, exactly like the map and the issue readout gate on theirs (INV-3). */
+              ...(showMicro
+                ? ([
+                    {
+                      key: 'micro',
+                      label: 'out-of-order structures',
+                      node: (
+                        <MicroTablePanel
+                          trace={sim.cycleTrace}
+                          followed={followed}
+                          onFollow={setFollowed}
                         />
                       ),
                     },

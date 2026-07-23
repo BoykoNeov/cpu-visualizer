@@ -1,11 +1,12 @@
 # Milestone 9 — out-of-order execution: Tomasulo, the ROB, and register renaming
 
-**Status: STEPS 0–5 DONE (2026-07-23). The north star and, per the spec, "the genuine cliff." The
+**Status: STEPS 0–6 DONE (2026-07-23). The north star and, per the spec, "the genuine cliff." The
 engine is complete (config seam → in-order base → the OoO scheduler → INV-8 differential → the
-scheduling net → recorder/`follow()` through the ROB) and the model is now DRIVABLE IN THE BROWSER
-(step 5, web enablement — browser-verified). Remaining: step 6 (the `MicroTablePanel` — ROB/RS/rename
-tables, the tier's star surface, non-sheddable) and step 7 (the bespoke OoO datapath — the honest
-scope cut). The headline benefit-source fork was **pinned 2026-07-21 as Option B on A** (Option B's
+scheduling net → recorder/`follow()` through the ROB), the model is DRIVABLE IN THE BROWSER (step 5,
+web enablement), and the tier's STAR SURFACE — the `MicroTablePanel` (ROB/RS/rename tables) — is now
+built and browser-verified (step 6: `MachineState.micro` populated, the step-0 YAGNI trigger firing
+on schedule). Remaining: ONLY step 7 (the bespoke OoO datapath — the honest scope cut, the sheddable
+half). The headline benefit-source fork was **pinned 2026-07-21 as Option B on A** (Option B's
 `slowOpLatency` remains a deferred, unread knob — see steps 1b/5). Scope mirrors M7: this milestone is
 the MODEL + the VIEW; the OoO lesson track is a future milestone (M10), exactly as M8 was the
 superscalar lesson track after M7 built the superscalar.**
@@ -600,19 +601,53 @@ milestone must lose weight, it loses step 7, not step 6.
       workspaces). Full repo green: `npm test` (3203 tests, +7), `typecheck`, `lint`, `build`,
       `format:check` all green, and the browser eyeball clean on the first pass.
 
-- [ ] **6. The micro-structure tables — `MicroTablePanel` (ROB, RS, rename map).** THE star surface
-      of this tier, and the deliverable `superscalar-visuals.md` §3 designed and deferred to here.
-      Render as HTML tables in panels (the `panels.tsx` idiom — `.panel`, mono font, `--highlight`
-      wash on rows touched this cycle, follow-ring composing across surfaces), NOT SVG boxes — HTML
-      wins for tabular data and rows carry the follow-highlight naturally. Three tables, each a pure
-      fold over the trace at the cursor (INV-3): the **ROB** as an in-order queue with head/tail and
-      per-entry state (waiting / executing / completed / committing); the **reservation stations**
-      with operand-ready tags (a value present vs a tag it is waiting on); the **rename map**
-      (architectural reg → ROB tag, or "committed"). Follow-highlight lights the same instruction
-      across all three plus the map. Acceptance: panel fold tests (`renderToStaticMarkup` smoke:
-      occupancy, ready/waiting states, follow-highlight); **browser eyeball** — watch the ROB commit
-      in order while an RS shows a younger instruction completed ahead of an older one. This step is
-      NOT sheddable — it is the tier's picture.
+- [x] **6. The micro-structure tables — `MicroTablePanel` (ROB, RS, rename map).** DONE 2026-07-23.
+      THE star surface of this tier, and the deliverable `superscalar-visuals.md` §3 designed and
+      deferred to here. Three HTML tables in one `.panel` (the `panels.tsx` idiom), each a pure fold
+      over `state.micro` at the cursor (INV-3), rows carrying the follow-highlight: the **ROB** as an
+      in-order queue with the HEAD (next-to-retire) marked and per-entry state (waiting → executing →
+      completed, the head's `· commits` when ready); the **reservation stations** with operand-ready
+      tags (a captured value vs the `ROB#tag` it is waiting on); the **rename map** (arch reg →
+      in-flight tag, pending rows only — everything else reads its committed value from the register
+      panel). Follow-highlight lights the same instruction across all three PLUS the map and the
+      transport chip.
+
+      **The load-bearing engine change (the step-0 YAGNI trigger firing on schedule):
+      `MachineState.micro` was deferred UNSET at steps 1a/1b — "forcing a shape for a view that does
+      not exist" — and step 6 is where the view exists, so `snapshotMicro()` now projects the ROB,
+      the rename map, and the cache into an exported {@link OutOfOrderMicro} every cycle.** Two
+      advisor-flagged traps, both handled:
+      - **Trap 1 (the repo's signature time-travel bug) — per-ENTRY copy, never `.slice()` the
+        array.** A `RobEntry`'s `state`/`value` are reassigned on the same object each cycle and
+        `Rob.entries` is `shift()`ed on commit, so an array-only copy would replay every recorded
+        cycle as FINAL state — invisible to final-state conformance, visible only in time-travel.
+        Fixed with a fresh `RobEntryView` per entry (scalars copied by value, immutable `decoded` by
+        reference) and a `RenameTable.snapshot()` shallow copy (slots are replaced, not mutated).
+        Proven HEADLESS in `recorder.test.ts` (the old step-1a "`micro` is genuinely absent" block,
+        inverted): a ROB tag reads `waiting` at an early cursor and `completed` at a later one — an
+        aliased snapshot would show `completed` at both.
+      - **Trap 2 (silent gate collision) — the OoO `micro` shape has NO `width` field**, so
+        `PairingReadout`'s `typeof micro.width === 'number'` gate never fires for it; the panel gates
+        on `micro.rob` being an array instead (`hasMicroTables`). `micro.cache` IS exposed
+        (consciously — every cached model shows the grid, and the OoO money shot is about misses), so
+        the existing cache grid lights for OoO for free (INV-3).
+      - **The RS table is a PROJECTION, not a new structure.** Classic speculative Tomasulo holds
+        operand values in the ROB itself, so a `'waiting'` ROB entry IS the reservation-station-
+        equivalent (`rob.ts`); the RS table is the not-yet-issued (`state === 'waiting'`) subset. No
+        parallel RS array was added, and no new trace events/CDB field (the plan pins step-6 tables
+        to `micro` STATE — a wakeup is already visible as an operand flipping ready across cycles).
+
+      Acceptance MET: `MicroTablePanel.test.tsx` (7 tests — the gate is a trace fact, all three tables
+      reach the DOM, ready/waiting operand markers, and the follow-highlight lights EXACTLY three rows
+      — one per table). **Browser-verified** at the flagship `array-sum` config (width 2, out-of-order,
+      static-taken, cache large, ROB full → 41 cycles): at cycle 12 the head `ROB#4 lw` is `executing`
+      (stuck on the miss) and `ROB#5 add` waits behind it, while younger `ROB#6/7/8/9` (including a
+      later `lw`) have all `completed` — out-of-order completion, in-order commit spine, visible side
+      by side; the RS shows the reduction chain `#5→#10→#15` stalled on load tags while the
+      independent `addi`s read `ready →`; and clicking `ROB#16` lit its ROB row, its RS row, and its
+      rename-map row (`t0 → ROB#16`) together, PLUS 13 pipeline-map rings and the transport chip. Full
+      repo green: `npm test` (3211 tests, +8), `typecheck`, `lint`, `build`, `format:check`. NOT
+      sheddable — it is the tier's picture.
 
 - [ ] **7. The bespoke OoO datapath — `datapath-out-of-order.ts`.** The schematic: front-end → rename
       → RS clusters → FUs → CDB → ROB → commit, per the `new-model-datapath.md` playbook (pure
@@ -631,14 +666,20 @@ milestone must lose weight, it loses step 7, not step 6.
       instructions sliding ahead of a waiting one, and the cycle count drops. **MET — browser-verified
       at step 5 (2026-07-23): `array-sum`, cache large, static-taken, width 2, flip in-order→out-of-order
       drops cycle 60 → 41, `lw ROB#24` stuck on a miss 22–35 while younger work runs 27–41 around it.**
-- [ ] The ROB table commits instructions **in program order** while the RS / completion state shows at
+- [x] The ROB table commits instructions **in program order** while the RS / completion state shows at
       least one younger instruction finishing **ahead of** an older waiting one — out-of-order
-      completion, in-order retirement, visible side by side.
-- [ ] `follow()` an instruction id across its full out-of-order lifetime (RS wait → issue → CDB →
+      completion, in-order retirement, visible side by side. **MET — browser-verified at step 6
+      (2026-07-23): at `array-sum` cycle 12 the head `ROB#4 lw` is `executing` (miss) and `ROB#5 add`
+      waits, while younger `ROB#6/7/8/9` have all `completed`.**
+- [x] `follow()` an instruction id across its full out-of-order lifetime (RS wait → issue → CDB →
       ROB → commit), and its commit position is later than a neighbour that completed after it.
-- [ ] Register renaming is visible: the rename map shows an architectural register pointing at an
+      **MET — the follow-highlight composes across the ROB/RS/rename tables + the map + the transport
+      chip (step 6 browser eyeball); the completion-vs-commit divergence itself is pinned in
+      `recorder.test.ts` step 4.**
+- [x] Register renaming is visible: the rename map shows an architectural register pointing at an
       in-flight ROB tag before it is committed, and a WAR/WAW pair that would stall an in-order
-      machine does not stall here.
+      machine does not stall here. **MET — the rename-map table shows arch reg → in-flight tag (e.g.
+      `t0 → ROB#16`), browser-verified at step 6.**
 - [ ] INV-8 differential passes on the full corpus at every config combination, AND a deliberate
       memory-disambiguation bug is confirmed to break it (the one place the differential has teeth).
 - [ ] Every cycle count asserted in the step-3 lifecycle table is derived from a stated rule, not

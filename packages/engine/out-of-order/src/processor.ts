@@ -44,14 +44,16 @@
  * 2026-07-22): `configurableForwarding: false`, and the timing baseline above is matched against
  * M3/M7's `forwarding: true` position only.
  *
- * ## `MachineState.micro` stays unset at this step
+ * ## `MachineState.micro` — populated at step 6 (was deferred at steps 1a/1b)
  *
- * The ROB, reservation-station-equivalent state, and rename map are real private engine state —
- * structurally ready for step 1b and eventually the step-6 view — but nothing consumes them
- * through the trace yet (an explicit YAGNI call, not an oversight: forcing a `micro` shape now
- * would be designing for a view that does not exist). Because none of it is ever snapshotted, it
- * is mutated in place across cycles (like the superscalar's single-buffered cache), with no
- * double-buffering discipline needed for state nothing reads back out of a `CycleTrace`.
+ * The ROB, the reservation-station-equivalent state, and the rename map are real private engine
+ * state, mutated in place across cycles (like the superscalar's single-buffered cache). Through
+ * steps 1a–5 nothing read them through the trace, so `micro` stayed unset (an explicit YAGNI call:
+ * forcing a shape before a view existed would be designing for nothing). Step 6 builds the
+ * `MicroTablePanel` that folds over them, so the trigger fires: {@link snapshotMicro} now projects
+ * them into {@link OutOfOrderMicro} every cycle. Because the recorder keeps every cycle, that
+ * snapshot is INDEPENDENT per cycle — a fresh {@link RobEntryView} per ROB entry, not a `.slice()`
+ * of the mutated array (see `micro.ts` for the reasoning behind each copy).
  *
  * The ISA semantics below — the mnemonic switch, the `s()`/`u()` register views, `imm & 0x1f`,
  * the `>>> 0` at the memory boundary — are mirrored VERBATIM from the golden reference and from
@@ -77,7 +79,8 @@ import {
 } from '@cpu-viz/trace';
 import { Rob, type RobEntry } from './rob';
 import { RenameTable } from './rename';
-import { tagNumber, type OperandSource, type Tag } from './types';
+import { tagNumber, type OperandSource, type RenameSlot, type Tag } from './types';
+import type { OperandView, OutOfOrderMicro, RenameSlotView, RobEntryView } from './micro';
 
 export const OUT_OF_ORDER_CAPABILITIES: ProcessorCapabilities = {
   model: 'out-of-order',
@@ -1259,6 +1262,50 @@ export class OutOfOrderProcessor implements Processor {
       registers: this.registers.slice(),
       memory: this.memory.snapshot(),
       halted: this.halted,
+      micro: this.snapshotMicro(),
     };
   }
+
+  /**
+   * The per-cycle `micro` snapshot the step-6 `MicroTablePanel` folds over (INV-3). INDEPENDENT of
+   * every other cycle — see `micro.ts`'s header for why the ROB needs a fresh object per entry and
+   * not a `.slice()` of the array (the repo's signature time-travel bug: `state`/`value` are mutated
+   * in place and the array is `shift()`ed on commit). The cache is single-buffered and mutated in
+   * place too, so it is deep-copied exactly as the superscalar's snapshot does.
+   */
+  private snapshotMicro(): OutOfOrderMicro {
+    return {
+      robCapacity: this.rob.maxSize,
+      rob: this.rob.all().map((e) => copyRobEntry(e)),
+      rename: this.rename.snapshot().map(renameSlotView),
+      cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
+    };
+  }
+}
+
+/** Project one live {@link RobEntry} into an independent, view-friendly {@link RobEntryView}. */
+function copyRobEntry(e: RobEntry): RobEntryView {
+  return {
+    tag: tagNumber(e.tag),
+    seq: e.seq,
+    id: e.instr,
+    decoded: e.decoded,
+    rd: e.rd,
+    state: e.state,
+    value: e.value,
+    srcA: operandView(e.srcA),
+    srcB: operandView(e.srcB),
+  };
+}
+
+/** Read an {@link OperandSource} back with its tag as a plain number (the sanctioned tag readback). */
+function operandView(src: OperandSource | null): OperandView | null {
+  if (src === null) return null;
+  return src.ready ? { ready: true, value: src.value } : { ready: false, tag: tagNumber(src.tag) };
+}
+
+function renameSlotView(slot: RenameSlot): RenameSlotView {
+  return slot.kind === 'committed'
+    ? { kind: 'committed' }
+    : { kind: 'pending', tag: tagNumber(slot.tag) };
 }

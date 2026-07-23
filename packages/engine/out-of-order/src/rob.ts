@@ -109,6 +109,11 @@ export class Rob {
     return this.entries.length;
   }
 
+  /** The configured window size — how many entries can be in flight at once (for the `micro` read). */
+  get maxSize(): number {
+    return this.capacity;
+  }
+
   hasRoom(count: number): boolean {
     return this.entries.length + count <= this.capacity;
   }

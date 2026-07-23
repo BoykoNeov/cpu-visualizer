@@ -13,6 +13,12 @@ export { OutOfOrderProcessor, OUT_OF_ORDER_CAPABILITIES } from './processor';
 export { Rob, type RobEntry, type RobState } from './rob';
 export { RenameTable } from './rename';
 export { type Tag, type OperandSource, type RenameSlot } from './types';
+export {
+  type OutOfOrderMicro,
+  type RobEntryView,
+  type RenameSlotView,
+  type OperandView,
+} from './micro';
 
 /** Stable id of this model within the model family (handoff §2). */
 export const OUT_OF_ORDER_MODEL_ID = 'out-of-order';
