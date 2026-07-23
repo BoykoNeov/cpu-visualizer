@@ -352,8 +352,8 @@ cleanest to anchor**:
       recording the IN-ORDER trace with every anchoring test green). The opening plumbing itself was
       already wired at M9 step 5 (no change needed). - **Wiring guards updated** (all found by grep before editing): `LESSONS.length` 15→16; both track-
       name arrays (~line 584 + ~line 691); the cache-canonicalization id list (work-slides-ahead is the
-      4th cache-declaring lesson); the by-name track-membership test (new track set). `positionsFor
-    ('out-of-order')`=48 was already in place from step 0(b). ORIGINAL PLAN TEXT for reference:
+      4th cache-declaring lesson); the by-name track-membership test (new track set).
+      `positionsFor('out-of-order')` = 48 was already in place from step 0(b). ORIGINAL PLAN TEXT:
       `model: out-of-order`, `issueWidth: 1`, `outOfOrderIssue: true`, **program `array-sum`, config cache
       LARGE (PINNED by the user 2026-07-23, 71→59).** Anchor on `alu-op where result:268435460` (pc=24 pointer bump to `&arr[1]`, c19→c8) or
       the counter `alu-op where result:4` (pc=28, c20→c9) — both program-unique, both never-dead across

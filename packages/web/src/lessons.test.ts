@@ -2552,25 +2552,47 @@ describe('work-slides-ahead — the out-of-order flagship, work slides past the 
     expect(aluCycle(ooo, 'add', 4)).toBe(9);
     expect(aluCycle(ooo, 'add', 4)).toBeLessThan(memReadCycle(ooo));
     expect(aluCycle(ooo, 'add', 4)).toBeLessThan(aluCycle(inOrder, 'add', 4));
+
+    // The reorder step's prose states these three cycles as fact ("cycle 9", "cycle 17", "cycle
+    // 20"). Token-checked at the default tier, the M4-step-4 net: a silently-wrong cycle in the
+    // narration is invisible to the anchoring sweep (the event fires either way) and only reddens
+    // here. Checked as the phrase "cycle N", not the bare number, so "9" cannot match inside "59".
+    const reorder = resolveNarration(lesson().steps[0]!.narration, lesson().depthDefault)!;
+    for (const token of ['cycle 9', 'cycle 17', 'cycle 20']) {
+      expect(reorder, `the reorder narration must quote "${token}"`).toContain(token);
+    }
   });
 
-  it('THE CRITICAL PATH: the reduction trickles one load at a time, no faster out of order', () => {
+  it('THE CRITICAL PATH: the reduction is fed sooner — its head start IS the whole win', () => {
     const [inOrder, ooo] = [record(false), record(true)];
 
-    // The lesson's honest ceiling, step 1: while independent work races ahead, the loop-carried sum
-    // in `a0` cannot — each `add a0, a0, t2` waits on both the previous sum and a fresh load. Its
-    // fourth partial (5 + 17 - 4 + 100 = 118, program-unique) is reached late in BOTH positions,
-    // because the chain's length is set by the cache, not the scheduler. Out-of-order issue fills
-    // AROUND it; it does not compress it — which is why the win below is sub-linear.
+    // The beat's real claim, and the one the first draft got BACKWARDS (advisor, M10 step 2): the
+    // reduction does NOT "gain nothing" out of order. Its fourth partial (5 + 17 - 4 + 100 = 118,
+    // program-unique) is reached at cycle 30 out of order versus 42 in order — twelve cycles sooner,
+    // because the loads that feed the chain are decoupled from it and stream in early, even though
+    // the chain's own links can never run in parallel. That is why the speedup is partial (the chain
+    // is a floor) AND real (the floor is reached sooner).
     const reductionOoo = aluCycle(ooo, 'add', 118);
     const reductionInOrder = aluCycle(inOrder, 'add', 118);
-    // It is still ahead out of order (the misses before it overlapped independent work), but not by
-    // the margin the counter moved — the chain is the bottleneck the reorder cannot cross.
-    expect(reductionOoo).toBeLessThan(reductionInOrder);
+    expect(reductionOoo).toBe(30);
+    expect(reductionInOrder).toBe(42);
+    // THE claim, pinned: the reduction's head start EQUALS the program's whole cycle-count win —
+    // nothing after the last load reorders, so the shift the chain gets is the shift the program
+    // gets. This is what the prose asserts ("a twelve-cycle head start ... the program's entire
+    // twelve-cycle win"), and the sweep cannot see it; the first draft's oracle pinned only that 118
+    // was "ahead", which stayed green over prose claiming it was NOT.
+    expect(reductionInOrder - reductionOoo).toBe(inOrder.length - ooo.length); // 12 === 71 - 59
     // ...and it lands strictly AFTER the reordered counter in both positions (the counter is iteration
     // 1's, this is iteration 4's), which is what makes the two steps independently reachable.
     expect(reductionOoo).toBeGreaterThan(aluCycle(ooo, 'add', 4));
     expect(reductionInOrder).toBeGreaterThan(aluCycle(inOrder, 'add', 4));
+
+    // The beat's prose states the two cycles and the partial; token-checked at the default tier so it
+    // cannot drift from the engine (the whole reason this beat needed a rewrite, not a word tweak).
+    const middle = resolveNarration(lesson().steps[1]!.narration, lesson().depthDefault)!;
+    for (const token of ['118', 'cycle 30', 'cycle 42']) {
+      expect(middle, `the critical-path narration must quote "${token}"`).toContain(token);
+    }
   });
 
   it('same answer, fewer cycles: 120 stored either way, 59 vs 71 (IPC 0.58 vs 0.48)', () => {
