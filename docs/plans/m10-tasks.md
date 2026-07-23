@@ -375,12 +375,47 @@ cleanest to anchor**:
       track heading to `index.json` with this one id; later lessons append. Grep every track/count guard
       across the web tests before editing.
 
-- [ ] **3. Lesson — the reservation station / slow op ("The reservation station holds").** The Tomasulo
-      namesake, now reachable via step 1's `slowOpLatency`: an RS holds an instruction across N execute
-      cycles; when the CDB broadcasts the result, its dependents wake and issue. Anchor on the slow op's
-      `alu-op` (its result lands N cycles after issue) and a dependent's `alu-op` waking after it. This is
-      the beat "Both, sequenced" bought — the classic textbook picture, vivid on the chosen program at
-      width 1. Oracle pins the N-cycle gap and that independent younger work issued during it.
+- [x] **3. Lesson — the reservation station / slow op ("The reservation station holds"). DONE & pushed
+      2026-07-23** (3633 tests), as THREE independently-green commits (`8dd1546` corpus+ripple,
+      `98ec045` plumbing, `30f68a1` lesson+oracle). The Tomasulo namesake, reachable via step 1's
+      `slowOpLatency`. Facts worth carrying forward, NOT re-derivable from the diff: - **NEW corpus program `content/programs/slow-op-loop.s`** — the deferred `[slow→dep→indep]`
+      loop (identical instructions to `slow-op.test.ts`'s `LOOP`, so its N=8 86→53 transfers). Under
+      DEFAULT config the `sll` is single-cycle ⇒ an ordinary register-only loop, a0=6×12=72, INV-8
+      identical on every model. Full ripple, every cell **HAND-DERIVED** (advisor-audited as genuinely
+      independent, not engine-blessed): conformance `RESULT_ORACLES` (a0=72,t1=0); pipeline `TIMING`
+      (N=30, S_off={16:2,20:12,28:12}, 5 taken/1 not); superscalar `TIMING` w2 (G=21,Q=14,L_off=26,
+      doomed=5, betting −5 pairs — the `sll→add` intra-pair RAW makes the shift a single-issue group
+      each iteration, the ONE shape difference from `sum-loop`); OoO `PINNED` (copied); superscalar
+      `pairing.test.ts` "strictly faster" 44→35. **Cross-check that validated the derivation: width-1
+      closed form = 44 = the slow-op test's empirical N=1 parity; all four tables first-run green.** - **`slowOpLatency` lesson-opening plumbing** (`98ec045`): `LessonOpening.slowOpLatency` +
+      `lessonOpening` reads `lesson.config.slowOpLatency ?? 1`; `useSimulator` holds it in a **ref
+      only** (no state, no interface field, no control — honored by the engine but neither swept nor
+      user-adjustable per step 0b), set from the opening in `startLesson`, read by `loadInto`, and
+      **reset to 1 in `select`/`loadEdited`** so a lesson's latency can't leak into a picked program
+      (the one knob with no toggle to undo it). NOTE (advisor): an undefined-config lesson preserves
+      the current latency via `...current` — consistent with every other knob, harmless (those models
+      ignore it), NOT a bug to "fix". `session.test.ts`'s opening loop arrives with latency 3 and
+      asserts every lesson opens at its declared latency — the ONLY headless net; the ref threading
+      itself is browser-only (see step 8). - **Lesson `content/lessons/reservation-station-holds.json`** (`30f68a1`): out-of-order, width 1,
+      cache null, `outOfOrderIssue` true, `slowOpLatency` 8, `forwarding` false + `static-not-taken`
+      (both neutral → dodge the "only names honored knobs" guard). 3-beat arc, anchors program-unique
+      AND latency-invariant (the sweep records at latency 1): counter `add result:5` (avoids the `li`
+      values 6/0/3/2/10; c8 OoO vs c15 in-order, `sll` completes c13 both) → 2nd partial `add
+      result:24` (woken the cycle after the 2nd `sll` broadcasts, c20 OoO vs c27 in-order) → final
+      `add result:72` (same answer, 53 vs 86, IPC 0.57/0.35). The `sll result:12` is NOT
+      program-unique (repeats each iteration) → oracle-only, never a step. - **⚠ THE net unique to this lesson (advisor-endorsed):** `slowOpLatency` is unswept, so
+      `positionsFor` records this lesson at latency 1 in ALL 48 positions — the reorder VANISHES
+      (44/44 parity), so the generic sweep CANNOT check anchor order at the latency-8 recording the
+      browser plays. The oracle adds an explicit **latency-8 monotonicity + distinct-cycle** check in
+      both toggle positions, plus the reorder/wakeup/counterfactual pins (incl. `add24 === sll[1]+1`,
+      which pins the CDB-wakeup causally) and token-checks the prose (M4-step-4 net). - **Teaching-order TODO:** RS is currently wedged at track position 2 (after the flagship). The
+      plan's pinned order is flagship → renaming → in-order commit → **RS namesake LAST**. When steps
+      5/6 land, MOVE `reservation-station-holds` to the end of the OoO track in `index.json` (and
+      update the membership guard's expectation — it is a sorted set, so no order change there). - **⚠ STILL UNTESTED (step 8 must-verify): the `useSimulator` ref threading.** No jsdom ⇒ "3633
+      green" proves the CONTENT is right and `lessonOpening` returns 8, NOT that the shell RECORDS at
+      latency 8. Slow-op step-8 checklist: the lesson opens showing **53** cycles (the `sll` visibly
+      occupying its FU in the `MicroTablePanel`); flipping the toggle to in-order shows **86** at the
+      same latency; picking a free-play program afterward reverts to single-cycle (the leak-guard).
 
 - [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss"). RESOLVED 2026-07-23: build
       a new miss-under-miss corpus program (DEFERRED to a later session).** The SECOND-PASS dump proved
