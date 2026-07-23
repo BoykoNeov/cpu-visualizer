@@ -1,12 +1,15 @@
 # Milestone 10 — The out-of-order lesson track
 
-**Status: PLANNED, 2026-07-23. Not started. Mirrors M8 (the superscalar lesson track after M7): the
-OoO engine (M9) and its whole visual layer — the bespoke out-of-order datapath, the `MicroTablePanel`
-(ROB/RS/rename tables), the flagship in-order↔out-of-order toggle + ROB-size control — all already
-exist. M10 is CONTENT plus test-only sweep wiring: a lesson track on `model: out-of-order`, plus the
-`configurableOutOfOrder` axis the sweep needs to cover the first OoO lesson at full config coverage.
-NO engine or trace change is in scope. Whether a new corpus program is needed is decided from the
-step-0 dump, not assumed (unlike M8, whose `branch-slot` witness was known-missing up front).**
+**Status: PLANNED, 2026-07-23. Not started. Scope PINNED by the user (2026-07-23): "Both, sequenced" —
+first an ENGINE step wiring `slowOpLatency` (M9's decided-but-never-implemented "Option B"), THEN the
+fullest lesson track covering BOTH latency sources (the slow-op Tomasulo namesake AND the cache-miss
+money shot). This is NO LONGER content-only — the step-0 dump proved `slowOpLatency` ships inert and
+that out-of-order issue changes nothing without a latency source (see "The dump"). The OoO engine (M9)
+and its whole visual layer — the bespoke out-of-order datapath, the `MicroTablePanel` (ROB/RS/rename
+tables), the flagship in-order↔out-of-order toggle + ROB-size control — already exist; the sweep needs
+a `configurableOutOfOrder` axis to cover the first OoO lesson at full config coverage. Whether a new
+corpus program is needed is decided from the dump, not assumed (unlike M8, whose `branch-slot` witness
+was known-missing up front).**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap — OoO is "the north star and the
 genuine cliff") and §13 (the curriculum system). The load-bearing constraints are INV-6 (lessons
@@ -91,14 +94,88 @@ dissolved. Per the headline's own rule, this is surfaced NOW rather than discove
   enough to show the payoff), **drop the beat to a 3-lesson track** and say so — do not stretch an
   anchor or add a `rename` event to save it.
 
-## The dump (the design's factual ground) — TO BE FILLED BY STEP 0
+## The dump (the design's factual ground) — FIRST PASS RUN 2026-07-23
 
-Not yet run. Every flagship program / config / cycle-count / IPC number below is a **placeholder** until
-step 0's dump fills it. **The "`array-sum` 60→41 live" number in prior session memory is for ONE config
-and is a trap** — it is the M8 "cycle 10 was the wrong config" hazard, and M7 step 8's rule ("an
-observed cycle is only valid for the config it was observed in") applies with full force. No `nth` /
-`where` / counterfactual number is typed from memory; each comes from a fresh dump under the exact
-declared config, re-dumped per lesson.
+Ran the width-1 corpus matrix (`{ outOfOrderIssue: false, true } × { cache: off, small, large }`,
+forwarding on, predict-not-taken) plus a `slowOpLatency` probe (throwaway
+`out-of-order/src/zz-m10-dump.test.ts`, delete before shipping). **Two findings reshape the whole
+milestone:**
+
+1. **`slowOpLatency` is INERT — Option B never landed in the engine.** The config field exists and is
+   documented "only the out-of-order model reads it," but grep confirms the OoO processor reads only
+   `issueWidth` / `branchPrediction` / `cache` / `outOfOrderIssue` / `numMshrs` / `robSize` — NOT
+   `slowOpLatency`. The probe proves it empirically: identical cycle count with/without
+   `slowOpLatency: 20` on every corpus program. **The M9 plan pinned "Option B on A," but only Option A
+   (cache-miss memory-level parallelism) shipped.** So the namesake "a reservation station waits N
+   cycles on a slow op while independent work issues around it" beat has NO engine support at
+   content-authoring time.
+
+2. **Out-of-order issue moves the cycle count ONLY with cache ON, and ONLY on array-walking programs.**
+   With no cache (the RV32I single-cycle-FU floor), every op completes in one cycle, so nothing is ever
+   stalled for younger work to slide around — in-order ≡ OoO on all nine programs. The witnesses:
+
+   | program                                         | cache | in-order | OoO | Δ     |
+   | ----------------------------------------------- | ----- | -------- | --- | ----- |
+   | `array-sum`                                     | large | 71       | 59  | −12   |
+   | `array-sum`                                     | small | 71       | 59  | −12   |
+   | `array-sum-twice`                               | small | 258      | 201 | −57   |
+   | `array-sum-twice`                               | large | 238      | 202 | −36   |
+   | _(every other program, every cache-off config)_ |       |          |     | **0** |
+
+   This is exactly the M9 plan's Option-A prediction ("only visible with the cache ON and an
+   array-walking program; renaming and the RS wakeup are drawn but rarely _bind_"). **The whole M10
+   track therefore lives at one config family: cache on, width 1** — the only place the flagship toggle
+   does anything. Flagship candidate: `array-sum` cache-large (71→59, the cleanest single-loop witness).
+
+**Consequence for scope — RESOLVED by the user 2026-07-23 as "Both, sequenced":** the slow-op namesake
+lesson cannot be authored without engine work, so M10 now leads with an engine step (step 1 below)
+wiring `slowOpLatency`, then authors a track covering BOTH latency sources. Every flagship program /
+config / cycle-count / IPC number below is still a **placeholder** for the deeper per-event dumps
+(execution order, program-unique `where` anchors) each chosen lesson needs — and the slow-op numbers do
+not exist yet at all (the mechanism is unbuilt).
+
+## The engine step — wiring `slowOpLatency` (M9's "Option B")
+
+The mechanism has a ready template in the SAME file: the non-blocking load-miss path
+(`processor.ts` `missCyclesRemaining` + the `awaitingMem` state). A slow ALU op should behave the same
+way a missing load does — occupy its functional unit for N cycles, then broadcast on the CDB — so that
+`walkIssuable` (which only offers `state === 'waiting'` entries) lets independent younger ops issue
+around it. **Design PINNED with the advisor (2026-07-23):**
+
+- **The divergence comes from the slow op's DEPENDENT, not the slow op.** `walkIssuable` skips an
+  already-issued op (`state !== 'waiting'`) in BOTH issue modes; the in-order/OoO fork is only for a
+  not-ready `waiting` op (lines 850–853). So a LONE slow op produces zero toggle difference — once it
+  issues and goes `executing`, younger ops pass it in both modes. The toggle diverges only on the shape
+  **[SLOW → DEP (needs slow's result) → INDEP (ready)]**: in-order stalls INDEP behind the not-ready
+  DEP; OoO slides INDEP past it. (This is exactly array-sum's cache win: `lw`→`add a0`→`addi t0`/`addi
+t1`.) The purpose-built slow-op program MUST contain all three roles, and the toggle delta MUST be
+  confirmed in a dump before the lesson is authored.
+- **Issue ONCE, free the issue port, occupy only the (unbounded) FU for N cycles.** If instead the slow
+  op holds its issue slot for N cycles it becomes a `waiting`-style wall that stalls BOTH modes → no
+  divergence and wrong timing. So: at issue, set `state='executing'` + `fuCyclesRemaining=N` and consume
+  the issue slot THIS cycle only; a per-cycle decrement stage counts it down; at 0 the value is queued
+  into `pendingBroadcasts` exactly as a single-cycle op's is today (broadcast-wakes-NEXT-cycle unchanged).
+- **Fire the `alu-op` event at COMPLETION, not issue** — the `result` field would otherwise assert a
+  value that will not exist for N cycles. Mirror the miss path exactly (a missing load's `mem-read`
+  fires at the RELEASE cycle, `processor.ts` ~727, not at issue): defer `executeEntry`'s ALU + the
+  `alu-op` emit + the broadcast-queue to the completion cycle. **This is WHY the slow op must be a pure
+  value-producer — never a branch/load/store/ecall:** deferring `executeEntry` for a transfer or halt
+  would defer `ctx.squash`/`ctx.redirect`, corrupting speculation.
+- **WHICH op is slow:** `sll` (shift) — the defensible RV32I stand-in for a multi-cycle FU (`mul`/`div`
+  need the M extension ⇒ INV-7 violation). No shipped corpus program uses shifts in the
+  `[slow→dep→indep]` shape, so a purpose-built program is in scope (M8 step-0 precedent), co-designed
+  with the op against a dump.
+- **The parity guard is the safety net for the done M9 model.** `slowOpLatency` absent (or N=1) ⇒ every
+  FU single-cycle, reproducing today's trace BYTE-FOR-BYTE (M3/M7-parity timing suite stays green, INV-8
+  stays blind, M9 untouched). Present ⇒ deterministic N (INV-1). Add: a lifecycle test for the walk
+  (`waiting→executing×N→executed→completed`), slow-op cells in `out-of-order/src/timing.test.ts` from the
+  closed form, and mutation-check both ways (a mutation ignoring the latency leaves INV-8 green and fails
+  timing). The new state ALSO surfaces in `micro` serialization — a win, the op sits visibly in the FU in
+  the `MicroTablePanel` — all gated behind `slowOpLatency`-present so default configs stay green. **The "`array-sum` 60→41 live" number in prior session memory is for ONE config
+  and is a trap** — it is the M8 "cycle 10 was the wrong config" hazard, and M7 step 8's rule ("an
+  observed cycle is only valid for the config it was observed in") applies with full force. No `nth` /
+  `where` / counterfactual number is typed from memory; each comes from a fresh dump under the exact
+  declared config, re-dumped per lesson.
 
 **The matrix step 0 runs** (throwaway `zz-m10-dump.test.ts`, deleted after; outputs under
 `M:\claud_projects\temp\m10\`), width fixed at 1 (see the pinned decision — the textbook-Tomasulo
@@ -154,51 +231,70 @@ cleanest to anchor**:
       corpus guard fires too. Acceptance for (c): `npm test` green across all models at every config,
       all timing guards satisfied, INV-8 passes for the new program on every model.
 
-- [ ] **1. Lesson — the flagship toggle ("Work slides ahead").** `model: out-of-order`, the flagship
-      program+config from the dump, `issueWidth: 1`, `outOfOrderIssue: true`. THE crown-jewel lesson,
-      the OoO analogue of M3's forwarding toggle and M7's width toggle: out-of-order issue lets a
-      younger independent instruction execute while an older one waits (on a slow op or a cache miss),
-      so independent work slides ahead and IPC rises. Counterfactual: in-order issue stalls everything
-      behind the waiting op. Anchor on a program-unique `where` (the younger op's `alu-op`/`mem-read`
-      value); the narration oracle pins BOTH positions' cycle counts / IPC (computed from the engine at
-      `outOfOrderIssue` false and true) and the relative order of the younger vs the older event.
-      **Because the event multiset is toggle-invariant, extend `session.test.ts`'s shipped-lesson
-      opening loop to assert the lesson OPENS at `outOfOrderIssue: true`** (the M8-step-1 move: the
-      generic sweep bypasses `lessonOpening` and cannot see the opening config — here the failure mode
-      is the engine reading `outOfOrderIssue ?? false` and silently recording the in-order trace with
-      every anchoring test green, the exact `issueWidth ?? 1` trap M8 guarded). Wire the track NOW with
+- [ ] **1. ENGINE — wire `slowOpLatency` (Option B).** The design in "The engine step" above,
+      confirmed with the advisor first. Deliverables: the `executing` state + `fuCyclesRemaining` hold
+      in `rob.ts`/`processor.ts`; the designated slow op; `slowOpLatency`-absent reproduces today's
+      trace byte-for-byte (the M3/M7-parity timing suite stays green); `slowOpLatency`-present is
+      deterministic. Hand-derive the slow-op cells for `out-of-order/src/timing.test.ts` from the closed
+      form; mutation-check both ways (a mutation that ignores the latency must leave INV-8 green and fail
+      the timing suite — the M9 discipline). Re-run the step-0 dump WITH the mechanism live to pin the
+      slow-op flagship program+config+numbers. Acceptance: `npm test` (incl. differential INV-8 on every
+      model, timing parity + new slow-op cells), `lint`, `tsc -b`, `build` all green.
+
+- [ ] **2. Lesson — the flagship toggle ("Work slides ahead").** `model: out-of-order`, `issueWidth: 1`,
+      `outOfOrderIssue: true`, the flagship program+config from the re-dump (slow-op OR cache-miss,
+      whichever anchors cleanest — pin here). THE crown-jewel lesson, the OoO analogue of M3's forwarding
+      toggle and M7's width toggle: out-of-order issue lets a younger independent instruction execute
+      while an older one waits (on the slow op / a cache miss), so independent work slides ahead and IPC
+      rises. Counterfactual: in-order issue stalls everything behind the waiting op. Anchor on a
+      program-unique `where` (the younger op's `alu-op`/`mem-read` value); the narration oracle pins BOTH
+      positions' cycle counts / IPC (engine at `outOfOrderIssue` false and true) and the relative order
+      of the younger vs the older event. **Because the event multiset is toggle-invariant, extend
+      `session.test.ts`'s shipped-lesson opening loop to assert the lesson OPENS at
+      `outOfOrderIssue: true`** (the M8-step-1 move: the generic sweep bypasses `lessonOpening` and
+      cannot see the opening config — the failure mode is the engine reading `outOfOrderIssue ?? false`
+      and silently recording the in-order trace with every anchoring test green). Wire the track NOW with
       just this lesson (LESSONS is globbed — a lesson file cannot exist un-wired; the moment it lands the
       `LESSONS.length` / `LESSON_ORDER` / `lessonSections()` / track-name guards fire), so add the new
-      track heading to `index.json` with this one id; steps 2–4 append. Grep every track/count guard
+      track heading to `index.json` with this one id; later lessons append. Grep every track/count guard
       across the web tests before editing.
 
-- [ ] **2. Lesson — renaming ("A new name for a register").** The un-anchorable beat (see above) —
-      confirm the seeded resolution against the dump before authoring: anchor on the second writer's
-      `alu-op`, narration + the rename table carry the WAR/WAW-dissolved point. If it will not anchor
-      cleanly, drop this step and ship a 3-lesson track (say so here). Width 1. Oracle pins the two
-      writers' `alu-op`s and that the younger did not serialize behind the older.
+- [ ] **3. Lesson — the reservation station / slow op ("The reservation station holds").** The Tomasulo
+      namesake, now reachable via step 1's `slowOpLatency`: an RS holds an instruction across N execute
+      cycles; when the CDB broadcasts the result, its dependents wake and issue. Anchor on the slow op's
+      `alu-op` (its result lands N cycles after issue) and a dependent's `alu-op` waking after it. This is
+      the beat "Both, sequenced" bought — the classic textbook picture, vivid on the chosen program at
+      width 1. Oracle pins the N-cycle gap and that independent younger work issued during it.
 
-- [ ] **3. Lesson — in-order commit ("Finish early, commit in order").** The ROB's precise-state job:
+- [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss").** The Option-A witness the
+      dump proved real (`array-sum` cache-large 71→59, or `array-sum-twice`): under a load miss, a second
+      INDEPENDENT load (its address is the already-computed pointer) issues and even misses UNDER the
+      first miss (miss-under-miss, `numMshrs` ≥ 2), so the loads race ahead of the trickling reduction.
+      `config`: cache on, `issueWidth: 1`, `outOfOrderIssue: true`. Anchor on the second load's `mem-read`
+      `where` (program-unique addr/value); oracle pins the 71→59 counterfactual and that the second
+      `cache-access`/`mem-read` overlaps the first miss. The physical-latency complement to step 3's
+      configured latency — same phenomenon, two honest sources.
+
+- [ ] **5. Lesson — in-order commit ("Finish early, commit in order").** The ROB's precise-state job:
       instructions COMPLETE out of order (their `alu-op`/`mem-read` land in a non-program order) but
-      RETIRE in program order (`instr-retire` events are monotone in program order). Anchor on an
+      RETIRE in program order (`instr-retire` events monotone in program order). Anchor on an
       `instr-retire` `where` (program-unique) at the head; the oracle pins that some `alu-op` fired
-      out-of-order-of-retirement earlier — the completion/commit order divergence IS the lesson. Width 1.
+      out-of-order-of-retirement earlier — the completion/commit order divergence IS the lesson. Rides
+      whichever of step 3/4's programs shows the cleanest out-of-order completion. Width 1.
 
-- [ ] **4. Lesson (CONDITIONAL) — the reservation station / slow op ("The reservation station holds").**
-      The Tomasulo namesake, needs `slowOpLatency` on (verify the dump shows a clean witness): an RS
-      holds an instruction across N execute cycles; when the CDB broadcasts the result, its dependents
-      wake and issue. Anchor on the slow op's `alu-op` (the result lands N cycles after issue) and a
-      dependent's `alu-op` waking after it. Ship only if the dump gives a clean witness; otherwise the
-      track is steps 1–3. Width 1.
+- [ ] **6. Lesson (CONDITIONAL) — renaming ("A new name for a register").** The un-anchorable beat (see
+      "The un-anchorable beat") — confirm against the dump before authoring: anchor on the second
+      writer's `alu-op`, narration + the rename table carry the WAR/WAW-dissolved point. **If it will not
+      anchor cleanly, DROP it** and record why here (no `rename` event invented). Width 1.
 
-- [ ] **5. Wire the track.** Mostly done incrementally by steps 1–4 (the glob forces it). What remains:
+- [ ] **7. Wire the track.** Mostly done incrementally by the lesson steps (the glob forces it). What remains:
       the by-name track-membership assertion in `lessons.test.ts`'s "files each lesson under the track
       its SUBJECT belongs to — asserted by name" test (the one net a mis-file slips past — `lessonSections()`
       totality stays green even under a wrong-track filing, because `LESSON_ORDER` derives from the same
       `index.json`), and pinning the track name + teaching order. Acceptance: `lessonSections` returns
       the new track with all its lessons resolved and none under `UNTRACKED_HEADING`; full suites green.
 
-- [ ] **6. Browser pass — the only net that sees this.** Drive the SHIPPED BUNDLE (`vite preview`,
+- [ ] **8. Browser pass — the only net that sees this.** Drive the SHIPPED BUNDLE (`vite preview`,
       `--strictPort`, identified by served `<title>`, CDP on a random high debug port, target by URL
       with a throw and no fallback — the [[browser-is-the-only-net]] recipe; do NOT kill Chrome by port,
       identify by title). Rig under `M:\claud_projects\temp\m10-browser\`. Verify: the picker shows the
