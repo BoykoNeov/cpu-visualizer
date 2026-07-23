@@ -349,22 +349,31 @@ cleanest to anchor**:
       the beat "Both, sequenced" bought — the classic textbook picture, vivid on the chosen program at
       width 1. Oracle pins the N-cycle gap and that independent younger work issued during it.
 
-- [ ] **4. Lesson — the cache-miss money shot. ⚠ BLOCKED — premise disproven by the SECOND-PASS dump.**
-      The stated beat ("a second INDEPENDENT load misses UNDER the first — miss-under-miss, `numMshrs` ≥
-      2 — so loads race ahead of the trickling reduction") **does not occur anywhere in the corpus at
-      width 1** (see "The dump — SECOND PASS": misses are always ~30 cycles apart, the 10-cycle penalty
-      never overlaps; a unit-stride walk over a 4-word line structurally cannot produce concurrent
-      misses). The user chose "re-dump for a real miss-under-miss" (2026-07-23) and the re-dump returned
-      NONE. Since the flagship (step 2) is now ALSO `array-sum` cache-large, a step-4 lesson on the same
-      program can only add the miss-under-miss angle — which is unrealizable. **OPEN DECISION (surfaced
-      to the user, awaiting answer):**
-      (a) **Drop / fold** — the flagship already carries "work slides under a single miss"; drop the
-      dedicated cache lesson (track shrinks) or reframe step 4 to a distinct cache angle if one
-      exists. (b) **New stride-walk corpus program** engineered so each load hits a NEW line within
-      the 10-cycle penalty ⇒ genuine concurrent misses; real work + the full INV-8 corpus-widening
-      ripple, so **deferred to a later session** (like the slow-op program). (c) something else.
-      Until resolved, step 4 is not authorable. Do NOT pin an anchor claiming miss-under-miss on the
-      existing corpus — it would be a lie the sweep cannot catch (the event multiset is toggle-blind).
+- [ ] **4. Lesson — the cache-miss money shot ("Racing ahead of the miss"). RESOLVED 2026-07-23: build
+      a new miss-under-miss corpus program (DEFERRED to a later session).** The SECOND-PASS dump proved
+      the original premise unrealizable on the shipped corpus — NO miss-under-miss anywhere at width 1
+      (misses ~30 cycles apart, the 10-cycle penalty never overlaps; a unit-stride walk over a 4-word
+      line structurally cannot produce concurrent misses; the M9 `numMshrs` docblock is wrong). The user
+      chose to build a dedicated witness rather than drop the beat. **This is deferred additional work (a
+      later session), NOT authored now** — it carries the full INV-8 corpus-widening ripple
+      (`conformance.ts` `RESULT_ORACLES`, `pipeline`/`superscalar`/`out-of-order` `timing.test.ts`).
+      **Design sketch + the trap to avoid (from the dump analysis — do NOT skip):** miss-under-miss must
+      be a **toggle effect**, because step 4 is a toggle lesson whose oracle pins the in-order↔OoO
+      counterfactual. A naïve "several independent loads to different lines" program produces
+      miss-under-miss in **BOTH** toggle positions — non-blocking loads free the issue port regardless of
+      issue order (the same `'executing'`/`awaitingMem` mechanism the slow op uses), so both modes issue
+      the second load and both overlap the misses. That demonstrates MSHRs, not `outOfOrderIssue`, and
+      the sweep is blind to it (headline). **The second miss must be GATED behind an in-order stall:** the
+      working shape is `array-sum`'s own but with **stride = line size (16 B)** so every iteration's `lw`
+      is a NEW line (a miss each iteration), and the loop-carried reduction (`add a0,a0,t2`, stuck on the
+      missing `t2`) is the stall that the independent pointer bump (`addi t0,t0,16`) slides past ONLY
+      under OoO — carrying the next iteration's address forward so its load misses under the current one.
+      In-order issue holds the pointer bump behind the waiting `add`, so the next miss cannot start early.
+      Confirm the toggle delta AND a genuine concurrent miss in a fresh dump (reuse the throwaway's
+      `missReport` concurrent-miss detector) BEFORE authoring. `config`: cache on, `issueWidth: 1`,
+      `outOfOrderIssue: true`, `numMshrs` default 2. Anchor on the second load's `mem-read where`
+      (program-unique value); oracle pins the counterfactual and that the second `cache-access`/`mem-read`
+      overlaps the first miss.
 
 - [ ] **5. Lesson — in-order commit ("Finish early, commit in order").** The ROB's precise-state job:
       instructions COMPLETE out of order (their `alu-op`/`mem-read` land in a non-program order) but
