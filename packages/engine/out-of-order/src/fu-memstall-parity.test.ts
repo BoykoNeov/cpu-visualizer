@@ -71,7 +71,7 @@ function run(processor: OutOfOrderProcessor, config: ProcessorConfig): CycleTrac
 }
 
 function finalRegs(traces: CycleTrace[]): readonly number[] {
-  return traces[traces.length - 1]!.state.registers;
+  return Array.from(traces[traces.length - 1]!.state.registers);
 }
 
 describe('in-order branch: a slow FU op freezes during a blocking cache miss', () => {
