@@ -3,10 +3,23 @@
 Source: `/code-review high` over the M9+M10 range (`b9dabf8..HEAD`, 71 files,
 ~11.8k insertions), run 2026-07-24. 8 finder angles ran concurrently, ~30 raw
 candidates deduped to 12, adversarially verified: **9 CONFIRMED, 1 PLAUSIBLE**
-survived. Findings are ranked most-severe first. None are fixed yet — this file
-is the worklist for a follow-up session.
+survived. Findings are ranked most-severe first.
 
 Line numbers are as of `b391dc1` (the reviewed HEAD) and may drift.
+
+## ✅ RESOLVED — all 10 fixed (2026-07-24)
+
+Every finding below is fixed, each in its own commit with a regression test,
+and F9 reframed as a documented design choice (not a correctness fix). The
+two view findings (2, 4) were additionally **browser-verified** in the shipped
+bundle (`M:/claud_projects/temp/m9m10-fix-browser/verify.mjs`): the FU box
+lights through a slow op's `executing` window, the LSU box lights during a
+cache miss, and following an instruction rings the commit wire on its retire
+cycle. Guardrails added for future expansion: an `accessWidth` byte-range gate
+(1), a shared `MODELS` eslint constant (7), a `robSize` conformance-label
+clause (8), and config-less-lesson resets for both uncontrolled OoO knobs
+(3, 5). Repo went 4036 → 4051 tests; typecheck/lint/build green. See the
+project-overview memory for the per-finding commit log.
 
 ---
 
