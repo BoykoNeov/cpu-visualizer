@@ -274,6 +274,15 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   if (among.some((c) => c.outOfOrderIssue !== first.outOfOrderIssue)) {
     parts.push(`order ${config.outOfOrderIssue ? 'out-of-order' : 'in-order'}`);
   }
+  // `robSize` (M9+M10 review finding 8) — same optional-number shape as `issueWidth`. Without this
+  // clause the OoO differential's `ROB_SIZE_PROBE` (robSize 1, otherwise a member of the config
+  // cross-product) collided byte-for-byte with the default-ROB run on every axis the label prints,
+  // so a regression in the small-ROB path the probe exists to reach would report under an
+  // indistinguishable title. Render the engine's effective value (`?? 16`) so a varying-but-unset
+  // config never prints `rob undefined`.
+  if (among.some((c) => c.robSize !== first.robSize)) {
+    parts.push(`rob ${config.robSize ?? 16}`);
+  }
   return parts.join(', ');
 }
 

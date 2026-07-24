@@ -428,6 +428,47 @@ describe('the matrix enumerates the corpus once per config', () => {
       expect(c.title).toContain(`predict ${c.config.branchPrediction}`);
     }
   });
+
+  /**
+   * M9+M10 review finding 8 — the `robSize` axis, the SAME invisible-collision shape as `issueWidth`
+   * and `outOfOrderIssue`: robSize changes only WHEN dispatch stalls, and in-order commit preserves
+   * final state at any depth, so a title collision is two green columns with nothing to prompt a
+   * second look. This is not a hypothetical: the out-of-order differential appends `ROB_SIZE_PROBE`
+   * (`robSize: 1`) to its config cross-product, and before the fix that probe shared every axis
+   * `configLabel` printed with a `robSize: 16` cross-product member — so a regression in the
+   * small-ROB path the probe exists to reach reported under an indistinguishable title. The two
+   * configs below are identical on every printed axis EXCEPT robSize, exactly that collision.
+   */
+  const ROB_SIZE_AXIS: ProcessorConfig[] = [1, 16].map((robSize) => ({
+    ...defaultConfig(),
+    forwarding: true,
+    outOfOrderIssue: true,
+    robSize,
+  }));
+
+  it('keeps every case distinct when the matrix varies ROB SIZE too', () => {
+    const cases = conformanceCases(ROB_SIZE_AXIS);
+    // 2 rob sizes × corpus. Fails before the fix: both label identically (robSize is unprinted).
+    expect(cases).toHaveLength(2 * corpusSize);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  it('names the varying rob size in every title, so a failure says which ROB SIZE broke', () => {
+    for (const c of conformanceCases(ROB_SIZE_AXIS)) {
+      expect(c.title).toContain(`rob ${c.config.robSize}`);
+    }
+  });
+
+  /**
+   * The other direction: `robSize` is OPTIONAL, so every pre-M9 config leaves it `undefined` — an
+   * ungated clause would rename every title in the lower differential suites to carry a `rob 16`
+   * none of them means. MULTI_AXIS is that unset list.
+   */
+  it('stays silent about rob size when no config sets one, so pre-M9 suites read unchanged', () => {
+    for (const c of conformanceCases(MULTI_AXIS)) {
+      expect(c.title).not.toContain('rob ');
+    }
+  });
 });
 
 /**
