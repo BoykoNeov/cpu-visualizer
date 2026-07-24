@@ -50,7 +50,12 @@ function record(
 
 function render(trace: CycleTrace | null, followed: string | null = null): string {
   return renderToStaticMarkup(
-    <MicroTablePanel trace={trace} followed={followed} onFollow={noop} />,
+    <MicroTablePanel
+      trace={trace}
+      recording={trace ? [trace] : []}
+      followed={followed}
+      onFollow={noop}
+    />,
   );
 }
 

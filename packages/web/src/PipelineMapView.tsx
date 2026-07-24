@@ -30,9 +30,16 @@ import { formatInstruction } from './format';
 import { buildPipelineMap, firstRowAt } from './pipeline-map';
 import { MONO, PHASE_COLORS, T } from './theme';
 
-/** Column width. Sized for the widest stage text we draw (`MEM`) at the grid's font size — the
- *  relief rule means a cell must always fit its label, so the text sets the width, not the hue. */
+/** The FLOOR column width — the pipeline's widest stage text (`MEM`) at the grid's font size. The
+ *  actual width is derived per-recording (see `cellW` below): the relief rule means a cell must
+ *  always fit its label, and a model whose `location` is wider than a stage — the out-of-order tier's
+ *  `"ROB#tag"` — needs a wider column, not a clipped one. Pipeline stays at this floor. */
 const CELL_W = 30;
+/** Per-character advance and horizontal chrome of a cell at its `0.62rem` monospace, for sizing the
+ *  column to the widest label. A monospace glyph advances ~0.6em (≈6.2px here); the pad covers the
+ *  1px margins + 1px borders on each side plus a little breathing room. */
+const CELL_CH = 6.2;
+const CELL_PAD = 10;
 const ROW_H = 19;
 const HEAD_H = 18;
 const LABEL_W = 190;
@@ -72,6 +79,20 @@ export function PipelineMap(props: {
   const { recorded, cursor, followed, onFollow, onSeek } = props;
   const map = useMemo(() => buildPipelineMap(recorded), [recorded]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The column width, sized to the WIDEST label in this recording (the relief rule — a cell must fit
+  // its text). Pipeline stages (`MEM`) fold to the `CELL_W` floor and are unchanged; the out-of-order
+  // model, whose every cell is a `"ROB#tag"`, gets a uniformly wider column instead of tags spilling
+  // over their neighbours. The widest reachable label is a ~5-digit ROB tag (the engine caps a run at
+  // 50k cycles), so no upper clamp is needed — every label fits, and nothing is clipped.
+  const cellW = useMemo(
+    () =>
+      Math.max(
+        CELL_W,
+        Math.ceil(map.stages.reduce((m, s) => Math.max(m, s.length), 0) * CELL_CH) + CELL_PAD,
+      ),
+    [map],
+  );
 
   const followedRow = followed === null ? null : (map.rows.find((r) => r.id === followed) ?? null);
 
@@ -116,7 +137,7 @@ export function PipelineMap(props: {
   ): number | null => {
     const lo = start + lead;
     const hi = start + viewport;
-    if (pos >= lo + MARGIN && pos + CELL_W <= hi - MARGIN) return null; // comfortably inside
+    if (pos >= lo + MARGIN && pos + cellW <= hi - MARGIN) return null; // comfortably inside
     return Math.max(0, pos - lead - (viewport - lead) / 2);
   };
 
@@ -125,7 +146,7 @@ export function PipelineMap(props: {
     if (!el || cursor < 0) return;
 
     const x = keepInView(
-      LABEL_W + (cursor - view.lo) * CELL_W,
+      LABEL_W + (cursor - view.lo) * cellW,
       el.scrollLeft,
       el.clientWidth,
       LABEL_W,
@@ -140,7 +161,7 @@ export function PipelineMap(props: {
     if (row < 0) return;
     const y = keepInView(HEAD_H + row * ROW_H, el.scrollTop, el.clientHeight, HEAD_H);
     if (y !== null) el.scrollTop = y;
-  }, [cursor, map, view]);
+  }, [cursor, map, view, cellW]);
 
   return (
     <section className="panel" style={{ marginTop: '1rem' }}>
@@ -214,7 +235,7 @@ export function PipelineMap(props: {
           role="grid"
           aria-label="Pipeline map: instructions by cycle"
           style={{
-            gridTemplateColumns: `${LABEL_W}px repeat(${view.cols}, ${CELL_W}px)`,
+            gridTemplateColumns: `${LABEL_W}px repeat(${view.cols}, ${cellW}px)`,
             gridTemplateRows: `${HEAD_H}px repeat(${view.rows.length}, ${ROW_H}px)`,
           }}
         >

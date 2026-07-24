@@ -39,10 +39,57 @@
 
 import type { CycleTrace } from '@cpu-viz/trace';
 import type { OperandView, OutOfOrderMicro, RobEntryView } from '@cpu-viz/engine-out-of-order';
+import { useMemo } from 'react';
 import { ABI_REGISTER_NAMES, formatInstruction, hex32 } from './format';
 import { MONO, T } from './theme';
 
 const mono = { fontFamily: MONO } as const;
+
+// --- Stable-height reservation (kills the per-step twitch) -----------------------------------
+//
+// Each of the three tables grows and shrinks as the cursor moves — the ROB fills and drains, the
+// waiting subset comes and goes, registers rename and commit. Left alone, the whole panel changes
+// HEIGHT every cycle and shoves the datapath below it up and down as the reader steps, which reads as
+// twitching. So each table RESERVES the tallest it ever gets over the whole recording (`runToEnd`
+// records it all up front, so this max is fixed for the run) and holds that height regardless of the
+// cursor's count. It reserves the max ACTUALLY SEEN, not `robCapacity`, so a program that never fills
+// the ROB does not leave a tall empty panel. No headless test can see a height (`renderToStaticMarkup`,
+// no jsdom), so this is a browser-verified fix, like the map's follow-readout reserve.
+
+/** A data row's pinned height, and a header row's — pinned so the reserve below is px-exact rather
+ *  than a font-metric estimate that would drift a pixel and re-introduce a small jitter. */
+const MICRO_ROW_H = 20;
+const MICRO_HEAD_H = 18;
+
+/** Reserve for a table WITH a header row (ROB, reservation stations): its header plus `rows` data
+ *  rows. Zero rows means the table never appears — reserve a single line for the empty message. */
+function headedReserve(rows: number): number {
+  return rows > 0 ? MICRO_HEAD_H + rows * MICRO_ROW_H : MICRO_ROW_H;
+}
+
+/** Reserve for the header-LESS rename table (a bare `<tbody>`): just its `rows`, or a line for empty. */
+function bareReserve(rows: number): number {
+  return rows > 0 ? rows * MICRO_ROW_H : MICRO_ROW_H;
+}
+
+/** The peak occupancy of each table across the WHOLE recording — the heights to reserve. */
+function microReserves(recording: readonly CycleTrace[]): {
+  rob: number;
+  waiting: number;
+  rename: number;
+} {
+  let rob = 0;
+  let waiting = 0;
+  let rename = 0;
+  for (const trace of recording) {
+    const m = oooMicro(trace);
+    if (m === null) continue;
+    rob = Math.max(rob, m.rob.length);
+    waiting = Math.max(waiting, m.rob.filter((e) => e.state === 'waiting').length);
+    rename = Math.max(rename, m.rename.filter((s) => s.kind === 'pending').length);
+  }
+  return { rob, waiting, rename };
+}
 
 /** The out-of-order micro shape, or null for any other model's trace — the gate is a TRACE fact. */
 function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
@@ -80,12 +127,17 @@ function stateView(state: RobEntryView['state']): { label: string; hue: string }
 export function MicroTablePanel(props: {
   /** The trace at the cursor. Non-OoO recordings (and pre-run) fold to null — the panel vanishes. */
   trace: CycleTrace | null;
+  /** The WHOLE recording — read only to reserve each table's peak height so the panel does not resize
+   *  as the cursor moves (see {@link microReserves}). Trace data, not an engine back door (INV-3),
+   *  exactly as the pipeline map already takes it. */
+  recording: readonly CycleTrace[];
   /** The followed instruction id, so a followed row reads the same here as on every other surface. */
   followed: string | null;
   /** Toggle-follow when a row is clicked (same affordance as the map's cells). */
   onFollow: (id: string | null) => void;
 }): React.JSX.Element | null {
-  const { trace, followed, onFollow } = props;
+  const { trace, recording, followed, onFollow } = props;
+  const reserves = useMemo(() => microReserves(recording), [recording]);
   const micro = oooMicro(trace);
   if (micro === null) return null;
 
@@ -117,16 +169,22 @@ export function MicroTablePanel(props: {
         }}
       >
         {/* The ROB spans a wider column (it carries the instruction text); the rename map is narrow. */}
-        <RobTable micro={micro} followed={followed} onToggle={toggle} />
+        <RobTable micro={micro} reserve={reserves.rob} followed={followed} onToggle={toggle} />
         <RenameTableView
           micro={micro}
+          reserve={reserves.rename}
           followedTag={followedTag}
           followed={followed}
           onToggle={toggle}
         />
       </div>
 
-      <ReservationStations micro={micro} followed={followed} onToggle={toggle} />
+      <ReservationStations
+        micro={micro}
+        reserve={reserves.waiting}
+        followed={followed}
+        onToggle={toggle}
+      />
     </section>
   );
 }
@@ -154,10 +212,11 @@ const td: React.CSSProperties = { paddingRight: 10, paddingTop: 1, paddingBottom
 
 function RobTable(props: {
   micro: OutOfOrderMicro;
+  reserve: number;
   followed: string | null;
   onToggle: (id: string) => void;
 }): React.JSX.Element {
-  const { micro, followed, onToggle } = props;
+  const { micro, reserve, followed, onToggle } = props;
   const headTag = micro.rob[0]?.tag ?? null;
   return (
     <div>
@@ -167,57 +226,61 @@ function RobTable(props: {
           {micro.rob.length}/{micro.robCapacity} in flight
         </span>
       </h3>
-      {micro.rob.length === 0 ? (
-        <p style={emptyStyle}>empty — nothing in flight</p>
-      ) : (
-        <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={th}></th>
-              <th style={th}>tag</th>
-              <th style={th}>instruction</th>
-              <th style={th}>dest</th>
-              <th style={th}>state</th>
-              <th style={{ ...th, textAlign: 'right' }}>value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {micro.rob.map((e) => {
-              const sv = stateView(e.state);
-              const isHead = e.tag === headTag;
-              const committing = isHead && (e.state === 'completed' || e.state === 'executed');
-              return (
-                <tr
-                  key={e.tag}
-                  className={followed === e.id ? 'dp--follow' : undefined}
-                  style={rowStyle(followed === e.id)}
-                  onClick={() => onToggle(e.id)}
-                  title={`ROB#${e.tag} — ${formatInstruction(e.decoded)} · click to follow`}
-                >
-                  {/* HEAD marker: the entry next to retire, so "commits in order" has an anchor. */}
-                  <td style={{ ...td, color: T.accent, fontSize: '0.66rem' }}>
-                    {isHead ? '▶' : ''}
-                  </td>
-                  <td style={{ ...td, color: T.ink2 }}>ROB#{e.tag}</td>
-                  <td style={{ ...td, color: T.ink, whiteSpace: 'nowrap' }}>
-                    {formatInstruction(e.decoded)}
-                  </td>
-                  <td style={{ ...td, color: T.ink3 }}>
-                    {e.rd === 0 ? '—' : ABI_REGISTER_NAMES[e.rd]}
-                  </td>
-                  <td style={{ ...td, color: sv.hue }}>
-                    {sv.label}
-                    {committing ? <span style={{ color: T.accent }}> · commits</span> : null}
-                  </td>
-                  <td style={{ ...td, textAlign: 'right', color: T.ink2 }}>
-                    {e.value === null ? '—' : hex32(e.value)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <div style={{ minHeight: headedReserve(reserve) }}>
+        {micro.rob.length === 0 ? (
+          <p style={emptyStyle}>empty — nothing in flight</p>
+        ) : (
+          <table
+            style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}
+          >
+            <thead>
+              <tr style={{ height: MICRO_HEAD_H }}>
+                <th style={th}></th>
+                <th style={th}>tag</th>
+                <th style={th}>instruction</th>
+                <th style={th}>dest</th>
+                <th style={th}>state</th>
+                <th style={{ ...th, textAlign: 'right' }}>value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {micro.rob.map((e) => {
+                const sv = stateView(e.state);
+                const isHead = e.tag === headTag;
+                const committing = isHead && (e.state === 'completed' || e.state === 'executed');
+                return (
+                  <tr
+                    key={e.tag}
+                    className={followed === e.id ? 'dp--follow' : undefined}
+                    style={{ ...rowStyle(followed === e.id), height: MICRO_ROW_H }}
+                    onClick={() => onToggle(e.id)}
+                    title={`ROB#${e.tag} — ${formatInstruction(e.decoded)} · click to follow`}
+                  >
+                    {/* HEAD marker: the entry next to retire, so "commits in order" has an anchor. */}
+                    <td style={{ ...td, color: T.accent, fontSize: '0.66rem' }}>
+                      {isHead ? '▶' : ''}
+                    </td>
+                    <td style={{ ...td, color: T.ink2 }}>ROB#{e.tag}</td>
+                    <td style={{ ...td, color: T.ink, whiteSpace: 'nowrap' }}>
+                      {formatInstruction(e.decoded)}
+                    </td>
+                    <td style={{ ...td, color: T.ink3 }}>
+                      {e.rd === 0 ? '—' : ABI_REGISTER_NAMES[e.rd]}
+                    </td>
+                    <td style={{ ...td, color: sv.hue }}>
+                      {sv.label}
+                      {committing ? <span style={{ color: T.accent }}> · commits</span> : null}
+                    </td>
+                    <td style={{ ...td, textAlign: 'right', color: T.ink2 }}>
+                      {e.value === null ? '—' : hex32(e.value)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -229,10 +292,11 @@ function RobTable(props: {
  */
 function ReservationStations(props: {
   micro: OutOfOrderMicro;
+  reserve: number;
   followed: string | null;
   onToggle: (id: string) => void;
 }): React.JSX.Element {
-  const { micro, followed, onToggle } = props;
+  const { micro, reserve, followed, onToggle } = props;
   const waiting = micro.rob.filter((e) => e.state === 'waiting');
   return (
     <div style={{ marginTop: '0.8rem' }}>
@@ -242,49 +306,53 @@ function ReservationStations(props: {
           dispatched, waiting to issue ({waiting.length})
         </span>
       </h3>
-      {waiting.length === 0 ? (
-        <p style={emptyStyle}>none — every in-flight instruction has already issued</p>
-      ) : (
-        <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={th}>tag</th>
-              <th style={th}>instruction</th>
-              <th style={th}>operand A</th>
-              <th style={th}>operand B</th>
-              <th style={th}>ready?</th>
-            </tr>
-          </thead>
-          <tbody>
-            {waiting.map((e) => {
-              const ready = operandReady(e.srcA) && operandReady(e.srcB);
-              return (
-                <tr
-                  key={e.tag}
-                  className={followed === e.id ? 'dp--follow' : undefined}
-                  style={rowStyle(followed === e.id)}
-                  onClick={() => onToggle(e.id)}
-                  title={`ROB#${e.tag} — click to follow`}
-                >
-                  <td style={{ ...td, color: T.ink2 }}>ROB#{e.tag}</td>
-                  <td style={{ ...td, color: T.ink, whiteSpace: 'nowrap' }}>
-                    {formatInstruction(e.decoded)}
-                  </td>
-                  <td style={td}>
-                    <Operand op={e.srcA} />
-                  </td>
-                  <td style={td}>
-                    <Operand op={e.srcB} />
-                  </td>
-                  <td style={{ ...td, color: ready ? T.monoGreen : T.monoAmber }}>
-                    {ready ? 'ready →' : 'waiting'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <div style={{ minHeight: headedReserve(reserve) }}>
+        {waiting.length === 0 ? (
+          <p style={emptyStyle}>none — every in-flight instruction has already issued</p>
+        ) : (
+          <table
+            style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}
+          >
+            <thead>
+              <tr style={{ height: MICRO_HEAD_H }}>
+                <th style={th}>tag</th>
+                <th style={th}>instruction</th>
+                <th style={th}>operand A</th>
+                <th style={th}>operand B</th>
+                <th style={th}>ready?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {waiting.map((e) => {
+                const ready = operandReady(e.srcA) && operandReady(e.srcB);
+                return (
+                  <tr
+                    key={e.tag}
+                    className={followed === e.id ? 'dp--follow' : undefined}
+                    style={{ ...rowStyle(followed === e.id), height: MICRO_ROW_H }}
+                    onClick={() => onToggle(e.id)}
+                    title={`ROB#${e.tag} — click to follow`}
+                  >
+                    <td style={{ ...td, color: T.ink2 }}>ROB#{e.tag}</td>
+                    <td style={{ ...td, color: T.ink, whiteSpace: 'nowrap' }}>
+                      {formatInstruction(e.decoded)}
+                    </td>
+                    <td style={td}>
+                      <Operand op={e.srcA} />
+                    </td>
+                    <td style={td}>
+                      <Operand op={e.srcB} />
+                    </td>
+                    <td style={{ ...td, color: ready ? T.monoGreen : T.monoAmber }}>
+                      {ready ? 'ready →' : 'waiting'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -308,11 +376,12 @@ function Operand({ op }: { op: OperandView | null }): React.JSX.Element {
  */
 function RenameTableView(props: {
   micro: OutOfOrderMicro;
+  reserve: number;
   followedTag: number | null;
   followed: string | null;
   onToggle: (id: string) => void;
 }): React.JSX.Element {
-  const { micro, followedTag, followed, onToggle } = props;
+  const { micro, reserve, followedTag, followed, onToggle } = props;
   // (reg index, tag) for every architectural register currently pointing at an in-flight tag.
   const pending = micro.rename
     .map((slot, reg) => ({ reg, slot }))
@@ -330,31 +399,35 @@ function RenameTableView(props: {
       <h3 style={subheadStyle}>
         Rename map <span style={{ color: T.ink3, fontWeight: 400 }}>arch reg → in-flight tag</span>
       </h3>
-      {pending.length === 0 ? (
-        <p style={emptyStyle}>no register renamed — all committed</p>
-      ) : (
-        <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}>
-          <tbody>
-            {pending.map(({ reg, slot }) => {
-              const id = idForTag(slot.tag);
-              const isFollowed = followedTag === slot.tag || (id !== null && followed === id);
-              return (
-                <tr
-                  key={reg}
-                  className={isFollowed ? 'dp--follow' : undefined}
-                  style={rowStyle(isFollowed)}
-                  onClick={() => (id !== null ? onToggle(id) : undefined)}
-                  title={id !== null ? 'click to follow the producing instruction' : undefined}
-                >
-                  <td style={{ ...td, color: T.ink }}>{ABI_REGISTER_NAMES[reg]}</td>
-                  <td style={{ ...td, color: T.ink3 }}>x{reg}</td>
-                  <td style={{ ...td, color: T.accent }}>→ ROB#{slot.tag}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <div style={{ minHeight: bareReserve(reserve) }}>
+        {pending.length === 0 ? (
+          <p style={emptyStyle}>no register renamed — all committed</p>
+        ) : (
+          <table
+            style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.76rem', width: '100%' }}
+          >
+            <tbody>
+              {pending.map(({ reg, slot }) => {
+                const id = idForTag(slot.tag);
+                const isFollowed = followedTag === slot.tag || (id !== null && followed === id);
+                return (
+                  <tr
+                    key={reg}
+                    className={isFollowed ? 'dp--follow' : undefined}
+                    style={{ ...rowStyle(isFollowed), height: MICRO_ROW_H }}
+                    onClick={() => (id !== null ? onToggle(id) : undefined)}
+                    title={id !== null ? 'click to follow the producing instruction' : undefined}
+                  >
+                    <td style={{ ...td, color: T.ink }}>{ABI_REGISTER_NAMES[reg]}</td>
+                    <td style={{ ...td, color: T.ink3 }}>x{reg}</td>
+                    <td style={{ ...td, color: T.accent }}>→ ROB#{slot.tag}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
       <p style={{ ...emptyStyle, marginTop: '0.4rem' }}>
         every other register reads its committed value (the register panel).
       </p>

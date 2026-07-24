@@ -399,6 +399,7 @@ export function App(): React.JSX.Element {
                       node: (
                         <MicroTablePanel
                           trace={sim.cycleTrace}
+                          recording={sim.recorded}
                           followed={followed}
                           onFollow={setFollowed}
                         />
