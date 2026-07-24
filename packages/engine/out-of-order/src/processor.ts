@@ -159,6 +159,20 @@ function isLoad(d: DecodedInstruction): boolean {
   return LOADS.has(d.mnemonic);
 }
 
+/**
+ * The byte width a load/store touches — 1 for `lb`/`lbu`/`sb`, 2 for `lh`/`lhu`/`sh`, 4 for
+ * `lw`/`sw`. Used by memory disambiguation to compare BYTE RANGES rather than base addresses: a
+ * younger sub-word load overlapping (not equalling) an older uncommitted store's range still
+ * aliases it and must wait, so `disambiguationClear` compares `[addr, addr+width)` intervals, not
+ * `addr === addr`. Callers only ever pass a known load/store mnemonic, so the `lw`/`sw` default
+ * (4) is never actually reached for a non-word op.
+ */
+function accessWidth(mnemonic: string): number {
+  if (mnemonic === 'lb' || mnemonic === 'lbu' || mnemonic === 'sb') return 1;
+  if (mnemonic === 'lh' || mnemonic === 'lhu' || mnemonic === 'sh') return 2;
+  return 4; // lw / sw
+}
+
 function isArchHalt(d: DecodedInstruction): boolean {
   return (
     d.mnemonic === 'ecall' || d.mnemonic === 'ebreak' || defForMnemonic(d.mnemonic) === undefined
@@ -684,17 +698,30 @@ export class OutOfOrderProcessor implements Processor {
    * for that exact store to retire (at which point `this.memory` already holds its value, so an
    * ordinary read afterward is correct with no forwarding path needed — the simplest design that
    * satisfies "does not bypass an aliasing older store").
+   *
+   * Aliasing is a BYTE-RANGE OVERLAP, not base-address equality: the load touches
+   * `[addr, addr + loadWidth)` and the store `[storeAddr, storeAddr + storeWidth)` (widths from
+   * {@link accessWidth}), and any overlap aliases. A base-address `===` (the original gate) let a
+   * younger sub-word load slip past an older word store at an adjacent-but-unequal address —
+   * `sw t1, 0(t0)` then `lb t2, 1(t0)` — reading stale memory before the store committed, an INV-8
+   * class corruption reachable from user-typed sandbox assembly.
    */
   protected disambiguationClear(load: RobEntry): boolean {
     if (load.aluOut === null) {
       throw new Error(`out-of-order: ${load.decoded.mnemonic} disambiguates with no address yet`);
     }
     const addr = load.aluOut >>> 0;
+    const loadWidth = accessWidth(load.decoded.mnemonic);
     for (const s of this.rob.all()) {
       if (s.seq >= load.seq) continue; // only OLDER entries can alias
       if (!STORES.has(s.decoded.mnemonic)) continue;
       if (s.aluOut === null) return false; // an older store's address isn't known yet — wait
-      if (s.aluOut >>> 0 === addr) return false; // aliases an older, still-uncommitted store
+      const storeAddr = s.aluOut >>> 0;
+      const storeWidth = accessWidth(s.decoded.mnemonic);
+      // Half-open interval overlap: [addr, addr+loadWidth) ∩ [storeAddr, storeAddr+storeWidth) ≠ ∅.
+      if (addr < storeAddr + storeWidth && storeAddr < addr + loadWidth) {
+        return false; // overlaps an older, still-uncommitted store — wait for it to retire
+      }
     }
     return true;
   }
