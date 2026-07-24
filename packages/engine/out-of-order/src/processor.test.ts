@@ -199,3 +199,34 @@ describe('forwarding (M9 step 1a): no off-position', () => {
     expect(OUT_OF_ORDER_CAPABILITIES.configurableForwarding).toBe(false);
   });
 });
+
+/**
+ * The two structural-capacity knobs must fail fast, not livelock (M9+M10 review finding 6). Both
+ * are public API bare optional numbers, and 0 (or negative) hangs silently: `robSize: 0` makes
+ * `Rob.hasRoom` permanently false so dispatch never proceeds; `numMshrs: 0` (with a cache) makes the
+ * MSHR gate permanently full so the first miss never completes — each spins to the recorder's cycle
+ * cap and throws a misleading "non-terminating program?". `reset()` guards them the same way it
+ * already guarded `issueWidth`; this pins all three (the `issueWidth` guard shipped untested).
+ */
+describe('config validation: fail fast rather than livelock', () => {
+  const program = asm('li a7, 10\necall');
+  const reset = (config: ProcessorConfig): void => {
+    new OutOfOrderProcessor().reset(toProgramImage(program), config);
+  };
+
+  it('rejects issueWidth < 1', () => {
+    expect(() => reset({ ...DEFAULT, issueWidth: 0 })).toThrow(/issueWidth 0 is not a positive/);
+  });
+
+  it('rejects robSize < 1 (would livelock: dispatch never proceeds)', () => {
+    expect(() => reset({ ...DEFAULT, robSize: 0 })).toThrow(/robSize 0 is not a positive/);
+  });
+
+  it('rejects numMshrs < 1 (would livelock: the first miss never completes)', () => {
+    expect(() => reset({ ...DEFAULT, numMshrs: 0 })).toThrow(/numMshrs 0 is not a positive/);
+  });
+
+  it('accepts the minimal positive values (robSize 1, numMshrs 1, issueWidth 1)', () => {
+    expect(() => reset({ ...DEFAULT, robSize: 1, numMshrs: 1, issueWidth: 1 })).not.toThrow();
+  });
+});

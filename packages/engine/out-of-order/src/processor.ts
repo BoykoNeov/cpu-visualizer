@@ -277,7 +277,20 @@ export class OutOfOrderProcessor implements Processor {
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.outOfOrder = config.outOfOrderIssue ?? false;
+    // Fail fast on the two structural-capacity knobs, mirroring the `issueWidth` guard above: 0 (or
+    // negative) silently LIVELOCKS otherwise. `robSize: 0` makes `Rob.hasRoom` permanently false so
+    // dispatch never proceeds; `numMshrs: 0` (with a cache) makes the MSHR gate permanently full so
+    // the first miss never completes — both spin until the recorder's cycle cap throws a misleading
+    // "non-terminating program?" error. Public API, bare optional numbers in the trace config, so a
+    // clear message here beats a runaway (M9+M10 review finding 6).
+    const robSize = config.robSize ?? 16;
+    if (robSize < 1) {
+      throw new Error(`out-of-order: robSize ${robSize} is not a positive capacity`);
+    }
     this.numMshrs = config.numMshrs ?? 2;
+    if (this.numMshrs < 1) {
+      throw new Error(`out-of-order: numMshrs ${this.numMshrs} is not a positive count`);
+    }
     this.slowOpLatency = config.slowOpLatency ?? 1;
     this.missInFlight = new Set();
     this.deferredBroadcasts = [];
@@ -300,7 +313,7 @@ export class OutOfOrderProcessor implements Processor {
     // timing baseline never binds on ROB capacity — a small ROB visibly stalling dispatch is a
     // real, deliberately SEPARATE story (the "secondary lever," step 1b/3), not part of this
     // model's claim to match M3/M7 cycle for cycle.
-    this.rob = new Rob(config.robSize ?? 16);
+    this.rob = new Rob(robSize);
     this.rename.reset();
     this.ifSlot = new Array<Fetched | null>(this.width).fill(null);
     this.haltFetch = false;
