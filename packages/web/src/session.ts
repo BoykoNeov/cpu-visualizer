@@ -103,6 +103,18 @@ export interface LessonOpening {
    * picks next (there is no toggle to undo it) — see `useSimulator`.
    */
   slowOpLatency: number;
+  /**
+   * The MSHR count to record at (M9's `numMshrs`) — the non-blocking LSU's miss-under-miss cap. The
+   * SECOND uncontrolled knob, threaded for the same reason and with the same rules as
+   * {@link slowOpLatency}: honored by the OoO engine, neither swept nor user-adjustable, so it is
+   * carried ONLY so a lesson that declares it records with it. Total here for the usual reason — the
+   * field is optional and the engine reads its absence as 2 (`config.numMshrs ?? 2`), so a declared
+   * config that omits it MEANS 2. It was declared-and-DROPPED before this fix: `LessonOpening` never
+   * carried it, so a lesson declaring `numMshrs` typechecked but silently recorded at the engine
+   * default (M9+M10 review finding 5). Held in a ref and reset to 2 on free-play loads AND on a
+   * config-less lesson, like `slowOpLatency` — see `useSimulator` and {@link lessonOpening}.
+   */
+  numMshrs: number;
 }
 
 /**
@@ -206,6 +218,7 @@ export function lessonOpening(
     outOfOrderIssue: boolean;
     robSize: number;
     slowOpLatency: number;
+    numMshrs: number;
   },
 ): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
@@ -214,7 +227,18 @@ export function lessonOpening(
   // (M6 step 5): a lesson that declares a config controls its cache too, whole; one that declares
   // none leaves whatever the user set — a single-cycle lesson must not silently clear a cache the
   // user is running any more than it clears their forwarding position.
-  if (lesson.config === undefined) return { modelId: lesson.model, ...current };
+  //
+  // BUT the two UNCONTROLLED knobs (`slowOpLatency`, `numMshrs`) reset to their engine defaults even
+  // for a config-less lesson (M9+M10 review finding 3). "Leave whatever the user set" is meaningful
+  // only for a knob the user CAN set — every other knob here has a shell control, so a persisted
+  // position is a position the user chose and can see. These two have no control, so a non-default
+  // value in the ref could only have come from a PRIOR lesson; carrying it into a config-less lesson
+  // is a silent leak with nothing on screen to explain the cycle counts (the RS lesson's latency 8
+  // bleeding into `first-program`, say). So spread the controlled knobs from `current` and force the
+  // uncontrolled pair back to default.
+  if (lesson.config === undefined) {
+    return { modelId: lesson.model, ...current, slowOpLatency: 1, numMshrs: 2 };
+  }
   return {
     modelId: lesson.model,
     forwarding: lesson.config.forwarding,
@@ -238,5 +262,9 @@ export function lessonOpening(
     // one cycle = no slow op). This is the ONE opening knob with no shell control — the slow-op
     // lesson pins it here, invisibly, and it is reset to 1 on free-play loads (see `useSimulator`).
     slowOpLatency: lesson.config.slowOpLatency ?? 1,
+    // The MSHR count (M9's `numMshrs`), the SECOND uncontrolled knob, same optional-field reading:
+    // omitted ⇒ 2 (the engine's `?? 2`). Threaded here so a lesson declaring it records with it,
+    // rather than typechecking and silently recording at the default (M9+M10 review finding 5).
+    numMshrs: lesson.config.numMshrs ?? 2,
   };
 }

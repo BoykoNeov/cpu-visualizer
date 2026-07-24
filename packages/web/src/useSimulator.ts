@@ -361,6 +361,11 @@ export function useSimulator(): Simulator {
   // (`select` / `loadEdited`), which reset it to 1 so a lesson's latency cannot leak into a program
   // the user picks next — there is no toggle to undo it. Opens at 1 (the engine's `?? 1`, no slow op).
   const slowOpLatencyRef = useRef(1);
+  // MSHR count (M9's `numMshrs`) — the second uncontrolled knob, threaded and reset exactly like
+  // `slowOpLatency` above (M9+M10 review finding 5): honored by the OoO engine, no state/control, its
+  // only writers `startLesson` and the free-play loads (which reset it to 2 so a lesson's declared
+  // value can't leak into the next program). Opens at 2 (the engine's `?? 2`).
+  const numMshrsRef = useRef(2);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
@@ -380,6 +385,7 @@ export function useSimulator(): Simulator {
         outOfOrderIssue: outOfOrderIssueRef.current,
         robSize: robSizeRef.current,
         slowOpLatency: slowOpLatencyRef.current,
+        numMshrs: numMshrsRef.current,
       });
       if (!result.ok) {
         loaded.current = null;
@@ -420,10 +426,12 @@ export function useSimulator(): Simulator {
     (name: string) => {
       const example = EXAMPLE_PROGRAMS.find((p) => p.name === name);
       if (!example) return;
-      // Free-play: no lesson to declare a slow-op latency, and no control to adjust one, so reset it
-      // to 1 (no slow op). This is what stops a slow-op lesson's latency leaking into the next program
-      // the user picks — the one knob with no toggle to undo it (see the ref's declaration).
+      // Free-play: no lesson to declare the uncontrolled knobs, and no control to adjust them, so
+      // reset BOTH to their defaults (slow-op latency 1, MSHRs 2). This is what stops a lesson's
+      // declared value leaking into the next program the user picks — the knobs with no toggle to
+      // undo them (see the refs' declarations).
       slowOpLatencyRef.current = 1;
+      numMshrsRef.current = 2;
       setSession(exampleSession(name));
       setLoadGen((g) => g + 1);
       loadInto(example.source);
@@ -449,6 +457,7 @@ export function useSimulator(): Simulator {
         outOfOrderIssue: outOfOrderIssueRef.current,
         robSize: robSizeRef.current,
         slowOpLatency: slowOpLatencyRef.current,
+        numMshrs: numMshrsRef.current,
       });
       const choice = modelById(opening.modelId);
       makeProcessor.current = choice.make;
@@ -465,9 +474,11 @@ export function useSimulator(): Simulator {
       setOutOfOrderIssueState(opening.outOfOrderIssue);
       robSizeRef.current = opening.robSize;
       setRobSizeState(opening.robSize);
-      // No state/control for this one (see the ref's declaration) — the lesson's declared latency
-      // just becomes what `loadInto` records with, below.
+      // No state/control for these two (see the refs' declarations) — the lesson's declared latency
+      // and MSHR count just become what `loadInto` records with, below. A config-less lesson resets
+      // both to default via `lessonOpening`, so an uncontrolled knob never leaks lesson-to-lesson.
       slowOpLatencyRef.current = opening.slowOpLatency;
+      numMshrsRef.current = opening.numMshrs;
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -478,9 +489,11 @@ export function useSimulator(): Simulator {
   const loadEdited = useCallback(
     (source: string) => {
       // The fork (§13): detach any active lesson, then record the edited program. Functional
-      // update so the origin is derived from whatever session was current. Reset the slow-op latency
-      // to 1 for the same reason `select` does — a sandbox is free-play, with no control to adjust it.
+      // update so the origin is derived from whatever session was current. Reset the uncontrolled
+      // knobs to their defaults for the same reason `select` does — a sandbox is free-play, with no
+      // control to adjust them.
       slowOpLatencyRef.current = 1;
+      numMshrsRef.current = 2;
       setSession((prev) => forkToSandbox(prev));
       loadInto(source);
     },

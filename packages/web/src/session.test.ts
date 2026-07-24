@@ -91,6 +91,7 @@ describe('a lesson opens on the model + config it declares', () => {
     outOfOrderIssue = false,
     robSize = 16,
     slowOpLatency = 1,
+    numMshrs = 2,
   ): {
     forwarding: boolean;
     branchPrediction: BranchPrediction;
@@ -99,6 +100,7 @@ describe('a lesson opens on the model + config it declares', () => {
     outOfOrderIssue: boolean;
     robSize: number;
     slowOpLatency: number;
+    numMshrs: number;
   } => ({
     forwarding,
     branchPrediction,
@@ -107,6 +109,7 @@ describe('a lesson opens on the model + config it declares', () => {
     outOfOrderIssue,
     robSize,
     slowOpLatency,
+    numMshrs,
   });
 
   it('honors the declared model — a lesson is prose about ONE machine, not just anchors', () => {
@@ -131,6 +134,7 @@ describe('a lesson opens on the model + config it declares', () => {
       outOfOrderIssue: false,
       robSize: 16,
       slowOpLatency: 1,
+      numMshrs: 2,
     });
   });
 
@@ -236,7 +240,7 @@ describe('a lesson opens on the model + config it declares', () => {
     for (const lesson of LESSONS) {
       const opening = lessonOpening(
         lesson,
-        arrivingWith(true, 'static-taken', CACHE_SMALL, 1, false, 4, 3),
+        arrivingWith(true, 'static-taken', CACHE_SMALL, 1, false, 4, 3, 1),
       );
       expect(opening.modelId, `${lesson.id} opens on a model`).toBe(lesson.model);
       if (lesson.config === undefined) continue;
@@ -273,7 +277,42 @@ describe('a lesson opens on the model + config it declares', () => {
       expect(opening.slowOpLatency, `${lesson.id} opens at its declared slow-op latency`).toBe(
         lesson.config.slowOpLatency ?? 1,
       );
+      // The MSHR knob (M9's `numMshrs`), the SECOND uncontrolled knob, same OPTIONAL-field reading:
+      // omitted means 2 (the engine's `?? 2`). Failable because the arrival above sets it to 1 — a
+      // value no lesson declares. Before this fix `LessonOpening` didn't carry `numMshrs` at all, so
+      // a lesson declaring it recorded silently at the default (M9+M10 review finding 5).
+      expect(opening.numMshrs, `${lesson.id} opens at its declared MSHR count`).toBe(
+        lesson.config.numMshrs ?? 2,
+      );
     }
+  });
+
+  /**
+   * The two UNCONTROLLED knobs (`slowOpLatency`, `numMshrs`) reset to their defaults even for a
+   * CONFIG-LESS lesson, while every CONTROLLED knob persists (M9+M10 review finding 3). This is the
+   * one place the config-less rule is NOT "leave everything the user set alone": a knob with no shell
+   * control can only hold a non-default value that leaked from a PRIOR lesson, so carrying it into a
+   * config-less lesson would silently record at a latency/MSHR count the reader never chose and
+   * nothing on screen explains. Two-sided on purpose — the reset AND the persistence both matter.
+   */
+  it('a config-less lesson resets the uncontrolled knobs but leaves the controlled ones alone', () => {
+    // Arrive as if a prior lesson (the RS lesson) left latency 8 and MSHRs 1 in the refs, while the
+    // user independently set forwarding on, a small cache, width 2, out-of-order, ROB 4.
+    const opening = lessonOpening(
+      LESSON, // the config-less pipeline lesson
+      arrivingWith(true, 'static-taken', CACHE_SMALL, 2, true, 4, 8, 1),
+    );
+    // The uncontrolled pair is forced back to the engine defaults — the leak is closed.
+    expect(opening.slowOpLatency, 'slow-op latency resets to 1 (no control to persist it)').toBe(1);
+    expect(opening.numMshrs, 'MSHR count resets to 2 (no control to persist it)').toBe(2);
+    // Every CONTROLLED knob is left exactly where the user had it — a config-less lesson has no
+    // opinion about the machine, and these all have shell controls the user can see.
+    expect(opening.forwarding, 'forwarding persists').toBe(true);
+    expect(opening.branchPrediction, 'prediction persists').toBe('static-taken');
+    expect(opening.cache, 'cache persists').toBe(CACHE_SMALL);
+    expect(opening.issueWidth, 'issue width persists').toBe(2);
+    expect(opening.outOfOrderIssue, 'issue order persists').toBe(true);
+    expect(opening.robSize, 'ROB size persists').toBe(4);
   });
 });
 
