@@ -540,17 +540,20 @@ export class OutOfOrderProcessor implements Processor {
   private pendingCommitEvents: TraceEvent[] = [];
 
   /**
-   * Step 1b, out-of-order mode only: the deferred store write (see `stageCommit`'s call site).
-   * `aluOut`/`storeData` were latched back at issue (`executeEntry`) and have sat untouched in the
-   * ROB entry ever since — commit is simply the first moment it is safe to act on them.
+   * The store's memory write — the sb/sh/sw mask + writeByte/writeHalf/writeWord idiom, in ONE
+   * place. It is the deferred commit-time write in out-of-order mode (see `stageCommit`'s call
+   * site: `aluOut`/`storeData` were latched at issue and have sat untouched since — commit is the
+   * first moment it is safe to act on them), AND the immediate MEM-stage write in the in-order
+   * branch ({@link completeMemAccess}). Sharing it is what stops the two mem paths' masking logic
+   * from drifting (M9+M10 review finding 10).
    */
   private writeStoreToMemory(e: RobEntry, events: TraceEvent[]): void {
     const mnemonic = e.decoded.mnemonic;
     if (e.aluOut === null) {
-      throw new Error(`out-of-order: ${mnemonic} commits with no effective address latched`);
+      throw new Error(`out-of-order: ${mnemonic} stores with no effective address latched`);
     }
     if (e.storeData === null) {
-      throw new Error(`out-of-order: ${mnemonic} commits with no store datum latched`);
+      throw new Error(`out-of-order: ${mnemonic} stores with no store datum latched`);
     }
     const addr = e.aluOut >>> 0;
     const value =
@@ -563,6 +566,32 @@ export class OutOfOrderProcessor implements Processor {
     if (mnemonic === 'sb') this.memory.writeByte(addr, value);
     else if (mnemonic === 'sh') this.memory.writeHalf(addr, value);
     else this.memory.writeWord(addr, value);
+  }
+
+  /**
+   * The load's memory read — the lb/lh/lw read + sign-extend idiom plus the CDB broadcast, the
+   * counterpart to {@link writeStoreToMemory} and equally shared by both mem paths ({@link
+   * completeMemAccess} in-order, {@link completeMemAccessOutOfOrder} out-of-order) so a
+   * sign-extension fix in one can never leave the other divergent (M9+M10 review finding 10). Reads
+   * `this.memory` (a store's write already landed either at MEM in-order or at the older store's
+   * commit out-of-order — the disambiguation gate guarantees no aliasing store is still pending),
+   * latches `e.value`, and queues the broadcast when the load writes a register.
+   */
+  private performLoad(e: RobEntry, events: TraceEvent[]): void {
+    const mnemonic = e.decoded.mnemonic;
+    if (e.aluOut === null) {
+      throw new Error(`out-of-order: ${mnemonic} loads with no effective address latched`);
+    }
+    const addr = e.aluOut >>> 0;
+    const raw =
+      mnemonic === 'lb' || mnemonic === 'lbu'
+        ? this.memory.readByte(addr)
+        : mnemonic === 'lh' || mnemonic === 'lhu'
+          ? this.memory.readHalf(addr)
+          : this.memory.readWord(addr);
+    events.push({ type: 'mem-read', addr, value: raw, instr: e.instr });
+    e.value = mnemonic === 'lb' ? (raw << 24) >> 24 : mnemonic === 'lh' ? (raw << 16) >> 16 : raw;
+    if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
   }
 
   // -----------------------------------------------------------------------------------------
@@ -747,47 +776,19 @@ export class OutOfOrderProcessor implements Processor {
   }
 
   private completeMemAccess(ctx: CycleCtx, e: RobEntry): void {
-    const mnemonic = e.decoded.mnemonic;
-    if (isLoad(e.decoded) || STORES.has(mnemonic)) {
-      if (e.aluOut === null) {
-        throw new Error(`out-of-order: ${mnemonic} reaches MEM with no effective address latched`);
-      }
-      const addr = e.aluOut >>> 0;
-      if (isLoad(e.decoded)) {
-        const raw =
-          mnemonic === 'lb' || mnemonic === 'lbu'
-            ? this.memory.readByte(addr)
-            : mnemonic === 'lh' || mnemonic === 'lhu'
-              ? this.memory.readHalf(addr)
-              : this.memory.readWord(addr);
-        ctx.events.push({ type: 'mem-read', addr, value: raw, instr: e.instr });
-        e.value =
-          mnemonic === 'lb' ? (raw << 24) >> 24 : mnemonic === 'lh' ? (raw << 16) >> 16 : raw;
-        if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
-      } else {
-        if (e.storeData === null) {
-          throw new Error(`out-of-order: ${mnemonic} reaches MEM with no store datum latched`);
-        }
-        const value =
-          mnemonic === 'sb'
-            ? e.storeData & 0xff
-            : mnemonic === 'sh'
-              ? e.storeData & 0xffff
-              : e.storeData;
-        ctx.events.push({ type: 'mem-write', addr, value, instr: e.instr });
-        if (mnemonic === 'sb') this.memory.writeByte(addr, value);
-        else if (mnemonic === 'sh') this.memory.writeHalf(addr, value);
-        else this.memory.writeWord(addr, value);
-      }
-    }
+    // In-order: the load reads and the store writes right here at MEM — both through the shared
+    // primitives, so the read/sign-extend and mask/write idioms live in exactly one place each.
+    if (isLoad(e.decoded)) this.performLoad(e, ctx.events);
+    else if (STORES.has(e.decoded.mnemonic)) this.writeStoreToMemory(e, ctx.events);
     e.state = 'completed';
   }
 
   /**
-   * Step 1b's counterpart to {@link completeMemAccess}: a load reads memory and broadcasts,
-   * exactly as the in-order branch does. A store does NOT write here — {@link stageCommit} /
-   * {@link writeStoreToMemory} do, once the store is known to be right-path. This is the one
-   * place the two branches' behaviour genuinely diverges beyond "blocking vs non-blocking timing."
+   * Step 1b's counterpart to {@link completeMemAccess}: a load reads memory and broadcasts (through
+   * the shared {@link performLoad}, exactly as the in-order branch does). A store does NOT write
+   * here — {@link stageCommit} / {@link writeStoreToMemory} do, once the store is known to be
+   * right-path. That deferral is the one place the two branches' behaviour genuinely diverges
+   * beyond "blocking vs non-blocking timing."
    */
   private completeMemAccessOutOfOrder(
     ctx: CycleCtx,
@@ -795,22 +796,8 @@ export class OutOfOrderProcessor implements Processor {
     load: boolean,
     store: boolean,
   ): void {
-    if (load) {
-      if (e.aluOut === null) {
-        throw new Error(`out-of-order: ${e.decoded.mnemonic} reaches MEM with no address latched`);
-      }
-      const addr = e.aluOut >>> 0;
-      const mnemonic = e.decoded.mnemonic;
-      const raw =
-        mnemonic === 'lb' || mnemonic === 'lbu'
-          ? this.memory.readByte(addr)
-          : mnemonic === 'lh' || mnemonic === 'lhu'
-            ? this.memory.readHalf(addr)
-            : this.memory.readWord(addr);
-      ctx.events.push({ type: 'mem-read', addr, value: raw, instr: e.instr });
-      e.value = mnemonic === 'lb' ? (raw << 24) >> 24 : mnemonic === 'lh' ? (raw << 16) >> 16 : raw;
-      if (e.rd !== 0) this.pendingBroadcasts.push({ tag: e.tag, seq: e.seq, value: e.value });
-    } else if (!store) {
+    if (load) this.performLoad(e, ctx.events);
+    else if (!store) {
       throw new Error(`out-of-order: ${e.decoded.mnemonic} reached MEM as neither load nor store`);
     }
     e.state = 'completed';
