@@ -828,6 +828,18 @@ export class OutOfOrderProcessor implements Processor {
     return this.slowOpLatency >= 2 && d.mnemonic === 'sll';
   }
 
+  /**
+   * Does an in-flight slow FU op FREEZE during a blocking cache miss in the in-order branch? YES —
+   * the M3/M7 "occupant holds in EX during a MEM stall" semantics this branch mirrors (M9+M10 review
+   * finding 9). The pipeline family has no multi-cycle FU, so there is no external ground truth; this
+   * is the deliberate, documented choice. A `protected` seam ONLY so the parity test can restore the
+   * pre-fix "FU advances through the freeze" behaviour and show it diverges in timing; production
+   * never overrides it, and it is irrelevant to out-of-order mode (which never sets `ctx.memStall`).
+   */
+  protected fuFreezesDuringMemStall(): boolean {
+    return true;
+  }
+
   // -----------------------------------------------------------------------------------------
   // FU ADVANCE (M10). The ALU analogue of `stageMemAccess`'s miss service: count down every
   // `'executing'` slow op's remaining FU cycles, and when one reaches 0 run its `executeEntry`
@@ -835,9 +847,19 @@ export class OutOfOrderProcessor implements Processor {
   // `stageIssueExecute` — exactly like `stageMemAccess` — so a slow op set `'executing'` THIS cycle
   // is not counted down until NEXT cycle, giving it `slowOpLatency` full FU cycles. A no-op (nothing
   // is ever `'executing'`) unless `slowOpLatency >= 2`.
+  //
+  // Gated by `ctx.memStall`, exactly like `stageIssueExecute` (M9+M10 review finding 9). In the
+  // IN-ORDER branch a blocking cache miss freezes the whole front end (`ctx.memStall`), and the
+  // in-flight FU op freezes WITH it — the M3/M7 "occupant holds in EX during a MEM stall" semantics
+  // this branch mirrors, so a slow op does not secretly finish mid-freeze. This is a deliberate
+  // pedagogical CHOICE (the pipeline family has no multi-cycle FU, so there is no external ground
+  // truth), pinned by `cache × slow-op` parity below. It is a NO-OP for out-of-order mode, whose
+  // non-blocking LSU never sets `ctx.memStall`, so the FU keeps advancing around an independent
+  // miss exactly as the tier requires.
   // -----------------------------------------------------------------------------------------
 
   private stageFuAdvance(ctx: CycleCtx): void {
+    if (ctx.memStall && this.fuFreezesDuringMemStall()) return; // in-order only (memStall never set when this.outOfOrder)
     for (const e of this.rob.all()) {
       if (e.state !== 'executing') continue;
       e.fuCyclesRemaining -= 1;
