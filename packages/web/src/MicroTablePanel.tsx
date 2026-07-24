@@ -52,9 +52,15 @@ const mono = { fontFamily: MONO } as const;
 // HEIGHT every cycle and shoves the datapath below it up and down as the reader steps, which reads as
 // twitching. So each table RESERVES the tallest it ever gets over the whole recording (`runToEnd`
 // records it all up front, so this max is fixed for the run) and holds that height regardless of the
-// cursor's count. It reserves the max ACTUALLY SEEN, not `robCapacity`, so a program that never fills
-// the ROB does not leave a tall empty panel. No headless test can see a height (`renderToStaticMarkup`,
-// no jsdom), so this is a browser-verified fix, like the map's follow-readout reserve.
+// cursor's count. No headless test can see a height (`renderToStaticMarkup`, no jsdom), so this is a
+// browser-verified fix, like the map's follow-readout reserve.
+//
+// The ROB spine is reserved to its full `robCapacity`, not the peak occupancy actually seen: the
+// user wants the out-of-order structures panel to read as ALWAYS EXPANDED — a fully-present
+// structure at every cursor — rather than shrinking to a couple of rows for a program that never
+// fills the buffer. (This deliberately reverses the earlier "reserve max-seen so a small program
+// leaves no tall empty panel" call.) The waiting/rename tables stay peak-seen — their empty rows
+// would be pure whitespace, and the ROB's full height already gives the panel its expanded shape.
 
 /** A data row's pinned height, and a header row's — pinned so the reserve below is px-exact rather
  *  than a font-metric estimate that would drift a pixel and re-introduce a small jitter. */
@@ -72,7 +78,8 @@ function bareReserve(rows: number): number {
   return rows > 0 ? rows * MICRO_ROW_H : MICRO_ROW_H;
 }
 
-/** The peak occupancy of each table across the WHOLE recording — the heights to reserve. */
+/** The heights to reserve: the ROB at its full capacity (always-expanded), the waiting/rename
+ *  tables at their peak occupancy across the WHOLE recording. */
 function microReserves(recording: readonly CycleTrace[]): {
   rob: number;
   waiting: number;
@@ -84,7 +91,9 @@ function microReserves(recording: readonly CycleTrace[]): {
   for (const trace of recording) {
     const m = oooMicro(trace);
     if (m === null) continue;
-    rob = Math.max(rob, m.rob.length);
+    // Full capacity, not `m.rob.length` — the ROB table holds its whole depth so the panel stays
+    // expanded even when only a few entries are in flight.
+    rob = Math.max(rob, m.robCapacity);
     waiting = Math.max(waiting, m.rob.filter((e) => e.state === 'waiting').length);
     rename = Math.max(rename, m.rename.filter((s) => s.kind === 'pending').length);
   }
