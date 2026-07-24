@@ -22,8 +22,9 @@ why the findings are worth remembering, not the instances):
   and loads at overlapping-but-unequal addresses is already covered — but if you
   ever touch that gate, keep the interval check; a base-address compare reads
   stale memory only under a parked ROB head, invisible to the INV-8 differential
-  (which is timing-blind). See [[browser-is-the-only-net]] is NOT the net here —
-  `disambiguation-subword.test.ts` (a base-address-only mutation subclass) is.
+  (which is timing-blind). The net here is NOT the browser
+  ([[browser-is-the-only-net]]) — it is `disambiguation-subword.test.ts`, a
+  base-address-only mutation subclass that reads the stale byte.
 
 - **A new engine MODEL must land in the eslint `MODELS` constant.** The DAG deny
   lists in `eslint.config.js` now derive from one `MODELS` array (`...MODELS`
@@ -44,5 +45,5 @@ why the findings are worth remembering, not the instances):
   No external ground truth (the pipeline family has no multi-cycle FU) — the
   `fuFreezesDuringMemStall()` seam + parity test pin the choice.
 
-See [[project-overview]] for the milestone log and [[m9-m10-review-resolved]]'s
-source doc for the ranked findings.
+See [[project-overview]] for the milestone log, and
+`docs/reviews/m9-m10-review-findings.md` for the ranked findings.
