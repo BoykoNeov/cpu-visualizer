@@ -69,7 +69,9 @@ export function OutOfOrderDatapath(props: {
   followed?: string | null;
 }): React.JSX.Element {
   const { trace, tier, config, followed = null } = props;
-  const act = useMemo(() => activate(trace), [trace]);
+  // `followed` participates: on a double retire, `activate` attributes the single commit wire to the
+  // followed instruction (see its doc), so the memo must re-run when the followed id changes.
+  const act = useMemo(() => activate(trace, followed), [trace, followed]);
   const labels = showValueLabels(tier);
 
   const wires: WireVM[] = WIRES.filter((wire) => wireVisibleAt(wire, tier, config)).map((wire) => {

@@ -87,7 +87,7 @@ const NOBET: DatapathConfig = { predictTaken: false };
  *  (so loads miss and the money-shot reordering happens); a clean exit is appended so assembly
  *  always succeeds. These are litmus probes for the VIEW (INV-7 governs the example library the user
  *  runs, not a test's two-line probe). */
-function record(source: string, cfg: DatapathConfig): CycleTrace[] {
+function record(source: string, cfg: DatapathConfig, slowOpLatency?: number): CycleTrace[] {
   const result = loadSource(`${source}\n  li a7, 10\n  ecall\n`, () => new OutOfOrderProcessor(), {
     ...defaultConfig(),
     issueWidth: 2,
@@ -95,6 +95,7 @@ function record(source: string, cfg: DatapathConfig): CycleTrace[] {
     branchPrediction: cfg.predictTaken ? 'static-taken' : 'static-not-taken',
     cache: CACHE_LARGE,
     robSize: 16,
+    ...(slowOpLatency === undefined ? {} : { slowOpLatency }),
   });
   if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
   const { recorder } = result.loaded;
@@ -132,6 +133,30 @@ describe('activation folds micro (boxes) and events (flow) into one coherent fra
       if (micro.rob.some((e) => e.state === 'waiting'))
         expect(a.components.has('rs'), `rs@${t.cycle}`).toBe(true);
     }
+  });
+
+  it('lights the FU box while a slow op is `executing`, and the LSU while a load is `awaitingMem`', () => {
+    // M9+M10 review finding 2: a slow op sits `executing` for `slowOpLatency` cycles but its `alu-op`
+    // fires only at FU completion, so an event-only ALU box goes dark mid-op — the box must fold from
+    // OCCUPANCY. A slow `sll` next to a load exercises both states.
+    const traces = record('  addi x1, x0, 3\n  sll x2, x1, x1\n  addi x5, x0, 256\n  lw x6, 0(x5)', NOBET, 8); // prettier-ignore
+    let sawExecuting = false;
+    let sawAwaitingMem = false;
+    for (const t of traces) {
+      const micro = t.state.micro as { rob: { state: string }[] };
+      const a = activate(t);
+      if (micro.rob.some((e) => e.state === 'executing')) {
+        sawExecuting = true;
+        expect(a.components.has('alu'), `alu box dark while executing@${t.cycle}`).toBe(true);
+      }
+      if (micro.rob.some((e) => e.state === 'awaitingMem')) {
+        sawAwaitingMem = true;
+        expect(a.components.has('lsu'), `lsu box dark while awaitingMem@${t.cycle}`).toBe(true);
+      }
+    }
+    // Non-vacuity: the states must actually occur, or the assertions above never ran.
+    expect(sawExecuting, 'the slow op never entered executing — test is vacuous').toBe(true);
+    expect(sawAwaitingMem, 'no load ever sat awaitingMem — test is vacuous').toBe(true);
   });
 
   it('an `alu-op` result rides the CDB; a load ADDRESS goes to the LSU, not the bus', () => {
@@ -249,6 +274,40 @@ describe('the follow-ring rides the wires the followed instruction lights (INV-4
     expect(a.wires.get('cdb-rob')?.instr).toBe(id);
     // A different id is NOT attributed these wires, so following it would ring nothing here.
     expect(a.wires.get('lsu-cdb')?.instr).not.toBe(`${id}-not-a-real-id`);
+  });
+
+  it('attributes the commit wire to the FOLLOWED instruction on a double retire, not just the oldest', () => {
+    // M9+M10 review finding 4: the ROB commits up to issueWidth per cycle, but the single rob-regfile
+    // wire can carry one attribution. Find a cycle that retires TWO instructions, both of which write
+    // a register (so each has a distinct commit value to tell them apart).
+    const traces = record(REDUCE, BET);
+    const withRegWrite = (id: string, t: CycleTrace): boolean =>
+      t.events.some((e) => e.type === 'reg-write' && e.instr === id);
+    const doubleRetire = traces.find((t) => {
+      const retires = t.events.filter((e) => e.type === 'instr-retire');
+      return (
+        retires.length >= 2 &&
+        retires.every((e) => e.type === 'instr-retire' && withRegWrite(e.instr, t))
+      );
+    });
+    expect(doubleRetire, 'no cycle retired two register-writing instructions — test is vacuous').toBeDefined(); // prettier-ignore
+    const retires = doubleRetire!.events.filter((e) => e.type === 'instr-retire');
+    const older = retires[0]!.type === 'instr-retire' ? retires[0]!.instr : '';
+    const younger = retires[1]!.type === 'instr-retire' ? retires[1]!.instr : '';
+    const valueOf = (id: string): number => {
+      const rw = doubleRetire!.events.find((e) => e.type === 'reg-write' && e.instr === id);
+      return rw?.type === 'reg-write' ? rw.value : NaN;
+    };
+
+    // Following the YOUNGER sibling: the wire rings IT and shows ITS reg-write — the bug was that it
+    // stayed attributed to the older, so the diagram contradicted the followed instruction's table row.
+    const followingYounger = activate(doubleRetire!, younger);
+    expect(followingYounger.wires.get('rob-regfile')?.instr).toBe(younger);
+    expect(followingYounger.wires.get('rob-regfile')?.value).toBe(valueOf(younger));
+
+    // Following the OLDER sibling still works, and the default (no follow) keeps the oldest.
+    expect(activate(doubleRetire!, older).wires.get('rob-regfile')?.instr).toBe(older);
+    expect(activate(doubleRetire!).wires.get('rob-regfile')?.instr).toBe(older);
   });
 });
 

@@ -31,12 +31,16 @@
  * (`waiting → executing → completed`) is its position. So the box occupancy (ROB, RS) is folded from
  * `state.micro` — the SAME snapshot the step-6 tables read at this cursor (verified there, and the
  * OoO `micro` is the cursor's own state, not a cycle ahead like a latch) — while the FLOW wires are
- * lit from THIS cycle's `events`. Combining the two is coherent by construction because they are the
- * two halves of one frame: an `alu-op(id)` this cycle is exactly the entry that reads `executing`
- * this cycle; a `mem-read(id)` is exactly the load that reads `completed`; a `retire(id)` is the
- * head that has just LEFT the ROB (so its box is already gone — the commit wire draws the departing
- * instruction, which is coherent as "it has retired," not a contradiction). This pairing was dumped
- * and read on `array-sum` around the first miss before a line of geometry was written.
+ * lit from THIS cycle's `events`. The occupancy fold covers ALL five box states: `rob` (any entry),
+ * `rs` (`waiting`), `alu` (`executing`), `lsu` (`awaitingMem`). It must, because a box's occupancy
+ * and the flow event that touches it do NOT always coincide: a slow op sits `executing` for
+ * `slowOpLatency` cycles while its `alu-op` fires only once, at FU completion, so folding the ALU box
+ * from occupancy (not the event) is what keeps it lit through the multi-cycle op (M9+M10 review
+ * finding 2). Combining occupancy with flow is still coherent by construction: an `alu-op(id)` this
+ * cycle IS an entry that was `executing`; a `mem-read(id)` is a load that was `awaitingMem`; a
+ * `retire(id)` is the head that has just LEFT the ROB (so its box is already gone — the commit wire
+ * draws the departing instruction, coherent as "it has retired," not a contradiction). This pairing
+ * was dumped and read on `array-sum` around the first miss before a line of geometry was written.
  *
  * ## The Common Data Bus is TWO-PHASE, and drawn at the produce cycle
  *
@@ -276,13 +280,25 @@ function oooMicro(trace: CycleTrace): OutOfOrderMicro | null {
 }
 
 /**
- * Derive which datapath components/wires are active THIS cycle. Box occupancy (ROB, RS) folds from
- * `state.micro`; the flow wires light from this cycle's `events` (see the file docs on why combining
- * the two is coherent). Tier- and config-oblivious (INV-2): it always lights the full structure and
- * every value it knows; the view filters. Returns an empty activation for the pre-run / non-OoO
- * state.
+ * Derive which datapath components/wires are active THIS cycle. Box occupancy (ROB, RS, FU, LSU)
+ * folds from `state.micro`; the flow wires light from this cycle's `events` (see the file docs on why
+ * combining the two is coherent). Tier- and config-oblivious (INV-2): it always lights the full
+ * structure and every value it knows; the view filters. Returns an empty activation for the pre-run /
+ * non-OoO state.
+ *
+ * `followed` is the followed instruction's id (INV-4), or `null`. It affects exactly one wire: the
+ * ROB commits up to `issueWidth` instructions per cycle (`instr-retire` fires once per shifted head),
+ * but the single `rob-regfile` commit wire can carry only ONE instruction's attribution — so on a
+ * DOUBLE retire it draws the FOLLOWED instruction when it is one of this cycle's retires, and the
+ * oldest otherwise. Without this, following the younger sibling rings its table row but not the
+ * commit wire on the cycle it retires, and the wire's value label shows the OTHER instruction's
+ * reg-write — the diagram contradicting the table for the followed instruction (M9+M10 review
+ * finding 4).
  */
-export function activate(trace: CycleTrace | null): DatapathActivation {
+export function activate(
+  trace: CycleTrace | null,
+  followed: string | null = null,
+): DatapathActivation {
   if (!trace) return EMPTY;
   const micro = oooMicro(trace);
   if (micro === null) return EMPTY;
@@ -301,9 +317,16 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   };
 
   // --- Box occupancy from micro: the ROB holds every in-flight instruction; the RS is the waiting
-  // subset. These are STATE, drawn whenever occupied even if no wire touches them this cycle. ---
+  // subset; the FU pool holds every `executing` (slow-op) entry and the LSU every `awaitingMem`
+  // (load/store mid-access) one. These are STATE, drawn whenever occupied even if no wire touches
+  // them this cycle — which is exactly why the FU/LSU boxes must fold from OCCUPANCY, not from the
+  // `alu-op`/`mem-read` events: a slow op sits `executing` for `slowOpLatency` cycles but its
+  // `alu-op` fires only at FU completion, so an event-only ALU box would go dark for the multi-cycle
+  // op the `reservation-station-holds` lesson invites scrubbing to (M9+M10 review finding 2). ---
   if (micro.rob.length > 0) components.add('rob');
   if (micro.rob.some((e) => e.state === 'waiting')) components.add('rs');
+  if (micro.rob.some((e) => e.state === 'executing')) components.add('alu');
+  if (micro.rob.some((e) => e.state === 'awaitingMem')) components.add('lsu');
 
   // --- Front-end: instruction fetch (the oldest fetch supplies the pc address label) ---
   const fetches = trace.events.filter((e) => e.type === 'instr-fetch');
@@ -350,7 +373,15 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
 
   // --- Commit: the ROB head retires in order into the register file (its box has just left the ROB;
   // the wire draws the departing instruction, coherent as "it has retired"). ---
-  const retire = trace.events.find((e) => e.type === 'instr-retire');
+  // Up to `issueWidth` heads retire per cycle, but the pool's single commit wire attributes to one:
+  // the FOLLOWED retire when the followed instruction is retiring this cycle, else the oldest (first)
+  // — so following the younger of a double retire rings the wire and labels it with ITS reg-write.
+  const retires = trace.events.filter((e) => e.type === 'instr-retire');
+  const followedRetire =
+    followed === null
+      ? undefined
+      : retires.find((e) => e.type === 'instr-retire' && e.instr === followed);
+  const retire = followedRetire ?? retires[0];
   if (retire?.type === 'instr-retire') {
     const rw = trace.events.find((e) => e.type === 'reg-write' && e.instr === retire.instr);
     const value = rw?.type === 'reg-write' ? rw.value : undefined;
