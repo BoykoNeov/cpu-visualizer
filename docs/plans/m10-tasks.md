@@ -1,11 +1,12 @@
 # Milestone 10 — The out-of-order lesson track
 
-**Status: IN PROGRESS, 2026-07-23. Steps 0, 1, 2, 3, 4, 5, 7 DONE and pushed; step 6 (renaming) DROPPED
-with proof. The OoO track is FINAL at four lessons — `[work-slides-ahead, racing-ahead-of-the-miss,
+**Status: COMPLETE, 2026-07-24. ALL steps 0–8 done and pushed; step 6 (renaming) DROPPED with proof.
+The OoO track is FINAL at four lessons — `[work-slides-ahead, racing-ahead-of-the-miss,
 commit-in-order, reservation-station-holds]`. Step 7 (wire) needed NO code change — it was an audit that
 named the test pinning each acceptance item, and DECLINED a full-sequence teaching-order test on the
 cache track's own "a pin earns its place only if the prose lies when reordered" discriminator (see step
-7). Remaining: step 8 alone (the browser pass over the whole track).
+7). Step 8 (browser) drove the SHIPPED BUNDLE over the whole track — all 33 checks PASS, every screenshot
+coherent, one app-wide naming observation that is NOT an M10 defect (see step 8). MILESTONE DONE.
 Scope PINNED by the user (2026-07-23): "Both, sequenced" —
 first an ENGINE step wiring `slowOpLatency` (M9's decided-but-never-implemented "Option B"), THEN the
 fullest lesson track covering BOTH latency sources (the slow-op Tomasulo namesake AND the cache-miss
@@ -628,7 +629,39 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
       `index.json`), and pinning the track name + teaching order. Acceptance: `lessonSections` returns
       the new track with all its lessons resolved and none under `UNTRACKED_HEADING`; full suites green.
 
-- [ ] **8. Browser pass — the only net that sees this.** Drive the SHIPPED BUNDLE (`vite preview`,
+- [x] **8. Browser pass — the only net that sees this. DONE 2026-07-24 — ALL 33 CHECKS PASS, every
+      screenshot coherent, no M10 defect found.** Drove the SHIPPED BUNDLE (`npm run build` +
+      `vite preview --port 5461 --strictPort`, served title confirmed "CPU Visualizer") via CDP on a
+      random high port, targeting by URL with a throw and no fallback, killing only the driver's own
+      Chrome tree by PID. Rig: `M:/claud_projects/temp/m10-browser/eyeball.mjs` (adapted from the step-3
+      rig); screenshots there. Facts worth carrying forward, NOT re-derivable from the log: - **The picker shows "The out-of-order machine" track with its four lessons in teaching order**
+      (read off the OoO `<optgroup>` option order — the native popup isn't in the render tree). - **Every lesson opens on `model=out-of-order` with the OUT-OF-ORDER issue-order button pressed**
+      (`aria-pressed` scoped to the exact `out-of-order`/`in-order` button text — the M8 "first pressed
+      `.seg-btn`" trap dodged), and **RECORDS at its declared config**: the per-lesson total (scrub
+      max+1) reads the OoO value **59 / 62 / 59 / 53**, NEVER the in-order **71 / 111 / 71 / 86** — the
+      M8 "shell records the wrong trace, all green" trap ruled out live, including the RS lesson's
+      `slowOpLatency:8` ref-threading (53, not the latency-1 44). - **The `commit-in-order` anchor/prose gap handled as designed:** its steps anchor iteration-2+
+      (cursor **16 / 22 / 48**) while the detailed prose narrates iteration-1 (cycle 9/17). Matched the
+      cursor against the KNOWN anchor cycle, NOT a number scraped from the prose — no false defect. - **Narration read from the VISIBLE `<p>` only.** The panel stacks every step's `<p>` at
+      `gridArea 1/1` with only the active one `visibility:visible` (App.tsx:800); a body-text substring
+      search would match a hidden ghost. Scoped to the visible `<p>` in the all-`<p>` grid and confirmed
+      each step shows THIS step's detailed-tier text. - **MicroTablePanel (ROB + reservation stations + rename map) rendered at every step**, and the
+      SCREENSHOTS were read, not just the DOM (the 9/10-defects rule): the flagship shows ROB#4 `lw`
+      **executing** (stalled load, HEAD) + ROB#5 `add` **waiting** on `⤺ROB#4` + ROB#7 `addi`
+      **completed = 0x4** (counter 5→4); `commit-in-order` shows the **completed-but-not-retired pile**
+      (ROB#9–#15 all `completed`, head committing) — the lesson's whole point, live; the RS lesson shows
+      `sll` **executing** holding its FU 8 cycles while the counter completes around it. - **Toggle discriminator confirmed live:** flip the flagship to in-order → **59→71**, racing →
+      **62→111**, same program (the lesson detaches to "Not started" because the flip re-records and
+      resets the cursor — expected, not a defect). - **⚠ ONE observation, NOT a defect, NOT fixed (correctly out of scope):** narration quotes ABI
+      register names (`lw t2, 0(t0)`, `sll t3, t5, t6`, `addi t1, t1, -1`) while the disassembler panels
+      (transport / pipeline map / ROB) render x-names (`lw x7, 0(x5)`, `sll x28, x30, x31`, `addi x6,
+    x6, -1`). This is the **established app-wide convention** — confirmed the shipped M1–M8 lessons
+      (`forwarding-bubble`, `cache-spatial`, `two-at-once`) narrate the exact same way (`add a0`, `addi
+    t0`, `lw t2`). It is the SAME register under two names (t2 IS x7), NOT the auipc/lui wrong-mnemonic
+      class the browser memory warns about, so it does not "lie" and rewording only the four M10 lessons
+      would make them INCONSISTENT with every other track. Changing it is a global product decision
+      (teach the disassembler ABI names, or narrate x-names everywhere), explicitly out of M10's scope.
+      ORIGINAL PLAN TEXT: Drive the SHIPPED BUNDLE (`vite preview`,
       `--strictPort`, identified by served `<title>`, CDP on a random high debug port, target by URL
       with a throw and no fallback — the [[browser-is-the-only-net]] recipe; do NOT kill Chrome by port,
       identify by title). Rig under `M:\claud_projects\temp\m10-browser\`. Verify: the picker shows the
@@ -643,9 +676,12 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] The picker shows a new OoO track; each of its lessons loads `model: out-of-order` at
+- [x] The picker shows a new OoO track; each of its lessons loads `model: out-of-order` at
       `issueWidth: 1` with `outOfOrderIssue: true`, and plays through with narration on the correct
-      events (INV-6). Confirmed in the browser (step 6).
+      events (INV-6). **CONFIRMED in the browser (step 8): the "The out-of-order machine" track shows all
+      four lessons in teaching order; each opens on `out-of-order` with the OoO issue-order button
+      pressed and records at its declared config; every step fires its detailed narration at its known
+      anchor cycle.**
 - [x] The flagship lesson's cycle-count / IPC counterfactual (in-order vs out-of-order) matches the
       engine at BOTH toggle positions, pinned by a by-name narration oracle — NOT the anchoring sweep,
       which is toggle-blind by construction (the headline). **DONE (step 2's oracle, `lessons.test.ts`
@@ -665,8 +701,11 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
       **TWO were added — `slow-op-loop.s` (step 3) and `strided-sum.s` (step 4)** — each with the full
       ripple (conformance `RESULT_ORACLES`, pipeline/superscalar/out-of-order timing tables, the
       superscalar pairing headline), every cell hand-derived and first-run green.
-- [ ] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean (any
-      prose-vs-picture finding fixed in-scope by rewording).
+- [x] All suites green; `npm run lint`, `tsc -b`, `npm run build` green. Browser pass clean (any
+      prose-vs-picture finding fixed in-scope by rewording). **DONE: 4036 tests + typecheck/lint/
+      build/format:check green (unchanged — step 8 added no repo code); browser pass all 33 checks PASS,
+      screenshots coherent. The one naming finding (ABI vs x-names) was correctly NOT reworded — it is
+      an app-wide convention, not an M10-introduced tension (step 8).**
 
 ## How this milestone can lie to itself
 
