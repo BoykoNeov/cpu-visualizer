@@ -123,8 +123,9 @@ export interface ProcessorConfig {
    * How many concurrent cache misses the out-of-order model may have in flight before a further
    * miss must queue for a free slot — the structural cap on "miss-under-miss" memory-level
    * parallelism. Deliberately deferred past step 0 (its only consumer, the non-blocking LSU, did
-   * not exist yet); absent defaults to 2, confirmed against the corpus (`array-sum.s`'s two
-   * consecutive independent loads are the miss-under-miss pair a default of 2 unlocks). Optional,
+   * not exist yet); absent defaults to 2, confirmed against the corpus (`strided-sum.s`'s
+   * miss-every-iteration stream is the pair a default of 2 overlaps — the second miss begins
+   * under the first; `array-sum.s`'s unit-stride walk never overlaps). Optional,
    * same precedent as {@link outOfOrderIssue}; only the out-of-order model reads it.
    */
   numMshrs?: number;
