@@ -14,14 +14,16 @@
  *     was the only thing that could, and it is still the sharpest available proof of "derived purely
  *     from the trace": those cases construct no engine, no recorder, and no program at all — just
  *     trace literals.
- *   - **Against the real superscalar** (M7 step 6) — the LANE axis stopped being hypothetical at
- *     M7 step 2b, so the last describe cashes it: a genuine width-2 recording is folded and shown to
- *     produce shared columns, with width 1 as the control. The hand-built lane case above is kept —
- *     it proves the FOLD, this proves the ENGINE AND THE FOLD MEET. The deep stage set is still
- *     unemitted by anything we ship and remains hand-built only.
+ *   - **Against the real superscalar** (M7 step 6) and **the real deep pipeline** (M11 step 4) — the
+ *     two axes M3 built `location` to absorb, each cashed once its engine existed. The LANE axis
+ *     stopped being hypothetical at M7 step 2b; the DEPTH axis stopped at M11 step 1. Both hand-built
+ *     cases above are kept — they prove the FOLD, these prove the ENGINE AND THE FOLD MEET — and each
+ *     real-engine describe carries a CONTROL (width 1, and the 5-stage pipeline) so it cannot pass
+ *     against an engine that produced the shape everywhere.
  */
 
 import { decode } from '@cpu-viz/isa';
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import {
@@ -31,6 +33,7 @@ import {
   type CycleTrace,
   type InstructionInstance,
   type MachineState,
+  type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
@@ -449,13 +452,14 @@ function cycle(
  * that could only run against our own engine would prove the map parametric in precisely the cases
  * where it already is.
  *
- * **Half of this is no longer speculative, and saying so is the point (M7 step 6).** When M3 wrote
- * these, the header's "no engine we ship emits a lane" was simply true. The superscalar has emitted
- * `"EX.0"`/`"EX.1"` since M7 step 2b, so the LANE case below is now also reachable for real — and it
- * is cashed against the actual engine in the last describe of this file. A comment asserting a case
- * is unreachable is how the case quietly stops being checked, which is the failure shape this
- * milestone keeps flagging; the deeper stage set (`"IF1"`) is still genuinely unemitted, and stays
- * hand-built for the original reason.
+ * **NEITHER half is speculative any more, and saying so is the point (M7 step 6, then M11 step 4).**
+ * When M3 wrote these, the header's "no engine we ship emits a lane, and none emits `IF1`" was simply
+ * true of both. The superscalar has emitted `"EX.0"`/`"EX.1"` since M7 step 2b, and the deep pipeline
+ * has emitted `"IF1"`/`"EX2"` since M11 step 1 — so BOTH cases below are now reachable for real, and
+ * both are cashed against their actual engines in the last two describes of this file. A comment
+ * asserting a case is unreachable is how the case quietly stops being checked, which is the failure
+ * shape this milestone keeps flagging; these stay because they prove the fold with no engine at all,
+ * which is still the sharpest available statement of "derived purely from the trace".
  */
 describe('parametric from day one — no engine, just traces', () => {
   /**
@@ -711,5 +715,191 @@ describe('two rows share a column — the real superscalar, not a hand-built tra
     expect(wide.families.every((f) => ['IF', 'ID', 'EX', 'MEM', 'WB'].includes(f))).toBe(true);
     // And the slotted spelling really is reaching the map — `stageFamily` is folding something.
     expect(wide.stages.some((s) => s.includes('.1'))).toBe(true);
+  });
+});
+
+/**
+ * **The hand-built DEPTH claim, CASHED against a real engine (M11 step 4)** — the lane axis's story
+ * one milestone later, and the milestone's stated job: `pipeline-map.test.ts` has carried the
+ * fixture `['IF1','IF2','ID','EX1','EX2','MEM','WB']` since M3 step 7 while its own header said the
+ * deep stage set was *"still genuinely unemitted by anything we ship"*. **This describe is what makes
+ * that sentence false**, and `pipeline-map.ts` is UNCHANGED — the falsifiable criterion M11 pays out
+ * here rather than merely asserting.
+ *
+ * Deliberately built as a CONTRAST, the M7 step-6 shape: the same corpus program through the same
+ * `loadSource` path, on `DeepPipelineProcessor` and on `PipelineProcessor`. The 5-stage is the
+ * control. A test that only looked at the deep model would pass just as well against a map that
+ * hard-coded seven columns, and — more to the point — could not state the thing the milestone is
+ * FOR, which is a difference between two machines.
+ *
+ * `cache: null` is written explicitly for the same reason step 2's differential does: the deep model
+ * REFUSES a non-null cache by name, so the field is load-bearing in the negative and a future change
+ * to `defaultConfig()` should redden an assertion rather than throw an Error that reads as a broken
+ * suite.
+ */
+describe('seven stages, five hues — the real deep pipeline, not a hand-built trace (M11 step 4)', () => {
+  const sourceOf = (name: string): string => {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === name);
+    if (!program) throw new Error(`no corpus program ${name}`);
+    return program.source;
+  };
+
+  /** A corpus program recorded through the shell's own load path, on either depth of pipeline. */
+  const recordOn = (
+    make: () => PipelineProcessor | DeepPipelineProcessor,
+    name: string,
+    config: Partial<ProcessorConfig> = {},
+  ): readonly CycleTrace[] => {
+    const result = loadSource(sourceOf(name), make, {
+      ...defaultConfig(),
+      cache: null,
+      forwarding: true,
+      ...config,
+    });
+    if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded;
+  };
+
+  const deep = (name: string, config: Partial<ProcessorConfig> = {}): PipelineMap =>
+    buildPipelineMap(recordOn(() => new DeepPipelineProcessor(), name, config));
+  const five = (name: string, config: Partial<ProcessorConfig> = {}): PipelineMap =>
+    buildPipelineMap(recordOn(() => new PipelineProcessor(), name, config));
+
+  it('folds a real recording to seven stages and five families — the fixture, emitted', () => {
+    const recorded = recordOn(() => new DeepPipelineProcessor(), 'sum-loop');
+    const map = buildPipelineMap(recorded);
+
+    // ORDERED, not a set: first-seen order is stage order here (the oldest instruction is seen in
+    // IF1 before anything reaches IF2), so this catches a latch wired out of sequence that a set
+    // comparison would pass. And it is the hand-built fixture above, character for character.
+    expect(map.stages).toEqual(['IF1', 'IF2', 'ID', 'EX1', 'EX2', 'MEM', 'WB']);
+    // Seven stages, FIVE hues. `IF1`/`IF2` fold to one family and `EX1`/`EX2` to another, which is
+    // the whole answer to "more stages than there are phase hues": never invent a colour, colour by
+    // family and let the cell text carry the exact stage.
+    expect(map.families).toEqual(['IF', 'ID', 'EX', 'MEM', 'WB']);
+    // The gate that decides whether the shell draws a map at all agrees. `hasOverlap` reads the
+    // RECORDING, not the fold — it is the pre-fold gate, which is why it is passed `recorded`.
+    expect(hasOverlap(recorded)).toBe(true);
+
+    // The control, and the sharpest form of it: the two machines' stage sets differ while their
+    // family sets are IDENTICAL. That is the encoding rule stated as a difference — depth is told
+    // apart by cell TEXT, never by hue, exactly as lanes are told apart by row.
+    const control = five('sum-loop');
+    expect(control.stages).toEqual(['IF', 'ID', 'EX', 'MEM', 'WB']);
+    expect(map.families).toEqual(control.families);
+  });
+
+  /**
+   * **Seven in flight — and the honest negative beside it.** Depth means the machine CAN hold seven,
+   * not that it does: occupancy is set by the program's hazards, not by the stage count.
+   *
+   * Measured across the corpus rather than assumed, because the reflex claim ("deeper ⇒ more in
+   * flight") is FALSE for two of the eleven programs. `byte-loads` is a chain of load-use pairs and
+   * `paired-branches` is mostly flushes; both hold exactly five on BOTH machines, so the deep pipe's
+   * two extra stages buy nothing there. Asserting the inequality corpus-wide would have been a rule
+   * in the wrong direction — the same trap M11 step 3 recorded when the 5-stage's "casualties ARE
+   * the penalty" identity failed to port.
+   */
+  it('really does hold seven at once — on the programs whose hazards let it', () => {
+    // The claim: a genuine seven-in-flight cycle, two more than the 5-stage can hold at all.
+    expect(deep('array-sum').maxInFlight).toBe(7);
+    expect(five('array-sum').maxInFlight).toBe(5);
+
+    // The negative that keeps it from reading as a rule. Same two machines, same load path.
+    for (const name of ['byte-loads', 'paired-branches']) {
+      expect(deep(name).maxInFlight, `${name}: depth buys no occupancy here`).toBe(5);
+      expect(five(name).maxInFlight).toBe(5);
+    }
+
+    // No corpus program ever exceeds the stage count on either machine — one instruction per stage
+    // is this model's definition, and a row that shared a column with another at the same stage
+    // would mean a lane had appeared where there is none.
+    for (const program of EXAMPLE_PROGRAMS) {
+      expect(deep(program.name).maxInFlight, program.name).toBeLessThanOrEqual(7);
+      expect(five(program.name).maxInFlight, program.name).toBeLessThanOrEqual(5);
+    }
+  });
+
+  /**
+   * **The flagship comparison, as a SHAPE** (M3's `walkAt` framing), and the headless half of the
+   * milestone's acceptance criterion 2. `add.s`'s third instruction depends on its second at
+   * distance 1. The 5-stage forwards it for free — that was M3's lesson. Here the producer's result
+   * does not exist until the end of EX2 while the consumer needs it at the start of EX1, so
+   * forwarding **stops being enough** and the bubble M3 made vanish comes back.
+   *
+   * Hand-derived before it was run, from the pinned semantics and not from the plan's prose. The
+   * repeated cell is **`ID`**, not `EX1`: the interlock lives in ID and re-presents its occupant
+   * onto the latch it arrived on (`stall.stage: 'ID'`), so the consumer waits where it was decoded
+   * and reaches each execute stage exactly once.
+   *
+   * ```
+   *  cycle:        0    1    2    3    4    5    6    7    8    9
+   *  addi x1     IF1  IF2   ID  EX1  EX2  MEM   WB
+   *  addi x2          IF1  IF2   ID  EX1  EX2  MEM   WB
+   *  add  x5               IF1  IF2   ID   ID  EX1  EX2  MEM   WB
+   * ```
+   */
+  it('shows the bubble forwarding can no longer remove — the same pair, one model over', () => {
+    const CONSUMER_PC = 8; // `add x5, x1, x2`, dependent on the `addi x2` immediately above it
+
+    const walkOn = (map: PipelineMap): string[] => {
+      const row = map.rows.find((r) => r.pc === CONSUMER_PC);
+      if (!row) throw new Error(`no row at pc ${CONSUMER_PC}`);
+      return row.cells.map((c) => c.location);
+    };
+
+    // The 5-stage, forwarding ON: no repeat at all. This is the control, and it is M3's result.
+    expect(walkOn(five('add'))).toEqual(['IF', 'ID', 'EX', 'MEM', 'WB']);
+    // The deep pipeline, the SAME program at the SAME forwarding=true: a repeated ID cell.
+    expect(walkOn(deep('add'))).toEqual(['IF1', 'IF2', 'ID', 'ID', 'EX1', 'EX2', 'MEM', 'WB']);
+
+    // ...and the cost in cycles, which is the same fact counted rather than drawn: 3 + 4 + 0 on the
+    // 5-stage, 3 + 6 + 1 on the deep one. Two of the three extra cycles are the drain constant; the
+    // THIRD is the bubble, and it is the one that would not exist on a 5-stage wearing seven labels.
+    expect(five('add').cycles).toBe(7);
+    expect(deep('add').cycles).toBe(10);
+  });
+
+  /**
+   * **Every stage a `flush` names must resolve to a victim the map actually records.**
+   *
+   * `buildPipelineMap` resolves victims with a singular `trace.instructions.find((i) => i.location
+   * === stage)`, so a flush naming a stage nobody occupies returns `undefined` and the victim is
+   * silently unrecorded. That would not be a map bug — it is the signal that the ENGINE's
+   * `flush.stages` payload over-reports, and it is exactly where "the map needs no change" could be
+   * quietly falsified.
+   *
+   * **It guards the common path, not a corner.** The 5-stage filters casualties with two explicit
+   * null checks; the deep engine needs FOUR, and under prediction=ON two of those four slots
+   * genuinely ARE bubbles on every correctly-bet branch (M11 step 3's flush-shape census found five
+   * distinct payloads, two of them non-contiguous). An engine that pushed stage names
+   * unconditionally would over-report on the most frequent case in the corpus.
+   *
+   * `timing.test.ts` owns the ENGINE side of this (every named stage really has an occupant that
+   * cycle). This is the MAP side, and it is stated so it can actually fail: the number of stage
+   * names the recording flushes must equal the number of rows the map marks as killed. A per-stage
+   * `find` that quietly returned `undefined` is invisible to any weaker phrasing.
+   */
+  it.each([
+    ['forwarding on, no prediction', { forwarding: true }],
+    ['forwarding off, no prediction', { forwarding: false }],
+    ['forwarding on, static-taken', { forwarding: true, branchPrediction: 'static-taken' }],
+    ['forwarding off, static-taken', { forwarding: false, branchPrediction: 'static-taken' }],
+  ] as const)('records a victim for every stage a flush names [%s]', (_label, config) => {
+    let totalFlushed = 0;
+    for (const program of EXAMPLE_PROGRAMS) {
+      const recorded = recordOn(() => new DeepPipelineProcessor(), program.name, config);
+      const named = recorded
+        .flatMap((t) => t.events)
+        .filter((e) => e.type === 'flush')
+        .flatMap((e) => (e.type === 'flush' ? e.stages : []));
+      const killed = buildPipelineMap(recorded).rows.filter((r) => r.killedBy !== null);
+      expect(killed.length, `${program.name}: victims recorded vs stages named`).toBe(named.length);
+      totalFlushed += named.length;
+    }
+    // The corpus really does flush, in every one of the four positions — otherwise the sweep above
+    // would be four green vacuous passes.
+    expect(totalFlushed).toBeGreaterThan(0);
   });
 });

@@ -27,6 +27,12 @@ export default defineConfig({
       // have quietly shown a picture that no longer matched the code. The comment above already
       // claimed this list mirrors vitest.config.ts; now it does.
       '@cpu-viz/engine-pipeline': pkg('../engine/pipeline/src/index.ts'),
+      // M11 step 4, landed WITH the tsconfig `paths` entry and the package.json dependency rather
+      // than after them: the three mean different things (bundler resolution, typecheck resolution,
+      // and the declared workspace edge) and are checked by different gates, so splitting them is
+      // how one gets forgotten — which is exactly what the note above records happening at M7.
+      // This is the web app knowing the model EXISTS; the picker row is step 5 and is not here.
+      '@cpu-viz/engine-deep-pipeline': pkg('../engine/deep-pipeline/src/index.ts'),
       '@cpu-viz/engine-superscalar': pkg('../engine/superscalar/src/index.ts'),
       '@cpu-viz/engine-out-of-order': pkg('../engine/out-of-order/src/index.ts'),
     },
