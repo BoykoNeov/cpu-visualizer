@@ -617,15 +617,61 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         **seven rows occupied in one cycle column**. Cold dev-server first paint is ~18s, so the
         readiness poll needs a minute, not ten seconds.
 
+- [x] **6a. THE FAMILY'S FREEZE SEMANTICS WERE WRONG — fix first.** ✅ DONE 2026-07-27. Not a planned
+      step: step 6's probe found a **correctness bug in shipped `engine/pipeline` (M6) and
+      `engine/superscalar` (M7)**. A miss froze the execute stage BEFORE it captured its forwarded
+      operands; the producer in MEM/WB retired during the freeze and its latch drained, so on release
+      the occupant executed on its stale PRE-forwarding register read. **A cache — documented
+      repo-wide as a timing shadow that "holds tags, never values" — changed the ANSWER.** Observed:
+      a wrong register value (`x10 = −1` for `2`), a wrong load address with the wrong line evicted,
+      and a non-terminating program. Unreachable by the corpus, trivially reachable from the sandbox.
+      Full write-up, repro and blast radius: `docs/reviews/m11-miss-freeze-forward-loss.md`.
+
+      **Why this blocked step 6 rather than sitting beside it:** with wrong freeze semantics the step
+      could neither ship (it would ship the same hole) nor be dropped with proof (the proof would
+      rest on a broken baseline). **User scoped it "fix the family first", 2026-07-27.**
+
+      What landed, and the bits later steps should not re-derive:
+      - The freeze holds the **ADVANCE, not the WORK**: EX resolves its operands and latches them
+        back onto `a`/`b`, so the release cycle's own `resolveOperand` finds no producer and returns
+        exactly those. **No new latch field**, so nothing in the trace or recorder shape moves.
+      - **`ctx.memStallStarted` (capture on the DETECTION cycle only) is SEMANTIC, not an
+        optimization** — the one thing the first spike got wrong. The occupant must execute on the
+        values it would have seen had the miss never happened, and a later frozen cycle reads a
+        *draining* source set. It also stops the superscalar's deliberately-frozen pair-mate in
+        EX/MEM from re-matching and re-emitting a `forward` every frozen cycle.
+      - **The broken ALIGNMENT is width-dependent, so each net SWEEPS the consumer distance.**
+        `pipeline` and `superscalar` w=1 break at k=0; **w=2 is CLEAN at k=0** and breaks at k=1/k=2
+        — a single-alignment test would have passed against a fully broken machine.
+      - `out-of-order` was never affected (a ROB entry HOLDS its operand values, so there is no
+        forwarding window a freeze can close) and now pins that as a property, with a miss-penalty
+        assertion so the green is not vacuous.
+      - Both nets were verified to FAIL without their fix (`git stash` the engine, run, pop).
+      - **Zero churn on the pre-existing 4265 tests** — no instruction's advance moves, so every
+        pinned `TIMING` table, lesson anchor and recorder assertion stands. Repo **4265 → 4287**.
+      - **METHOD, and the reason this was nearly missed:** the probe's 132 corpus cells were
+        IDENTICAL on cycles, event multiset, architectural state and cache tokens. The bug surfaced
+        only under five hand-built ADVERSARIAL programs — and on one of them **the cycle count
+        matched exactly while two `forward` events vanished.** The identity
+        `cycles_cache = cycles_nocache + misses × missPenalty` held in EVERY cell, including the
+        broken ones. **Checking cycles alone would have declared the cache mechanical and been
+        wrong.** Any re-verification keeps the adversarial-plus-multiset shape.
+
 - [ ] **6. Cache on the deep pipeline (the third knob) — or DROPPED WITH PROOF.** M6's
       miss-freeze meets a machine with two execute stages: `missCyclesRemaining` freezes
       IF/ID/EX, and which of IF1/IF2/EX1/EX2 freeze — and whether an in-flight EX2 completes
-      — is a CHOICE with no external ground truth, exactly like M9 finding F9's
-      `fuFreezesDuringMemStall()` seam. Pin the choice with a named seam + parity test rather
-      than letting it be implicit. If the dump shows it is purely mechanical, drop it with
-      proof and say so (the M10 step-6 precedent).
+      — was framed here as a CHOICE with no external ground truth, exactly like M9 finding F9's
+      `fuFreezesDuringMemStall()` seam. **STEP 6a PROVED THAT FRAMING WRONG, and the correction
+      is the useful part: freezing a stage that has not yet captured its forwarded operands is
+      not a choice, it is INCORRECT — and the golden reference is exactly the external ground
+      truth this paragraph said did not exist.** So the seam is real but its answer is FORCED,
+      and part of it is already decided: **EX1 must capture on the detection cycle, with the
+      storage on the held `idEx1`** (it cannot use `ex1Ex2` — EX2's own frozen occupant holds
+      that latch). What is left genuinely open is the rest: is the cache otherwise a purely
+      additive `+M` term on this machine, or does depth move something?
       Acceptance: the fwd × predict × cache matrix green with hand-derived cells, or a
-      written drop with the dump that justifies it.
+      written drop with the dump that justifies it — **and the dump must be the event multiset
+      under adversarial programs, never cycles alone** (step 6a's method finding).
 
 - [ ] **7. Bespoke datapath (SHEDDABLE).** A `datapath-deep-pipeline.ts` geometry+activation
       module (pure, tested) + view wrapper + render smoke test + browser eyeball, then flip
