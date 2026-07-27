@@ -2,8 +2,9 @@
 
 **Status: NOT STARTED, 2026-07-27. Nothing built. Scope pinned by the user this session
 (deep pipeline ALONE — the wider superscalar is explicitly NOT in this milestone, see
-"Why this milestone"). The stage split and the branch-resolve point are SEEDED
-recommendations in the decisions table, not yet pinned.**
+"Why this milestone"). ALL decisions are now PINNED (2026-07-27) — the stage split is
+Option A, the ALU is uniformly two cycles, and every control transfer resolves at the end
+of EX2. The three that gate code are settled, so steps 0–3 are unblocked.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap) — with the honest caveat
 that **this milestone is past the end of that roadmap**. Tiers 1–5 are complete (M1–M10);
@@ -51,14 +52,20 @@ misprediction costs double.
 
 This is the model's soul, because the stage split IS the pedagogy. Options, layered:
 
-**Option A (recommended) — `IF1 IF2 ID EX1 EX2 MEM WB`.** Fetch takes two cycles; the ALU is
-pipelined into two halves; memory stays one stage.
+**Option A (PINNED 2026-07-27) — `IF1 IF2 ID EX1 EX2 MEM WB`.** Fetch takes two cycles; the
+ALU is pipelined into two halves; memory stays one stage.
 
-- Buys **both** coefficient growths that make a deep pipeline a deep pipeline:
-  - misprediction penalty **2 → 4** (a deeper front end to flush) — **but 4 assumes the
-    branch resolves at EX2; resolve-at-EX1 gives 3. That decision is still open, so treat
-    every figure in this section as the seeded expectation step 3 must confirm from the
-    dump, not as a derived result.**
+- Buys **all** the coefficient growths that make a deep pipeline a deep pipeline:
+  - misprediction penalty **2 → 4** — four casualties (EX1, ID, IF2, IF1), which follows
+    from the pinned resolve-at-EX2. **The TOTAL is 4 under either prediction setting, but
+    it does not arrive as one event when prediction is ON — see step 3.** Treat every
+    figure in this section as the seeded expectation step 3 must confirm from the dump.
+  - **a correctly predicted taken branch costs 2, not 1.** The bet is placed in ID
+    (`pipeline/src/processor.ts:1147`), and in a 7-stage an ID bet kills IF2 _and_ IF1. The
+    5-stage's single casualty — "the 1 in _a correctly predicted taken branch costs 1, not
+    0_" — becomes two. **Depth taxes you even when the prediction is right**, and that is a
+    teaching line, not a wart. (Making it cheap again means a predictor in IF1 — a BTB /
+    next-line fetch — which is new mechanism and NOT in this milestone.)
   - load-use penalty **1 → 2** bubbles, and — the sharpest one —
   - **ALU→ALU with forwarding ON goes 0 → 1 bubble.** In the 5-stage, forwarding makes
     back-to-back dependents free. Here it cannot: the producer's result is not finished
@@ -84,7 +91,7 @@ already pinned: `future-microarchitectures.md` says _"Do NOT generalize step-1 m
 internals. `PipelineMicro` stays a concrete four-latch shape; forwarding paths stay
 enumerated. A deeper pipeline is a future sibling package, not a retrofit."_ Honoured.
 
-**Recommendation: Option A.** The scope lever the reviewer signs off on: **the MVP honors
+**Pinned: Option A.** The scope lever the reviewer signs off on: **the MVP honors
 forwarding and prediction only, with no cache** (steps 1–5); **cache is step 6** (droppable
 with proof); **the bespoke datapath is step 7** (sheddable, the M9 precedent where the
 sheddable half never had to be shed).
@@ -133,6 +140,21 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       inert). Forwarding paths stay
       ENUMERATED, not generalized. Stable ids (INV-4), `location` emitted as the bare stage
       strings.
+
+      Three consequences of the pinned "EX2 is real, uniformly two cycles" that this step
+      must implement deliberately rather than discover:
+      - **The forwarding paths become `EX2/MEM → EX1` and `MEM/WB → EX1`, enumerated.**
+        Operands are consumed at the start of EX1; nothing forwards INTO EX2. That single
+        fact is what produces the ALU→ALU bubble.
+      - **The interlock watches TWO execute stages.** Today it checks the instruction in
+        EX; here a load sitting in EX2 still has no data, so the stall condition is
+        "producer in EX1 **or** EX2". Two explicit checks — not a loop over "any execute
+        stage", which is precisely the generalization `future-microarchitectures.md` pins
+        against.
+      - **The two-cycle EX is UNIFORM across all ALU ops.** Non-uniform execute is a
+        variable-latency machine — a much bigger animal that starts colliding with M9's
+        `slowOpLatency`. The whole timing matrix rests on uniformity, so it is written here
+        rather than assumed.
       Acceptance: hand-derived per-cycle walks for a RAW pair, a load-use pair and a taken
       branch pass as unit tests; `capabilities` exported and matching the shipped constant
       shape; **the `location`s emitted on a real program equal
@@ -156,18 +178,29 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       machine's, not the 5-stage's**. Dump from the engine, hand-derive independently,
       cross-check the two.
 
-      **PREREQUISITE, and the plan's own trap: the resolve point and the EX2-is-a-real-ALU
-      question are still `_(open)_` in the decisions table, and every coefficient below
-      depends on them.** Resolve-at-EX1 gives a misprediction penalty of 3; resolve-at-EX2
-      gives 4. **Pin both decisions BEFORE writing the closed form**, and derive the
-      misprediction penalty from the dumped **`flush.stages`** payload rather than by
-      counting stages ahead of EX — whether EX1's occupant is a real casualty follows from
-      the EX2 decision, not from the diagram. Likewise the ALU→ALU 0→1 claim follows from
-      "operand needed at start of EX1, result ready at end of EX2", which is an ASSUMPTION
-      about where the forwarding path lands, not yet a fact.
+      **The prerequisite decisions are PINNED (2026-07-27): resolve at the end of EX2, and
+      EX2 is a real half-ALU with a uniformly two-cycle execute.** Every coefficient below
+      follows from those two and from nothing else. Derive the misprediction penalty from
+      the dumped **`flush.stages`** payload rather than by counting stages ahead of EX, and
+      derive the ALU→ALU 0→1 from "operand needed at start of EX1, result ready at end of
+      EX2" — the enumerated forwarding path step 1 wires, not the diagram.
+
+      **The trap in that payload — expect it, or you will read it as a bug.** The
+      misprediction TOTAL is 4 either way, but its SHAPE depends on prediction:
+      - **prediction OFF:** the branch reaches EX2 and kills EX1 + ID + IF2 + IF1 — **one
+        flush event, `stages` of width 4.**
+      - **prediction ON, taken branch:** ID bets at cycle _t_ and kills IF2 + IF1 (2). By
+        the time the branch reaches EX2 at _t+2_, EX1 and ID hold **bubbles left by that
+        earlier flush** — there is nobody there to kill — so the correction kills IF2 + IF1
+        again. **Two flush events of width 2**, totalling the same 4.
+
+      So the total is the robust number for the closed form; `flush.stages` widths are
+      config-dependent and must be read per-setting. This is also why step 4's occupancy
+      assertion is load-bearing rather than paranoid — see there.
 
       The numbers printed elsewhere in this plan (ALU→ALU forwarding-ON 0→1, load-use 1→2,
-      forwarding-OFF RAW 2→3, misprediction 2→4) are the seeded EXPECTATION and nothing more.
+      forwarding-OFF RAW 2→3, misprediction 2→4, correctly-predicted-taken 1→2) are the
+      seeded EXPECTATION and nothing more.
       **Hand-derive from the pinned decisions, never from these figures** — otherwise the
       "independent cross-check" is just re-reading the plan's own guess back to itself.
       Acceptance: matrix green from hand-derived cells; **plus the recorded mutation check —
@@ -187,6 +220,11 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       unrecorded. That would not be a map bug — it is the signal that the engine's
       `flush.stages` payload OVER-REPORTS, and it is exactly where the "map needs no change"
       criterion could be quietly falsified. Make it fail loudly as an engine bug.
+      **This is not paranoia, it guards the common path.** The 5-stage filters casualties
+      with two explicit null checks (`pipeline/src/processor.ts:546-547`); the deep engine
+      needs FOUR — and under prediction=ON, two of those four slots genuinely _are_ bubbles
+      on every correctly-bet branch (step 3's flush-shape note). An engine that pushes stage
+      names unconditionally over-reports on the most frequent case, not a rare one.
       Acceptance: a real recording folds to **7 stages / 5 families**; `hasOverlap` true;
       every flushed stage has an occupant; **`pipeline-map.ts` itself is UNCHANGED** (see
       falsifiable criteria).
@@ -198,6 +236,13 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       assert a diagram nothing drew. Panels, transport, scrub, lessons and the sandbox come
       free via INV-3. Grep for glob-vs-hardcoded guards beyond the named list before calling
       it done — every prior milestone found one its plan did not name.
+      **Picker POSITION is part of this step, and it is not free.** `deep-pipeline` goes
+      **between `pipeline` and `superscalar`** (teaching order — depth is the next thing
+      after the 5-stage, and the picker order is user-visible forever). The ripple is wider
+      than the obvious one: `models.test.ts:16` pins the full id list, **and** the
+      `honoring()` capability assertions (~lines 74–96) enumerate ids in ARRAY order too, so
+      inserting mid-array shifts three or four expectations rather than one. Mechanical, but
+      budget for it instead of discovering it.
       Acceptance: the model picker drives it end-to-end, and a **browser pass** confirms the
       map draws seven columns with five hues and the flagship comparison reads live: the same
       program at forwarding=ON on `pipeline` vs `deep-pipeline`, with the reappearing bubble
@@ -256,16 +301,25 @@ If either is reached for, stop and surface it as a decision rather than editing 
 INV-3 back door, and the house precedent is to DECLINE and prove it (M7 declined an `issue`
 event, M10 declined a `rename` event, each with a written proof).
 
-## Decisions to pin (fill in as steps land — seeded with the recommended answers)
+## Decisions — ALL PINNED 2026-07-27
 
-| Decision                                  | Recommendation (seed)                                                                                                   | Pinned answer                              |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| Depth vs width for M11                    | Deep pipeline alone; width is a separate milestone (different work — pairing rules in place, no new package)            | **Deep pipeline alone** (user, 2026-07-27) |
-| The stage split                           | Option A: `IF1 IF2 ID EX1 EX2 MEM WB` — both coefficient growths, no cache interaction, matches the M3 fixture          | _(open)_                                   |
-| Where a branch resolves                   | End of **EX2** (the ALU is uniformly two cycles, including the compare) ⇒ misprediction penalty 2→4, a clean doubling   | _(open)_                                   |
-| Is EX2 a real half-ALU or a latch?        | Real: the result is not available until end of EX2. This is the whole thesis; a "free" EX2 is the inert-package failure | _(open)_                                   |
-| Model id / label                          | `deep-pipeline` / "Deep pipeline"; description exported as the engine's OWN `MODEL_DESCRIPTION` constant                | _(open)_                                   |
-| Cache support                             | Step 6, behind the MVP; the freeze/EX2 interaction pinned by a named seam + parity test (the M9 F9 shape), or dropped   | _(open)_                                   |
-| Bespoke datapath                          | Step 7, sheddable; `datapath: 'none'` until it actually exists (superscalar/OoO precedent)                              | _(open)_                                   |
-| A lesson track for the deep pipeline      | NOT in this milestone. M11 = model + view, the M9 shape; the track is its own milestone, the M10 shape                  | _(open)_                                   |
-| Memory depth (`MEM1`/`MEM2`) / a 12-stage | Not deferred within M11 — a candidate for a LATER milestone. Option A deliberately does not open it                     | _(open)_                                   |
+The nine seeded rows plus the three the table was missing (uniform EX, where the bet is
+placed, picker position) were walked through with the user on 2026-07-27, pros and cons per
+row, and pinned as recommended. **The three that gate code —
+the stage split, EX2-is-real, and the resolve point — are settled, so steps 0–3 can start.**
+The rest are pinned but only _forced_ at the step that consumes them (noted per row).
+
+| Decision                                  | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Pinned answer                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Depth vs width for M11                    | Deep pipeline alone; width is a separate milestone (different work — pairing rules in place, no new package)                                                                                                                                                                                                                                                                                                                                                                                                  | **Deep pipeline alone** (user, 2026-07-27)                              |
+| The stage split                           | Option A: `IF1 IF2 ID EX1 EX2 MEM WB` — both coefficient growths, no cache interaction, matches the M3 fixture                                                                                                                                                                                                                                                                                                                                                                                                | **Option A** (user, 2026-07-27) — gates step 1                          |
+| Is EX2 a real half-ALU or a latch?        | Real: the result is not available until end of EX2. This is the whole thesis; a "free" EX2 is the inert-package failure                                                                                                                                                                                                                                                                                                                                                                                       | **Real** (user, 2026-07-27) — gates step 1                              |
+| Is the two-cycle EX uniform across ops?   | **Yes.** Non-uniform execute is a variable-latency machine — a bigger animal that collides with M9's `slowOpLatency`. The whole timing matrix rests on this, so it is written not assumed                                                                                                                                                                                                                                                                                                                     | **Uniform** (user, 2026-07-27) — gates step 3                           |
+| Where a branch resolves                   | End of **EX2**. Not for the clean 2→4 doubling (aesthetic) but structurally: `pipeline/src/processor.ts:784` resolves every branch AND jump at one point, and JALR's target comes out of the ALU, which is now two cycles. Resolve-at-EX1 buys one cycle of penalty in exchange for a SECOND resolve point (two rules) or a dedicated fast adder for JALR. EX2 makes one sentence — _nothing is ready until the end of EX2_ — explain the branch penalty, the ALU→ALU bubble and the load-use penalty at once | **End of EX2** (user, 2026-07-27) — gates step 3                        |
+| Where the branch BET is placed            | **ID, unchanged from the 5-stage** ⇒ a correctly predicted taken branch costs 2, not 1. Making it cheap again needs an IF1 BTB — new mechanism, out of scope. Keep the tax; it teaches                                                                                                                                                                                                                                                                                                                        | **ID** (user, 2026-07-27) — gates step 3                                |
+| Model id / label                          | `deep-pipeline` / "Deep pipeline"; description exported as the engine's OWN `MODEL_DESCRIPTION` constant, carrying "7-stage" so the picker's "Pipeline" / "Deep pipeline" pair is not mushy                                                                                                                                                                                                                                                                                                                   | **As seeded** (user, 2026-07-27) — forced at step 5                     |
+| Picker POSITION in `MODELS`               | Between `pipeline` and `superscalar` (teaching order). Pay the ordered-assertion churn in `models.test.ts` — appending at the end would dodge it but put a 7-stage after out-of-order                                                                                                                                                                                                                                                                                                                         | **After `pipeline`** (user, 2026-07-27) — forced at step 5              |
+| Cache support                             | Step 6, behind the MVP; the freeze/EX2 interaction pinned by a named seam + parity test (the M9 F9 shape), or dropped. Step 1 REFUSES a non-null cache config by name so it cannot ship inert either way                                                                                                                                                                                                                                                                                                      | **Step 6, decide after step 3's dump** (user, 2026-07-27)               |
+| Bespoke datapath                          | Step 7, sheddable; `datapath: 'none'` until it actually exists (superscalar/OoO precedent)                                                                                                                                                                                                                                                                                                                                                                                                                    | **As seeded** (user, 2026-07-27) — decide when steps 0–5 are behind you |
+| A lesson track for the deep pipeline      | NOT in this milestone. M11 = model + view, the M9 shape; the track is its own milestone, the M10 shape. Step 5's acceptance already requires the flagship comparison to read live in the browser — the lesson's content without the lesson                                                                                                                                                                                                                                                                    | **Deferred to its own milestone** (user, 2026-07-27)                    |
+| Memory depth (`MEM1`/`MEM2`) / a 12-stage | Not deferred within M11 — a candidate for a LATER milestone. Option A deliberately does not open it                                                                                                                                                                                                                                                                                                                                                                                                           | **Later milestone, not an M11 step** (user, 2026-07-27)                 |
