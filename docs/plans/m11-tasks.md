@@ -538,7 +538,20 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       pipe, if the browser pass wants to show seven occupied columns at once.
       **The web trio (dependency, `paths`, vite alias) is ALREADY DONE — it landed at step 4.**
       What is left here is the `models.ts` row, `MODEL_DESCRIPTION`, the picker position and
-      the `models.test.ts` ordered-assertion churn.
+      the `models.test.ts` ordered-assertion churn. Two first-moves for this step: - **The vite alias is still untested in the direction the M7 comment warns about.** Step
+      4's `npm run build` proves it parses, but nothing in the shipped bundle imports
+      `@cpu-viz/engine-deep-pipeline` yet — there is no `models.ts` row. So the "dev server
+      silently resolves through the workspace symlink to a stale `dist`" failure has not been
+      excluded. Once the row exists, confirm the dev server picks up a source edit to
+      `deep-pipeline/src/processor.ts` with no rebuild. Costs nothing then; invisible now. - **The `honoring()` churn is TWO list edits plus line 16, and the interesting one is the
+      list it does NOT join.** `deep-pipeline` declares `configurableForwarding` and
+      `configurableBranchPrediction` true, so it inserts into both of those (between
+      `pipeline` and `superscalar`); `configurableCache`, `configurableIssueWidth` and
+      `configurableOutOfOrder` are all false, so those three lists are untouched. A reader
+      will ask why the model that honors forwarding and prediction is missing from the cache
+      list — **leave a one-line comment there pointing at step 6's refusal**, in the same
+      spirit as the OoO row's "DELIBERATELY does NOT join forwarding" note, so it reads as
+      the scope lever it is rather than as an omission.
 
 - [ ] **6. Cache on the deep pipeline (the third knob) — or DROPPED WITH PROOF.** M6's
       miss-freeze meets a machine with two execute stages: `missCyclesRemaining` freezes
