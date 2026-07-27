@@ -1,6 +1,6 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: NOT STARTED, 2026-07-27. Nothing built. Scope pinned by the user this session
+**Status: IN PROGRESS, 2026-07-27. Steps 0, 1 and 2 are DONE; steps 3–8 open. Scope pinned by the user this session
 (deep pipeline ALONE — the wider superscalar is explicitly NOT in this milestone, see
 "Why this milestone"). ALL decisions are now PINNED (2026-07-27) — the stage split is
 Option A, the ALU is uniformly two cycles, and every control transfer resolves at the end
@@ -262,11 +262,55 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       `web/tsconfig.json`'s `paths` to step 5. Vitest will resolve the import (that alias landed at
       step 0) while `npm run typecheck` likely will not — so step 4 may have to move after step 5.
 
-- [ ] **2. Differential net: `runConformance(() => new DeepPipelineProcessor())` (INV-8).**
-      Full corpus, final architectural state.
+- [x] **2. Differential net: `runConformance(() => new DeepPipelineProcessor())` (INV-8).**
+      ✅ DONE 2026-07-27. Full corpus, final architectural state.
       Acceptance: green — **and the step's own docblock states in prose that this proves
       nothing about depth**, naming step 3 as the net that does. (An acceptance line that
       overstates its own coverage is how the inert-package failure ships.)
+
+      **What landed (68 tests, repo 4072 → 4140), green on the first run, and the judgement calls:**
+      - **The matrix is 6 configs, not the house 18/36 — because the cache axis is absent BY
+        REFUSAL, not by omission**, and the docblock says so in those words. This is the one suite
+        where "restoring" the missing axis to match `pipeline`'s (2×3×3) would produce **thrown
+        Errors, not red assertions** — a failure that reads as a broken suite rather than as the
+        deliberate step-6 scope lever. When step 6 pins the miss-freeze seam, the third axis and the
+        throw go away together.
+      - **`cache: null` is written EXPLICITLY rather than inherited from `defaultConfig()`.** Every
+        other model's matrix can afford to inherit a default it ignores; here the field is
+        load-bearing in the NEGATIVE (the processor throws on non-null), so a future change to
+        `defaultConfig()`'s default would turn six green cases into six thrown Errors rather than
+        into a silent behaviour shift. Verified `defaultConfig()` returns `cache: null` today
+        (`trace/src/processor.ts:138`) — the field is named anyway.
+      - **The docblock's "what this DOES catch" is the FORK argument, and it is sharper here than
+        for a from-scratch model.** Step 1 is a fork = a COPY of the 5-stage's mirrored ISA
+        semantics; a dropped `>>> 0`, a `>>` for `>>>`, a missing `imm & 0x1f` is caught here and
+        nowhere else, and transcription error is the characteristic failure of how this subject was
+        built. Plus the two hazard classes a longer shadow widens: under-stall and speculation leak
+        (the flush kills FOUR slots where the 5-stage kills two).
+      - All three prediction schemes run even though **`'none'` and `'static-not-taken'` are the
+        SAME MACHINE here** (the 5-stage's identity, recorded on `DEEP_PIPELINE_CAPABILITIES`). The
+        redundant column is KEPT and the identity documented, so two identical green columns read as
+        expected rather than as a bug — and `configLabel` names the two distinctly, so there is no
+        title collision to hide behind (the M9+M10 finding-8 class).
+      - **No cache-refusal assertion here** — `processor.test.ts`'s "refuses a cache config by name"
+        already owns that contract, and duplicating it blurs which file does. Not widened to
+        `issueWidth`/`outOfOrderIssue` either: capabilities declare both false, and refuse-vs-ignore
+        for those is a step-1 question, not this step's.
+
+      **The guardrail check step 0 had NOT exercised, run here: `deep-pipeline` →
+      `@cpu-viz/engine-conformance` LINTS CLEAN, as intended.** Step 0 verified three deny paths but
+      only model→model and trace→model; this is the first import of the harness that transitively
+      pulls in the **golden reference**, which the deny list names by id. It is allowed because
+      ESLint sees direct import specifiers only, and `engine-conformance` is not in
+      `[curriculum, web, engine-reference, ...MODELS.filter(≠self)]` — the same edge every other
+      model's `differential.test.ts` already has. Confirmed by running lint, not assumed from the
+      tsconfig reference being present (finding 7 was precisely a deny-list-SHAPE bug).
+      `tsc -b` was run as its own check beside vitest — they resolve the import by different routes
+      (project reference vs root alias) and fail for different reasons. Both green.
+
+      **Repo count reconciliation for later steps: the baseline was 4072, not the 4069 the step-1
+      notes record** — that figure was taken at step 1's first commit, and the follow-up
+      `test(deep-pipeline): cover jal/jalr, and pin a THIRD flush shape` commit added three more.
 
 - [ ] **3. THE NET — the timing matrix and its mutation check.** A `timing.test.ts` in the
       house shape (M3/M6/M7 precedent): every corpus program × forwarding × prediction, with

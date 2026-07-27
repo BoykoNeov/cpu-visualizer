@@ -1,11 +1,11 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1 DONE (the model MVP runs, every coefficient confirmed), steps 2+ open; the scope the user pinned, the stage split, and why the plan leads with the timing matrix instead of INV-8'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1+2 DONE (the model MVP runs, every coefficient confirmed, INV-8 green), step 3 (THE NET) is next; the scope the user pinned, the stage split, and why the plan leads with the timing matrix instead of INV-8'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T10:58:49.060Z
+  modified: 2026-07-27T11:53:34.768Z
 ---
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
@@ -13,10 +13,32 @@ metadata:
 built through M10. So "what's next" is no longer answerable from the spec; it comes
 from [[future-microarchitectures]].
 
-**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0 AND 1 DONE 2026-07-27**
-(the package scaffold + DAG ripple, then the model MVP). Steps 2–8 open. Plan:
+**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0, 1 AND 2 DONE 2026-07-27**
+(the package scaffold + DAG ripple, the model MVP, then the INV-8 differential). **Step 3 —
+THE NET, the timing matrix + its mutation check — is next.** Steps 3–8 open. Plan:
 `docs/plans/m11-tasks.md`, whose per-step entries record what landed and every judgement
 call, so later steps don't re-litigate them.
+
+**Step 2 (INV-8, 68 tests, repo 4072 → 4140, green on the first run) — three reusable bits:**
+
+- **The matrix is 6 configs (forwarding × prediction), not the house 18/36, because the cache
+  axis is absent BY REFUSAL not omission.** "Restoring" it to match `pipeline`'s matrix
+  produces **thrown Errors, not red assertions** — a failure that reads as a broken suite
+  rather than as the step-6 scope lever. The docblock says this in those words.
+- **`cache: null` is written EXPLICITLY, not inherited from `defaultConfig()`** — the one
+  suite in the repo where the field is load-bearing in the NEGATIVE, so a change to that
+  default would turn six green cases into six throws rather than a silent behaviour shift.
+- **The step-0 guardrail path that had NOT been exercised: `deep-pipeline` →
+  `@cpu-viz/engine-conformance` lints CLEAN**, as intended. It is the first import that
+  transitively pulls in the **golden reference** (which the deny list names by id), and it is
+  allowed because ESLint sees direct specifiers only. Confirmed by RUNNING lint, not assumed
+  from the tsconfig reference — finding 7 was a deny-list-SHAPE bug. `tsc -b` was run as its
+  own check beside vitest: they resolve the import by different routes (project reference vs
+  root alias) and fail for different reasons.
+
+**Repo-count correction for later steps: the pre-step-2 baseline was 4072, not the 4069 below**
+— that figure was taken at step 1's first commit, and its follow-up `jal`/`jalr` test commit
+added three more.
 
 **Step 1 landed the working machine (18 unit tests, repo 4051 → 4069).** The two
 judgement calls that shape everything after it:
