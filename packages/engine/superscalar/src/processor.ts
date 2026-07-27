@@ -431,6 +431,17 @@ interface CycleCtx {
    * `stalled`/`squash`/`bet`, so it never coexists with those.
    */
   memStall: boolean;
+  /**
+   * Is this the cycle the miss was DETECTED, as opposed to a mid-stall cycle? Read by EX, which
+   * captures its forwarded operands on exactly this cycle and no other.
+   *
+   * The distinction is semantic, not an optimization. A frozen occupant must execute on the values
+   * it would have seen had the miss never happened — the ones alive on the detection cycle.
+   * Capturing later would read a DIFFERENT (draining) source set, and re-capturing every cycle
+   * would re-emit `forward` events for the pair-mate this machine deliberately freezes in EX/MEM
+   * beside the miss, which persists for the whole freeze.
+   */
+  memStallStarted: boolean;
   /** Raised by EX (taken transfer) or ID (architectural halt); read by the stages younger than it. */
   squash: Squash | null;
   /**
@@ -565,6 +576,7 @@ export class SuperscalarProcessor implements Processor {
       next: emptyLatches(this.width),
       events: [],
       memStall: false,
+      memStallStarted: false,
       squash: null,
       redirect: null,
       stopFetch: false,
@@ -790,6 +802,7 @@ export class SuperscalarProcessor implements Processor {
         // Fresh arrival. Consult the cache (a no-op when none is configured); a miss starts the hold.
         const penalty = this.consultCache(ctx, em);
         if (penalty > 0) {
+          ctx.memStallStarted = true; // EX captures its operands on THIS cycle — see the field's doc
           this.holdInMem(ctx, em, s, penalty);
           frozen = true;
           continue;
@@ -923,12 +936,26 @@ export class SuperscalarProcessor implements Processor {
     const ie = ctx.prev.idEx[slot] ?? null;
     if (ie === null) return; // a bubble: nothing to execute
 
-    // A MEM miss freezes EX: the occupant does NOT execute or advance — it holds in EX (so it
-    // executes exactly once, on release) while MEM re-presents its own waiting instruction. MEM ran
-    // earlier in the reverse walk and already owns `next.exMem`, so here we only re-present `ie` in
-    // EX and return before touching the ALU, the forwarding network, or control resolution.
+    // A MEM miss freezes EX: the occupant does NOT advance, and does not run the ALU or resolve
+    // control flow — it holds in EX and executes exactly once, on release, while MEM re-presents its
+    // own waiting instruction. MEM ran earlier in the reverse walk and already owns `next.exMem`.
+    //
+    // **But the freeze holds the ADVANCE, not the forwarding CAPTURE.** A producer sitting in MEM/WB
+    // on the detection cycle retires during the freeze and its latch drains, so a value reachable
+    // only by forwarding right now is GONE by the release cycle — and the occupant would then
+    // execute on its stale, pre-forwarding register read from ID. Resolving the operands here and
+    // latching them back onto `a`/`b` fixes that with no new latch field: the release cycle's own
+    // `resolveOperand` finds no producer and returns exactly these values. See
+    // `docs/reviews/m11-miss-freeze-forward-loss.md` — this was a wrong ARCHITECTURAL answer from a
+    // knob that is supposed to be a pure timing shadow, and no corpus program could reach it.
     if (ctx.memStall) {
-      ctx.next.idEx[slot] = ie;
+      ctx.next.idEx[slot] = ctx.memStallStarted
+        ? {
+            ...ie,
+            a: this.resolveOperand(ctx, ie, 'rs1', ie.decoded.rs1, ie.a),
+            b: this.resolveOperand(ctx, ie, 'rs2', ie.decoded.rs2, ie.b),
+          }
+        : ie;
       return;
     }
 
