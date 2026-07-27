@@ -1,6 +1,6 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: IN PROGRESS, 2026-07-27. Steps 0, 1 and 2 are DONE; steps 3–8 open. Scope pinned by the user this session
+**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2 and 3 — THE NET — are DONE; steps 4–8 open. Scope pinned by the user this session
 (deep pipeline ALONE — the wider superscalar is explicitly NOT in this milestone, see
 "Why this milestone"). ALL decisions are now PINNED (2026-07-27) — the stage split is
 Option A, the ALU is uniformly two cycles, and every control transfer resolves at the end
@@ -312,7 +312,7 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       notes record** — that figure was taken at step 1's first commit, and the follow-up
       `test(deep-pipeline): cover jal/jalr, and pin a THIRD flush shape` commit added three more.
 
-- [ ] **3. THE NET — the timing matrix and its mutation check.** A `timing.test.ts` in the
+- [x] **3. THE NET — the timing matrix and its mutation check.** ✅ DONE 2026-07-27. A `timing.test.ts` in the
       house shape (M3/M6/M7 precedent): every corpus program × forwarding × prediction, with
       a closed form `cycles = N + 6 + S + P` whose **S and P coefficients are the deep
       machine's, not the 5-stage's**. Dump from the engine, hand-derive independently,
@@ -356,6 +356,66 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       Acceptance: matrix green from hand-derived cells; **plus the recorded mutation check —
       stubbing IF2/EX2 to pass-through leaves INV-8 green and reddens this suite.** If it
       does not, stop and surface it.
+
+      **What landed (92 tests, repo 4140 → 4232), and the judgement calls later steps should not
+      re-litigate:**
+
+      - **The closed form is `cycles = N + 6 + S + P` and it balances in all 66 dumped cells — but
+        `S` is stall cycles ON THE RETIRED PATH, not the raw stall count.** All eleven programs'
+        stall histograms were hand-derived from the recurrence (required distance: 4 forwarding-OFF,
+        3 for a load producer with forwarding ON, 2 for any other) BEFORE being compared to the
+        engine, and matched cell-for-cell. The corroboration that fell out afterwards: every `P` is
+        exactly **2×** the 5-stage's pinned `P` for the same program × scheme.
+      - **THE FINDING — `S` is NOT prediction-invariant, and the 5-stage's ported assertion would
+        have been WRONG.** `engine/pipeline`'s P matrix asserts `S — the forwarding toggle, untouched
+        by prediction` in every cell. **Depth breaks it.** `call-return.s` at forwarding OFF emits a
+        `'raw'` stall at pc 12 (the `jal`'s fall-through) under the not-taken behaviour that does not
+        exist under `static-taken`. The mechanism is the pinned resolve point itself: a transfer
+        resolves at the end of EX2, so its fall-through gets a whole LIVE cycle in ID — a cycle where
+        `ctx.squash` is still null and the interlock really runs — before being killed. The 5-stage
+        **cannot** do this: it resolves at `d_b+1`, so its fall-through hits ID in the same cycle as
+        the squash and takes `stageId`'s early-return. Under `static-taken` the bet kills the same
+        instruction in IF2, two stages before the interlock. **The stall costs zero cycles** (the
+        redirect is timed off the branch's own EX2), which is why the closed form is stated over the
+        retired path and BOTH histograms are pinned separately — the raw one catches an engine that
+        stalls in the wrong places, the retired one balances the count. Bounded by its own test: it
+        is the ONLY cell in the corpus where the two disagree.
+      - **A FOURTH and FIFTH flush shape, and the shape depends on the FORWARDING toggle too.** The
+        same shadow stall leaves EX1 a bubble, so `call-return.s`'s `jal` correction emits
+        `['ID','IF2','IF1']` at forwarding OFF and `['EX1','ID','IF2','IF1']` at forwarding ON —
+        non-contiguous in the opposite direction from step 1's `['EX1','IF1']`. The corpus also
+        yields `['EX1','ID']` (a loop at the end of `.text` whose branch stalls long enough to drain
+        the front end) and a width-1 `['IF2']`. Five distinct payloads, pinned as a census.
+      - **The 5-stage's `casualties ARE the penalty` identity does NOT port, and the reason is worth
+        more than the identity was.** `sum-loop.s` under not-taken kills 18 and pays `P = 36`: the
+        deep pipe pays its full 4-cycle penalty even when the front end has already emptied itself.
+        Pinned as the negative, WITH the two programs where the two still coincide exactly
+        (`array-sum.s`, `paired-branches.s`) so it does not read as a rule in the other direction.
+      - **The `+6` constant needed a HAND-BUILT program.** The 5-stage isolates its `+4` on `add.s`;
+        that no longer works, because this machine stalls `add.s`'s back-to-back pair even with
+        forwarding ON. **The corpus has no dependency-free program left to measure the constant with
+        — depth took it away**, which is itself the thesis.
+      - The reason-encoding test could not be ported either: forwarding ON now has **two** reasons
+        (`'load-use'` AND `'ex-latency'`), where the 5-stage asserts a single-element set.
+      - Cross-model numbers (the 5-stage's `S`, `P` and cycle counts) are quoted in PROSE only —
+        `eslint.config.js` denies a model importing a sibling model, and that edge should stay denied.
+
+      **THE MUTATION CHECK, run as TWO separate mutations, both halves executed rather than argued**
+      (`differential.test.ts` was actually RUN under each stub, not assumed green from the prose in
+      two files). Reverted with `git checkout` so the revert is exact rather than retyped:
+      - **Stub IF2** (`stageIf1` writes `next.if2Id` directly): **INV-8 green 68/68, timing RED 55 of
+        92.** The constant fell to `N+5`, misprediction 4→3, correct bet 2→1.
+      - **Stub EX2** (the switch moved into EX1, `ex1Ex2` carrying the finished latch, an
+        `EX1/EX2 → EX1` forward added, **and the `'ex-latency'` arm dropped from `detectHazard`** —
+        without that last part the bubble survives and the reddening is under-read): **INV-8 green
+        68/68, timing RED 58 of 92.** `add.s` at forwarding ON fell 10 → 9 cycles (its `S` 1 → 0),
+        `sum-loop.s` 87 → 67, misprediction 4→3.
+      - **What the EX2 stub does NOT move, recorded so it is not over-claimed:** load-use stays at 2
+        and forwarding-OFF RAW stays at 3. Both are governed by when MEM and WB happen, and a stubbed
+        EX2 still OCCUPIES its cycle — seven stages remain. Only the coefficients that depend on
+        *when the result is finished* move. Collapsing the stage entirely is a different mutation.
+
+      Dump rig and both mutation dumps under `M:\claud_projects\temp\m11-timing\`.
 
 - [ ] **4. Recorder / time-travel + the map meets a real deep engine.** `follow()`, scrub,
       and back-stepping over the new model (the per-model recorder test every tier has).
@@ -430,17 +490,19 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       than on `pipeline`, and the map shows a **repeated EX1 cell** on a back-to-back
       dependent pair that the 5-stage draws with no repeat — forwarding no longer buying a
       free result.
-- [ ] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
-      by the deep machine's coefficients, matching hand-derived numbers.
+- [~] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
+  by the deep machine's coefficients, matching hand-derived numbers. **Proven HEADLESSLY at
+  step 3** (66 hand-derived cells, both toggles, every term asserted separately); the LIVE half
+  — the same flips read in the browser — is step 5's acceptance and is still owed.
 - [ ] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
 - [x] **INV-8 differential passes on the full corpus** for the new model. ✅ step 2,
       2026-07-27 — 6 configs × 11 programs, green on the first run.
-- [ ] **The timing matrix reddens when IF2/EX2 are stubbed to pass-through, while INV-8 stays
-      green** — the recorded mutation check. **Step 3 must execute BOTH halves.** Step 2's
-      docblock now asserts this contract from the INV-8 side too, so running the stub and
-      checking only that timing reddens would leave "INV-8 stays green" as an unverified claim
-      sitting in two files — easy to skip precisely because the sentence already reads settled.
+- [x] **The timing matrix reddens when IF2/EX2 are stubbed to pass-through, while INV-8 stays
+      green** — the recorded mutation check. ✅ step 3, 2026-07-27. **BOTH halves executed**, as two
+      separate mutations: stub IF2 → INV-8 green 68/68, timing RED 55/92; stub EX2 → INV-8 green
+      68/68, timing RED 58/92. `differential.test.ts` was RUN under each stub rather than assumed
+      green from the prose already sitting in two files.
 - [ ] `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run format:check`
       all green.
 
