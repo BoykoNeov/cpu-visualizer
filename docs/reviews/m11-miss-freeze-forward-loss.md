@@ -156,12 +156,23 @@ said did not exist.
 with proof (the proof would rest on a baseline whose freeze semantics are wrong) and it could not
 be shipped (it would ship the same hole). Any dump taken before the fix measured a broken machine.
 
-**With the family fixed (step 6a), step 6's original question is live again** — and it now has one
-answer it did not have before: **the deep pipeline's freeze semantics are no longer a free choice.**
-Whatever else step 6 decides, EX1 must capture its forwarded operands on the detection cycle, with
-the storage on the held `idEx1` (see the wrinkle above). The remaining question — is the cache
-otherwise a purely additive `+M` term on this machine, or does depth change it? — is what the
-re-run probe has to answer, against the adversarial-plus-multiset shape rather than cycles alone.
+**How it resolved (2026-07-27, same session).** With the family fixed, the probe was re-run against
+correct semantics: **192 cells, zero failures** — cycles, event multiset, architectural state, and
+the verdict-token sequence against the 5-stage's, over the corpus × forwarding × prediction × two
+geometries plus all five adversarial programs, with the vacuity guard confirming each adversarial
+run really did freeze a live front end. (The earlier cross-model token mismatches on
+`adv-stall-under-miss` and `adv-drain-miss` disappeared too — they had been _this bug_ on the
+5-stage, corrupting a load's effective address.)
+
+**Step 6 then SHIPPED the cache** rather than dropping it: `configurableCache: true`, `micro.cache`
+with a deep copy, and `packages/engine/deep-pipeline/src/cache.test.ts`. The seam the plan feared
+has its answer in `processor.ts` — all five younger stages freeze by back-pressure, EX2 needs
+nothing to hold, and **EX1 captures on the detection cycle with the storage on the held `idEx1`**,
+since `ex1Ex2` belongs to EX2's own frozen occupant. That last clause is the only place this
+machine's fix differs from the 5-stage's.
+
+The step-6 notes in `docs/plans/m11-tasks.md` carry the rest, including the model's headline —
+**depth taxes fetch and execute, not memory** — and the map-paging consequence.
 
 ## Method note — why the obvious check would have missed this
 
