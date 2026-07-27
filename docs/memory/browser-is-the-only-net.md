@@ -203,7 +203,38 @@ Two more things from that pass:
   run, **all were the rig**, continuing the M11 step-5 pattern.
 - The shell opens at **expert** depth with forwarding **off** — do not assume `essentials`.
 
+**Driving the SHIPPED bundle (`vite preview`) rather than the dev server — added 2026-07-27, M11
+step 8.** A dev pass and a preview pass are not the same evidence, and the differences bite:
+
+- The dev server resolves workspace packages through the **vite alias to SOURCE**; preview serves
+  what `vite build` emitted. So **only a preview pass excludes the stale/absent-`dist` build
+  failure**. Confirm you are actually on the built page: its `<script src>` is `/assets/index-*.js`,
+  where dev's is `/src/main.tsx`. Checking the title alone does not distinguish them.
+- **A production CSS/class transform can make an entire rig VACUOUS in one direction only.** These
+  rigs find controls by an uppercase caption via `getComputedStyle(...).textTransform` and wires by
+  `.dp-wire--on`. If the built CSS 404s or a class is hashed, every lookup returns `null` and **every
+  ABSENCE assertion passes** — which reads as "the control is missing", not "the rig is broken". A
+  preview rig's first section must assert: built bundle, CSS loaded (sheets AND rule count), a
+  **known-present** control found, class selectors resolving. Only then does a `null` mean anything.
+- **Rigs that pin a SCOPE LEVER expire when the lever moves — expect to port checks, not re-run
+  files.** In M11 this fired twice: step 5 pinned "the deep pipeline has no cache control and the
+  value is clamped away", and step 6 shipped the knob, inverting all of it.
+- **Measuring a label/wire collision: two corrections, in order.** (1) A polyline's
+  `getBoundingClientRect()` is the box of its whole ROUTE — an L-shaped wire's bbox covers everything
+  between its ends, so bbox-vs-bbox reports collisions on a diagram that is visibly clean. Walk the
+  SEGMENTS, in SVG user units. (2) Chrome's `getBBox()` on `<text>` is the **advance** box, not the
+  ink box: an italic label's trailing side bearing runs most of a unit past its last visible pixel.
+  **Report a signed clearance rather than a boolean** — 0 to ≈−1.5 means "abuts, ink clear" and is
+  settled by a 20×+ crop, not by the number.
+- Kill the preview server **by PID read from its command line**, never by port ([[never-kill-dev-servers-by-port]]),
+  and pass `--port N --strictPort` so it cannot silently climb onto someone else's number.
+
 **Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) —
+`step8-preview.mjs` (the milestone-closing pass over the SHIPPED `vite preview` bundle: the
+anti-vacuity §0, picker, the cross-model cycle/walk comparison, map hues, coefficients, tooltip
+prose, the datapath dump comparison, follow+scrub, the cache, a model sweep and a console-error
+capture — 76 checks) and `s8-crop.mjs` (control-label clearance swept over every label, plus a
+high-zoom crop of one),
 `datapath-eyeball.mjs` (the step-7 pass: dump-vs-live wire-for-wire comparison, hue-by-family,
 tier gating, follow ring, structural config axes) and `dp-zoom.mjs` (a scaled close-up of one SVG —
 note `Page.captureScreenshot`'s `clip` is PAGE-relative under `captureBeyondViewport`, while

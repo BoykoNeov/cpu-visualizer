@@ -1,13 +1,16 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: IN PROGRESS, 2026-07-27. Steps 0–7 are DONE; only step 8 (the closing shipped-bundle
-browser pass) is open. Step 7 drew the model's own datapath — the bubble as GEOMETRY, since the
-forwarding muxes sit in EX1 and their output lands on the EX1/EX2 latch rather than on the ALU —
-and both falsifiable "unchanged" criteria have now PAID OUT: `pipeline-map.ts` was untouched
-(step 4) and the trace schema was untouched (step 7, where the temptation was reached and
-declined). The step-7 browser pass was verified against a dump taken BEFORE it ran, and found one
-real defect — a control label with no wrapping and no de-collision running under its own unit's
-wire stubs.**
+**Status: ✅ COMPLETE, 2026-07-27. All steps 0–8 are DONE and every acceptance criterion is
+ticked.** The deep pipeline ships as a sixth model: a seven-stage engine (`IF1 IF2 ID EX1 EX2 MEM
+WB`), its timing matrix, its recorder, its web enablement, its cache, and its own datapath — with
+both falsifiable "unchanged" criteria PAID OUT (`pipeline-map.ts` untouched at step 4; the trace
+schema untouched at step 7, where the temptation was reached and declined). **Step 8 drove the
+SHIPPED `vite preview` bundle over the whole milestone: 76 checks, all pass, no defect** — which
+also excludes the stale-`dist` build failure that step 5 could only exclude for the dev server.
+The milestone's three view defects were all found by a browser and by nothing else: PROSE at step
+5 (a tooltip stating the 5-stage's coefficients), a control LABEL colliding with its own wire stubs
+at step 7, and — the one that was not a view defect at all — step 6a's correctness bug in the
+shipped 5-stage and superscalar, where a cache miss could change the ANSWER.
 
 **Historical status note (superseded, kept for the trail): Steps 0, 1, 2, 3 — THE NET — 4 and 5 are DONE; steps 6–8 open.
 The deep pipeline is now DRIVABLE in the browser, and step 5's browser pass read every hand-derived
@@ -897,10 +900,85 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         cache-honoring set (step 6 shipped that knob). A comment asserting a case is impossible while
         the code beneath says otherwise is the bug class this repo's own notes name.
 
-- [ ] **8. Browser pass over the whole milestone** — the house closing step. Drive the
+- [x] **8. Browser pass over the whole milestone** — the house closing step. ✅ DONE 2026-07-27. Drive the
       SHIPPED `vite preview` bundle (not the dev server) via CDP; rig under
       `M:\claud_projects\temp\m11-browser\`. Identify the target by served `<title>`, never
       by port; `taskkill /PID <pid> /T` to clean up.
+
+      **THE PASS: 76 checks, ALL PASS, NO DEFECT** (`M:\claud_projects\temp\m11-browser\step8-preview.mjs`,
+      one consolidated rig; close-up + label geometry via `s8-crop.mjs`). Repo **4361 tests**;
+      `npm test`, `typecheck`, `lint`, `build`, `format:check` all green.
+
+      **What this step could see that steps 5–7 could not, which is the whole reason it exists.**
+      Every earlier pass drove the DEV server, where `@cpu-viz/engine-deep-pipeline` resolves through
+      the vite alias to SOURCE. `vite preview` serves what `vite build` emitted. So this is the only
+      pass that excludes **the build resolving the workspace symlink to a stale or absent `dist`** —
+      the failure the M7 comment in `vite.config.ts` records, and which step 5 excluded *for dev only
+      and said so*. It is excluded for the shipped path now: every hand-derived number reads correct
+      off the built bundle, and the served page is confirmed to be the built one by its
+      `/assets/index-*.js` script tag rather than a `/src/main.tsx` module graph.
+
+      - **§0 IS LOAD-BEARING, AND IT IS NOT CEREMONY: without it every negative below it is vacuous.**
+        This rig — like all four before it — finds controls by an uppercase caption through
+        `getComputedStyle`, and wires by `.dp-wire--on`. **If the built CSS 404s or a class is hashed
+        by a production transform, every `__seg()` returns `null` and every ABSENCE check passes** —
+        which reads as "the control is missing", not "the rig is broken". So §0 asserts, before
+        anything else: the page is the BUILT bundle, the CSS actually loaded (1 sheet / 74 rules), a
+        **known-present** control is found, and the class-keyed selectors resolve on minified CSS.
+        This is the step-5 negative-first lesson generalized from one selector to the rig's whole
+        machinery, and a preview pass is exactly where it earns its place.
+      - **Every number the milestone hand-derived, read live off the shipped bundle**: the picker in
+        teaching order with `"Deep pipeline"` and a description naming 7-stage; `add` at forwarding ON
+        **7 on `pipeline` vs 10 here** with the walk `IF1 IF2 ID ID EX1 EX2 MEM WB` — **the repeat on
+        ID, not EX1** (step 4's correction) — and **12** at forwarding OFF; `array-sum` **74 → 70** on
+        the prediction flip; seven distinct stage labels, a DERIVED five-family legend, five cell hues
+        with IF1/IF2 and EX1/EX2 pairing; **seven rows in one cycle column**; the datapath dump
+        comparison at **array-sum cycle 8** (24 wires matched by `points` geometry, nothing extra, the
+        two contractions ABSENT not dim, every hue its stage FAMILY's, five hues over seven stages);
+        polygons **7 → 5** at forwarding OFF with the hazard unit surviving; the follow ring covering
+        the seven distinct stages and reaching the datapath (2 of 24 lit); scrub to the last cycle
+        (`a0` = 120) and home to pre-run (`a0` = 0) with the follow surviving; the cache at
+        **392 / 442 / 422** against `pipeline`'s **340**; all six models loading; console clean.
+      - **TWO RIG "FAILURES" AGAINST A CORRECT APP — the house rate holds, and both generalize.**
+        (a) The transport reads `cycle 73 / 73  — halted` and the check wanted the bare prefix. The
+        halted marker is the app telling the truth; the fix asserts the prefix AND the marker, so the
+        marker became a CLAIM rather than noise stripped to make a rig pass.
+        (b) The label-collision probe compared a text's `getBoundingClientRect()` against each
+        polyline's — and reported three collisions on a diagram that is visibly clean at 5×.
+        **A polyline's bounding box is the box of its whole ROUTE**: an L-shaped wire running far in
+        both axes has a bbox covering everything between its ends, so bbox-vs-bbox over-reports wildly
+        on precisely the routes this family is made of. Rewritten to walk each polyline SEGMENT in SVG
+        user units.
+      - **STEP 7'S LAYOUT RULE NOW HAS A GENERAL CHECK, and it holds — with one measured near-miss
+        worth writing down rather than fixing.** Sweeping all five italic control labels for minimum
+        clearance to any wire segment: `PCSrc` 16.3, `ForwardA` 12.6, `ForwardB` 8.1, `MemtoReg` 27.3
+        units — and the hazard label `PCWrite / IF1-IF2-Write / IF2-ID-Write` at **−0.09**. A 22× crop
+        settles it: **the ink is clear**, because Chrome's `getBBox()` on a `<text>` is the ADVANCE
+        box, not the ink box — it includes the trailing side bearing, which on an italic label runs
+        most of a unit past the last visible pixel. **So a clearance between 0 and about −1.5 means
+        "abuts, ink clear" and must be settled by pixels, never by the number**; the rig reports a
+        signed clearance instead of a boolean for exactly that reason. Not fixed, deliberately: step
+        7's rule (no wire anchors on the TOP edge of a node carrying a control label) is honoured —
+        the wire passes vertically to reach the box's RIGHT edge — and moving geometry at the
+        milestone's close would buy no visible pixel while invalidating the geometry pins the datapath
+        rig compares against.
+      - **The expired-rig hazard was predicted at step 6 and confirmed here.** `eyeball.mjs` §6 pins
+        "no cache control on the deep pipeline / clamped away / 74 cycles" — all three inverted by
+        step 6. The checks were PORTED, not the file, and §8 now pins the inverse (the cache carries
+        over and is HONORED at 442, with `pipeline` back at 340 on return). Twice in one milestone a
+        browser rig that pinned a SCOPE LEVER expired when the lever moved; a closing pass should
+        expect to rewrite, not re-run.
+      - **The dump was REGENERATED from the current engine before the browser ran** (step 7's
+        squashed-EX1 activation fix landed after the original dump). Byte-identical: `array-sum`
+        cycle 8 is unmoved, because its squashed EX1 occupant is a `lui`, which reads no registers —
+        the same reason step 7 records for why that program looked clean while the bug was live. The
+        parked generator's copy-in / run / **delete** recipe matters: the web build runs
+        `tsc --noEmit`, so a stray `zz-dump.test.ts` left in `packages/web/src` fails the build,
+        `npm test`, `lint` and `format:check` — the four gates this step had to leave green.
+      - Cleanup by identity, never by port or image name: **60 leftover Chromes** swept by matching
+        `--user-data-dir` in `CommandLine`, and the preview server killed by its two PIDs read out of
+        their command lines. Preview was started with an explicit `--port 4199 --strictPort` and still
+        confirmed by served `<title>` before anything was trusted.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
@@ -949,8 +1027,9 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       separate mutations: stub IF2 → INV-8 green 68/68, timing RED 55/92; stub EX2 → INV-8 green
       68/68, timing RED 58/92. `differential.test.ts` was RUN under each stub rather than assumed
       green from the prose already sitting in two files.
-- [ ] `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run format:check`
-      all green.
+- [x] `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run format:check`
+      all green. ✅ step 8, 2026-07-27 — **4361 tests** (73 files passed, 1 `RUN`-gated snapshot
+      harness skipped), all five gates green on the same tree the preview pass drove.
 
 ### Two falsifiable "unchanged" criteria (both pre-paid — reaching for either is a STOP)
 

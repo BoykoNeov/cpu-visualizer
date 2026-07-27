@@ -1,12 +1,54 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0–7 DONE, only step 8 (shipped-bundle browser pass) remains. Step 6 found a CORRECTNESS BUG in shipped pipeline+superscalar (a miss-freeze ate a forward), fixed family-wide as 6a, then shipped the deep cache. Step 7 drew the bespoke datapath — the bubble as GEOMETRY — and paid out the second falsifiable UNCHANGED criterion (the trace schema)'
+description: 'M11 (the 7-stage deep pipeline) — ✅ COMPLETE, all steps 0–8 done 2026-07-27. Step 6 found a CORRECTNESS BUG in shipped pipeline+superscalar (a miss-freeze ate a forward), fixed family-wide as 6a, then shipped the deep cache. Step 7 drew the bespoke datapath — the bubble as GEOMETRY — and paid out the second falsifiable UNCHANGED criterion (the trace schema). Step 8 drove the SHIPPED bundle: 76 checks, no defect'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T19:01:09.402Z
+  modified: 2026-07-27T22:55:00.000Z
 ---
+
+**M11 IS ✅ COMPLETE (2026-07-27) — all steps 0–8, every acceptance criterion ticked, repo 4361
+tests with typecheck/lint/build/format:check green.**
+
+**STEP 8 (2026-07-27) — THE CLOSING PASS OVER THE SHIPPED BUNDLE. 76 checks, ALL PASS, NO DEFECT**
+(`M:\claud_projects\temp\m11-browser\step8-preview.mjs`; label geometry via `s8-crop.mjs`).
+
+**What only a `vite preview` pass can see, and why it is not a formality.** Every earlier pass drove
+the DEV server, where the engine resolves through the vite alias to SOURCE. Preview serves what
+`vite build` emitted — so this is the only pass that excludes **the build resolving the workspace
+symlink to a stale or absent `dist`** (step 5 excluded that for dev ONLY, and said so). Confirm you
+are on the built page by its `/assets/index-*.js` script tag, not a `/src/main.tsx` module graph.
+
+**AND IT IS WHERE A RIG GOES VACUOUS MOST QUIETLY.** These rigs find controls by an uppercase caption
+through `getComputedStyle` and wires by `.dp-wire--on`. **If the built CSS 404s or a class is hashed
+by a production transform, every `__seg()` returns `null` and every ABSENCE check passes** — reading
+as "the control is missing", not "the rig is broken". So a preview rig's §0 must assert: built bundle
+not dev graph, CSS actually loaded (count sheets AND rules), a **known-present** control found, and
+the class-keyed selectors resolving — before any negative anywhere below it is trusted.
+
+**Two rig "failures" against a correct app, both generalizing:**
+
+- The transport reads `cycle 73 / 73  — halted`; the check wanted the bare prefix. The marker is the
+  app telling the truth — assert the prefix AND the marker, so it becomes a claim rather than noise
+  stripped to make a rig pass.
+- **A polyline's `getBoundingClientRect()` is the box of its whole ROUTE.** Comparing a label's bbox
+  against wire bboxes reported three collisions on a diagram visibly clean at 5×: an L-shaped wire's
+  bbox covers everything between its ends. Walk the polyline SEGMENT by SEGMENT in SVG user units.
+- **...and then the segment check needs one more correction: Chrome's `getBBox()` on `<text>` is the
+  ADVANCE box, not the ink box.** The trailing side bearing on an italic label runs most of a unit
+  past the last visible pixel, so the hazard label measured **−0.09** clearance while a 22× crop shows
+  clear air. **Report a signed CLEARANCE, not a boolean; 0 to ≈−1.5 means "abuts, ink clear" and must
+  be settled by pixels.** (The other four labels: 8.1–27.3 units.)
+
+**The expired-rig hazard fired TWICE in one milestone.** `eyeball.mjs` §6 pinned step 5's scope lever
+("no cache control on the deep pipeline / clamped away / 74") and step 6 inverted all of it. A closing
+pass should expect to PORT checks into one consolidated rig, not re-run the old files.
+
+**Regenerate any geometry dump from the current engine BEFORE the browser runs** (step 7's activation
+fix landed after the original). Here it came back byte-identical. The parked generator's
+copy-in/run/**delete** recipe is load-bearing: the web build runs `tsc --noEmit`, so a stray
+`zz-dump.test.ts` in `packages/web/src` fails build, test, lint and format:check at once.
 
 **STEP 7 (2026-07-27) — THE BESPOKE DATAPATH. Sheddable in the plan, never shed in practice (the
 M9 precedent held). Repo 4310 → 4359 tests.**
