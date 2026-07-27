@@ -172,6 +172,43 @@ const NOT_TAKEN_BRANCH = [
   'ecall',
 ].join('\n');
 
+/**
+ * A call and a return: `jal` (PC-relative, so PREDICTABLE) and `jalr` (never predictable, so it
+ * mispredicts and pays full price under every scheme). The resolve point was pinned at the end of
+ * EX2 *because* of `jalr` — its target comes out of the now-two-cycle ALU — so it must not go
+ * untested. The `ret` here also lands the flush-that-kills-NOBODY path: it corrects with the whole
+ * pipe behind it already empty, because fetch has run off the end of text.
+ */
+const CALL_RETURN = [
+  '.text',
+  'jal x1, fn', // @0  — predictable; x1 = 4
+  'addi x2, x0, 5', // @4  — the return lands here
+  'ecall', // @8
+  'fn:',
+  'addi x3, x0, 7', // @12
+  'jalr x0, 0(x1)', // @16 — the return: unpredictable, always taken
+].join('\n');
+
+/**
+ * The third flush SHAPE, which the two the plan names do not cover: an unpredictable `jalr`
+ * correcting while a younger PREDICTABLE branch has already bet. The bet empties ID and IF2 but
+ * refills IF1, so the correction finds EX1 and IF1 occupied with a hole between them — a
+ * NON-CONTIGUOUS `stages`. Spacers keep the `jalr` from stalling on `x1`.
+ */
+const JALR_OVER_A_BET = [
+  '.text',
+  'addi x1, x0, 28', // @0  — the return address the jalr will jump to
+  'addi x9, x0, 0', // @4
+  'addi x9, x0, 0', // @8
+  'jalr x0, 0(x1)', // @12 — unpredictable: bets nothing, corrects at EX2
+  'beq x0, x0, tgt', // @16 — predictable: bets one cycle before that correction
+  'addi x2, x0, 1', // @20
+  'tgt:',
+  'addi x3, x0, 2', // @24
+  'addi x4, x0, 3', // @28 — the jalr's target
+  'ecall', // @32
+].join('\n');
+
 /** An `ecall` with live code directly behind it — TWO shadows on a machine this deep. */
 const HALT_SHADOWS = [
   '.text',
@@ -447,6 +484,11 @@ describe('control flow — resolve at the end of EX2', () => {
       [TAKEN_BRANCH, PREDICT],
       [NOT_TAKEN_BRANCH, PREDICT],
       [HALT_SHADOWS, ON],
+      [CALL_RETURN, ON],
+      [CALL_RETURN, PREDICT],
+      [JALR_OVER_A_BET, PREDICT],
+      // A straight-line run with nothing behind its `ecall` kills nothing at all, ever.
+      [RAW_PAIR, ON],
     ] as const) {
       const ts = run(source, config);
       for (const t of ts) {
@@ -512,6 +554,75 @@ describe('control flow — resolve at the end of EX2', () => {
     // The fall-through really did execute, twice over: this branch was never taken.
     expect(reg(last(ts), 2)).toBe(99);
     expect(reg(last(ts), 3)).toBe(98);
+  });
+});
+
+describe('jumps — the classes the resolve point was pinned for', () => {
+  /**
+   * `jal` and `jalr` are not special cases: there is no ID comparator, so both resolve in EX2 like
+   * every branch. `jalr` differs only in that a REGISTER supplies its target — a RAW on control
+   * flow itself, covered by the same EX1-targeted forwarding — and in being UNPREDICTABLE, so it
+   * mispredicts and pays the full four under every scheme.
+   *
+   * The `ret` also exercises the flush-that-kills-NOBODY path: by the time it resolves, fetch has
+   * run off the end of text and all four squashable slots are empty, so `stages` would be `[]` and
+   * the schema forbids emitting the event at all. Exactly two flushes come out of this run — the
+   * `jal`'s four-wide correction and the `ecall`'s two shadows.
+   */
+  it('resolves a call and an unpredictable return in EX2', () => {
+    const ts = run(CALL_RETURN, ON);
+    expect(ts).toHaveLength(19);
+
+    expect(eventsOf(ts, 'flush').map((e) => e.stages)).toEqual([
+      ['EX1', 'ID', 'IF2', 'IF1'], // the jal, resolved against no prediction
+      ['IF2', 'IF1'], // the ecall's two shadows
+      // ...and NOT a third: the `ret` corrects into an already-empty pipe.
+    ]);
+    expect(eventsOf(ts, 'branch-resolved').map((e) => e.predicted)).toEqual([false, false]);
+
+    expect(reg(last(ts), 1)).toBe(4); // the link register
+    expect(reg(last(ts), 2)).toBe(5); // reached only via the return
+    expect(reg(last(ts), 3)).toBe(7);
+    expect(last(ts).state.pc).toBe(8);
+  });
+
+  /** `jal` is PC-relative and therefore predictable; `jalr` never is, so it never bets. */
+  it('bets on jal and never on jalr', () => {
+    const ts = run(CALL_RETURN, PREDICT);
+    expect(ts).toHaveLength(17);
+
+    const bets = eventsOf(ts, 'branch-predicted');
+    expect(bets).toHaveLength(1);
+    expect(bets[0]!.target).toBe(12); // `fn`
+    expect(eventsOf(ts, 'branch-resolved').map((e) => e.predicted)).toEqual([
+      true, // the jal — a correct bet, so no correction
+      false, // the jalr — unpredictable, so it always mispredicts
+    ]);
+  });
+
+  /**
+   * The THIRD flush shape, which the two the plan names do not cover — and it is not an
+   * over-report. An unpredictable `jalr` corrects at the end of EX2 one cycle after a younger
+   * PREDICTABLE branch bet: the bet emptied ID and IF2 but refilled IF1 from the predicted target,
+   * so the correction's casualties are EX1 and IF1 with a hole between them. **`flush.stages` is
+   * not always a contiguous run of stages.** `buildPipelineMap` is fine with it (it resolves each
+   * named stage independently), and step 3 must read the misprediction penalty as a TOTAL rather
+   * than assuming a shape.
+   */
+  it('emits a NON-CONTIGUOUS flush when a jalr corrects over a younger bet', () => {
+    const ts = run(JALR_OVER_A_BET, PREDICT);
+
+    expect(eventsOf(ts, 'flush')).toEqual([
+      { type: 'flush', reason: 'branch-predicted-taken', stages: ['IF2', 'IF1'] },
+      { type: 'flush', reason: 'branch-taken', stages: ['EX1', 'IF1'] },
+    ]);
+
+    // The branch that placed the bet died in EX1 before it could resolve, so its target was never
+    // reached and neither was its fall-through.
+    expect(reg(last(ts), 2)).toBe(0);
+    expect(reg(last(ts), 3)).toBe(0);
+    expect(reg(last(ts), 4)).toBe(3); // the jalr's target really did run
+    expect(ts).toHaveLength(16);
   });
 });
 

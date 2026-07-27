@@ -1,11 +1,11 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEP 0 DONE (package scaffolded), steps 1+ open; the scope the user pinned, the stage split, and why the plan leads with the timing matrix instead of INV-8'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1 DONE (the model MVP runs, every coefficient confirmed), steps 2+ open; the scope the user pinned, the stage split, and why the plan leads with the timing matrix instead of INV-8'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T10:23:13.516Z
+  modified: 2026-07-27T10:58:49.060Z
 ---
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
@@ -13,10 +13,44 @@ metadata:
 built through M10. So "what's next" is no longer answerable from the spec; it comes
 from [[future-microarchitectures]].
 
-**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEP 0 DONE 2026-07-27** (the
-package scaffold + DAG ripple). Steps 1–8 open. Plan: `docs/plans/m11-tasks.md`, whose
-step-0 entry records what landed and the two judgement calls, so later steps don't
-re-litigate them.
+**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0 AND 1 DONE 2026-07-27**
+(the package scaffold + DAG ripple, then the model MVP). Steps 2–8 open. Plan:
+`docs/plans/m11-tasks.md`, whose per-step entries record what landed and every judgement
+call, so later steps don't re-litigate them.
+
+**Step 1 landed the working machine (18 unit tests, repo 4051 → 4069).** The two
+judgement calls that shape everything after it:
+
+- **The EX split is `EX1 = the forwarding network, EX2 = everything else`** (ALU switch,
+  `alu-op`, control resolution, the EX2/MEM build). So **`Ex1Ex2Latch` carries OPERANDS,
+  never a result** — the ALU→ALU bubble is enforced by the latch's SHAPE, not by a rule
+  someone could forget, because there is nothing in that latch to forward. `alu-op` fires
+  in the EX2 cycle, not EX1.
+- **IF1 reads the instruction word; IF2 does no new work.** The honest-looking alternative
+  (IF1 issues the address, IF2 receives it) was REJECTED because an IF1 occupant would then
+  have no `encoding`, and `InstructionInstance.encoding` is not nullable — that is the
+  trace-schema change the falsifiable criteria make a STOP. IF2's content is DEPTH itself.
+
+**Every PER-HAZARD coefficient was hand-derived and matched the engine on the FIRST run** —
+including the "two width-2 flushes" shape below, now CONFIRMED rather than expected. **This
+does NOT pre-verify step 3**, whose assertion is the closed form `N+6+S+P` over the full
+corpus × forwarding × prediction, where hazards interact and loops repeat them; step 3 is
+still the net. Step 1 also found a **THIRD flush shape the plan never named**: an
+unpredictable `jalr` correcting one cycle after a younger predictable branch's bet emits a
+**non-contiguous `['EX1','IF1']`** (the bet emptied ID and IF2 but refilled IF1). So
+`flush.stages` is not always a contiguous run — read the misprediction penalty as a TOTAL,
+never as a shape. The new stall reason is **`'ex-latency'`**: not `'raw'` (pinned
+repo-wide to mean "forwarding is off" — `pairing-readout.ts:121`, `lessons.test.ts:51`)
+and not `'alu-use'` (`lui` stalls a consumer while running no ALU, since the two-cycle
+execute is uniform). The halt squash kills **TWO** shadows, and the empty-`stages` guard
+is needed on the **bet** path as well as the squash. The mutation check step 3 will run is
+written into the processor's file header, because with this split it is not a one-line
+edit.
+
+**Step 4 has a scheduling hazard to check FIRST:** it wants a real-engine case inside
+`packages/web/src/pipeline-map.test.ts`, but step 0 deferred the web trio to step 5.
+Vitest resolves it (that alias landed at step 0) while `npm run typecheck` likely will
+not — so step 4 may have to move after step 5.
 
 **Step 0's reusable finding — the eslint guardrail has THREE code paths, and the plan
 only named one.** `deny()` is consumed two ways: lower layers spread `...MODELS`, each
@@ -52,10 +86,8 @@ ALU, so resolve-at-EX1 would need a second resolve point or a dedicated fast add
   IF2 _and_ IF1 ⇒ **a correctly predicted taken branch costs 2, not 1.** Depth taxes you even
   when the prediction is right — kept deliberately as a teaching line (making it cheap again
   means an IF1 BTB, new mechanism, out of scope).
-- **The misprediction TOTAL of 4 is expected NOT to arrive as one flush event** (a
-  prediction, not a derived fact — it assumes the deep engine keeps the 5-stage's
-  redirect-and-refetch at the bet, which is step 1's choice; confirm from the dump).
-  Prediction OFF: one
+- **The misprediction TOTAL of 4 does NOT arrive as one flush event — CONFIRMED at step 1**,
+  no longer a prediction. Prediction OFF: one
   flush of width 4 (EX1+ID+IF2+IF1). Prediction ON: the ID bet kills IF2+IF1, and by the time
   the branch reaches EX2 the EX1/ID slots hold that flush's own bubbles — so the correction
   kills IF2+IF1 again: **two events of width 2.** Step 3 derives the penalty from

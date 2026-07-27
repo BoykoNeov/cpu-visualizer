@@ -235,12 +235,27 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         straight to ID; "stub EX2" = move the switch back into EX1 and let `ex1Ex2` carry the
         finished result.
 
-      **Every coefficient was hand-derived from the pinned semantics and matched the engine on the
-      first run** (nothing was adjusted to fit): ALU→ALU forwarding-ON **1** bubble, load-use **2**,
-      forwarding-OFF RAW **3**, unpredicted taken branch **one flush of width 4**, correctly
-      predicted taken **2**, and — the plan's flagged trap, now CONFIRMED rather than expected — a
-      mispredicted branch under prediction=ON arrives as **two flush events of width 2**, totalling
-      4. The drain constant N+6 is confirmed on the no-`ecall` path.
+      **Every PER-HAZARD coefficient was hand-derived from the pinned semantics and matched the
+      engine on the first run** (nothing was adjusted to fit): ALU→ALU forwarding-ON **1** bubble,
+      load-use **2**, forwarding-OFF RAW **3**, unpredicted taken branch **one flush of width 4**,
+      correctly predicted taken **2**, and — the plan's flagged trap, now CONFIRMED rather than
+      expected — a mispredicted branch under prediction=ON arrives as **two flush events of width
+      2**, totalling 4. The drain constant N+6 is confirmed on the no-`ecall` path.
+
+      **This does NOT pre-verify step 3.** These are isolated hand-built pairs; step 3's assertion
+      is the closed form `N + 6 + S + P` over the **full corpus × forwarding × prediction**, where
+      hazards interact, loops repeat them, and the flush shapes mix. Step 3 is still the net.
+
+      **A THIRD flush shape exists that the step-3 trap paragraph does not name, and it is not an
+      over-report** — pinned by a test here (`JALR_OVER_A_BET`). An unpredictable `jalr` correcting
+      one cycle after a younger PREDICTABLE branch bet finds EX1 and IF1 occupied with ID and IF2
+      emptied by that bet: **`flush.stages` is `['EX1','IF1']`, not a contiguous run.** So step 3
+      must read the misprediction penalty as a TOTAL and never assume a shape, and step 4's
+      occupancy assertion is what keeps the distinction honest. `buildPipelineMap` is unaffected —
+      it resolves each named stage independently.
+
+      `jal`/`jalr` are covered here too (`CALL_RETURN`), including the flush-that-kills-NOBODY path:
+      the `ret` corrects with all four squashable slots already empty, so no event is emitted at all.
 
       **One thing for step 4 to check BEFORE starting it:** it wants a real-engine case inside
       `pipeline-map.test.ts`, but step 0 deliberately deferred `web/package.json`'s dependency and
@@ -280,9 +295,14 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         earlier flush** — there is nobody there to kill — so the correction kills IF2 + IF1
         again. **Two flush events of width 2**, totalling the same 4.
 
-      So the total is the robust number for the closed form; `flush.stages` widths are
-      config-dependent and must be read per-setting. This is also why step 4's occupancy
-      assertion is load-bearing rather than paranoid — see there.
+      **Step 1 CONFIRMED both shapes above from the engine — and found a THIRD the paragraph does
+      not name.** An unpredictable `jalr` correcting one cycle after a younger predictable branch
+      bet emits a NON-CONTIGUOUS `['EX1','IF1']`: the bet emptied ID and IF2 but refilled IF1.
+      `flush.stages` is therefore not always a contiguous run of stages.
+
+      So the total is the robust number for the closed form; `flush.stages` widths AND shapes are
+      config-dependent and must be read per-setting, never assumed. This is also why step 4's
+      occupancy assertion is load-bearing rather than paranoid — see there.
 
       The numbers printed elsewhere in this plan (ALU→ALU forwarding-ON 0→1, load-use 1→2,
       forwarding-OFF RAW 2→3, misprediction 2→4, correctly-predicted-taken 1→2) are the
