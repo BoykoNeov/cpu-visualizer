@@ -96,13 +96,14 @@ describe('the model table', () => {
       'superscalar',
       'out-of-order',
     ]);
-    // The deep pipeline is MISSING from this one on purpose, and it is the only model that honors
-    // forwarding and prediction without honoring the cache — so read the gap as the scope lever it
-    // is. M6's miss-freeze holds IF/ID/EX for the miss penalty; on a machine where "IF" and "EX" are
-    // each two stages, which of IF1/IF2/EX1/EX2 freeze is a CHOICE with no external ground truth,
-    // and M11 step 6 is where it gets pinned. Until then that engine REFUSES a non-null cache by
-    // name rather than running silently cache-less — the one place a knob is refused instead of
-    // ignored, which is why the shell has `engineConfigFor` (see its own tests below).
+    // The deep pipeline JOINED this list at M11 step 6, and the history is worth a line because it
+    // is the only knob any shipped engine has ever REFUSED rather than ignored. While the miss-
+    // freeze's meeting with two execute stages was unpinned, that engine threw on a non-null cache —
+    // which is why the shell has `engineConfigFor` (see its own tests below). Step 6 pinned it (the
+    // freeze is back-pressure: MEM owns the EX2/MEM latch, so all five younger stages hold), the
+    // throw went away, and every pipelined model now honors a cache. `engineConfigFor` was kept as
+    // NORMALIZATION rather than protection. (This comment said the opposite until M11 step 7 — a
+    // stale claim sitting directly above the assertion that contradicts it.)
     expect(honoring((c) => c.configurableCache)).toEqual([
       'pipeline',
       'deep-pipeline',
@@ -133,13 +134,14 @@ describe('the model table', () => {
       ['single-cycle', 'single-cycle'],
       ['multi-cycle', 'multi-cycle'],
       ['pipeline', 'pipeline'],
-      // `'none'` — the deliberate superscalar/out-of-order pattern at the same point in their own
-      // milestones, not a missing diagram. M11 step 7 draws the bespoke seven-stage geometry and
-      // flips this row (together with the union member and App's dispatch arm), and this table going
-      // red is the reminder to do all three. Until then App renders the placeholder, and the
-      // PIPELINE MAP — which needed no change at all to fold a seven-stage recording (step 4) — is
-      // what makes the tier teachable meanwhile.
-      ['deep-pipeline', 'none'],
+      // Flipped from `'none'` at M11 step 7, together with the union member and App's dispatch arm —
+      // this table reddening was the reminder to do all three, exactly as it was for the two rows
+      // below. `datapath-deep-pipeline.ts` now exists: seven stage bands, six latch bars, and the
+      // forwarding muxes sitting in EX1 whose output lands on the EX1/EX2 latch rather than on the
+      // ALU. Reusing `'pipeline'` here would be precisely the failure this test hunts — that diagram
+      // draws five columns with the ALU immediately after the muxes, so the ONE thing this tier
+      // teaches (the operands wait a cycle) is the one thing it cannot show.
+      ['deep-pipeline', 'deep-pipeline'],
       // Flipped from `'none'` at M7 step 7, together with the union member and App's dispatch arm —
       // and this table FAILING was the reminder to do all three, which is what an exhaustive table
       // is for. `datapath-superscalar.ts` now exists: a shared front-end feeding two replicated

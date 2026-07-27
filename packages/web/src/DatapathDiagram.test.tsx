@@ -8,6 +8,7 @@
  * an `npm run dev` eyeball, as ever.
  */
 
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
@@ -15,6 +16,7 @@ import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Datapath } from './DatapathView';
+import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
@@ -355,5 +357,132 @@ describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
     expect(html).not.toContain('dp-flow');
     // An idle lane-1 box carries its hue CLASS but never the active tint — "one lane dark" needs it.
     expect(html).not.toContain('dp-node-shape--on');
+  });
+});
+
+describe('deep pipeline wrapper × shared renderer (M11 step 7)', () => {
+  /** A deep-pipeline recording of `source` at `cycles`, under a chosen forwarding position. */
+  function deepAt(source: string, cycles: number, forwarding: boolean): CycleTrace {
+    const result = loadSource(
+      `${source}\n  li a7, 10\n  ecall\n`,
+      () => new DeepPipelineProcessor(),
+      {
+        ...defaultConfig(),
+        forwarding,
+      },
+    );
+    if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+    const { recorder } = result.loaded;
+    for (let i = 0; i < cycles; i++) recorder.stepForward();
+    const trace = recorder.current();
+    if (!trace) throw new Error(`no trace at cycle ${cycles - 1}`);
+    return trace;
+  }
+
+  // Seven independent `addi`s fill the pipe by cycle 7 — seven stages, seven instructions.
+  const FILL = '  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4\n  addi x5, x0, 5\n  addi x6, x0, 6\n  addi x7, x0, 7'; // prettier-ignore
+  const full = deepAt(FILL, 7, true);
+  // The thesis pair: `add` in EX1 taking both operands off EX2/MEM, a cycle before it reaches the ALU.
+  const forwarded = deepAt('  addi x1, x0, 7\n  add x2, x1, x1', 6, true);
+  const render = (trace: CycleTrace, tier: 'essentials' | 'detailed' | 'expert', fwd: boolean) =>
+    renderToStaticMarkup(
+      <DeepPipelineDatapath
+        trace={trace}
+        cycleKey={0}
+        tier={tier}
+        config={{ forwarding: fwd, predictTaken: false }}
+      />,
+    );
+
+  it('SEVEN stages in flight stroke exactly FIVE hues — the family rule, at the render seam', () => {
+    // The claim the pure activation suite cannot make: it ends at the STAGE, and the wrapper is what
+    // folds seven stages onto five validated phase colours. Indexing `PHASE_COLORS` by the raw stage
+    // would leave four of the seven `undefined` and fall back to the renderer's default stroke —
+    // everything would still render, and the "no invented hues" rule would fail silently.
+    expect(full.instructions).toHaveLength(7);
+    const html = render(full, 'detailed', true);
+    expect(html).toContain('Deep pipeline datapath');
+    expect(html).toContain('dp-wire--on');
+    expect(html).toContain('dp-flow');
+    const hues = (['if', 'id', 'ex', 'mem', 'wb'] as const).filter((s) =>
+      html.includes(`stroke:var(--phase-${s})`),
+    );
+    expect(hues, 'seven stages in flight must stroke the five phase hues').toEqual([
+      'if',
+      'id',
+      'ex',
+      'mem',
+      'wb',
+    ]);
+    // No sixth colour was invented for the extra stages — the whole point of folding by family.
+    expect(html).not.toContain('--phase-if1');
+    expect(html).not.toContain('--phase-ex1');
+    // The legend is a key to the HUES, so it has five entries, not seven: two pairs of identical
+    // swatches would say the opposite of what is true. (Counted by the phase swatch specifically —
+    // the renderer appends its own shared "idle" swatch to every legend.)
+    expect(count(html, 'border-top-color:var(--phase-')).toBe(5);
+    expect(html).toContain('Fetch');
+    expect(html).toContain('Writeback');
+    expect(html).not.toContain('Fetch 1');
+  });
+
+  it('draws the forwarded operands arriving in EX1, a cycle before the ALU runs', () => {
+    // The milestone's thesis at the render seam: the consumer's operands are already resolved and
+    // lit while no `alu-op` for it exists yet. If the fork had copied the 5-stage's `if (aluOp)`
+    // gate, this cycle would render with the whole EX1 band dark and nothing else would complain.
+    const ex1 = forwarded.instructions.find((i) => i.location === 'EX1');
+    expect(ex1?.decoded.mnemonic).toBe('add');
+    expect(forwarded.events.some((e) => e.type === 'forward' && e.instr === ex1!.id)).toBe(true);
+    expect(forwarded.events.some((e) => e.type === 'alu-op' && e.instr === ex1!.id)).toBe(false);
+    const html = render(forwarded, 'expert', true);
+    expect(html).toContain('dp-wire--on');
+    expect(html).toContain('ForwardA');
+    expect(html).toContain('Forwarding');
+  });
+
+  it('hides the forwarding and hazard structure below expert (contraction wires stand in)', () => {
+    // Shaped nodes: pcmux + add4 + alu + pcarith = 4 at essentials; + wbmux at detailed; + the two
+    // forwarding muxes at expert. The path stays lit at every tier — omission, never contradiction.
+    expect(count(render(forwarded, 'essentials', true), '<polygon')).toBe(4);
+    expect(count(render(forwarded, 'detailed', true), '<polygon')).toBe(5);
+    expect(count(render(forwarded, 'expert', true), '<polygon')).toBe(7);
+    for (const tier of ['essentials', 'detailed', 'expert'] as const) {
+      expect(render(forwarded, tier, true)).toContain('dp-wire--on');
+    }
+  });
+
+  it('the forwarding unit VANISHES when forwarding is off — it does not merely go idle', () => {
+    const on = render(forwarded, 'expert', true);
+    const off = render(deepAt('  addi x1, x0, 7\n  add x2, x1, x1', 6, false), 'expert', false);
+    expect(count(on, '<polygon')).toBe(7);
+    expect(count(off, '<polygon'), 'the two forwarding muxes must be gone, not dim').toBe(5);
+    expect(on).toContain('ForwardA');
+    expect(off).not.toContain('ForwardA');
+    // ...while the hazard unit survives the flip: on this machine it is live in a THIRD way the
+    // 5-stage never had (`ex-latency`), so gating it on forwarding would erase the interlock from
+    // the exact diagram meant to explain the bubble.
+    expect(on).toContain('Hazard');
+    expect(off).toContain('Hazard');
+  });
+
+  it('tiers representation: values at detailed+, control labels at expert only', () => {
+    expect(render(full, 'essentials', true)).not.toContain('dp-vlabel-text');
+    expect(render(full, 'detailed', true)).toContain('dp-vlabel-text');
+    expect(render(full, 'detailed', true)).not.toContain('MemtoReg');
+    expect(render(full, 'expert', true)).toContain('MemtoReg');
+  });
+
+  it('renders the idle diagram (no active classes) pre-run', () => {
+    const html = renderToStaticMarkup(
+      <DeepPipelineDatapath
+        trace={null}
+        cycleKey={-1}
+        tier="detailed"
+        config={{ forwarding: true, predictTaken: false }}
+      />,
+    );
+    expect(html).toContain('dp-wire');
+    expect(html).not.toContain('dp-wire--on');
+    expect(html).not.toContain('dp-flow');
   });
 });

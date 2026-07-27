@@ -53,6 +53,7 @@ export type DatapathKind =
   | 'single-cycle'
   | 'multi-cycle'
   | 'pipeline'
+  | 'deep-pipeline'
   | 'superscalar'
   | 'out-of-order'
   | 'none';
@@ -116,13 +117,17 @@ export const MODELS: readonly ModelChoice[] = [
     // stage set out: this label and "Pipeline" sit adjacent in the picker.
     description: DEEP_PIPELINE_MODEL_DESCRIPTION,
     make: () => new DeepPipelineProcessor(),
-    // `'none'` is the deliberate superscalar/out-of-order pattern, not an oversight: a
-    // `DatapathKind` means "a diagram of this kind EXISTS", so declaring one before M11 step 7
-    // draws it would make the table test below assert a diagram nothing rendered, while App
-    // silently fell through to the placeholder. The PIPELINE MAP, meanwhile, already draws this
-    // model's seven columns for free (INV-3) — step 4 pinned that `pipeline-map.ts` folds a real
-    // seven-stage recording untouched — so the tier is fully teachable at `'none'`.
-    datapath: 'none',
+    // Its OWN hand-authored geometry (M11 step 7): seven stage bands divided by six latch bars,
+    // with the forwarding muxes in EX1 handing their operands to the EX1/EX2 LATCH — so the diagram
+    // shows, structurally, that nothing forwards into EX2 and a dependent instruction must wait.
+    // This value sat at `'none'` through step 6 on purpose (the superscalar/out-of-order precedent):
+    // a `DatapathKind` means "a diagram of this kind EXISTS", so flipping it early would have made
+    // the datapath table in `models.test.ts` assert a diagram nothing drew. It flips now, together
+    // with the union member and App's dispatch arm. Deliberately NOT reusing `'pipeline'`: that
+    // diagram has five columns and puts the ALU behind the same latch as the muxes, so a seven-stage
+    // trace would light it into a picture that contradicts the machine (INV-5) — and the bubble this
+    // tier exists to teach would be exactly the thing it could not draw.
+    datapath: 'deep-pipeline',
     capabilities: DEEP_PIPELINE_CAPABILITIES,
   },
   {

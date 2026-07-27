@@ -5,6 +5,7 @@ import type { CacheConfig, InstructionInstance } from '@cpu-viz/trace';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CacheGrid } from './CacheGridView';
 import { Datapath } from './DatapathView';
+import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { formatInstruction } from './format';
 import { IsaReference } from './IsaReference';
 import { LESSONS, lessonSections } from './lessons';
@@ -424,6 +425,25 @@ export function App(): React.JSX.Element {
                     // `predictsTaken` collapses the knob HERE, at the shell's edge, exactly once: three
                     // scheme names, two machines, and a diagram can only draw a machine.
                     <PipelineDatapath
+                      trace={sim.cycleTrace}
+                      cycleKey={sim.cursor}
+                      tier={tier}
+                      config={{
+                        forwarding: sim.forwarding,
+                        predictTaken: predictsTaken(sim.branchPrediction),
+                      }}
+                      followed={followed}
+                    />
+                  ) : activeModel.datapath === 'deep-pipeline' ? (
+                    // The deep 7-stage datapath (M11 step 7). Same two structural axes as the
+                    // 5-stage — the forwarding network is absent (not idle) with the toggle off, and
+                    // the bet's adder appears only when the machine bets — because this model honors
+                    // exactly the same two knobs. It also honors the CACHE (step 6), which is
+                    // deliberately NOT an axis here: a miss changes this machine's timing, never its
+                    // structure, and the cache is drawn by the cache-grid panel that gates on a
+                    // trace fact (INV-3). The one thing this view does that no sibling does is fold
+                    // seven stages onto the five validated phase hues, by stage FAMILY.
+                    <DeepPipelineDatapath
                       trace={sim.cycleTrace}
                       cycleKey={sim.cursor}
                       tier={tier}
