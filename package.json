@@ -19,6 +19,7 @@
     "packages/engine/single-cycle",
     "packages/engine/multi-cycle",
     "packages/engine/pipeline",
+    "packages/engine/deep-pipeline",
     "packages/engine/superscalar",
     "packages/engine/out-of-order",
     "packages/web"

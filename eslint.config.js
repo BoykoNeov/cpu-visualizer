@@ -42,6 +42,7 @@ const MODELS = [
   'engine-single-cycle',
   'engine-multi-cycle',
   'engine-pipeline',
+  'engine-deep-pipeline',
   'engine-superscalar',
   'engine-out-of-order',
 ];
@@ -183,6 +184,27 @@ export default tseslint.config(
     rules: deny(
       ['curriculum', 'web', 'engine-reference', ...MODELS.filter((m) => m !== 'engine-pipeline')],
       'A concrete model never imports another model’s production code, and the pipeline copies the ISA idioms rather than importing the reference (INV-8).',
+    ),
+  },
+  {
+    // The deep pipeline (M11) is the sharpest case in the file, because step 1 is literally a FORK
+    // of `engine/pipeline/src/processor.ts` — the two share a stage vocabulary, a hazard unit and a
+    // forwarding idea, and the 5-stage sits right there with a working version of each. It may not
+    // be imported: what M11 exists to break is the assumption that a producer's result is ready for
+    // the next consumer, which is wired into the 5-stage's enumerated forwarding paths and its
+    // single-execute-stage interlock. Importing them would mean parameterizing exactly the thing
+    // this model contradicts (and `future-microarchitectures.md` pins against generalizing the
+    // 5-stage's internals: "a deeper pipeline is a future sibling package, not a retrofit").
+    // Shared, model-independent parts go DOWN into `engine-common` — never sideways.
+    files: ['packages/engine/deep-pipeline/**/*.ts'],
+    rules: deny(
+      [
+        'curriculum',
+        'web',
+        'engine-reference',
+        ...MODELS.filter((m) => m !== 'engine-deep-pipeline'),
+      ],
+      'A concrete model never imports another model’s production code, and the deep pipeline copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {

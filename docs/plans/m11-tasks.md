@@ -120,16 +120,47 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. Package scaffold + the new-model DAG ripple.** `packages/engine/deep-pipeline`
-      (package.json, tsconfig, `src/index.ts`), the workspace entry, `tsconfig.json` project
-      references, and — the one that has burned this repo before — **`eslint.config.js`: add
-      `'engine-deep-pipeline'` to the `MODELS` constant AND add its own deep-pipeline `files`
-      self-exclusion block** beside the other five. This is M9+M10 review finding 7 verbatim
-      (`engine-out-of-order` was omitted from four deny lists under the old
-      enumerate-per-block shape).
+- [x] **0. Package scaffold + the new-model DAG ripple.** ✅ DONE 2026-07-27.
+      `packages/engine/deep-pipeline` (package.json, tsconfig, `src/index.ts`), the workspace
+      entry, `tsconfig.json` project references, and — the one that has burned this repo
+      before — **`eslint.config.js`: add `'engine-deep-pipeline'` to the `MODELS` constant AND
+      add its own deep-pipeline `files` self-exclusion block** beside the other five. This is
+      M9+M10 review finding 7 verbatim (`engine-out-of-order` was omitted from four deny lists
+      under the old enumerate-per-block shape).
       Acceptance: `tsc -b` and `npm run lint` green, **and** a temporary import of
       `@cpu-viz/engine-deep-pipeline` from a `packages/trace` file errors with the INV-3
       message (then reverted) — the verification the guardrail memory names.
+
+      **What landed, and the two judgement calls made here so later steps do not re-litigate
+      them:**
+      - **`vitest.config.ts`'s alias landed in THIS step** (it is the runner for every package,
+        not a web concern). The **web trio is deliberately NOT here** — `web/package.json`'s
+        dependency, `web/tsconfig.json`'s `paths` and `web/vite.config.ts`'s alias all mean
+        "the web app knows this model exists", so they belong to step 5 beside `models.ts`.
+      - **`src/index.ts` exports only `DEEP_PIPELINE_MODEL_ID` + the docblock.**
+        `MODEL_DESCRIPTION` is forced at step 5 per the decisions table, and
+        `DeepPipelineProcessor` is step 1's.
+      - Test-only edges (`assembler`, `conformance`) live in `tsconfig.json` references and
+        **not** in `package.json` dependencies — the asymmetry every other model has.
+      - `npm install` was required: a new `workspaces` entry does not create the
+        `node_modules/@cpu-viz/engine-deep-pipeline` symlink or update the lockfile on its own,
+        and `tsc -b` resolves through that symlink.
+      - **CI does not enumerate packages** (`.github/workflows/ci.yml` runs the root scripts),
+        so there is no ripple there — checked, since every prior milestone found a guard its
+        plan did not name.
+
+      **The guardrail was verified in BOTH directions, not just the one the plan names** — the
+      deny list has two distinct code paths and the plan's probe only exercises one:
+      - `packages/trace` importing deep-pipeline → the `...MODELS` **spread** path. Errors with
+        _"INV-3: the trace is the contract; it may depend only on isa, never on engines…"_.
+      - `packages/engine/pipeline` importing deep-pipeline → the `MODELS.filter` **self-
+        subtraction** path.
+      - **`packages/engine/deep-pipeline` importing `@cpu-viz/engine-pipeline`** → the one that
+        actually guards step 1, because step 1 is a FORK of the 5-stage and that is the import
+        someone would reach for. Errors with the cross-model message. Without the new
+        self-exclusion block this case would have linted CLEAN, since deep-pipeline would fall
+        through to the generic `packages/engine/**` rule, which denies only `curriculum`/`web`.
+      All three reverted; `npm test` (4051), `typecheck`, `lint`, `build`, `format:check` green.
 
 - [ ] **1. The model MVP — `DeepPipelineProcessor`.** Fork `engine/pipeline/src/processor.ts`
       (the M7 extract-then-fork precedent) to seven stages: `IF1 IF2 ID EX1 EX2 MEM WB`, six
