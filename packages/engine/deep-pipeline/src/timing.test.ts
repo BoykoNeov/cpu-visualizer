@@ -174,7 +174,9 @@ interface Timing {
   readonly transfers: Transfers;
   /**
    * The stalls that COST CYCLES: the histogram over instructions that go on to retire. This is the
-   * `S` of the closed form, and it is prediction-INVARIANT (asserted in every matrix cell).
+   * `S` of the closed form. One entry per forwarding position serves all schemes — but that is an
+   * empirical property of this corpus rather than a structural one, and the matrix cell that asserts
+   * it says so along with the counterexample shape that would break it.
    */
   readonly stalls: Readonly<Record<Position, StallSites>>;
   /**
@@ -598,11 +600,19 @@ describe('the pinned cycle-count table — cycles = N + 6 + S + P', () => {
     expect(takenTransfers(ts), 'T — the program, not the config').toBe(T(pinned.transfers));
 
     // S, and every stall's PLACE at once. This is the RETIRED-path histogram — the stalls that cost
-    // cycles — and it is the term the forwarding toggle owns and the prediction toggle must not
-    // move. (The raw histogram is asserted right below and is NOT prediction-invariant.)
-    expect(stallSites(ts, true), 'S — the forwarding toggle, untouched by prediction').toEqual(
-      sites,
-    );
+    // cycles. One histogram per forwarding position covers all schemes, but **that is a fact about
+    // THIS CORPUS, not a structural invariant**, and deliberately not labelled with the 5-stage's
+    // "untouched by prediction" wording: the describe below spends itself disproving exactly that
+    // sentence for the raw histogram, and the retired path is only better off by luck.
+    //
+    // The counterexample shape to watch for, since it is one corpus program away: a DECLINING branch
+    // costs 0 under not-taken and 4 under static-taken, so a consumer just after such a branch that
+    // reads a producer just before it sits at distance 2 in one scheme and distance 6 in the other —
+    // 2 stall cycles with forwarding off, or none. Every declining branch in this corpus is followed
+    // by an instruction reading `x0` or a long-retired producer, so nothing trips it today. When
+    // something does, THIS cell reddens, and the fix is a per-scheme column in the table — not a
+    // hunt for an engine bug.
+    expect(stallSites(ts, true), 'S — the stalls that cost cycles').toEqual(sites);
     expect(stallSites(ts, false), 'every stall the engine emitted, shadows included').toEqual(
       expectedRawSites(pinned, position, scheme),
     );

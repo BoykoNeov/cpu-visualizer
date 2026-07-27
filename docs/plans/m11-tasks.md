@@ -415,7 +415,14 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         EX2 still OCCUPIES its cycle — seven stages remain. Only the coefficients that depend on
         *when the result is finished* move. Collapsing the stage entirely is a different mutation.
 
-      Dump rig and both mutation dumps under `M:\claud_projects\temp\m11-timing\`.
+      **The authority for this machine's timing is `timing.test.ts`'s `TIMING` table, NOT a dump
+      file.** The step-3 dump rig was scratch and has been deleted, and the baseline dump was
+      deliberately deleted with it rather than left lying in `M:\claud_projects\temp\m11-timing\`:
+      the last thing that rig wrote was MUTATION-2 output (a stubbed EX2 — `add.s` at 9 cycles,
+      `sum-loop.s` at 67), so a file called `dump.txt` sitting there would read as the real machine
+      to whoever opens it at step 6. Only `dump-mutation2-stubEX2.txt` survives, named for what it
+      is. Every number in the `TIMING` table is hand-derived AND asserted, which no dump ever was —
+      **step 6's "decide after step 3's dump" means that table.**
 
 - [ ] **4. Recorder / time-travel + the map meets a real deep engine.** `follow()`, scrub,
       and back-stepping over the new model (the per-model recorder test every tier has).
@@ -423,6 +430,12 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       seven-stage case beside the hand-built one — the M7 step 6 move for the lane axis,
       applied to the depth axis — and update that file's header, which currently asserts the
       deep stage set is unemitted.
+      **The engine-side half of the flush-occupancy assertion LANDED AT STEP 3** — `timing.test.ts`'s
+      `every stage a flush names really has an occupant that cycle` sweeps the whole corpus × both
+      toggles. **Step 4 owns only the `buildPipelineMap` side**: that the map actually RECORDS a
+      victim for each named stage. The paragraph below is why it is load-bearing on both sides; do
+      not re-derive the engine sweep.
+
       **Also assert here that every stage named in a `flush` event HAS an occupant that
       cycle.** `buildPipelineMap` resolves victims with a singular
       `trace.instructions.find((i) => i.location === stage)`, so a flush naming a stage
@@ -490,10 +503,10 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       than on `pipeline`, and the map shows a **repeated EX1 cell** on a back-to-back
       dependent pair that the 5-stage draws with no repeat — forwarding no longer buying a
       free result.
-- [~] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
-  by the deep machine's coefficients, matching hand-derived numbers. **Proven HEADLESSLY at
-  step 3** (66 hand-derived cells, both toggles, every term asserted separately); the LIVE half
-  — the same flips read in the browser — is step 5's acceptance and is still owed.
+- [ ] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
+      by the deep machine's coefficients, matching hand-derived numbers. **The HEADLESS half is done
+      at step 3** (66 hand-derived cells, both toggles, every term asserted separately); the LIVE half
+      — the same flips read in the browser — is step 5's acceptance, so the box stays open.
 - [ ] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
 - [x] **INV-8 differential passes on the full corpus** for the new model. ✅ step 2,
