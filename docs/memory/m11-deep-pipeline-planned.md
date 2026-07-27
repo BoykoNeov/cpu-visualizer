@@ -1,11 +1,11 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) is PLANNED but not started — the scope the user pinned, the seeded stage split, and why the plan leads with the timing matrix instead of INV-8'
+description: 'M11 (the 7-stage deep pipeline) — STEP 0 DONE (package scaffolded), steps 1+ open; the scope the user pinned, the stage split, and why the plan leads with the timing matrix instead of INV-8'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T10:09:35.311Z
+  modified: 2026-07-27T10:23:13.516Z
 ---
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
@@ -13,8 +13,23 @@ metadata:
 built through M10. So "what's next" is no longer answerable from the spec; it comes
 from [[future-microarchitectures]].
 
-**M11 = the deep pipeline (7-stage). PLANNED 2026-07-27, NOT STARTED.** Plan:
-`docs/plans/m11-tasks.md`.
+**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEP 0 DONE 2026-07-27** (the
+package scaffold + DAG ripple). Steps 1–8 open. Plan: `docs/plans/m11-tasks.md`, whose
+step-0 entry records what landed and the two judgement calls, so later steps don't
+re-litigate them.
+
+**Step 0's reusable finding — the eslint guardrail has THREE code paths, and the plan
+only named one.** `deny()` is consumed two ways: lower layers spread `...MODELS`, each
+model's own block subtracts itself with `MODELS.filter`. The probe the plan asks for
+(`packages/trace` importing the new model) exercises only the spread. The one that
+actually matters for M11 is **the new package importing `@cpu-viz/engine-pipeline`** —
+step 1 is a FORK of the 5-stage, so that is the import someone reaches for. Without the
+new self-exclusion block it lints CLEAN, because the package falls through to the generic
+`packages/engine/**` rule which denies only `curriculum`/`web`. Verify a new model in all
+three directions, not one. Also: a new `workspaces` entry needs **`npm install`** (no
+symlink, no lockfile update otherwise, and `tsc -b` resolves through that symlink), and
+the **web trio** (web `package.json` dep, `tsconfig` `paths`, Vite alias) is step 5's, not
+step 0's — only `vitest.config.ts`'s alias belongs to the scaffold.
 
 **Scope the user pinned:** the deep pipeline **ALONE**. The wider superscalar is a
 separate later milestone — widening is _not_ a new package, it is generalizing M7's
