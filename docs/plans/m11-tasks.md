@@ -434,9 +434,13 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       by the deep machine's coefficients, matching hand-derived numbers.
 - [ ] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
-- [ ] **INV-8 differential passes on the full corpus** for the new model.
+- [x] **INV-8 differential passes on the full corpus** for the new model. ✅ step 2,
+      2026-07-27 — 6 configs × 11 programs, green on the first run.
 - [ ] **The timing matrix reddens when IF2/EX2 are stubbed to pass-through, while INV-8 stays
-      green** — the recorded mutation check.
+      green** — the recorded mutation check. **Step 3 must execute BOTH halves.** Step 2's
+      docblock now asserts this contract from the INV-8 side too, so running the stub and
+      checking only that timing reddens would leave "INV-8 stays green" as an unverified claim
+      sitting in two files — easy to skip precisely because the sentence already reads settled.
 - [ ] `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run format:check`
       all green.
 
