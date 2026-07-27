@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-07-19T19:59:07.073Z
+  modified: 2026-07-27T15:34:40.738Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
@@ -144,7 +144,43 @@ or padding lets the panel's `margin-top` **collapse through it**, so the wrapper
 panel's — which is why one `top` offset is correct for panels that carry a top margin and panels that
 do not.
 
-**Reusable rig:** `M:/claud_projects/temp/m5-step2/` — `eyeball.mjs` (pick a lesson, walk its rail,
+**ASSERT THE NEGATIVE STATE FIRST, or a broken selector passes the positive check for free**
+(2026-07-27, M11 step 5 — `follow-scrub.mjs`). Reading a computed style through
+`code.closest('div').parentElement` climbed one level past the element carrying `visibility` and
+landed on the always-visible header row. The "readout is VISIBLE after the click" check passed —
+**vacuously, since that selector could never return anything else** — and only the "readout is
+HIDDEN before the click" check exposed it. A visibility/enabled/pressed assertion is worth nothing
+unless the same selector has been seen returning the other value. In that run **five of five
+failures were the rig, not the app**: the same class of thing as the too-broad/too-narrow selectors
+above, plus a register-row regex that read `78120` out of `a0 | x10 | 0x00000078 | 120` because
+`textContent` runs the cells together (anchor on the eight-hex-digit word), a transport equality
+that ignored the trailing `— halted` on the last cycle, and a "seven cells, one per stage"
+expectation on a row that STALLS — eight cells over seven stages. **Assert the DISTINCT stages,
+never a cell count: a count is a claim that no stall happened.**
+
+**The DEV server's first paint here is ~18 seconds cold** (2026-07-27) — it transforms the whole
+module graph on demand, where a `vite preview` bundle is one file and paints in under a second. A
+40-second readiness poll timed out on the coldest run and looked exactly like "the app did not
+render". Give the dev-server poll a **minute or more**. Related, and worth knowing before suspecting
+a stale build: the workspace aliases resolve to **source** (the served `models.ts` imports
+`/@fs/.../src/index.ts`) and an edit to an engine reaches the app **on reload**, but there is **no
+HMR without a reload** — engine packages sit outside the vite root, so the watcher never fires.
+Measured identically on `engine/pipeline`, which is what makes it pre-existing behaviour rather than
+a finding about whatever package you just added. Prove that kind of thing by running the same
+experiment on an OLD package.
+
+**Sweeping leftover Chromes, the exact recipe** (2026-07-27 — the "21 leftovers" note above happened
+again at **66**, so this is not a one-off): after a session of rig runs,
+`Get-CimInstance Win32_Process -Filter "Name='chrome.exe'" | Where-Object { $_.CommandLine -like
+'*<your-profile-prefix>*' } | ForEach-Object { taskkill /PID $_.ProcessId /T /F }`. Match on the
+**profile path you passed to `--user-data-dir`**, never on the image name. The same shape kills a
+dev server you started — filter `node.exe` on a `CommandLine` containing both the project path and
+`vite`, which distinguishes it from the user's other vite projects where a port never could.
+
+**Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) — `eyeball.mjs`
+(model picker, map cells + hues + legend read off the live grid, config toggles, cycle counts,
+tooltip text), `follow-scrub.mjs` (click-to-follow + scrub + panel agreement), `hmr-check.mjs`
+(source-liveness, run against two packages for the comparison). `M:/claud_projects/temp/m5-step2/` — `eyeball.mjs` (pick a lesson, walk its rail,
 all three tiers, both themes), `regcheck.mjs` (read real register rows), `memcheck.mjs` (data-memory
 panel + datapath wire texts). `M:/claud_projects/temp/m5-step4/` — `eyeball.mjs` (read a `<select>`'s
 optgroups, drive it via the native value setter), `mountcheck.mjs` (fresh-load default state).
