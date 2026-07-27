@@ -286,12 +286,19 @@ const WIRE_LIST: readonly DatapathWire[] = [
   // (`ex-latency`) and a LOAD in EX2 still has no datum (`load-use`). Its answer holds THREE
   // things — the PC and BOTH front-end latches — which is the `ID ID ID` / `IF2 IF2 IF2` /
   // `IF1 IF1 IF1` triple hold, where the 5-stage holds two. Outputs ride the clear top rails.
+  //
+  // **Every wire on this unit leaves or arrives on a SIDE, never the top — and that is a browser
+  // finding, not a style preference.** A `controlLabel` is drawn as a single centred `<text>` four
+  // pixels above the box, and this unit's label is the longest in the project (it names three held
+  // things where the 5-stage names two), so anything stubbed out of the top edge runs underneath it.
+  // Routing the three HOLDS out of the left edge is also the better picture: they all travel
+  // BACKWARDS to the front end, which is what a hold is.
   { id: 'if2id-hazard', ends: ['if2id', 'hazard'], points: [bar('if2id', 'r', 106), at('hazard', 'l')] }, // prettier-ignore
   { id: 'idex1-hazard', ends: ['idex1', 'hazard'], points: [bar('idex1', 'l', 90), at('hazard', 'r', -16)] }, // prettier-ignore
-  { id: 'ex1ex2-hazard', ends: ['ex1ex2', 'hazard'], points: [at('ex1ex2', 't'), [858, 28], [580, 28], at('hazard', 't', 40)] }, // prettier-ignore
+  { id: 'ex1ex2-hazard', ends: ['ex1ex2', 'hazard'], points: [at('ex1ex2', 't'), [858, 28], [604, 28], [604, 122], at('hazard', 'r', 16)] }, // prettier-ignore
   { id: 'hazard-if2id', ends: ['hazard', 'if2id'], points: [at('hazard', 'l', 14), bar('if2id', 'r', 120)] }, // prettier-ignore
-  { id: 'hazard-if1if2', ends: ['hazard', 'if1if2'], points: [at('hazard', 't', 20), [560, 64], [306, 64], at('if1if2', 't')] }, // prettier-ignore
-  { id: 'hazard-pc', ends: ['hazard', 'pc'], points: [at('hazard', 't', -20), [520, 52], [106, 52], at('pc', 't', 10)] }, // prettier-ignore
+  { id: 'hazard-if1if2', ends: ['hazard', 'if1if2'], points: [at('hazard', 'l', -8), [458, 98], [458, 64], [306, 64], at('if1if2', 't')] }, // prettier-ignore
+  { id: 'hazard-pc', ends: ['hazard', 'pc'], points: [at('hazard', 'l', -16), [466, 90], [466, 52], [106, 52], at('pc', 't', 10)] }, // prettier-ignore
   // --- ID: the BET — the early redirect. `pc + imm`, computed in ID and fed back to the same
   //     selector the EX2 corrections use, which makes `pcmux` a four-source mux: the sequential +4,
   //     the ID bet, the EX2 pc-relative correction, and `jalr`'s. ---

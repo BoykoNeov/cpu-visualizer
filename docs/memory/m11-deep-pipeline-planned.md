@@ -1,12 +1,53 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0–6 DONE. Step 6 probed the cache and found a CORRECTNESS BUG in shipped pipeline+superscalar (a miss-freeze ate a forward), fixed it family-wide as step 6a, then SHIPPED the deep cache with proportionate tests. Steps 7 (bespoke datapath, sheddable) and 8 (shipped-bundle browser pass) remain'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0–7 DONE, only step 8 (shipped-bundle browser pass) remains. Step 6 found a CORRECTNESS BUG in shipped pipeline+superscalar (a miss-freeze ate a forward), fixed family-wide as 6a, then shipped the deep cache. Step 7 drew the bespoke datapath — the bubble as GEOMETRY — and paid out the second falsifiable UNCHANGED criterion (the trace schema)'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T15:29:40.294Z
+  modified: 2026-07-27T18:48:45.014Z
 ---
+
+**STEP 7 (2026-07-27) — THE BESPOKE DATAPATH. Sheddable in the plan, never shed in practice (the
+M9 precedent held). Repo 4310 → 4359 tests.**
+
+`packages/web/src/datapath-deep-pipeline.ts` + `DeepPipelineDatapathView.tsx`, forked from the
+5-stage. **The geometry IS the argument, in one sentence: the forwarding muxes sit in EX1 and
+their output lands on the EX1/EX2 LATCH, never on the ALU.** Read the sinks and the bubble is
+structural — a forward physically cannot reach the instruction that needs it this cycle. That is
+why `'pipeline'` could not be reused (five columns, ALU immediately behind the muxes ⇒ the one
+thing this tier teaches is the one thing that diagram cannot draw, INV-5).
+
+**THE TRAP THAT FAILS SILENTLY, and the one thing to carry into any future datapath fork: the
+5-stage gates its entire forwarding block on `if (aluOp)`.** Here `alu-op` fires in EX2, a cycle
+AFTER the muxes work — so a copied gate lights **nothing** in EX1, and **the coherence litmus
+still passes**, because nothing lit cannot dangle into a dim box. Gate EX1 on OCCUPANCY plus a
+mirrored `sourcePorts`, and pin it with a test asserting a real forward drawn in a cycle whose
+EX1 occupant emits no `alu-op`. Read the engine's event literals before copying any of them
+(`to: 'EX1.rs1'`, `from: 'EX2/MEM'` / `'MEM/WB'`) — a copied string that never matches produces
+exactly this failure with no error.
+
+Other step-7 findings worth keeping:
+
+- **A `controlLabel` is a single centred `<text>` 4px above its box — no wrapping, no
+  de-collision against wires.** This model's hazard label names THREE held things, so the hold
+  stubs leaving the top edge ran under it. Rerouted all three holds out of the LEFT edge (also
+  the truer picture: a hold travels backwards to the front end) and pinned the general rule —
+  **no wire may anchor on the top edge of a node carrying a control label.** A browser finding.
+- **Seven stages take five hues by stage FAMILY** (`stageFamily`, the map's own rule). Indexing
+  `PHASE_COLORS` by the raw stage returns `undefined` for four of seven and silently falls back
+  to the default stroke. Legend keys the HUES (five entries), not the stages.
+- **THE SECOND FALSIFIABLE "UNCHANGED" CRITERION PAID OUT: the trace schema.** The temptation was
+  reached exactly where the plan predicted — a non-forwarded operand crossing into the EX1/EX2
+  latch has no event this cycle (read at ID, cycles ago) — and DECLINED: the wire lights BARE.
+- **A browser rig can "fail" against a correct app, and both ways happened here.** (a) Comparing
+  the raw tier-OBLIVIOUS `activate()` set (INV-2 lights every contraction alongside its
+  through-mux wire) against the tier-FILTERED canvas — dump the view-filtered set, and make the
+  inverse a check. (b) Guessed thresholds: ">40 wires" failed at 34, which was exactly right for
+  the state the shell opens in. **Read every expected number from the dump, never guess one.**
+  44 checks, all pass; ground truth = `array-sum` cycle 8 at forwarding ON (fullest pipe that
+  also forwards into EX1 and stalls in ID), matched wire-for-wire by `points` geometry, since a
+  wire carries no id in the DOM.
 
 **STEP 6 (2026-07-27) DID NOT GO AS PLANNED, AND THE DETOUR WAS THE VALUABLE PART.**
 
@@ -332,9 +373,10 @@ renders on the map, and is a 5-stage wearing seven labels._ Therefore:
 - two **falsifiable UNCHANGED criteria** guard the INV-3 back door: `pipeline-map.ts`
   needs no edit and the trace schema needs no edit (`location` is a plain string
   precisely to absorb `"IF2"` depth and `"EX.0"` lanes). Reaching for either is a STOP.
-  **`pipeline-map.ts` is now PAID OUT (step 4); the schema one has HELD through step 4** —
-  its one close call (an IF1 occupant with no `encoding`) was settled by rejecting that stage
-  split, not by widening the type. Step 7's bespoke datapath is the remaining risk for it.
+  **BOTH ARE NOW PAID OUT — `pipeline-map.ts` at step 4, the trace schema at step 7.**
+  Two close calls, each settled by declining rather than widening: an IF1 occupant with no
+  `encoding` (rejected that stage split instead) and a datapath wire wanting a latched operand's
+  value (lit it bare instead).
 
 Adding a model also has its own ripple, distinct from a corpus ripple — see
 [[m9-m10-review-resolved]] for the `eslint.config.js` `MODELS` guardrail (review finding 7) and how to verify it.

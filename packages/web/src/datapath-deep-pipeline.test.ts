@@ -718,6 +718,28 @@ describe('geometry: wires are orthogonal and anchored on real edges (visual acce
     }
   });
 
+  it('no wire touches the TOP edge of a unit that carries a control label', () => {
+    // A BROWSER FINDING (step 7), turned into a rule. `DatapathDiagram` draws a `controlLabel` as a
+    // single centred `<text>` four pixels above the box — it does not wrap and it is not de-collided
+    // against wires. This model's hazard label is the longest in the project (it names THREE held
+    // things where the 5-stage names two), so the two hold stubs originally leaving the top edge ran
+    // underneath it. The three holds now leave the LEFT edge, which is also the truer picture: they
+    // all travel backwards to the front end. Stated as a rule so the next unit to gain a label does
+    // not rediscover it in a screenshot.
+    const labelled = [...NODES.values()].filter((n) => n.controlLabel);
+    expect(labelled.map((n) => n.id).sort()).toEqual(['fwdmuxa', 'fwdmuxb', 'hazard', 'pcmux', 'wbmux']); // prettier-ignore
+    for (const n of labelled) {
+      for (const wire of WIRES) {
+        for (const [i, end] of wire.ends.entries()) {
+          if (end !== n.id) continue;
+          const [px, py] = i === 0 ? wire.points[0]! : wire.points[wire.points.length - 1]!;
+          const onTop = Math.abs(py - n.y) < 0.01 && px > n.x - 0.01 && px < n.x + n.w + 0.01;
+          expect(onTop, `${wire.id} anchors on ${n.id}'s top edge, under its control label`).toBe(false); // prettier-ignore
+        }
+      }
+    }
+  });
+
   it('no wire runs THROUGH a latch bar it does not terminate on', () => {
     // New here, because six bars leave far less clear space than four: a horizontal run that crosses
     // a 360px-tall bar draws a value teleporting past a latch, which is the one thing a pipeline

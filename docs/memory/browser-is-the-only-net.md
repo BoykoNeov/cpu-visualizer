@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-07-27T16:37:53.080Z
+  modified: 2026-07-27T18:49:08.789Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
@@ -186,7 +186,29 @@ had been deliberately improved. **Before re-running an old rig, ask which of its
 pinning a temporary scope decision rather than a lasting contract.** Keep the machinery (helpers,
 CDP plumbing, `__map`/`__seg`/`__cycles`); re-derive the expectations.
 
-**Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) — `cache-eyeball.mjs`
+**VERIFY A DIAGRAM AGAINST A DUMP TAKEN BEFORE THE BROWSER RAN — and dump what the VIEW draws, not
+what the pure function LIGHTS** (2026-07-27, M11 step 7). The datapath activation modules are
+tier-OBLIVIOUS by design (INV-2): `activate()` lights every contraction wire alongside the
+through-mux wire it stands in for, and the VIEW filters by tier×config. Comparing the raw
+activation set against the live canvas reported two "missing" wires — both contractions correctly
+hidden at expert, i.e. **the rig failed against a correct app**. Emit the `wireVisibleAt`-filtered
+set, and turn the inverse into a check (those wires are ABSENT from the canvas, not merely dim).
+Two more things from that pass:
+
+- **Match wires by their `points` geometry.** A wire carries no id in the DOM — only a React `key`,
+  which is not rendered. The geometry is the honest key anyway: it is what the reader sees.
+- **Read every expected NUMBER from the dump; never guess a threshold.** A guessed ">40 wires"
+  failed at 34 — which was exactly right for the state the shell opens in (dump a
+  tier×config→count table and index it with the state you read live). Of the failures in that
+  run, **all were the rig**, continuing the M11 step-5 pattern.
+- The shell opens at **expert** depth with forwarding **off** — do not assume `essentials`.
+
+**Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) —
+`datapath-eyeball.mjs` (the step-7 pass: dump-vs-live wire-for-wire comparison, hue-by-family,
+tier gating, follow ring, structural config axes) and `dp-zoom.mjs` (a scaled close-up of one SVG —
+note `Page.captureScreenshot`'s `clip` is PAGE-relative under `captureBeyondViewport`, while
+`getBoundingClientRect` is viewport-relative; mixing them silently clips the wrong band), plus
+`cache-eyeball.mjs`
 (the step-6 pass: control appears, tooltips read live, `+M` cycle counts, map paging, model sweep;
 built by concatenating `eyeball.mjs`'s preamble with `step6-checks.js`, which is the cheap way to
 reuse the plumbing), `eyeball.mjs`

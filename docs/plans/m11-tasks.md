@@ -1,6 +1,15 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2, 3 — THE NET — 4 and 5 are DONE; steps 6–8 open.
+**Status: IN PROGRESS, 2026-07-27. Steps 0–7 are DONE; only step 8 (the closing shipped-bundle
+browser pass) is open. Step 7 drew the model's own datapath — the bubble as GEOMETRY, since the
+forwarding muxes sit in EX1 and their output lands on the EX1/EX2 latch rather than on the ALU —
+and both falsifiable "unchanged" criteria have now PAID OUT: `pipeline-map.ts` was untouched
+(step 4) and the trace schema was untouched (step 7, where the temptation was reached and
+declined). The step-7 browser pass was verified against a dump taken BEFORE it ran, and found one
+real defect — a control label with no wrapping and no de-collision running under its own unit's
+wire stubs.**
+
+**Historical status note (superseded, kept for the trail): Steps 0, 1, 2, 3 — THE NET — 4 and 5 are DONE; steps 6–8 open.
 The deep pipeline is now DRIVABLE in the browser, and step 5's browser pass read every hand-derived
 number live. It also found the one defect of the milestone so far, and it was PROSE: two config
 tooltips stated the 5-stage's coefficients on a machine whose coefficients are double.
@@ -756,13 +765,101 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         exemplar moved to `single-cycle`, which has no memory-latency notion at all, rather than to
         the next model about to change.
 
-- [ ] **7. Bespoke datapath (SHEDDABLE).** A `datapath-deep-pipeline.ts` geometry+activation
+- [x] **7. Bespoke datapath (SHEDDABLE — and, like M9's, never shed).** ✅ DONE 2026-07-27.
+      A `datapath-deep-pipeline.ts` geometry+activation
       module (pure, tested) + view wrapper + render smoke test + browser eyeball, then flip
       `datapath` in `models.ts` and add the union member. Per
       `docs/templates/new-model-datapath.md`. Note the M7 pin: **wire stroke = STAGE, node
       tint = LANE, follow ring = IDENTITY** — and with seven stages the stroke palette must
       colour by stage FAMILY, the same rule the map follows, never by inventing hues.
       Acceptance: browser-verified against a dumped trace at a named cycle.
+
+      **What landed (47 tests, repo 4310 → 4357; 4359 after the browser's finding), and the
+      judgement calls a later milestone should not re-litigate:**
+
+      - **THE GEOMETRY IS THE ARGUMENT, and it is one sentence: the forwarding muxes sit in EX1 and
+        their output lands on the EX1/EX2 LATCH, never on the ALU.** Read the sinks and the bubble is
+        structural — a forward physically cannot reach the instruction that needs it this cycle. The
+        5-stage's diagram cannot say this, which is why `'pipeline'` was not reused: it draws five
+        columns with the ALU immediately behind the muxes, so the ONE thing this tier teaches is the
+        one thing that diagram cannot draw. Pinned by a test that sweeps every wire whose SINK is an
+        EX2 unit and requires its source to be `ex1ex2` (the first draft of that test read "touches"
+        instead of "sinks" and flagged the ALU's own OUTPUT — the assertion was wrong, not the
+        geometry).
+      - **THE FORK'S SHARPEST TRAP, and it fails SILENTLY: the parent gates its whole forwarding
+        block on `if (aluOp)`.** That works at five stages because the muxes and the ALU share one.
+        Here `alu-op` fires in EX2, a cycle AFTER the muxes do their work, so a copied gate lights
+        **nothing** in EX1 — on the one model whose thesis is that forwarding stops being enough —
+        and **the coherence litmus passes**, because nothing lit cannot dangle into a dim box. EX1 is
+        therefore gated on OCCUPANCY plus a mirrored `sourcePorts`, and the test that earns its place
+        asserts a real forward drawn in a cycle whose EX1 occupant emits no `alu-op` at all. The
+        engine's literals were read before copying, not assumed: `to: 'EX1.rs1'` / `'EX1.rs2'`,
+        `from: 'EX2/MEM'` / `'MEM/WB'`.
+      - **The contraction SINKS moved, which is the genuinely new geometry rather than reflow.** In
+        the parent a forwarding-mux contraction runs `latch → ALU`; here it must run
+        `latch → ex1ex2`, because that is where the mux it collapses sends its output. The lawfulness
+        litmus (same source, same sink as the expert path) is what catches a copied one, and the file
+        adds the specific form: every `fwdmuxa`/`fwdmuxb` contraction sinks on `ex1ex2`.
+      - **IF2 contains NO unit, and that is the honest picture rather than a gap.** Step 1 pinned
+        that IF1 reads the word and IF2 does no new work, so a box there would invent work the trace
+        does not contain. Its one wire is the only one in this family lit with **no event behind it
+        at all** — occupancy only, labelled from `inst.encoding`, which is the same source the parent
+        uses for an instruction a stall is HOLDING.
+      - **The trace-schema STOP was reached and DECLINED, exactly where the plan predicted.** A
+        non-forwarded operand crossing into `ex1ex2` has no event this cycle — its value was read at
+        ID, cycles ago. The wire lights BARE. No field, no event, no back door. So **both falsifiable
+        "unchanged" criteria now hold through the whole milestone.**
+      - **Seven stages take five hues by stage FAMILY** (`stageFamily`, imported from `pipeline-map`
+        — reading it changes nothing). Indexing `PHASE_COLORS` by the raw stage would leave four of
+        seven `undefined` and fall back to the renderer's default stroke: everything would still
+        render and the no-invented-hues rule would fail silently. The LEGEND therefore has five
+        entries, not seven — a key to the hues, where two pairs of identical swatches would say the
+        opposite of what is true.
+      - **The interlock's picture: TWO execute inputs, THREE holds** (the PC and both front-end
+        latches — step 4's `ID ID ID` / `IF2 IF2 IF2` / `IF1 IF1 IF1` triple). Under forwarding OFF
+        the engine also compares against the instruction in MEM; that third input is NOT drawn, for
+        exactly the reason the parent does not draw a second, and the file says so rather than
+        leaving the gap to read as an oversight.
+      - **THE BROWSER FOUND ONE REAL LAYOUT DEFECT, and it generalizes: a `controlLabel` is a single
+        centred `<text>` four pixels above its box — it does not wrap and it is not de-collided
+        against wires.** This unit's label names THREE held things where the 5-stage's names two, so
+        the hold stubs leaving the top edge ran underneath it. Fixed by routing all three holds out
+        of the LEFT edge (and the EX2 input to the right), which is also the truer picture — every
+        hold travels backwards to the front end. Turned into a rule so the next labelled unit does
+        not rediscover it in a screenshot: **no wire may anchor on the top edge of a node that
+        carries a control label.**
+      - **THE BROWSER PASS: 44 checks, ALL PASS** (`M:\claud_projects\temp\m11-browser\datapath-eyeball.mjs`,
+        built on step 5/6's rig; close-ups via `dp-zoom.mjs`). It is not a vibes pass — the acceptance
+        line's "dumped trace at a named cycle" is **`array-sum` cycle 8 at forwarding ON**, dumped
+        from the pure `activate()` BEFORE the browser ran: the fullest possible pipe (seven stages,
+        seven instructions) that is ALSO forwarding into EX1 and ALSO stalling in ID. Every lit wire
+        is matched live **by its `points` geometry** (a wire carries no id in the DOM, and the
+        geometry is the honest key anyway), and every hue by the `--phase-*` variable in its own
+        inline style.
+        - **The rig's first run "failed" against a CORRECT app, twice, and both are worth keeping.**
+          (a) It compared the raw `activate()` set — which is tier-OBLIVIOUS (INV-2) and lights every
+          contraction alongside the through-mux wire it stands in for — against the tier-FILTERED
+          canvas: 26 vs 24, the two extras being exactly the contractions of `fwdmuxa` and `wbmux`,
+          both visible at expert. The dump now emits the view-filtered set, and the inverse became a
+          CHECK (those two are absent from the canvas, not dim). (b) It guessed ">40 wires" for the
+          opening state and got 34 — which is precisely `expert|fwd:false|bet:false` in the dumped
+          count table. Both thresholds are now read from the dump, never guessed.
+        - The NEGATIVE was asserted first (the step-5 rig lesson): single-cycle and `pipeline` are
+          read through the same selector and must return their OWN `aria-label`s, so "the datapath
+          selector found something" is known to mean something before it is trusted.
+        - Also read live: the placeholder is gone, all seven stage names are on the canvas, the map
+          agrees that seven rows occupy that cycle column, forwarding OFF removes the two mux
+          polygons (7 → 5) while the hazard unit survives, the follow ring reaches the datapath and
+          rings SOME wires but not all (2 of 24), and the tier dial gates values and control labels.
+      - **`_snap.render.test.tsx` was checked and deliberately NOT extended** — it is a `RUN`-gated
+        dev screenshot harness, not a test, and it enumerates no model list. The four exhaustive
+        lists that DID need editing were the `DatapathKind` union, App's dispatch arm, the
+        `models.ts` row and `models.test.ts`'s datapath table; the table reddening is what makes the
+        set impossible to half-do.
+      - **A stale comment was corrected in passing**: `models.test.ts` still said the deep pipeline
+        was "MISSING from this one on purpose" directly above the assertion that lists it in the
+        cache-honoring set (step 6 shipped that knob). A comment asserting a case is impossible while
+        the code beneath says otherwise is the bug class this repo's own notes name.
 
 - [ ] **8. Browser pass over the whole milestone** — the house closing step. Drive the
       SHIPPED `vite preview` bundle (not the dev server) via CDP; rig under
@@ -827,12 +924,16 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       with the file untouched (`git diff` over step 4 shows `pipeline-map.test.ts` and the web
       trio, never `pipeline-map.ts`). The M3-era fixture at `pipeline-map.test.ts:505` is
       reproduced character-for-character by the engine. **Steps 5–7 must keep it unchanged.**
-- [ ] **The trace schema needs no change.** `location` is a plain string precisely to absorb
-      this axis (`"IF2"` = depth, `"EX.0"` = lane). **Held through step 4** — the engine, the
-      recorder, `follow()` and the map fold all ran on the shipped schema, and the one place
-      step 1 came close (an IF1 occupant with no `encoding`) was settled by REJECTING that
-      stage split rather than widening the type. The box stays open because step 7's bespoke
-      datapath is the remaining place that could reach for it.
+- [x] **The trace schema needs no change.** ✅ PAID OUT at step 7, 2026-07-27. `location` is a plain
+      string precisely to absorb this axis (`"IF2"` = depth, `"EX.0"` = lane). Held through step 4 —
+      the engine, the recorder, `follow()` and the map fold all ran on the shipped schema, and the
+      one place step 1 came close (an IF1 occupant with no `encoding`) was settled by REJECTING that
+      stage split rather than widening the type. **Step 7 was the remaining place that could reach
+      for it, and it DID reach the temptation and decline it**: a non-forwarded operand crossing into
+      the EX1/EX2 latch has no event in the cycle being drawn (it was read from the register file at
+      ID, cycles earlier), so the obvious fix is a field or an event carrying the latched operand.
+      The wire lights BARE instead — the same call the parent already makes for every latch-riding
+      value (INV-5: omit, never contradict). Nothing in `packages/trace` changed in this milestone.
 
 If either is reached for, stop and surface it as a decision rather than editing — that is the
 INV-3 back door, and the house precedent is to DECLINE and prove it (M7 declined an `issue`
