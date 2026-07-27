@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-07-27T15:34:40.738Z
+  modified: 2026-07-27T16:37:53.080Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
@@ -177,7 +177,19 @@ again at **66**, so this is not a one-off): after a session of rig runs,
 dev server you started — filter `node.exe` on a `CommandLine` containing both the project path and
 `vite`, which distinguishes it from the user's other vite projects where a port never could.
 
-**Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) — `eyeball.mjs`
+**A RIG THAT PINS A SCOPE LEVER EXPIRES WHEN THE LEVER MOVES — rewrite it, do not re-run it**
+(2026-07-27, M11 step 6). Step 5's `eyeball.mjs` verified "pipeline(cache small) → Deep pipeline
+shows NO cache control and the value is clamped away, so returning restores it". One step later the
+model HONORED the cache, so the correct behaviour became the exact opposite (the value carries over
+and changes the count) — and the old rig would have reported a regression against a machine that
+had been deliberately improved. **Before re-running an old rig, ask which of its assertions were
+pinning a temporary scope decision rather than a lasting contract.** Keep the machinery (helpers,
+CDP plumbing, `__map`/`__seg`/`__cycles`); re-derive the expectations.
+
+**Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) — `cache-eyeball.mjs`
+(the step-6 pass: control appears, tooltips read live, `+M` cycle counts, map paging, model sweep;
+built by concatenating `eyeball.mjs`'s preamble with `step6-checks.js`, which is the cheap way to
+reuse the plumbing), `eyeball.mjs`
 (model picker, map cells + hues + legend read off the live grid, config toggles, cycle counts,
 tooltip text), `follow-scrub.mjs` (click-to-follow + scrub + panel agreement), `hmr-check.mjs`
 (source-liveness, run against two packages for the comparison). `M:/claud_projects/temp/m5-step2/` — `eyeball.mjs` (pick a lesson, walk its rail,

@@ -1,12 +1,63 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0–5 DONE: THE NET landed (S is NOT prediction-invariant), step 4 paid out the pipeline-map.ts UNCHANGED criterion, and step 5 put the model in the picker — where the row made a live crash reachable (the shell hands every engine the session cache; this is the first engine that REFUSES a knob) and the browser found a TOOLTIP stating the 5-stage coefficients on a machine whose coefficients are double; step 6 (cache, or drop with proof) is next'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0–6 DONE. Step 6 probed the cache and found a CORRECTNESS BUG in shipped pipeline+superscalar (a miss-freeze ate a forward), fixed it family-wide as step 6a, then SHIPPED the deep cache with proportionate tests. Steps 7 (bespoke datapath, sheddable) and 8 (shipped-bundle browser pass) remain'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
   modified: 2026-07-27T15:29:40.294Z
 ---
+
+**STEP 6 (2026-07-27) DID NOT GO AS PLANNED, AND THE DETOUR WAS THE VALUABLE PART.**
+
+The step's question was "implement the cache on the 7-stage, or DROP IT WITH PROOF". Probing it
+found a **correctness bug in SHIPPED code** — `engine/pipeline` (M6) and `engine/superscalar`
+(M7): **a cache miss froze the execute stage BEFORE it captured its forwarded operands**, the
+producer retired out of MEM/WB during the freeze, and on release the occupant executed on its
+stale pre-forwarding register read. A cache — documented repo-wide as a timing shadow that "holds
+tags, never values" — **changed the answer**. Observed: a wrong register value, a wrong load
+address with the wrong line evicted, and a non-terminating program. Unreachable by the 11-program
+corpus; trivially reachable from the app's sandbox. Full write-up:
+`docs/reviews/m11-miss-freeze-forward-loss.md`. The method that caught it is its own memory:
+[[cycles-cannot-see-a-lost-forward]].
+
+- **Step 6a (user-scoped "fix the family first")** — the freeze now holds the **ADVANCE, not the
+  WORK**: EX resolves its operands and latches them back onto `a`/`b`, so the release cycle's own
+  `resolveOperand` finds no producer and returns them. **No new latch field**, so nothing in the
+  trace or recorder shape moves. `ctx.memStallStarted` (capture on the DETECTION cycle ONLY) is
+  SEMANTIC, not an optimization — a later frozen cycle reads a draining source set, and on the
+  superscalar an unconditional capture re-emits a `forward` every frozen cycle off the pair-mate
+  deliberately frozen in EX/MEM. **Zero churn on 4265 existing tests**; regression nets in all
+  three cache-honoring packages, each verified to fail without its fix. `out-of-order` was never
+  affected — a ROB entry HOLDS its operand values, so there is no forwarding window to close — and
+  now pins that as a property.
+- **Then step 6 SHIPPED the cache** (user chose ship-with-proportionate-tests over the plan's own
+  "mechanical ⇒ drop" criterion, because dropping would leave `deep-pipeline` as the only PIPELINED
+  model without a cache and keep `engineConfigFor`'s clamp alive forever for one model).
+  **BOTH halves of the seam the plan feared turned out FORCED**: which stages freeze is
+  back-pressure (MEM owns `next.ex2Mem`, so EX2 cannot advance and the block propagates up), and
+  whether an in-flight EX2 completes has **no consequence either way** (its operands are already on
+  the `Ex1Ex2` latch and nothing forwards INTO it). The one that was NOT free is **EX1**, which the
+  plan never named.
+- **The model's own headline, and the boundary of its thesis: DEPTH TAXES FETCH AND EXECUTE, NOT
+  MEMORY.** A miss costs `missPenalty` here exactly as on the 5-stage — the freeze stops the whole
+  machine however long it is — and the miss SEQUENCE is identical to the 5-stage's, because no
+  wrong-path instruction ever reaches MEM on either. That is why `cache.test.ts` is ~200 cells
+  smaller than the house shape: a third axis through the differential (68→204) and the timing matrix
+  would add cells that **cannot fail independently** of ones already asserted.
+- **A real user-visible consequence, accepted and pinned rather than fixed:** the pipeline map pages
+  at 400 cycles, and `PipelineMapView.test.tsx` claimed "the teaching path never sees paging" while
+  measuring only the 5-stage (290). `array-sum-twice` on the deep machine is **392** (8 cycles of
+  headroom, before step 6) and **442/422** with a cache. So that claim is true through M7 and FALSE
+  for `deep-pipeline` + cache. The test now measures per MODEL.
+- **KNOWN LIMITATION, not a step-6 bug:** the cache grid's `filling` countdown reads
+  `micro.exMem.missCyclesRemaining`, a 5-stage-only field NAME — the superscalar's `exMem` is a
+  slotted array — so that path has **only ever fired for `engine/pipeline`**. Verdicts still render
+  (they come from the `cache-access` EVENT). Fixing it means making the grid model-agnostic, which
+  would fix superscalar and OoO too.
+- **Browser pass: 24 checks, ALL PASS, no defect.** Live: 392 → 442 → 422 on the deep machine and
+  340 on `pipeline` (= `cache.ts`'s own 290 + 5×10 headroom note, read from the running app). Step 8
+  still owes the SHIPPED-bundle sweep.
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
 5-stage pipeline → caches/prediction → in-order superscalar → out-of-order) are all

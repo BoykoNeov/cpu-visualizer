@@ -720,6 +720,33 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         costs 1 on the 5-stage and 2 here). One sentence was not: _"This is the pipeline as M4 left
         it"_ in the cache-off title. Reworded, and the docblock now says why these titles may state
         numbers where the prediction ones may not.
+      - **THE BROWSER PASS: 24 checks, ALL PASS, no defect** (`M:\claud_projects\temp\m11-browser\cache-eyeball.mjs`,
+        built on step 5's rig). Every hand-derived number read live: `array-sum-twice` on the deep
+        machine at the shell's opening forwarding=OFF reads **392 → 442 (small) → 422 (large)**, and
+        `pipeline` reads **340** — which is `cache.ts`'s own headroom note (290 + 5×10) confirmed from
+        the running app. **It is a DEV-SERVER pass of what step 6 changed, NOT a substitute for step
+        8's shipped-bundle sweep**, which still owes the whole milestone.
+        - **The negative was asserted FIRST** (the step-5 rig lesson): `single-cycle` has no cache
+          control, so `__seg('Cache')` returning null is known to mean something before it is used to
+          claim the deep pipeline HAS one.
+        - **Step 5's round-trip assertions were INVERTED by this step and had to be rewritten, not
+          re-run.** Step 5 pinned "pipeline(cache small) → Deep pipeline shows NO cache control and
+          the value is clamped away". Now the cache CARRIES OVER and is HONORED (442), and returning
+          to `pipeline` still finds 340. A browser rig that pins a scope lever expires when the lever
+          moves — worth expecting at step 8.
+        - The three cache tooltips were read live and swept for the step-5 prose class. They are
+          clean, and for a reason worth keeping: their numbers interpolate the geometry constants,
+          and **the miss penalty is the one coefficient depth does not change**.
+        - Every model loads with the cache lit (134/530/340/442/340/258) — the sweep that would catch
+          a model refusing a knob the shell hands it.
+      - **A KNOWN LIMITATION, recorded so it does not read as a step-6 bug: the cache grid's
+        `filling` countdown does not render on this model.** `cache-grid.ts:154` reads
+        `micro.exMem.missCyclesRemaining` — a 5-stage-only field NAME. The superscalar's `exMem` is a
+        slotted ARRAY and the out-of-order core has no such latch, so **that path has only ever fired
+        for `engine/pipeline`**; deep-pipeline joins three models in not having it. The panel itself
+        renders correctly and the hit/miss/evict verdicts (which come from the `cache-access` EVENT,
+        not from `micro`) are right. Fixing it properly means making the grid model-agnostic, which
+        would fix superscalar and OoO too — a view change, not this step's, and not this model's bug.
       - **`engineConfigFor` KEPT, but it is no longer protection.** It was added at step 5 because
         this engine THREW on a cache; step 6 removed the throw, so nothing refuses anything and the
         clamp is now NORMALIZATION. Its test that pinned "the unclamped config really does throw"
