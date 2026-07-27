@@ -1,6 +1,9 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2, 3 — THE NET — and 4 are DONE; steps 5–8 open.
+**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2, 3 — THE NET — 4 and 5 are DONE; steps 6–8 open.
+The deep pipeline is now DRIVABLE in the browser, and step 5's browser pass read every hand-derived
+number live. It also found the one defect of the milestone so far, and it was PROSE: two config
+tooltips stated the 5-stage's coefficients on a machine whose coefficients are double.
 Step 4 also carried the web trio (dependency, tsconfig `paths`, vite alias) that step 0 had deferred,
 and PAID OUT the first falsifiable "unchanged" criterion: `pipeline-map.ts` absorbed a real
 seven-stage recording untouched. Scope pinned by the user this session
@@ -511,7 +514,7 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         RECORDING rather than the map, and `sum-loop`'s `maxInFlight` is 6, which is what turned up
         the occupancy negative above.
 
-- [ ] **5. Web enablement.** A `models.ts` entry (id, label, the engine's OWN exported
+- [x] **5. Web enablement.** ✅ DONE 2026-07-27. A `models.ts` entry (id, label, the engine's OWN exported
       `MODEL_DESCRIPTION` constant per the superscalar/OoO precedent, `capabilities`), with
       **`datapath: 'none'`** — the deliberate superscalar/OoO pattern, since a `DatapathKind`
       means "a diagram of this kind EXISTS" and flipping it early makes `models.test.ts`
@@ -553,6 +556,67 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       spirit as the OoO row's "DELIBERATELY does NOT join forwarding" note, so it reads as
       the scope lever it is rather than as an omission.
 
+      **What landed (14 tests, repo 4251 → 4265), and the judgement calls later steps should not
+      re-litigate:**
+
+      - **THE ROW MADE A LIVE CRASH REACHABLE, and the fix lands with it.** The shell holds the cache
+        geometry at SESSION level and hands the whole config to whichever engine drives — safe for
+        five models, because a knob a model does not honor is a knob it IGNORES. **`deep-pipeline` is
+        the first shipped engine that REFUSES one** (step 1's cache guard), so `pipeline` with the
+        cache on → pick `Deep pipeline` threw out of a click handler. `engineConfigFor` (in
+        `models.ts`) narrows the session config to the knobs a model claims. **Clamping rather than
+        surfacing the error is FORCED, not a preference: the cache CONTROL is gated on the same flag,
+        so on this model it is not rendered — an error message would leave the user in a state with
+        no control to leave it by.** The session's own value is untouched, so leaving the model
+        restores it (browser-verified: pipeline small → deep → pipeline, still lit at small, 71
+        cycles again).
+      - **Only `cache` is clamped, and that is the whole scope.** Extending it to the other four
+        knobs would be four more judgement calls, each able to move an existing model's recording,
+        and every model's counts are pinned in a timing suite. The other knobs are IGNORED — which is
+        what makes ignoring them safe, and step 5 is what makes two of them REACHABLE (superscalar
+        2-wide → deep hands it `issueWidth: 2`), so the deep suite now pins `issueWidth` and the OoO
+        cluster as whole-trace inert in both forwarding positions. Step 2 had left that "a step-1
+        question"; this is the step that had to answer it.
+      - **`useSimulator` now holds the whole `ModelChoice` in one ref**, not just `.make`: the load
+        path needs the active model's capabilities too, and two refs assigned at three sites each
+        (init / `setModel` / `startLesson`) is how the lesson path stays broken while the picker path
+        looks fixed. Same reasoning as step 1's `Ex1Ex2Latch` carrying operands — one object rather
+        than a rule someone could forget.
+      - **The churn was FOUR exhaustive lists, not the three the note above predicted:** the id list,
+        the two `honoring()` lists — and **the DATAPATH table** (`models.test.ts:110`), which needed
+        `['deep-pipeline', 'none']` inserted mid-array. It reddened, so it could not ship silently,
+        but budget it.
+      - **The clamp is pinned HEADLESSLY, because no test here can see a click** — both directions,
+        the scope of the narrowing, the session value surviving, **that the UNCLAMPED config really
+        does throw** (without that, the clamp assertions would keep passing against an engine that
+        had gone back to ignoring the knob), and every model in `MODELS` loading with the cache on.
+      - **THE BROWSER FOUND ONE DEFECT, and it is the class the browser exists for: PROSE.** The
+        prediction tooltip said _"a correct bet costs 1 cycle; a wrong one costs 2"_ and the
+        forwarding tooltip named the load-use bubble as the only exception. True of the 5-stage —
+        which was the only model rendering these controls — and FALSE here, where the bet costs 2 and
+        the misprediction 4. A view stating a number the machine on screen contradicts is INV-5, not
+        simplification. Reworded to name the MECHANISM (the bet is placed in ID, so it costs whatever
+        the front end has fetched; a wrong one costs the front end twice), which is true on both and
+        is the better lesson. **Deliberately NOT threading coefficients through `ModelChoice` or the
+        trace** — the plan's STOP. The issue-width and issue-order tooltips DO name the 5-stage but
+        are gated on flags this model sets false, so they never render (swept, not assumed).
+      - **The vite-alias first-move is DISCHARGED, with an honest negative.** The alias resolves to
+        SOURCE (the served `models.ts` imports `/@fs/…/deep-pipeline/src/index.ts`) and a live edit to
+        `processor.ts` reaches the running app on reload with no rebuild — so the stale-`dist` failure
+        the M7 comment records is excluded EMPIRICALLY. What does NOT happen is HMR without a reload:
+        engine packages sit outside the vite root, so the watcher never fires. **Identical for
+        `engine/pipeline`**, driven since M3 — pre-existing repo-wide behaviour, not something this
+        package introduced. Rig: `M:\claud_projects\temp\m11-browser\hmr-check.mjs`, which runs the
+        same experiment on both engines because "is the NEW package special?" is only answerable by
+        comparison.
+      - The browser pass (`M:\claud_projects\temp\m11-browser\eyeball.mjs`, 22 checks, ALL PASS)
+        drove the DEV server rather than `vite preview` — deliberately, since the source-liveness
+        question is a dev-server question. **Step 8 still owes the shipped-bundle pass.** Every
+        hand-derived number read live: `add` 7 on `pipeline` vs **10** here with the repeated **ID**
+        cell (not EX1), 12 at forwarding OFF, `array-sum` 74 → **70** on the prediction flip, and
+        **seven rows occupied in one cycle column**. Cold dev-server first paint is ~18s, so the
+        readiness poll needs a minute, not ten seconds.
+
 - [ ] **6. Cache on the deep pipeline (the third knob) — or DROPPED WITH PROOF.** M6's
       miss-freeze meets a machine with two execute stages: `missCyclesRemaining` freezes
       IF/ID/EX, and which of IF1/IF2/EX1/EX2 freeze — and whether an in-flight EX2 completes
@@ -578,13 +642,14 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] Load `sum-loop.s` on **Deep pipeline**, run to the end, and the pipeline map draws
+- [x] Load `sum-loop.s` on **Deep pipeline**, run to the end, and the pipeline map draws
       **seven stage columns in five hues**, each cell's text naming its exact stage.
       **The HEADLESS half is done at step 4** (`pipeline-map.test.ts` folds a real `sum-loop`
       recording to the ordered `['IF1','IF2','ID','EX1','EX2','MEM','WB']` and five families,
-      with the 5-stage as the control); the LIVE half is step 5's browser pass, so the box
-      stays open.
-- [ ] The same program at **forwarding ON** takes strictly more cycles on `deep-pipeline`
+      with the 5-stage as the control); ✅ the LIVE half at step 5, 2026-07-27 — the browser reads
+      seven distinct cell labels, a DERIVED five-swatch legend (`IF ID EX MEM WB`) and five distinct
+      `--cell-hue` values, with `IF1`/`IF2` sharing the fetch hue and `EX1`/`EX2` the execute one.
+- [x] The same program at **forwarding ON** takes strictly more cycles on `deep-pipeline`
       than on `pipeline`, and the map shows a **repeated ID cell** on a back-to-back
       dependent pair that the 5-stage draws with no repeat — forwarding no longer buying a
       free result. **CORRECTED at step 4: this criterion said "repeated EX1 cell" and that was
@@ -592,18 +657,29 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       on (`stall.stage: 'ID'`), so the consumer waits where it was decoded and reaches each
       execute stage exactly once. `add.s`'s dependent pair walks `IF1 IF2 ID ID EX1 EX2 MEM WB`
       here against `IF ID EX MEM WB` on the 5-stage — **look at the ID column in the browser,
-      not EX1.** The headless half is pinned at step 4 (shape AND cycles, 7 vs 10).
-- [ ] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
+      not EX1.** The headless half is pinned at step 4 (shape AND cycles, 7 vs 10). ✅ the LIVE half
+      at step 5, 2026-07-27 — the same `add` at forwarding ON reads **7 cycles on `pipeline`** with
+      the walk `IF ID EX MEM WB` and **10 here** with `IF1 IF2 ID ID EX1 EX2 MEM WB`, the repeat
+      landing on ID exactly as step 4 corrected it to.
+- [x] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
       by the deep machine's coefficients, matching hand-derived numbers. **The HEADLESS half is done
-      at step 3** (66 hand-derived cells, both toggles, every term asserted separately); the LIVE half
-      — the same flips read in the browser — is step 5's acceptance, so the box stays open.
-- [ ] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
+      at step 3** (66 hand-derived cells, both toggles, every term asserted separately); ✅ the LIVE
+      half at step 5, 2026-07-27 — `add` 10 → **12** on forwarding OFF (S 1 → 3) and `array-sum`
+      74 → **70** on the prediction flip (P 16 → 12), both straight off the `TIMING` table.
+- [x] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
       **The HEADLESS half is done at step 4** — `recorder.test.ts` follows one instruction
       through all seven stages while six others are in flight, resolves seven ids to seven
       locations in one cycle, and walks the cursor forward, back to pre-run and to any cycle
-      with the shown state always that cycle's own snapshot. The LIVE half (the panels agreeing
-      in the browser) is step 5's, so the box stays open.
+      with the shown state always that cycle's own snapshot. ✅ the LIVE half at step 5,
+      2026-07-27 (`M:\claud_projects\temp\m11-browser\follow-scrub.mjs`): clicking a map cell
+      follows that instruction — the readout names it, every cell of its row wears the follow ring,
+      and the DISTINCT stages ringed are the seven in order — while the click also seeks to that
+      cell's cycle. Scrubbing to 0/12/40/last and home to pre-run keeps the transport text, the map
+      playhead column and the register panel agreeing (`a0` = 120 at the end, 0 at pre-run), and the
+      follow survives the scrub. **The claim is the DISTINCT stages, not a cell count** — at the
+      shell's opening forwarding=OFF that `lw` interlocks, so its row is EIGHT cells over SEVEN
+      stages, and asserting a count would be asserting the absence of a stall.
 - [x] **INV-8 differential passes on the full corpus** for the new model. ✅ step 2,
       2026-07-27 — 6 configs × 11 programs, green on the first run.
 - [x] **The timing matrix reddens when IF2/EX2 are stubbed to pass-through, while INV-8 stays

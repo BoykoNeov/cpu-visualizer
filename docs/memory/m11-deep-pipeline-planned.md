@@ -1,11 +1,11 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1+2+3+4 DONE: THE NET landed (S is NOT prediction-invariant) and step 4 paid out the pipeline-map.ts UNCHANGED criterion + corrected an acceptance criterion that named the wrong stage; step 5 (web enablement) is next'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0–5 DONE: THE NET landed (S is NOT prediction-invariant), step 4 paid out the pipeline-map.ts UNCHANGED criterion, and step 5 put the model in the picker — where the row made a live crash reachable (the shell hands every engine the session cache; this is the first engine that REFUSES a knob) and the browser found a TOOLTIP stating the 5-stage coefficients on a machine whose coefficients are double; step 6 (cache, or drop with proof) is next'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T13:04:11.578Z
+  modified: 2026-07-27T15:29:40.294Z
 ---
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
@@ -13,12 +13,60 @@ metadata:
 built through M10. So "what's next" is no longer answerable from the spec; it comes
 from [[future-microarchitectures]].
 
-**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0, 1, 2, 3 AND 4 DONE 2026-07-27**
-(the package scaffold + DAG ripple, the model MVP, the INV-8 differential, **THE NET**, and the
-recorder + map payoff). **Step 5 — web enablement — is next.** Steps 5–8 open.
+**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0, 1, 2, 3, 4 AND 5 DONE 2026-07-27**
+(the package scaffold + DAG ripple, the model MVP, the INV-8 differential, **THE NET**, the
+recorder + map payoff, and web enablement). **The model is now DRIVABLE in the browser. Step 6 —
+cache on the deep pipeline, or DROPPED WITH PROOF — is next**; steps 6–8 open.
 Plan: `docs/plans/m11-tasks.md`, whose per-step entries record what landed and every judgement
-call, so later steps don't re-litigate them. Repo now **4251 tests**; typecheck/lint/build/
+call, so later steps don't re-litigate them. Repo now **4265 tests**; typecheck/lint/build/
 format:check green.
+
+**STEP 5 (14 tests, repo 4251 → 4265) — the `models.ts` row, and it made a LIVE CRASH REACHABLE.**
+
+- **THE BUG CLASS, and it generalizes: the shell holds forwarding, prediction, the cache, issue
+  width and the OoO cluster at SESSION level and hands the whole config to whichever engine drives.**
+  Safe for five models, because a knob a model does not honor is a knob it **IGNORES**.
+  `deep-pipeline` is the **first shipped engine that REFUSES one** — `reset()` throws on a non-null
+  cache (step 6's scope lever) — so `pipeline` with the cache on → pick `Deep pipeline` threw out of
+  a click handler. Fixed by **`engineConfigFor(model, config)` in `web/src/models.ts`**, which
+  narrows the session config to the knobs a model claims. **Clamping rather than surfacing an error
+  is FORCED, not taste: the cache CONTROL is gated on the same capability flag, so on this model it
+  is not rendered — an error would leave the user with no control to leave the state by.** It clamps
+  the value PASSED, never the session's own, so leaving the model restores the geometry.
+  **`cache` ONLY** — extending it to the other four would be four judgement calls each able to move
+  an existing model's recording. A second refusing knob belongs beside it, with the argument written out.
+- **`useSimulator` now holds the whole `ModelChoice` in ONE ref**, not just `.make`: the load path
+  needs capabilities too, and two refs assigned at three sites each (init / `setModel` /
+  `startLesson`) is how the LESSON path stays broken while the picker path looks fixed.
+- **The churn was FOUR exhaustive `toEqual` lists, not the three the plan named** — the id list, the
+  two `honoring()` lists, **and the DATAPATH table** (`models.test.ts:110`, `['deep-pipeline','none']`
+  mid-array). All reddened, so none could ship silently.
+- **THE BROWSER FOUND ONE DEFECT AND IT WAS PROSE — the class only a browser sees.** The prediction
+  tooltip said _"a correct bet costs 1 cycle; a wrong one costs 2"_ (and forwarding named the
+  load-use bubble as the sole exception): true of the 5-stage, which was the only model rendering
+  these controls, and FALSE here where the bet costs **2** and the misprediction **4**. A view
+  stating a number the machine on screen contradicts is **INV-5**, not simplification — and the
+  coefficients changing with depth is the milestone's thesis, so the control teaching it cannot lie
+  about it. Reworded to name the **MECHANISM** (the bet is placed in ID, so it costs whatever the
+  front end has fetched; a wrong one costs the front end twice — a relation true on BOTH machines:
+  1/2 there, 2/4 here). **NOT threaded through `ModelChoice` or the trace** — the plan's STOP. The
+  issue-width/issue-order tooltips DO name the 5-stage but are gated on flags this model sets false.
+  **Ask this of every future model: what user-visible prose is gated on a flag it turns on?**
+- **The vite-alias first-move is DISCHARGED with an honest negative.** The alias resolves to SOURCE
+  and a live edit to `processor.ts` reaches the running app on reload with no rebuild — the
+  stale-`dist` failure is excluded EMPIRICALLY. What does not happen is HMR without a reload:
+  engine packages sit outside the vite root so the watcher never fires — **identical for
+  `engine/pipeline`**, hence pre-existing repo-wide, not this package's doing. Only a comparison
+  against an old package could establish that.
+- **Browser rigs live at `M:\claud_projects\temp\m11-browser\`**: `eyeball.mjs` (22 checks, all
+  pass), `hmr-check.mjs` (source-liveness on both engines), `follow-scrub.mjs` (INV-4 follow +
+  scrub). They drive the **DEV server** — deliberately, since source-liveness is a dev-server
+  question; **step 8 still owes the shipped-bundle pass.** Cold dev-server first paint is **~18s**,
+  so a readiness poll needs a minute, not ten seconds. Every hand-derived number read live: `add`
+  **7 on `pipeline` vs 10 here** with the repeated **ID**, **12** at forwarding OFF, `array-sum`
+  **74 → 70** on the prediction flip, **seven rows in one cycle column**, and the cache round trip.
+- Four of the six §11 acceptance boxes are now ticked (the two remaining are the whole-repo green
+  gate and the trace-schema UNCHANGED criterion, which step 7 is the last risk to).
 
 **STEP 4 (19 tests, repo 4232 → 4251) — `deep-pipeline/src/recorder.test.ts` + a new last describe
 in `packages/web/src/pipeline-map.test.ts`.** It did NOT have to move after step 5: **the web trio
