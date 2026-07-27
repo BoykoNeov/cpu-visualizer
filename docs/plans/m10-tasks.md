@@ -655,9 +655,9 @@ reservation-station-holds]`, matching the pinned order flagship → (renaming) �
       resets the cursor — expected, not a defect). - **⚠ ONE observation, NOT a defect, NOT fixed (correctly out of scope):** narration quotes ABI
       register names (`lw t2, 0(t0)`, `sll t3, t5, t6`, `addi t1, t1, -1`) while the disassembler panels
       (transport / pipeline map / ROB) render x-names (`lw x7, 0(x5)`, `sll x28, x30, x31`, `addi x6,
-    x6, -1`). This is the **established app-wide convention** — confirmed the shipped M1–M8 lessons
+x6, -1`). This is the **established app-wide convention** — confirmed the shipped M1–M8 lessons
       (`forwarding-bubble`, `cache-spatial`, `two-at-once`) narrate the exact same way (`add a0`, `addi
-    t0`, `lw t2`). It is the SAME register under two names (t2 IS x7), NOT the auipc/lui wrong-mnemonic
+t0`, `lw t2`). It is the SAME register under two names (t2 IS x7), NOT the auipc/lui wrong-mnemonic
       class the browser memory warns about, so it does not "lie" and rewording only the four M10 lessons
       would make them INCONSISTENT with every other track. Changing it is a global product decision
       (teach the disassembler ABI names, or narrate x-names everywhere), explicitly out of M10's scope.
