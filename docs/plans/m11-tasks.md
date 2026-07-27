@@ -162,7 +162,7 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         through to the generic `packages/engine/**` rule, which denies only `curriculum`/`web`.
       All three reverted; `npm test` (4051), `typecheck`, `lint`, `build`, `format:check` green.
 
-- [ ] **1. The model MVP — `DeepPipelineProcessor`.** Fork `engine/pipeline/src/processor.ts`
+- [x] **1. The model MVP — `DeepPipelineProcessor`.** ✅ DONE 2026-07-27. Fork `engine/pipeline/src/processor.ts`
       (the M7 extract-then-fork precedent) to seven stages: `IF1 IF2 ID EX1 EX2 MEM WB`, six
       latches, forwarding + branch-prediction knobs honored, and **a non-null `cache` config
       REFUSED by name — never silently ignored** (step 6 owns it; the superscalar's
@@ -196,6 +196,56 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       comparison would pass. This also pins the map's depth support to the engine's real
       encoding (`stageFamily` strips a trailing `\d+`, so `IF-2` or `IF.1` would silently
       mean something else — `.` is the LANE axis).
+
+      **What landed (18 unit tests, repo 4051 → 4069), and the judgement calls later steps should
+      not re-litigate:**
+
+      - **The EX split is `EX1 = the forwarding network, EX2 = everything else`.** EX1 resolves the
+        two operands and latches them; EX2 runs the ALU switch, emits `alu-op`, resolves control
+        flow and builds EX2/MEM. So **`Ex1Ex2Latch` carries OPERANDS, never a result** — the
+        ALU→ALU bubble is enforced by the latch's SHAPE, not by a rule someone could forget: there
+        is nothing in that latch to forward. `alu-op` therefore fires in the EX2 cycle, not EX1.
+      - **IF1 reads the instruction word; IF2 is the second half of the fetch path and does no new
+        work.** The honest-looking alternative (IF1 issues the address, IF2 receives the word) was
+        REJECTED: an IF1 occupant would then have no `encoding`, and `InstructionInstance.encoding`
+        is not nullable — that is the trace-schema change the falsifiable criteria make a STOP.
+        IF2's content is DEPTH itself, and it is documented that way rather than hidden.
+      - **The new stall reason is `'ex-latency'`.** Not `'raw'` (pinned repo-wide to mean
+        "forwarding is off" — `pairing-readout.ts:121`, `lessons.test.ts:51`) and not `'alu-use'`
+        (`lui`/`auipc`/`jal` stall a consumer while emitting no `alu-op`, because the two-cycle
+        execute is uniform). `stall.reason` is a free string and `pairing-readout` returns `null`
+        for reasons it cannot gloss, so nothing downstream breaks.
+      - **The interlock is three checks under forwarding, three without.** ON: load in EX1, load in
+        EX2 (`'load-use'`), any other producer in EX1 (`'ex-latency'`). OFF: producer in EX1, EX2
+        or MEM (`'raw'`). Enumerated, never a loop over "any execute stage".
+      - **The halt squash kills TWO shadows** (IF2 + IF1), where the 5-stage kills one. Pinned by a
+        test whose shadow is `sw x1, 0(x0)` — a survivor would corrupt the program's own first word.
+      - **The empty-`stages` guard is needed on the BET path too, not just the squash.** Under
+        prediction=ON the correction's EX1/ID slots are routinely bubbles left by the earlier bet,
+        so the four occupancy checks are the common path, not paranoia. A test walks every flush in
+        every program and asserts each named stage has an occupant (step 4's assertion, paid early).
+      - **The ordered stage assertion is computed INLINE, not via `buildPipelineMap`** — an engine
+        importing `@cpu-viz/web` is the INV-3 deny path step 0 verified. Three lines duplicated
+        beats crossing the DAG.
+      - `state` is the **POST-EDGE** snapshot (the house convention, shared with the 5-stage): it
+        shows the latches as they will present to the NEXT cycle, not the occupancy
+        `instructions[]` reports for this one.
+      - **The mutation check step 3 will run is now written down in the file header**, because with
+        this split it is not a one-line edit: "stub IF2" = collapse the IF1/IF2 latch so IF1 hands
+        straight to ID; "stub EX2" = move the switch back into EX1 and let `ex1Ex2` carry the
+        finished result.
+
+      **Every coefficient was hand-derived from the pinned semantics and matched the engine on the
+      first run** (nothing was adjusted to fit): ALU→ALU forwarding-ON **1** bubble, load-use **2**,
+      forwarding-OFF RAW **3**, unpredicted taken branch **one flush of width 4**, correctly
+      predicted taken **2**, and — the plan's flagged trap, now CONFIRMED rather than expected — a
+      mispredicted branch under prediction=ON arrives as **two flush events of width 2**, totalling
+      4. The drain constant N+6 is confirmed on the no-`ecall` path.
+
+      **One thing for step 4 to check BEFORE starting it:** it wants a real-engine case inside
+      `pipeline-map.test.ts`, but step 0 deliberately deferred `web/package.json`'s dependency and
+      `web/tsconfig.json`'s `paths` to step 5. Vitest will resolve the import (that alias landed at
+      step 0) while `npm run typecheck` likely will not — so step 4 may have to move after step 5.
 
 - [ ] **2. Differential net: `runConformance(() => new DeepPipelineProcessor())` (INV-8).**
       Full corpus, final architectural state.
