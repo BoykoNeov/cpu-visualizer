@@ -186,7 +186,12 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       EX2" — the enumerated forwarding path step 1 wires, not the diagram.
 
       **The trap in that payload — expect it, or you will read it as a bug.** The
-      misprediction TOTAL is 4 either way, but its SHAPE depends on prediction:
+      misprediction TOTAL is 4 either way. Its SHAPE is expected to depend on prediction as
+      below — **but that shape is a PREDICTION, not a derived fact**: it assumes step 1
+      keeps the 5-stage's redirect-and-refetch behaviour at the bet, which is step 1's
+      implementation choice, not something read out of the existing engine. Confirm the
+      shape from the dump; if it differs, the flush contract is the thing to examine, not
+      this paragraph.
       - **prediction OFF:** the branch reaches EX2 and kills EX1 + ID + IF2 + IF1 — **one
         flush event, `stages` of width 4.**
       - **prediction ON, taken branch:** ID bets at cycle _t_ and kills IF2 + IF1 (2). By

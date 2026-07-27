@@ -37,7 +37,10 @@ ALU, so resolve-at-EX1 would need a second resolve point or a dedicated fast add
   IF2 _and_ IF1 ⇒ **a correctly predicted taken branch costs 2, not 1.** Depth taxes you even
   when the prediction is right — kept deliberately as a teaching line (making it cheap again
   means an IF1 BTB, new mechanism, out of scope).
-- **The misprediction TOTAL of 4 does not arrive as one flush event.** Prediction OFF: one
+- **The misprediction TOTAL of 4 is expected NOT to arrive as one flush event** (a
+  prediction, not a derived fact — it assumes the deep engine keeps the 5-stage's
+  redirect-and-refetch at the bet, which is step 1's choice; confirm from the dump).
+  Prediction OFF: one
   flush of width 4 (EX1+ID+IF2+IF1). Prediction ON: the ID bet kills IF2+IF1, and by the time
   the branch reaches EX2 the EX1/ID slots hold that flush's own bubbles — so the correction
   kills IF2+IF1 again: **two events of width 2.** Step 3 derives the penalty from
