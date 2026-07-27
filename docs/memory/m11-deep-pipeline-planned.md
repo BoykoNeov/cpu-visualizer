@@ -1,11 +1,11 @@
 ---
 name: m11-deep-pipeline-planned
-description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1+2+3 DONE: THE NET has landed (timing matrix, both mutations run, INV-8 blind to both), and it found that S is NOT prediction-invariant; step 4 is next'
+description: 'M11 (the 7-stage deep pipeline) — STEPS 0+1+2+3+4 DONE: THE NET landed (S is NOT prediction-invariant) and step 4 paid out the pipeline-map.ts UNCHANGED criterion + corrected an acceptance criterion that named the wrong stage; step 5 (web enablement) is next'
 metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T12:39:32.194Z
+  modified: 2026-07-27T13:04:11.578Z
 ---
 
 **The spec's §12 roadmap is FINISHED** — tiers 1–5 (single-cycle → multi-cycle →
@@ -13,12 +13,48 @@ metadata:
 built through M10. So "what's next" is no longer answerable from the spec; it comes
 from [[future-microarchitectures]].
 
-**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0, 1, 2 AND 3 DONE 2026-07-27**
-(the package scaffold + DAG ripple, the model MVP, the INV-8 differential, and **THE NET**).
-**Step 4 — recorder/time-travel + the map meets a real deep engine — is next.** Steps 4–8 open.
+**M11 = the deep pipeline (7-stage). Planned 2026-07-27; STEPS 0, 1, 2, 3 AND 4 DONE 2026-07-27**
+(the package scaffold + DAG ripple, the model MVP, the INV-8 differential, **THE NET**, and the
+recorder + map payoff). **Step 5 — web enablement — is next.** Steps 5–8 open.
 Plan: `docs/plans/m11-tasks.md`, whose per-step entries record what landed and every judgement
-call, so later steps don't re-litigate them. Repo now **4232 tests**; typecheck/lint/build/
+call, so later steps don't re-litigate them. Repo now **4251 tests**; typecheck/lint/build/
 format:check green.
+
+**STEP 4 (19 tests, repo 4232 → 4251) — `deep-pipeline/src/recorder.test.ts` + a new last describe
+in `packages/web/src/pipeline-map.test.ts`.** It did NOT have to move after step 5: **the web trio
+(web `package.json` dep, `tsconfig` `paths`, Vite alias) landed HERE**, because step 4's acceptance
+lives in `packages/web`, `models.test.ts:16` pins the id list literally so there was zero churn, and
+the three are checked by DIFFERENT gates (vitest→root alias, typecheck→`paths`, build→vite alias) —
+splitting them is how one gets forgotten. Step 5 still owns the `models.ts` row, `MODEL_DESCRIPTION`,
+picker position and the `honoring()` churn.
+
+- **PAID OUT the first falsifiable UNCHANGED criterion: `pipeline-map.ts` absorbed a real
+  seven-stage recording untouched**, and the M3-era fixture at `pipeline-map.test.ts:505` is now
+  reproduced character-for-character by the engine. The file's "the deep stage set is genuinely
+  unemitted" sentence is false, and **BOTH copies of it were corrected** (header ~line 21 AND the
+  mid-file note ~455) — that file's own M7-era warning is that a stale unreachability comment is how
+  a case stops being checked.
+- **THE CORRECTION — acceptance criterion 2 named the WRONG STAGE and is fixed in the plan.** It said
+  a back-to-back dependent pair shows a **repeated EX1 cell**. It does not: the interlock lives in ID
+  and re-presents its occupant onto the latch it arrived on (`stall.stage: 'ID'`), so `add.s`'s pair
+  walks **`IF1 IF2 ID ID EX1 EX2 MEM WB`** — a repeated **ID**, each execute stage visited exactly
+  once. **Step 5's browser pass must look at the ID column.** (`add.s`: 7 cycles on `pipeline`, 10
+  here.)
+- **"Seven in flight" is pinned WITH an honest negative, because the reflex claim is false for 2 of
+  11 programs.** `array-sum` holds 7 vs the 5-stage's 5, but `byte-loads` (load-use chain) and
+  `paired-branches` (mostly flushes) hold exactly **5 on BOTH** — occupancy is set by hazards, not by
+  stage count, so `deep > five` is NOT asserted corpus-wide. **`sum-loop` peaks at 6, not 7** — use
+  `array-sum` if the browser pass wants seven occupied columns.
+- **The map-side flush assertion is stated FALSIFIABLY**: stage names flushed === rows marked killed,
+  swept over corpus × forwarding × prediction. `buildPipelineMap` resolves a victim with a singular
+  `find`, so an over-reporting payload records NOTHING — a per-stage "did this resolve?" phrasing
+  cannot see that. Engine side stays step 3's.
+- **The recorder test's new claim is the STALL SHAPE:** one interlock holds THREE cells at once —
+  `ID×4`, `IF2×4`, `IF1×4` — where the 5-stage holds two. The `IF2` one is a SECOND place the INV-4
+  re-fetch breach could happen that the 5-stage never exercised. `sum-loop`'s per-iteration walk is
+  asserted with repeats COLLAPSED (S_on ≠ 0 here, unlike the 5-stage), guarded by "exactly one of the
+  ten walks exceeds seven cycles" so the collapse can't hide a non-stalling engine. `micro` covers
+  **six of seven** stages (six latches); IF1 is the one with no latch behind it.
 
 **STEP 3 — THE NET (92 tests, repo 4140 → 4232, `deep-pipeline/src/timing.test.ts`).** The
 closed form is **`cycles = N + 6 + S + P`** and it balances in all 66 cells — but **`S` is
@@ -119,10 +155,9 @@ is needed on the **bet** path as well as the squash. The mutation check step 3 w
 written into the processor's file header, because with this split it is not a one-line
 edit.
 
-**Step 4 has a scheduling hazard to check FIRST:** it wants a real-engine case inside
-`packages/web/src/pipeline-map.test.ts`, but step 0 deferred the web trio to step 5.
-Vitest resolves it (that alias landed at step 0) while `npm run typecheck` likely will
-not — so step 4 may have to move after step 5.
+**Step 1's flagged scheduling hazard is RESOLVED** (it wanted a real-engine case in
+`packages/web/src/pipeline-map.test.ts` while step 0 had deferred the web trio to step 5):
+step 4 took the trio and did not have to move. See the step-4 block above.
 
 **Step 0's reusable finding — the eslint guardrail has THREE code paths, and the plan
 only named one.** `deny()` is consumed two ways: lower layers spread `...MODELS`, each
@@ -198,6 +233,9 @@ renders on the map, and is a 5-stage wearing seven labels._ Therefore:
 - two **falsifiable UNCHANGED criteria** guard the INV-3 back door: `pipeline-map.ts`
   needs no edit and the trace schema needs no edit (`location` is a plain string
   precisely to absorb `"IF2"` depth and `"EX.0"` lanes). Reaching for either is a STOP.
+  **`pipeline-map.ts` is now PAID OUT (step 4); the schema one has HELD through step 4** —
+  its one close call (an IF1 occupant with no `encoding`) was settled by rejecting that stage
+  split, not by widening the type. Step 7's bespoke datapath is the remaining risk for it.
 
 Adding a model also has its own ripple, distinct from a corpus ripple — see
 [[m9-m10-review-resolved]] for the `eslint.config.js` `MODELS` guardrail (review finding 7) and how to verify it.

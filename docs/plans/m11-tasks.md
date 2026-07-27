@@ -1,6 +1,9 @@
 # Milestone 11 — the deep pipeline (7-stage)
 
-**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2 and 3 — THE NET — are DONE; steps 4–8 open. Scope pinned by the user this session
+**Status: IN PROGRESS, 2026-07-27. Steps 0, 1, 2, 3 — THE NET — and 4 are DONE; steps 5–8 open.
+Step 4 also carried the web trio (dependency, tsconfig `paths`, vite alias) that step 0 had deferred,
+and PAID OUT the first falsifiable "unchanged" criterion: `pipeline-map.ts` absorbed a real
+seven-stage recording untouched. Scope pinned by the user this session
 (deep pipeline ALONE — the wider superscalar is explicitly NOT in this milestone, see
 "Why this milestone"). ALL decisions are now PINNED (2026-07-27) — the stage split is
 Option A, the ALU is uniformly two cycles, and every control transfer resolves at the end
@@ -424,7 +427,7 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       is. Every number in the `TIMING` table is hand-derived AND asserted, which no dump ever was —
       **step 6's "decide after step 3's dump" means that table.**
 
-- [ ] **4. Recorder / time-travel + the map meets a real deep engine.** `follow()`, scrub,
+- [x] **4. Recorder / time-travel + the map meets a real deep engine.** ✅ DONE 2026-07-27. `follow()`, scrub,
       and back-stepping over the new model (the per-model recorder test every tier has).
       Then the payoff: extend `pipeline-map.test.ts`'s last describe with a **real-engine**
       seven-stage case beside the hand-built one — the M7 step 6 move for the lane axis,
@@ -452,6 +455,62 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       every flushed stage has an occupant; **`pipeline-map.ts` itself is UNCHANGED** (see
       falsifiable criteria).
 
+      **What landed (19 tests, repo 4232 → 4251), and the judgement calls later steps should not
+      re-litigate:**
+
+      - **The web trio moved into THIS step, and step 1's flagged question is resolved: step 4 did
+        NOT have to move after step 5.** `web/package.json`'s dependency, `web/tsconfig.json`'s
+        `paths` and `web/vite.config.ts`'s alias all landed together, because step 4's own acceptance
+        lives in `packages/web` and none of the three is user-visible without a `models.ts` row
+        (`models.test.ts:16` pins the id list literally, so there was zero test churn). They are
+        checked by DIFFERENT gates — vitest resolves through the root alias, `npm run typecheck`
+        through `paths`, `npm run build` through the vite alias — which is precisely why splitting
+        them is how one gets forgotten, the failure the M7 comment in `vite.config.ts` records.
+        **Step 5 still owns the `models.ts` row, `MODEL_DESCRIPTION`, picker position and the
+        `honoring()` churn** — nothing of step 5's content was consumed here.
+      - **THE ACCEPTANCE CRITERION NAMED THE WRONG STAGE, and it is corrected above.** Criterion 2
+        said the map shows a **repeated EX1 cell** on a back-to-back dependent pair. It does not:
+        `stageId` re-presents its occupant onto the latch it arrived on (`stall.stage: 'ID'`), so
+        `add.s`'s dependent pair walks `IF1 IF2 ID ID EX1 EX2 MEM WB` — a repeated **ID**, with each
+        execute stage visited exactly once. Hand-derived, then confirmed. **Step 5's browser pass
+        must look at the ID column, not EX1.**
+      - **The map-side flush assertion is stated FALSIFIABLY**: the number of stage names the
+        recording flushes equals the number of rows the map marks killed, swept over the corpus ×
+        forwarding × prediction (four positions, all non-vacuous). `buildPipelineMap` resolves a
+        victim with a singular `find`, so an over-reporting payload silently records NOTHING — which
+        a per-stage "did this one resolve?" phrasing cannot see. The engine side stays step 3's.
+      - **"Seven in flight" is pinned WITH its honest negative, because the reflex claim is false for
+        two of the eleven programs.** `array-sum` holds 7 on the deep machine against the 5-stage's
+        5; but `byte-loads` (a chain of load-use pairs) and `paired-branches` (mostly flushes) hold
+        exactly **5 on BOTH**. Occupancy is set by the program's hazards, not by the stage count, so
+        `deep.maxInFlight > five.maxInFlight` is NOT asserted corpus-wide — the same shape as step
+        3's finding that the 5-stage's "casualties ARE the penalty" identity does not port.
+        `sum-loop` also never fills the pipe (it peaks at 6), which is why the stages/families
+        fixture test does not assert occupancy at all.
+      - **The recorder test's new claim is the STALL SHAPE, not the walk.** One interlock holds
+        THREE cells at once — `ID ID ID ID`, `IF2 IF2 IF2 IF2` and `IF1 IF1 IF1 IF1` — where the
+        5-stage holds two. The middle one exists only because the front end is two deep, and it is a
+        SECOND place the INV-4 re-fetch breach could happen that the 5-stage never exercised. Pinned
+        with the fetch census (five instructions, five `instr-fetch` events, five ids ever seen) and
+        with the three `stall` events all naming the ONE instruction in ID — the two behind it are
+        blocked, not stalling in their own right.
+      - **`sum-loop`'s per-iteration walk is asserted with consecutive repeats COLLAPSED**, which is
+        where the recorder test parts company with the 5-stage's. There `S_on = 0` and every walk is
+        literally five cycles; here the first iteration's `add` pays the ALU→ALU bubble, so the claim
+        is the SEQUENCE (all seven stages, in order, never revisited) and `timing.test.ts` keeps the
+        count. Guarded by "exactly one of the ten walks is longer than seven cycles", so the collapse
+        cannot hide an engine that never stalls.
+      - **`micro` covers SIX of the seven stages** (six latches), where the 5-stage's equivalent
+        covers four of five. IF1 is the one stage with no latch behind it.
+      - **Both stale "the deep stage set is unemitted" comments were corrected, not just the header
+        one** — the file's own M7-era note says a comment asserting a case is unreachable is how the
+        case stops being checked, and leaving the mid-file copy would have been that bug again in the
+        same file.
+      - Everything hand-derived before running. The recorder suite was green on the first run; the
+        map suite needed two corrections, both mine and both mechanical — `hasOverlap` takes the
+        RECORDING rather than the map, and `sum-loop`'s `maxInFlight` is 6, which is what turned up
+        the occupancy negative above.
+
 - [ ] **5. Web enablement.** A `models.ts` entry (id, label, the engine's OWN exported
       `MODEL_DESCRIPTION` constant per the superscalar/OoO precedent, `capabilities`), with
       **`datapath: 'none'`** — the deliberate superscalar/OoO pattern, since a `DatapathKind`
@@ -471,6 +530,15 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       program at forwarding=ON on `pipeline` vs `deep-pipeline`, with the reappearing bubble
       visible as a SHAPE (the M3 `walkAt` framing) and the cycle counts differing.
       ([[browser-is-the-only-net]]: no headless test here can see a click.)
+      **Two things step 4 pinned that this step must use rather than re-derive:** the bubble is
+      a **repeated `ID` cell, NOT EX1** (the acceptance criterion was corrected — look at the
+      right column), and `add.s` is the sharpest program for it (7 cycles on `pipeline` vs 10
+      here, walk `IF ID EX MEM WB` vs `IF1 IF2 ID ID EX1 EX2 MEM WB`). Also note `sum-loop`
+      peaks at **6** in flight, not 7 — `array-sum` is the program that genuinely fills the
+      pipe, if the browser pass wants to show seven occupied columns at once.
+      **The web trio (dependency, `paths`, vite alias) is ALREADY DONE — it landed at step 4.**
+      What is left here is the `models.ts` row, `MODEL_DESCRIPTION`, the picker position and
+      the `models.test.ts` ordered-assertion churn.
 
 - [ ] **6. Cache on the deep pipeline (the third knob) — or DROPPED WITH PROOF.** M6's
       miss-freeze meets a machine with two execute stages: `missCyclesRemaining` freezes
@@ -499,16 +567,30 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
 
 - [ ] Load `sum-loop.s` on **Deep pipeline**, run to the end, and the pipeline map draws
       **seven stage columns in five hues**, each cell's text naming its exact stage.
+      **The HEADLESS half is done at step 4** (`pipeline-map.test.ts` folds a real `sum-loop`
+      recording to the ordered `['IF1','IF2','ID','EX1','EX2','MEM','WB']` and five families,
+      with the 5-stage as the control); the LIVE half is step 5's browser pass, so the box
+      stays open.
 - [ ] The same program at **forwarding ON** takes strictly more cycles on `deep-pipeline`
-      than on `pipeline`, and the map shows a **repeated EX1 cell** on a back-to-back
+      than on `pipeline`, and the map shows a **repeated ID cell** on a back-to-back
       dependent pair that the 5-stage draws with no repeat — forwarding no longer buying a
-      free result.
+      free result. **CORRECTED at step 4: this criterion said "repeated EX1 cell" and that was
+      wrong.** The interlock lives in ID and re-presents its occupant onto the latch it arrived
+      on (`stall.stage: 'ID'`), so the consumer waits where it was decoded and reaches each
+      execute stage exactly once. `add.s`'s dependent pair walks `IF1 IF2 ID ID EX1 EX2 MEM WB`
+      here against `IF ID EX MEM WB` on the 5-stage — **look at the ID column in the browser,
+      not EX1.** The headless half is pinned at step 4 (shape AND cycles, 7 vs 10).
 - [ ] Flipping **forwarding OFF** and **prediction** on the deep model changes cycle counts
       by the deep machine's coefficients, matching hand-derived numbers. **The HEADLESS half is done
       at step 3** (66 hand-derived cells, both toggles, every term asserted separately); the LIVE half
       — the same flips read in the browser — is step 5's acceptance, so the box stays open.
 - [ ] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
+      **The HEADLESS half is done at step 4** — `recorder.test.ts` follows one instruction
+      through all seven stages while six others are in flight, resolves seven ids to seven
+      locations in one cycle, and walks the cursor forward, back to pre-run and to any cycle
+      with the shown state always that cycle's own snapshot. The LIVE half (the panels agreeing
+      in the browser) is step 5's, so the box stays open.
 - [x] **INV-8 differential passes on the full corpus** for the new model. ✅ step 2,
       2026-07-27 — 6 configs × 11 programs, green on the first run.
 - [x] **The timing matrix reddens when IF2/EX2 are stubbed to pass-through, while INV-8 stays
@@ -521,10 +603,18 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
 
 ### Two falsifiable "unchanged" criteria (both pre-paid — reaching for either is a STOP)
 
-- [ ] **`packages/web/src/pipeline-map.ts` needs no change.** It was built depth-parametric
-      at M3 step 7 and the fold is model-knowledge-free by design.
+- [x] **`packages/web/src/pipeline-map.ts` needs no change.** ✅ PAID OUT at step 4,
+      2026-07-27. It was built depth-parametric at M3 step 7 and the fold is
+      model-knowledge-free by design — and a real seven-stage recording now folds through it
+      with the file untouched (`git diff` over step 4 shows `pipeline-map.test.ts` and the web
+      trio, never `pipeline-map.ts`). The M3-era fixture at `pipeline-map.test.ts:505` is
+      reproduced character-for-character by the engine. **Steps 5–7 must keep it unchanged.**
 - [ ] **The trace schema needs no change.** `location` is a plain string precisely to absorb
-      this axis (`"IF2"` = depth, `"EX.0"` = lane).
+      this axis (`"IF2"` = depth, `"EX.0"` = lane). **Held through step 4** — the engine, the
+      recorder, `follow()` and the map fold all ran on the shipped schema, and the one place
+      step 1 came close (an IF1 occupant with no `encoding`) was settled by REJECTING that
+      stage split rather than widening the type. The box stays open because step 7's bespoke
+      datapath is the remaining place that could reach for it.
 
 If either is reached for, stop and surface it as a decision rather than editing — that is the
 INV-3 back door, and the house precedent is to DECLINE and prove it (M7 declined an `issue`
