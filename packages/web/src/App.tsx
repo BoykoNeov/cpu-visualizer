@@ -987,7 +987,7 @@ function ForwardingToggle(props: { on: boolean; setOn: (on: boolean) => void }):
             aria-pressed={position === on}
             title={
               position
-                ? 'Forwarding ON — results are routed straight to the next instruction; most RAW stalls vanish (the load-use bubble does not)'
+                ? 'Forwarding ON — a result is routed straight from where it is produced to where it is needed, instead of waiting to be written back; most RAW stalls vanish. The ones that do not are where the value is not FINISHED yet: a load whose data is still coming back from memory, and, on a deeper machine, an ALU result that needs a second execute cycle.'
                 : 'Forwarding OFF — a RAW hazard interlocks in ID until the producer writes back'
             }
           >
@@ -1019,8 +1019,19 @@ function ForwardingToggle(props: { on: boolean; setOn: (on: boolean) => void }):
  * rather than being silently drawn as "not taken".
  *
  * The `title`s carry M4's two findings, which is where the honesty budget goes: that "no predictor"
- * and "predict not-taken" are one machine, and that a correct bet costs 1 rather than 0 (getting to
- * 0 needs a BTB, deliberately a fancier tier — a true fact about THIS machine, not a bug).
+ * and "predict not-taken" are one machine, and that a correct bet is not FREE (getting to 0 needs a
+ * BTB, deliberately a fancier tier — a true fact about the machine, not a bug).
+ *
+ * **They name the MECHANISM and no longer name a number, and that is M11 step 5's doing.** They used
+ * to say "a correct bet costs 1 cycle; a wrong one costs 2" — true of the 5-stage, and this control
+ * rendered nowhere else. The deep pipeline honors prediction too, and there the same bet costs 2 and
+ * the same misprediction costs 4 (`deep-pipeline/src/timing.test.ts`, read live in the browser at
+ * step 5: `array-sum` moves 74 → 70). A tooltip stating the other model's constant is not a lawful
+ * simplification but a CONTRADICTION of the machine on screen (INV-5). The fix is not to thread
+ * coefficients through `ModelChoice` or the trace — that is the back door the plan makes a STOP —
+ * but to say the thing that is true of both: the bet is placed in ID, so it costs whatever the front
+ * end has already fetched, and a wrong one costs the whole front end. Which is also the better
+ * lesson, since it explains WHY depth changes the number.
  */
 export function PredictionToggle(props: {
   scheme: BranchPrediction;
@@ -1049,8 +1060,8 @@ export function PredictionToggle(props: {
             aria-pressed={position === taken}
             title={
               position
-                ? 'Predict TAKEN — the machine bets in ID and redirects fetch to the branch target. A correct bet costs 1 cycle (not 0 — that needs a branch-target buffer); a wrong one costs 2. jalr can never be predicted: its target is in a register.'
-                : 'Predict NOT TAKEN — the machine keeps fetching the next instruction and pays 2 cycles whenever a branch turns out to be taken. This is also what a machine with NO predictor does: the fall-through IS the not-taken path.'
+                ? 'Predict TAKEN — the machine bets in ID and redirects fetch to the branch target. Even a CORRECT bet is not free: everything fetched behind the branch is off the predicted path and dies, so the deeper the front end, the more it costs (getting to zero needs a branch-target buffer, a fancier tier). A wrong bet costs the whole front end, twice over — once for the bet and once for the correction. jalr can never be predicted: its target is in a register.'
+                : 'Predict NOT TAKEN — the machine keeps fetching the next instruction, and every branch that turns out taken throws away the whole front end behind it. This is also what a machine with NO predictor does: the fall-through IS the not-taken path.'
             }
           >
             {position ? 'taken' : 'not taken'}
