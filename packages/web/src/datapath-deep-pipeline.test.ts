@@ -1,5 +1,6 @@
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
+import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
 import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import {
@@ -229,6 +230,77 @@ describe('EX1 is the forwarding network and it fires a cycle BEFORE the ALU does
     expect(a.wires.has('memwb-fwdmuxa')).toBe(false);
   });
 
+  it('a SQUASHED EX1 occupant lights nothing — it is reported there, but it never executed', () => {
+    /**
+     * The over-broad half of replacing the parent's event gate, and it is on a FREQUENT path: every
+     * mispredicted branch. A flush names EX1 exactly when `stageEx1` returned early without
+     * resolving an operand — yet the victim is still reported at `EX1` (step 3's sweep asserts that
+     * every stage a flush names has an occupant). Gating on occupancy alone therefore drew the
+     * operand paths for an instruction that did no work and is about to die.
+     *
+     * The 5-stage gets this right by accident: its `if (aluOp)` gate is never satisfied by an
+     * instruction that never executed. This fork had to replace that gate, so it has to say it.
+     *
+     * `call-return.s` at forwarding ON is the sharp case — its squashed EX1 occupant is an `addi`,
+     * which READS a register. `array-sum`'s happens to be a `lui`, which reads none, so it would
+     * have looked clean while the bug was live.
+     */
+    let checked = 0;
+    for (const cfg of CONFIGS) {
+      for (const src of [
+        'jal x1, fn\nfn:\n  addi x2, x0, 1\n  jalr x0, 0(x1)',
+        ALU_PAIR,
+        FULL_PIPE,
+      ]) {
+        // prettier-ignore
+        for (const trace of record(src, cfg)) {
+          const flush = trace.events.find((e) => e.type === 'flush' && e.stages.includes('EX1'));
+          if (!flush) continue;
+          const ex1 = trace.instructions.find((i) => i.location === 'EX1');
+          expect(ex1, 'a flush named EX1 with nobody there — an over-reporting payload').toBeDefined(); // prettier-ignore
+          // The engine's own claim: a squashed EX1 occupant emits no events whatsoever.
+          expect(trace.events.some((e) => 'instr' in e && e.instr === ex1!.id)).toBe(false);
+          const lit = [...activate(trace).wires.values()].filter((w) => w.stage === 'EX1');
+          expect(lit, `${src} ${label(cfg)}: squashed EX1 occupant lit ${lit.length} wires`).toEqual([]); // prettier-ignore
+          checked++;
+        }
+      }
+    }
+    // Non-vacuous: this really does happen, and often.
+    expect(checked, 'no squashed-EX1 cycle in the corpus — the test proved nothing').toBeGreaterThan(3); // prettier-ignore
+  });
+
+  it('...and the gate is keyed on the STAGE, not on "a flush happened" — a bet never names EX1', () => {
+    /**
+     * The precision of the gate, in the other direction. `ctx.bet` kills only IF2 and IF1;
+     * `stageEx1` runs normally under one. A gate keyed off "is there any flush this cycle" would
+     * blank the execute stage on every correctly predicted taken branch.
+     *
+     * **Asserted as the PAYLOAD property rather than by finding a lit EX1 on a bet cycle, and the
+     * reason is a structural fact worth recording: in this corpus a bet cycle NEVER has a
+     * register-reading EX1 occupant.** The interlock stalls a branch in ID *before* the bet is
+     * placed (`stageId` returns on the stall path), so by the time the bet happens its producer has
+     * moved on and EX1 holds the bubble that stall left. Sweeping three programs × both forwarding
+     * positions found zero such cycles — so a "the wires stay lit" assertion would have been
+     * vacuous, and the honest claim is about the flush payload the gate actually reads.
+     */
+    let bets = 0;
+    for (const cfg of [BET, { forwarding: false, predictTaken: true }]) {
+      for (const src of ['addi x1, x0, 3\nloop:\n  addi x1, x1, -1\n  bnez x1, loop', FULL_PIPE]) {
+        for (const trace of record(src, cfg)) {
+          for (const e of trace.events) {
+            if (e.type !== 'flush' || e.reason !== 'branch-predicted-taken') continue;
+            expect([...e.stages].sort(), 'a bet killed an execute stage').toEqual(
+              [...e.stages].filter((s) => s === 'IF1' || s === 'IF2').sort(),
+            );
+            bets++;
+          }
+        }
+      }
+    }
+    expect(bets, 'no bet was placed — the test proved nothing').toBeGreaterThan(0);
+  });
+
   it('lights exactly the operand ports the instruction reads — and every `forward` names one', () => {
     // Ties the view's mirrored `sourcePorts` back to the engine: an R/S/B word resolves two ports,
     // an I word one, and `lui`/`jal` none. If the engine ever forwarded to a port this file thinks
@@ -260,6 +332,70 @@ describe('EX1 is the forwarding network and it fires a cycle BEFORE the ALU does
     }
   });
 });
+
+describe('a cache miss FREEZES the pipe — EX1 holds its operands, EX2 produces nothing', () => {
+  /**
+   * The one place this model's third knob reaches the diagram, asserted rather than left to look
+   * like an oversight. During a freeze EX1 stays LIT while EX2 goes DARK, and the asymmetry is the
+   * honest picture on both halves:
+   *
+   *   - EX1's forwarded operands were resolved on the DETECTION cycle and are genuinely standing on
+   *     the latch for the whole freeze (M11 step 6a's fix is precisely that they must be), so
+   *     lighting them is the same "a held stage keeps presenting its inputs" convention IF1 already
+   *     uses for an instruction a stall is holding;
+   *   - the ALU really is producing nothing, and there is no `alu-op` to label its output with.
+   *
+   * Contrast the SQUASH case above, where the engine resolved nothing and the operands will never
+   * exist — there the wires must go dark, and the gate makes them.
+   */
+  it('holds EX1 lit and EX2 dark for the whole freeze', () => {
+    const result = loadSource(
+      `${'  lbu x5, 0(x0)\n  addi x6, x0, 1\n  lbu x7, 64(x0)\n  addi x8, x0, 2'}\n  li a7, 10\n  ecall\n`,
+      () => new DeepPipelineProcessor(),
+      { ...defaultConfig(), forwarding: true, branchPrediction: 'static-not-taken', cache: CACHE_SMALL }, // prettier-ignore
+    );
+    if (!result.ok) throw new Error('assembly failed');
+    const { recorder } = result.loaded;
+    const traces: CycleTrace[] = [];
+    for (;;) {
+      recorder.stepForward();
+      const t = recorder.current()!;
+      traces.push(t);
+      if (t.state.halted || traces.length > 300) break;
+    }
+    let frozen = 0;
+    const memAt = (t: CycleTrace | undefined): string | null =>
+      t?.instructions.find((x) => x.location === 'MEM')?.id ?? null;
+    for (let i = 1; i < traces.length - 1; i++) {
+      const t = traces[i]!;
+      const mem = t.instructions.find((x) => x.location === 'MEM');
+      // MEM holding the same occupant on BOTH sides is the freeze proper. Requiring the NEXT cycle
+      // too is what excludes the RELEASE cycle — there MEM still holds the same load while the whole
+      // machine runs again, so EX2 legitimately executes and an `alu-op` legitimately fires. The
+      // first draft of this test called that frozen and failed against correct behaviour.
+      if (!mem || memAt(traces[i - 1]) !== mem.id || memAt(traces[i + 1]) !== mem.id) continue;
+      const ex1 = t.instructions.find((x) => x.location === 'EX1');
+      const ex2 = t.instructions.find((x) => x.location === 'EX2');
+      if (!ex1 || !ex2) continue;
+      const wires = [...activate(t).wires.values()];
+      const lit = (s: string) => wires.filter((w) => w.stage === s).length;
+      // The whole machine is frozen, so no event names anyone but the memory.
+      expect(t.events.some((e) => e.type === 'alu-op')).toBe(false);
+      expect(lit('EX2'), 'the ALU drew work during a freeze').toBe(0);
+      if (sourcePortsOf(ex1)) {
+        expect(lit('EX1'), 'EX1 dropped operands it is still holding').toBeGreaterThan(0);
+      }
+      frozen++;
+    }
+    expect(frozen, 'no frozen cycle with both execute stages occupied').toBeGreaterThan(0);
+  });
+});
+
+/** Does this instruction read a register — the same question `sourcePorts` answers internally. */
+function sourcePortsOf(inst: { decoded: { format: string | null; mnemonic: string } }): boolean {
+  if (['ecall', 'ebreak', 'fence'].includes(inst.decoded.mnemonic)) return false;
+  return ['R', 'S', 'B', 'I'].includes(inst.decoded.format ?? '');
+}
 
 describe('THE BUBBLE, AS GEOMETRY: nothing forwards into EX2', () => {
   /**

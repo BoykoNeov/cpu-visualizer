@@ -795,6 +795,33 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         asserts a real forward drawn in a cycle whose EX1 occupant emits no `alu-op` at all. The
         engine's literals were read before copying, not assumed: `to: 'EX1.rs1'` / `'EX1.rs2'`,
         `from: 'EX2/MEM'` / `'MEM/WB'`.
+      - **...AND THE OCCUPANCY GATE IS OVER-BROAD BY ITSELF — the other half, found by review after
+        the first commit and fixed before the step closed.** Replacing an EVENT gate with an
+        OCCUPANCY gate swaps one error for its mirror: **a SQUASHED EX1 occupant is still reported at
+        `EX1`** (step 3's sweep asserts exactly that — every stage a flush names has an occupant)
+        while `stageEx1` returned early without resolving a single operand. So the diagram drew the
+        forwarding network for an instruction that did no work and is about to die — **on every
+        mispredicted branch, not in a corner**. The 5-stage gets this right by ACCIDENT: its
+        `if (aluOp)` gate is never satisfied by an instruction that never executed. The gate is now
+        occupancy **minus `flushedStages`**, read off the one event that names stages rather than an
+        instruction. Two details worth keeping: it is scoped to **EX1 only** (ID and IF1 also light
+        for squashed occupants, but the parent does that too — pre-existing house behaviour, not this
+        step's to change), and it is keyed on the **STAGE**, not on "a flush happened", because a BET
+        kills only IF2/IF1 and EX1 executes normally under one. `array-sum` looked clean while the bug
+        was live because its squashed EX1 occupant is a `lui`, which reads no registers;
+        `call-return` at forwarding ON is the sharp case.
+      - **The mirror-image question — what a CACHE FREEZE draws — was asked and answered as a
+        deliberate asymmetry, not a defect.** During a freeze **EX1 stays LIT and EX2 goes DARK**
+        (160 corpus cycles have both execute stages occupied while frozen). Both halves are honest,
+        and the distinction from the squash is the whole point: EX1's forwarded operands were
+        resolved on the DETECTION cycle and are genuinely standing on the latch for the whole freeze
+        — step 6a's fix is precisely that they must be — so lighting them is the same "a held stage
+        keeps presenting its inputs" convention IF1 already uses; the ALU meanwhile really is
+        producing nothing. A squashed occupant's operands, by contrast, were never resolved and will
+        never exist. Pinned by a test, with the freeze detected as "MEM holds the same occupant on
+        BOTH sides" — requiring the NEXT cycle too is what excludes the RELEASE cycle, where MEM
+        still holds the same load while the machine runs again and an `alu-op` legitimately fires
+        (the first draft called that frozen and failed against correct behaviour).
       - **The contraction SINKS moved, which is the genuinely new geometry rather than reflow.** In
         the parent a forwarding-mux contraction runs `latch → ALU`; here it must run
         `latch → ex1ex2`, because that is where the mux it collapses sends its output. The lawfulness
@@ -851,6 +878,15 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
           agrees that seven rows occupy that cycle column, forwarding OFF removes the two mux
           polygons (7 → 5) while the hazard unit survives, the follow ring reaches the datapath and
           rings SOME wires but not all (2 of 24), and the tier dial gates values and control labels.
+      - **No per-STAGE label map is exported, where both the 5-stage and the superscalar have one.**
+        Theirs feeds a legend with one entry per stage, which works only while stages and hues are in
+        bijection; here they are not. A copied `STAGE_LABELS` shipped in the first commit
+        exported-and-unused, and it made one smoke assertion (the legend omits `"Fetch 1"`) vacuous —
+        nothing could ever have produced that string. Both removed.
+      - **The dump generator is PARKED, not deleted** — `M:\claud_projects\temp\m11-browser\dump-generator.test.ts`,
+        with the copy-in/run/delete recipe in its header. `datapath-eyeball.mjs` reads the JSON it
+        writes and compares by geometry, so it fails loudly whenever a coordinate moves (it did,
+        after the hazard reroute). Step 8 will need it.
       - **`_snap.render.test.tsx` was checked and deliberately NOT extended** — it is a `RUN`-gated
         dev screenshot harness, not a test, and it enumerates no model list. The four exhaustive
         lists that DID need editing were the `DatapathKind` union, App's dispatch arm, the

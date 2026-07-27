@@ -95,21 +95,19 @@ export type { Stage };
 /** The seven stages, oldest-to-youngest left to right — the columns of the diagram. */
 export const STAGES: readonly Stage[] = ['IF1', 'IF2', 'ID', 'EX1', 'EX2', 'MEM', 'WB'];
 
-/** Per-STAGE display names — seven of them, one per column. Distinct from {@link FAMILY_LABELS},
- *  which has five: the legend keys on the hue, and the hue is the family's. */
-export const STAGE_LABELS: Record<Stage, string> = {
-  IF1: 'Fetch 1',
-  IF2: 'Fetch 2',
-  ID: 'Decode',
-  EX1: 'Execute 1',
-  EX2: 'Execute 2',
-  MEM: 'Memory',
-  WB: 'Writeback',
-};
-
-/** The five stage FAMILIES, in pipeline order — the diagram's five hues. `IF1`/`IF2` share the fetch
- *  hue and `EX1`/`EX2` the execute one, which is the rule the pipeline map follows (`stageFamily`)
- *  and the reason seven columns need no invented colour. */
+/**
+ * The five stage FAMILIES, in pipeline order — the diagram's five hues. `IF1`/`IF2` share the fetch
+ * hue and `EX1`/`EX2` the execute one, which is the rule the pipeline map follows (`stageFamily`)
+ * and the reason seven columns need no invented colour.
+ *
+ * **There is deliberately no per-STAGE label map here, where both the 5-stage and the superscalar
+ * export one.** Theirs feeds a legend with one entry per stage, which works only while stages and
+ * hues are in bijection. Here they are not — a seven-row legend with two pairs of identical swatches
+ * would say the opposite of what is true — so the legend keys the FAMILY and the stage stays
+ * readable through the latch bars' own text. A `STAGE_LABELS` copied over from the parent would be
+ * exported-and-unused, which is also how a test asserting the legend omits `"Fetch 1"` becomes
+ * vacuous: nothing could ever have produced that string.
+ */
 export const FAMILIES: readonly string[] = ['IF', 'ID', 'EX', 'MEM', 'WB'];
 export const FAMILY_LABELS: Record<string, string> = {
   IF: 'Fetch',
@@ -380,6 +378,15 @@ export function tierVisible(minTier: DepthTier | undefined, current: DepthTier):
  * The CACHE is deliberately absent, and it is the one knob this model honors that the diagram does
  * not take. A cache is drawn by the cache-grid panel, which gates on a trace fact (INV-3); no
  * sibling datapath draws one either, and a miss changes this machine's TIMING, never its structure.
+ *
+ * **What a miss DOES change is which stages are doing anything, and the resulting asymmetry is
+ * deliberate — see the test that pins it.** While `missCyclesRemaining` freezes the pipe, EX1 stays
+ * LIT and EX2 goes DARK. That is not an oversight and not a contradiction: EX1's forwarded operands
+ * were resolved on the detection cycle and are genuinely standing on the latch for the whole freeze
+ * — M11 step 6a's fix is precisely that they must be — while the ALU really is producing nothing.
+ * A held stage that keeps presenting its inputs is the same convention IF1 already uses for an
+ * instruction a stall is holding. Contrast the SQUASH case, where the engine explicitly resolved
+ * nothing and the operands will never exist: there the wires must go dark, and they do.
  */
 export interface DatapathConfig {
   readonly forwarding: boolean;
@@ -551,6 +558,20 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   const eventsFor = (inst: InstructionInstance): readonly TaggedEvent[] =>
     trace.events.filter((e): e is TaggedEvent => 'instr' in e && e.instr === inst.id);
 
+  /**
+   * The stages a control transfer is killing THIS cycle — the one event that names stages rather
+   * than an instruction, and the only place this file reads it.
+   *
+   * It gates EX1 (see there), and it is needed because gating that stage on OCCUPANCY alone is
+   * over-broad in exactly one case: a squashed EX1 occupant is still REPORTED at `EX1` — step 3's
+   * sweep asserts precisely that every stage a flush names has an occupant — while `stageEx1`
+   * returned early without resolving a single operand. The 5-stage gets this right by accident,
+   * since its `if (aluOp)` gate is never satisfied by an instruction that never executed; this fork
+   * had to replace that gate (`alu-op` fires a stage later here) and so has to say it out loud.
+   */
+  const flushedStages = new Set<string>();
+  for (const e of trace.events) if (e.type === 'flush') for (const s of e.stages) flushedStages.add(s); // prettier-ignore
+
   // --- IF1: the selected pc addresses the instruction memory ---------------------------------
   const if1Inst = byStage.get('IF1');
   if (if1Inst) {
@@ -625,7 +646,13 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   // EX2 (see `sourcePorts`). An instruction that reads no register lights nothing here, which is
   // honest — `lui` really does have no operand to resolve — but it still occupies EX1 for a cycle,
   // and the timing suite is where that cycle is pinned.
-  const ex1Inst = byStage.get('EX1');
+  //
+  // ...**and NOT when this stage is being flushed**, which is the other half of replacing the
+  // parent's event gate. A squashed occupant is still reported at `EX1`, but `stageEx1` returned
+  // before resolving anything, so lighting its operand paths would draw work the trace says did not
+  // happen (INV-5) — on every mispredicted branch, not in some corner. See {@link flushedStages}.
+  // A BET is deliberately not covered: it kills only IF2/IF1 and EX1 executes normally under one.
+  const ex1Inst = flushedStages.has('EX1') ? undefined : byStage.get('EX1');
   if (ex1Inst) {
     const events = eventsFor(ex1Inst);
     const forwards = events.filter((e) => e.type === 'forward');

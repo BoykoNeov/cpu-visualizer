@@ -423,7 +423,6 @@ describe('deep pipeline wrapper × shared renderer (M11 step 7)', () => {
     expect(count(html, 'border-top-color:var(--phase-')).toBe(5);
     expect(html).toContain('Fetch');
     expect(html).toContain('Writeback');
-    expect(html).not.toContain('Fetch 1');
   });
 
   it('draws the forwarded operands arriving in EX1, a cycle before the ALU runs', () => {

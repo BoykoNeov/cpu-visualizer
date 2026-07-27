@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bc99b34f-e3f6-4309-b7d9-0202a194542a
-  modified: 2026-07-27T18:48:45.014Z
+  modified: 2026-07-27T19:01:09.402Z
 ---
 
 **STEP 7 (2026-07-27) — THE BESPOKE DATAPATH. Sheddable in the plan, never shed in practice (the
@@ -26,6 +26,24 @@ mirrored `sourcePorts`, and pin it with a test asserting a real forward drawn in
 EX1 occupant emits no `alu-op`. Read the engine's event literals before copying any of them
 (`to: 'EX1.rs1'`, `from: 'EX2/MEM'` / `'MEM/WB'`) — a copied string that never matches produces
 exactly this failure with no error.
+
+**AND THE REPLACEMENT GATE IS OVER-BROAD BY ITSELF — found by review AFTER the first commit, so
+expect the pair.** Swapping an EVENT gate for an OCCUPANCY gate swaps one error for its mirror: **a
+SQUASHED occupant is still REPORTED at its stage** (the flush-occupancy sweep asserts exactly that)
+while the engine returned early without doing the work. Result: the forwarding network drawn for an
+instruction about to die, **on every mispredicted branch**. Gate on occupancy MINUS the stages a
+`flush` names — scoped to the ONE stage whose gate you replaced (the parent lights ID/IF1 for
+squashed occupants too; that is house behaviour, not yours), and keyed on the STAGE rather than "a
+flush happened" (a BET kills only IF2/IF1). Note `array-sum` looked CLEAN while the bug was live —
+its squashed EX1 occupant is a `lui`, which reads no registers. **The general lesson: when a fork
+replaces a gate, check BOTH directions — what the new gate now misses, and what it now over-claims.**
+
+**A CACHE FREEZE is the mirror question, and there the asymmetry is CORRECT:** EX1 stays lit, EX2
+goes dark. EX1's operands were resolved on the DETECTION cycle and really are standing on the latch
+(step 6a's fix) — the "a held stage keeps presenting its inputs" convention IF1 already uses — while
+the ALU really is producing nothing. A squashed occupant's operands were never resolved and never
+will exist. When pinning this, detect the freeze as "MEM holds the same occupant on BOTH sides":
+requiring the next cycle too is what excludes the RELEASE cycle, where the machine legitimately runs.
 
 Other step-7 findings worth keeping:
 
