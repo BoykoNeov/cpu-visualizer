@@ -55,7 +55,10 @@ This is the model's soul, because the stage split IS the pedagogy. Options, laye
 pipelined into two halves; memory stays one stage.
 
 - Buys **both** coefficient growths that make a deep pipeline a deep pipeline:
-  - misprediction penalty **2 → 4** (a deeper front end to flush),
+  - misprediction penalty **2 → 4** (a deeper front end to flush) — **but 4 assumes the
+    branch resolves at EX2; resolve-at-EX1 gives 3. That decision is still open, so treat
+    every figure in this section as the seeded expectation step 3 must confirm from the
+    dump, not as a derived result.**
   - load-use penalty **1 → 2** bubbles, and — the sharpest one —
   - **ALU→ALU with forwarding ON goes 0 → 1 bubble.** In the 5-stage, forwarding makes
     back-to-back dependents free. Here it cannot: the producer's result is not finished
@@ -132,9 +135,12 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       strings.
       Acceptance: hand-derived per-cycle walks for a RAW pair, a load-use pair and a taken
       branch pass as unit tests; `capabilities` exported and matching the shipped constant
-      shape; **the distinct `location` set emitted on a real program equals
-      `['IF1','IF2','ID','EX1','EX2','MEM','WB']` exactly** — the fixture at
-      `pipeline-map.test.ts:505`, so the map's depth support is pinned to the engine's real
+      shape; **the `location`s emitted on a real program equal
+      `['IF1','IF2','ID','EX1','EX2','MEM','WB']` as an ORDERED comparison against
+      `map.stages` (first-seen order), not a set equality** — the fixture at
+      `pipeline-map.test.ts:505`. Ordered because first-seen order IS the stage order for a
+      single-instruction walk, so it catches a latch wired out of sequence that a set
+      comparison would pass. This also pins the map's depth support to the engine's real
       encoding (`stageFamily` strips a trailing `\d+`, so `IF-2` or `IF.1` would silently
       mean something else — `.` is the LANE axis).
 
@@ -148,8 +154,22 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       house shape (M3/M6/M7 precedent): every corpus program × forwarding × prediction, with
       a closed form `cycles = N + 6 + S + P` whose **S and P coefficients are the deep
       machine's, not the 5-stage's**. Dump from the engine, hand-derive independently,
-      cross-check the two. Expected (to be CONFIRMED by the dump, not assumed): ALU→ALU
-      forwarding-ON 0→1 bubble, load-use 1→2, forwarding-OFF RAW 2→3, misprediction 2→4.
+      cross-check the two.
+
+      **PREREQUISITE, and the plan's own trap: the resolve point and the EX2-is-a-real-ALU
+      question are still `_(open)_` in the decisions table, and every coefficient below
+      depends on them.** Resolve-at-EX1 gives a misprediction penalty of 3; resolve-at-EX2
+      gives 4. **Pin both decisions BEFORE writing the closed form**, and derive the
+      misprediction penalty from the dumped **`flush.stages`** payload rather than by
+      counting stages ahead of EX — whether EX1's occupant is a real casualty follows from
+      the EX2 decision, not from the diagram. Likewise the ALU→ALU 0→1 claim follows from
+      "operand needed at start of EX1, result ready at end of EX2", which is an ASSUMPTION
+      about where the forwarding path lands, not yet a fact.
+
+      The numbers printed elsewhere in this plan (ALU→ALU forwarding-ON 0→1, load-use 1→2,
+      forwarding-OFF RAW 2→3, misprediction 2→4) are the seeded EXPECTATION and nothing more.
+      **Hand-derive from the pinned decisions, never from these figures** — otherwise the
+      "independent cross-check" is just re-reading the plan's own guess back to itself.
       Acceptance: matrix green from hand-derived cells; **plus the recorded mutation check —
       stubbing IF2/EX2 to pass-through leaves INV-8 green and reddens this suite.** If it
       does not, stop and surface it.
@@ -160,8 +180,16 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       seven-stage case beside the hand-built one — the M7 step 6 move for the lane axis,
       applied to the depth axis — and update that file's header, which currently asserts the
       deep stage set is unemitted.
+      **Also assert here that every stage named in a `flush` event HAS an occupant that
+      cycle.** `buildPipelineMap` resolves victims with a singular
+      `trace.instructions.find((i) => i.location === stage)`, so a flush naming a stage
+      nobody occupies (a drained IF2, say) returns `undefined` and the victim is silently
+      unrecorded. That would not be a map bug — it is the signal that the engine's
+      `flush.stages` payload OVER-REPORTS, and it is exactly where the "map needs no change"
+      criterion could be quietly falsified. Make it fail loudly as an engine bug.
       Acceptance: a real recording folds to **7 stages / 5 families**; `hasOverlap` true;
-      **`pipeline-map.ts` itself is UNCHANGED** (see falsifiable criteria).
+      every flushed stage has an occupant; **`pipeline-map.ts` itself is UNCHANGED** (see
+      falsifiable criteria).
 
 - [ ] **5. Web enablement.** A `models.ts` entry (id, label, the engine's OWN exported
       `MODEL_DESCRIPTION` constant per the superscalar/OoO precedent, `capabilities`), with
