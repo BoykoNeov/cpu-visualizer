@@ -13,8 +13,15 @@
  * the real defect while every headless net stayed green.
  */
 
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
+import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
-import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type CycleTrace,
+  type Processor,
+  type ProcessorConfig,
+} from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { shownInstruction } from './App';
@@ -209,22 +216,43 @@ describe('paging — the sandbox net', () => {
     const html = renderMap(run(FILL).recorder.recorded, { cursor: 4 });
     expect(html).not.toContain('scrub to page');
 
-    // The claim that makes the threshold safe rather than lucky: the longest program we SHIP is far
-    // under it, so paging is strictly a sandbox affordance and the teaching path never sees it.
-    const longest = Math.max(
-      ...EXAMPLE_PROGRAMS.map((p) => {
-        const r = loadSource(p.source, () => new PipelineProcessor(), { ...defaultConfig(), forwarding: false }); // prettier-ignore
-        if (!r.ok) throw new Error(`corpus program ${p.name} should assemble`);
-        r.loaded.recorder.runToEnd();
-        return r.loaded.recorder.recordedCycles;
-      }),
-    );
-    // `array-sum-twice`, forwarding off — its double walk of a 12-element array makes it the
-    // longest program the corpus ships (290 = timing.test.ts's derived N+4+S+P for it), displacing
+    // The claim that makes the threshold safe rather than lucky: the longest program we SHIP is
+    // under it. **Measured per MODEL, because it is not a property of the corpus alone** — a longer
+    // machine runs the same program for more cycles, and this test asserted the 5-stage's number
+    // while describing every model. M11 step 6 is where that stopped being harmless.
+    const longestOn = (make: () => Processor, config: ProcessorConfig): number =>
+      Math.max(
+        ...EXAMPLE_PROGRAMS.map((p) => {
+          const r = loadSource(p.source, make, config);
+          if (!r.ok) throw new Error(`corpus program ${p.name} should assemble`);
+          r.loaded.recorder.runToEnd();
+          return r.loaded.recorder.recordedCycles;
+        }),
+      );
+    const OFF: ProcessorConfig = { ...defaultConfig(), forwarding: false };
+
+    // `array-sum-twice`, forwarding off — its double walk of a 12-element array makes it the longest
+    // program the corpus ships (290 = timing.test.ts's derived N+4+S+P for it), displacing
     // sum-loop's 78. It is sized to STAY under this page cap on purpose (the same reason it is 12
-    // words and not 24): paging must remain a sandbox-only affordance the teaching path never sees.
-    expect(longest).toBe(290);
-    expect(longest).toBeLessThan(400);
+    // words and not 24).
+    expect(longestOn(() => new PipelineProcessor(), OFF)).toBe(290);
+
+    // **The DEEP pipeline has almost no headroom, and with a cache it has none — recorded as a FACT
+    // rather than left as a surprise.** The same program is 392 cycles here (two more stages of
+    // drain, an ALU→ALU bubble the 5-stage forwards away, and a doubled load-use penalty), which is
+    // 8 cycles under the cap; adding the M11 step-6 cache pushes it to 422 at four lines and 442 at
+    // two, because each of the 3–5 misses costs a flat 10.
+    //
+    // So "paging is a sandbox-only affordance" is TRUE of every model through M7 and FALSE of
+    // `deep-pipeline` with a cache on. That is accepted rather than fixed: paging is a designed,
+    // tested affordance (the next test bounds the DOM it draws), and the alternatives are worse —
+    // re-cutting `DEFAULT_MISS_PENALTY` would move every model's pinned cache numbers, and raising
+    // the cap would loosen the DOM bound for every model to spare one. What is NOT acceptable is a
+    // comment claiming the teaching path never pages while it does; this repo has already been bitten
+    // by a comment asserting a case unreachable being how the case stopped being checked.
+    expect(longestOn(() => new DeepPipelineProcessor(), OFF)).toBe(392);
+    expect(longestOn(() => new DeepPipelineProcessor(), { ...OFF, cache: CACHE_LARGE })).toBe(422);
+    expect(longestOn(() => new DeepPipelineProcessor(), { ...OFF, cache: CACHE_SMALL })).toBe(442);
   });
 
   it('bounds the DOM on a run that cannot be drawn at once', () => {
