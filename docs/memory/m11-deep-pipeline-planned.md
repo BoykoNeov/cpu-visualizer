@@ -50,6 +50,24 @@ fix landed after the original). Here it came back byte-identical. The parked gen
 copy-in/run/**delete** recipe is load-bearing: the web build runs `tsc --noEmit`, so a stray
 `zz-dump.test.ts` in `packages/web/src` fails build, test, lint and format:check at once.
 
+**THE PATH 76 CHECKS LEFT UNTOUCHED, and it took a review to notice: `startLesson`.** Step 5
+rewrote `useSimulator` to hold the whole `ModelChoice` in ONE ref precisely because two refs × three
+assignment sites (init / `setModel` / `startLesson`) "is how the LESSON path stays broken while the
+picker path looks fixed" — and then steps 5/6/7/8 all drove the picker and left `Lesson: — none —`
+alone. **Ask of any closing pass: which code path did the refactor exist to fix, and did anything
+click it?** Driven at last in `s8-lesson.mjs` (17 checks, all pass): from `deep-pipeline`, starting
+an out-of-order lesson drags model + program + config and **records at M10's pinned 59** (in-order
+on the same program is 71, so a dropped config cannot pass by looking plausible). Leaving it is
+asserted as a **cross-route identity** — the same 116 whether the state was reached by finishing the
+lesson or by clicking the picker — rather than as a guessed constant.
+
+**Four rig "failures" this step, all four the RIG, zero app defects.** Beyond the two above: a
+guessed cycle threshold ("74 or 88", actual 116 — read numbers, never guess them), and a
+data-memory read that was **not scoped to its panel**: searching the page for a leaf whose text is
+an ADDRESS finds the REGISTERS panel first, where a register holds that address as a VALUE. It
+returned 268435476 (= 0x10000014) and called it memory. **Scope every panel read to its own
+`<section>`** — the same lesson as the three `.dp-legend` blocks now on one page.
+
 **STEP 7 (2026-07-27) — THE BESPOKE DATAPATH. Sheddable in the plan, never shed in practice (the
 M9 precedent held). Repo 4310 → 4359 tests.**
 

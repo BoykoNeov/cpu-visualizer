@@ -1,6 +1,6 @@
 ---
 name: future-microarchitectures
-description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design"
+description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design. DEPTH IS NOW DELIVERED (M11, the 7-stage); WIDTH (issueWidth > 2) is the open axis"
 metadata:
   node_type: memory
   type: project
@@ -10,6 +10,17 @@ metadata:
 Stated 2026-07-16: beyond M3's classic 5-stage pipeline, the user wants **longer/deeper
 pipelines** (7-stage, 12-stage — more stages than the five phase hues) and a **superscalar
 CPU** visualized in future milestones.
+
+**STATUS 2026-07-27 — the DEPTH half is DELIVERED and the flag now points at one axis only.**
+M11 shipped `engine/deep-pipeline` (a 7-stage `IF1 IF2 ID EX1 EX2 MEM WB` with its timing matrix,
+cache, recorder, web enablement and bespoke datapath) — see [[m11-deep-pipeline-planned]]. Every
+prediction in this file held: the map needed **no change at all**, the trace schema needed none,
+`location` absorbed `"IF1"`/`"EX2"` as a plain string, and the hues went by stage FAMILY. **What
+remains open is WIDTH**: `superscalar/processor.ts:513` still refuses `issueWidth > 2` BY NAME,
+because `intra-pair-raw` / `mem-port` / `branch-slot` are written for a pair — so that milestone is
+generalizing pairing rules IN PLACE, not a new package, which is why M11 deliberately did not touch
+it. Deeper still (`MEM1`/`MEM2`, a 12-stage) is a candidate for a later milestone, not a deferred
+step of M11.
 
 **Why:** It's a _don't-foreclose_ flag, not a build-for-it-now order. It constrains which M3
 shapes are cheap now and expensive later — but far less than it first appears, because each

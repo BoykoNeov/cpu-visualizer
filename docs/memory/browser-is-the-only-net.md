@@ -228,13 +228,24 @@ step 8.** A dev pass and a preview pass are not the same evidence, and the diffe
   settled by a 20×+ crop, not by the number.
 - Kill the preview server **by PID read from its command line**, never by port ([[never-kill-dev-servers-by-port]]),
   and pass `--port N --strictPort` so it cannot silently climb onto someone else's number.
+- **Scope every panel read to its own `<section>`.** An unscoped search for a leaf whose text is a
+  data-memory ADDRESS finds the REGISTERS panel first, where a register holds that same address as a
+  VALUE — the rig read `268435476` (= `0x10000014`) and called it memory. Same class as the three
+  `.dp-legend` blocks (map, datapath, cache grid) that now share one page.
+- **Ask which path the last refactor existed to fix, and whether anything ever clicked it.** M11's
+  `useSimulator` change was made because "two refs assigned at three sites is how the LESSON path
+  stays broken while the picker path looks fixed" — and four consecutive browser passes then drove
+  the picker and left `Lesson: — none —` alone. When a lesson/config path IS driven, assert a
+  **pinned recording length** for its own config (the wrong model records a different, also-plausible
+  number), and assert leaving it as a **cross-route identity** rather than a guessed constant.
 
 **Reusable rig:** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) —
 `step8-preview.mjs` (the milestone-closing pass over the SHIPPED `vite preview` bundle: the
 anti-vacuity §0, picker, the cross-model cycle/walk comparison, map hues, coefficients, tooltip
 prose, the datapath dump comparison, follow+scrub, the cache, a model sweep and a console-error
-capture — 76 checks) and `s8-crop.mjs` (control-label clearance swept over every label, plus a
-high-zoom crop of one),
+capture — 76 checks), `s8-lesson.mjs` (the LESSON path: cross-model `startLesson`, a pinned
+recording length, the cross-route identity on exit, and a scoped data-memory read at two cursors)
+and `s8-crop.mjs` (control-label clearance swept over every label, plus a high-zoom crop of one),
 `datapath-eyeball.mjs` (the step-7 pass: dump-vs-live wire-for-wire comparison, hue-by-family,
 tier gating, follow ring, structural config axes) and `dp-zoom.mjs` (a scaled close-up of one SVG —
 note `Page.captureScreenshot`'s `clip` is PAGE-relative under `captureBeyondViewport`, while

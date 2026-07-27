@@ -980,6 +980,36 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         their command lines. Preview was started with an explicit `--port 4199 --strictPort` and still
         confirmed by served `<title>` before anything was trusted.
 
+      **ADDENDUM — THE LESSON PATH, the one thing 76 checks left untouched** (`s8-lesson.mjs`,
+      17 checks, ALL PASS; found in review of this step, driven before the milestone closed):
+
+      - **`startLesson` is the third assignment site of step 5's `useSimulator` refactor, and no
+        browser had ever driven it.** Step 5's own note says why that matters, in its own words: two
+        refs assigned at three sites each "is how the LESSON path stays broken while the picker path
+        looks fixed". Step 5's pass drove the picker, step 6's the cache, step 7's the datapath, and
+        this step's 76 checks leave `Lesson: — none —` alone throughout — so the site the refactor
+        existed to fix was the site nothing checked. `engineConfigFor`'s clamp runs there too.
+      - **It is sound.** From `deep-pipeline` (which has no issue-order control — asserted as the
+        negative first), starting `work-slides-ahead` drags the MODEL to `out-of-order`, the program
+        to `array-sum`, and the issue-order control to `out-of-order`, and **records at 59 — M10's
+        pinned length for that lesson's own config.** The number is the point: in-order on the same
+        program is 71, so a dropped model or a dropped config lands there, not on a near miss.
+      - **Leaving a lesson is asserted as a CROSS-ROUTE IDENTITY rather than a constant.** The shell
+        holds config at session level, so the lesson's config stays in force on exit; the claim is
+        that deep-pipeline records the same **116** whether that state was reached by finishing a
+        lesson or by clicking `Forwarding off` + `Cache large` in the picker. The first draft instead
+        guessed "74 or 88", read 116 and reported a failure against a correct app — the mistake the
+        step-7 rig notes already name (read every expected number, never guess one).
+      - **Acceptance criterion 4 is now literal on all four panels.** The data-memory half had only
+        ever been eyeballed in a screenshot; it is read by address at two cursors (`0x10000014` = 0
+        at cycle 8, **120** at the end, with the array's `0x10000000` = 5 at both). **That check
+        also failed first, and it was the rig again**: an unscoped search for a leaf whose text is
+        the ADDRESS finds the REGISTERS panel first, where `x28` holds that same address as a VALUE —
+        it read **268435476** (= 0x10000014) and called it memory. Scoped to the Data memory section.
+      - So the step's rig-versus-app record is **four "failures", all four the rig, zero app defects**
+        — which is the same ratio step 5 recorded, and the reason a closing pass budgets for rig
+        debugging rather than treating a red line as a finding.
+
 ## Acceptance criteria (mirror the spec §11 shape)
 
 - [x] Load `sum-loop.s` on **Deep pipeline**, run to the end, and the pipeline map draws
@@ -1008,6 +1038,10 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       74 → **70** on the prediction flip (P 16 → 12), both straight off the `TIMING` table.
 - [x] Follow an instruction (INV-4) across all seven stages; scrub backwards and forwards
       and the map, registers, memory and source panels all agree at every cursor.
+      **The DATA MEMORY half was made literal at step 8** (`s8-lesson.mjs` §3): read by address at
+      two cursors — `0x10000014` is 0 at cycle 8 and **120** at the end, with the array's
+      `0x10000000` unchanged at 5 — where earlier passes had verified transport, playhead and
+      registers and only eyeballed memory in a screenshot.
       **The HEADLESS half is done at step 4** — `recorder.test.ts` follows one instruction
       through all seven stages while six others are in flight, resolves seven ids to seven
       locations in one cycle, and walks the cursor forward, back to pre-run and to any cycle
