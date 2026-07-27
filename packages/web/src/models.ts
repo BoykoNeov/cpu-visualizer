@@ -8,6 +8,12 @@
  */
 
 import {
+  DeepPipelineProcessor,
+  DEEP_PIPELINE_CAPABILITIES,
+  DEEP_PIPELINE_MODEL_DESCRIPTION,
+  DEEP_PIPELINE_MODEL_ID,
+} from '@cpu-viz/engine-deep-pipeline';
+import {
   MultiCycleProcessor,
   MULTI_CYCLE_CAPABILITIES,
   MULTI_CYCLE_MODEL_ID,
@@ -34,7 +40,7 @@ import {
   SUPERSCALAR_MODEL_DESCRIPTION,
   SUPERSCALAR_MODEL_ID,
 } from '@cpu-viz/engine-superscalar';
-import type { Processor, ProcessorCapabilities } from '@cpu-viz/trace';
+import type { Processor, ProcessorCapabilities, ProcessorConfig } from '@cpu-viz/trace';
 
 /**
  * Which bespoke SVG datapath view (if any) renders a model's trace. Each model has its OWN
@@ -104,6 +110,22 @@ export const MODELS: readonly ModelChoice[] = [
     capabilities: PIPELINE_CAPABILITIES,
   },
   {
+    id: DEEP_PIPELINE_MODEL_ID,
+    label: 'Deep pipeline',
+    // The engine's OWN one-liner, like the two rows below — see its docblock for why it spells the
+    // stage set out: this label and "Pipeline" sit adjacent in the picker.
+    description: DEEP_PIPELINE_MODEL_DESCRIPTION,
+    make: () => new DeepPipelineProcessor(),
+    // `'none'` is the deliberate superscalar/out-of-order pattern, not an oversight: a
+    // `DatapathKind` means "a diagram of this kind EXISTS", so declaring one before M11 step 7
+    // draws it would make the table test below assert a diagram nothing rendered, while App
+    // silently fell through to the placeholder. The PIPELINE MAP, meanwhile, already draws this
+    // model's seven columns for free (INV-3) — step 4 pinned that `pipeline-map.ts` folds a real
+    // seven-stage recording untouched — so the tier is fully teachable at `'none'`.
+    datapath: 'none',
+    capabilities: DEEP_PIPELINE_CAPABILITIES,
+  },
+  {
     id: SUPERSCALAR_MODEL_ID,
     label: 'Superscalar',
     // The engine's OWN one-liner rather than a sentence written here, unlike the three rows above.
@@ -152,4 +174,37 @@ export const DEFAULT_MODEL_ID = SINGLE_CYCLE_MODEL_ID;
 /** Resolve a model id to its choice, falling back to the default for an unknown id. */
 export function modelById(id: string): ModelChoice {
   return MODELS.find((m) => m.id === id) ?? MODELS[0]!;
+}
+
+/**
+ * The shell's session config, narrowed to the knobs `model` actually claims (M11 step 5). Today it
+ * clamps exactly one field: **`cache`, for a model whose `configurableCache` is false.**
+ *
+ * The shell holds forwarding, prediction, the cache geometry, issue width and the out-of-order
+ * cluster at SESSION level and hands the whole config to whichever engine is driving — which worked
+ * for five models because a knob an engine does not honor is simply a knob it IGNORES
+ * (`simulator.test.ts` pins that inertness per model). `deep-pipeline` is the first shipped engine
+ * that **REFUSES** one: `reset()` throws on a non-null cache rather than run silently cache-less
+ * (M11 step 6 owns the miss-freeze/EX2 seam). So "hand every model everything" stopped being safe:
+ * pipeline with the cache on, then switch to Deep pipeline, and the load throws out of an event
+ * handler.
+ *
+ * **Clamping rather than surfacing the error is forced, not a preference.** The cache CONTROL is
+ * gated on this very flag (`App.tsx`), so on the deep pipeline it is not rendered at all — an error
+ * message would leave the user in a state with no control to leave it by. The flag the shell already
+ * treats as authoritative for whether to SHOW the knob now also decides whether to SEND it.
+ *
+ * **Only `cache`, deliberately.** Extending this to the other four knobs would be four more
+ * judgement calls, each able to change an existing model's recording — and every model's cycle
+ * counts are pinned in a timing suite. The other knobs are ignored, not refused, and the tests that
+ * pin that inertness are what make ignoring safe. A second refusing knob belongs here, beside this
+ * one, with the same argument written out.
+ *
+ * Note what is NOT clamped: the session's own value. The caller keeps its cache geometry while
+ * visiting a model that cannot take one, so switching back restores it — the clamp is on the value
+ * PASSED to the engine, not on the shell's state.
+ */
+export function engineConfigFor(model: ModelChoice, config: ProcessorConfig): ProcessorConfig {
+  if (model.capabilities.configurableCache) return config;
+  return { ...config, cache: null };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, type ProcessorCapabilities } from '@cpu-viz/trace';
-import { MODELS, modelById, DEFAULT_MODEL_ID } from './models';
+import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
+import { MODELS, modelById, engineConfigFor, DEFAULT_MODEL_ID } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
@@ -12,11 +13,18 @@ import { loadSource } from './simulator';
  * that make the table's claims checkable rather than merely asserted.
  */
 describe('the model table', () => {
-  it('lists the five microarchitectures built so far, with unique ids', () => {
+  it('lists the six microarchitectures built so far, in teaching order, with unique ids', () => {
+    // ORDER is the claim, not just membership — this array is the picker's order, which is
+    // user-visible forever. `deep-pipeline` sits directly after `pipeline` (M11 step 5) because
+    // depth is the next thing after the 5-stage: it is the same machine with two stages added, and
+    // reading it before the superscalar/out-of-order tiers is what makes "forwarding stops being
+    // enough" land. Appending at the end would have dodged this test's churn (and the two capability
+    // lists below) at the price of putting a 7-stage in-order pipe after out-of-order.
     expect(MODELS.map((m) => m.id)).toEqual([
       'single-cycle',
       'multi-cycle',
       'pipeline',
+      'deep-pipeline',
       'superscalar',
       'out-of-order',
     ]);
@@ -77,12 +85,24 @@ describe('the model table', () => {
     // forwarding: register renaming makes a forwarding knob meaningless, so its engine reports
     // `configurableForwarding: false` (the reflex "it has hazards so it forwards" is the trap this
     // list catches).
-    expect(honoring((c) => c.configurableForwarding)).toEqual(['pipeline', 'superscalar']);
+    expect(honoring((c) => c.configurableForwarding)).toEqual([
+      'pipeline',
+      'deep-pipeline',
+      'superscalar',
+    ]);
     expect(honoring((c) => c.configurableBranchPrediction)).toEqual([
       'pipeline',
+      'deep-pipeline',
       'superscalar',
       'out-of-order',
     ]);
+    // The deep pipeline is MISSING from this one on purpose, and it is the only model that honors
+    // forwarding and prediction without honoring the cache — so read the gap as the scope lever it
+    // is. M6's miss-freeze holds IF/ID/EX for the miss penalty; on a machine where "IF" and "EX" are
+    // each two stages, which of IF1/IF2/EX1/EX2 freeze is a CHOICE with no external ground truth,
+    // and M11 step 6 is where it gets pinned. Until then that engine REFUSES a non-null cache by
+    // name rather than running silently cache-less — the one place a knob is refused instead of
+    // ignored, which is why the shell has `engineConfigFor` (see its own tests below).
     expect(honoring((c) => c.configurableCache)).toEqual([
       'pipeline',
       'superscalar',
@@ -112,6 +132,13 @@ describe('the model table', () => {
       ['single-cycle', 'single-cycle'],
       ['multi-cycle', 'multi-cycle'],
       ['pipeline', 'pipeline'],
+      // `'none'` — the deliberate superscalar/out-of-order pattern at the same point in their own
+      // milestones, not a missing diagram. M11 step 7 draws the bespoke seven-stage geometry and
+      // flips this row (together with the union member and App's dispatch arm), and this table going
+      // red is the reminder to do all three. Until then App renders the placeholder, and the
+      // PIPELINE MAP — which needed no change at all to fold a seven-stage recording (step 4) — is
+      // what makes the tier teachable meanwhile.
+      ['deep-pipeline', 'none'],
       // Flipped from `'none'` at M7 step 7, together with the union member and App's dispatch arm —
       // and this table FAILING was the reminder to do all three, which is what an exhaustive table
       // is for. `datapath-superscalar.ts` now exists: a shared front-end feeding two replicated
@@ -142,6 +169,85 @@ describe('the model table', () => {
     for (const model of MODELS) {
       const result = loadSource(sumLoop.source, model.make, defaultConfig());
       expect(result.ok, `${model.id} should load sum-loop`).toBe(true);
+      if (!result.ok) continue;
+      result.loaded.recorder.runToEnd();
+      expect(result.loaded.recorder.currentState().registers[10], `${model.id} computes 55`).toBe(
+        55,
+      );
+    }
+  });
+});
+
+/**
+ * `engineConfigFor` — the shell's session config narrowed to the knobs a model claims (M11 step 5).
+ *
+ * **Why this exists at all, in one sentence: the cache is held at SESSION level and handed to every
+ * engine, and `deep-pipeline` is the first engine that REFUSES a knob instead of ignoring it.** So
+ * "pipeline with the cache on, then pick Deep pipeline" threw out of a click handler — a live crash
+ * with no headless test anywhere able to see it, since this repo renders with
+ * `renderToStaticMarkup` and no jsdom. Extracting the narrowing as a pure function is what turns
+ * that browser-only guarantee into a pinned one; the tests below are the net.
+ *
+ * The negative case (`refuses`) is the load-bearing one: without it, the clamp assertions would keep
+ * passing against an engine that had quietly gone back to ignoring the knob, and the function would
+ * read as decoration.
+ */
+describe('the config a model is handed', () => {
+  const withCache = { ...defaultConfig(), cache: CACHE_SMALL };
+  const deep = modelById('deep-pipeline');
+  const pipeline = modelById('pipeline');
+
+  it('hands a cache-honoring model the session config untouched', () => {
+    // Identity, not equality: nothing is rebuilt for a model that takes the knob as given.
+    expect(engineConfigFor(pipeline, withCache)).toBe(withCache);
+  });
+
+  it('clamps the cache to null for a model that declares it does not honor one', () => {
+    expect(deep.capabilities.configurableCache).toBe(false);
+    expect(engineConfigFor(deep, withCache).cache).toBeNull();
+  });
+
+  it('clamps ONLY the cache — every other knob reaches the engine as the session set it', () => {
+    // The scope of the narrowing, pinned: forwarding, prediction, width and the out-of-order
+    // cluster are IGNORED by engines that do not honor them (each pinned as whole-trace inertness
+    // in that engine's own suite), so clamping them would be four more judgement calls able to
+    // move a recording — and every model's cycle counts are pinned in a timing suite.
+    const busy = {
+      ...withCache,
+      forwarding: true,
+      branchPrediction: 'static-taken' as const,
+      issueWidth: 2,
+      outOfOrderIssue: true,
+      robSize: 4,
+      slowOpLatency: 8,
+      numMshrs: 4,
+    };
+    expect(engineConfigFor(deep, busy)).toEqual({ ...busy, cache: null });
+  });
+
+  it('does not clamp the SESSION value — leaving the model restores the geometry', () => {
+    // The clamp is on the value passed to the engine, never on the shell's state, so
+    // pipeline(cache small) → deep pipeline → pipeline finds its cache still small.
+    const session = { ...defaultConfig(), cache: CACHE_SMALL };
+    engineConfigFor(deep, session);
+    expect(session.cache).toBe(CACHE_SMALL);
+    expect(engineConfigFor(pipeline, session).cache).toBe(CACHE_SMALL);
+  });
+
+  it('is load-bearing: the UNCLAMPED config really does throw on the model that refuses it', () => {
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    expect(() => loadSource(sumLoop.source, deep.make, withCache)).toThrow(
+      /not a knob this machine has yet/,
+    );
+  });
+
+  it('lets EVERY model load with the cache on — the crash the picker could reach', () => {
+    // The sweep the shell's own path cannot be tested on (no jsdom, so no test can see the click).
+    // A model arriving that refuses some other knob fails here rather than in the browser.
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    for (const model of MODELS) {
+      const result = loadSource(sumLoop.source, model.make, engineConfigFor(model, withCache));
+      expect(result.ok, `${model.id} should load sum-loop with the cache on`).toBe(true);
       if (!result.ok) continue;
       result.loaded.recorder.runToEnd();
       expect(result.loaded.recorder.currentState().registers[10], `${model.id} computes 55`).toBe(

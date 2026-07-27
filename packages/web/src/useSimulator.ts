@@ -16,7 +16,7 @@ import {
   type MachineState,
 } from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_MODEL_ID, modelById } from './models';
+import { DEFAULT_MODEL_ID, engineConfigFor, modelById, type ModelChoice } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import {
   activeLessonOf,
@@ -308,13 +308,19 @@ export function useSimulator(): Simulator {
   const [loadGen, setLoadGen] = useState(0);
   const [errors, setErrors] = useState<AssemblerError[] | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
-  // The selected model id drives rendering (picker value, header, datapath gating); the factory
-  // that BUILDS the engine lives in a ref so `loadInto` can read it at call time without taking
+  // The selected model id drives rendering (picker value, header, datapath gating); the CHOICE
+  // that builds the engine lives in a ref so `loadInto` can read it at call time without taking
   // `model` as a dependency — otherwise `select` (which depends on `loadInto`) would change
   // identity on a model switch and re-fire the mount effect, clobbering the current program.
+  //
+  // The ref holds the whole {@link ModelChoice}, not just its `.make` (M11 step 5). `loadInto` now
+  // needs the active model's CAPABILITIES as well as its factory — `engineConfigFor` clamps a knob
+  // the model refuses — and two refs assigned at three sites each is exactly how one site gets
+  // forgotten (the lesson path looking broken while the picker path looks fixed). One object,
+  // one assignment.
   const [model, setModelState] = useState<string>(DEFAULT_MODEL_ID);
-  const makeProcessor = useRef(modelById(DEFAULT_MODEL_ID).make);
-  // The forwarding position, mirroring `model`/`makeProcessor` exactly: the state drives
+  const activeModel = useRef<ModelChoice>(modelById(DEFAULT_MODEL_ID));
+  // The forwarding position, mirroring `model`/`activeModel` exactly: the state drives
   // rendering (the toggle's position), the ref is what `loadInto` reads at call time so the load
   // path takes no dependency on it. Starts OFF — the pedagogically right opening move is to watch
   // a RAW hazard stall first, THEN flip it on and watch the bubble vanish (§12.2).
@@ -376,17 +382,25 @@ export function useSimulator(): Simulator {
   // exclusive: a program either fails to assemble or fails to terminate, never both).
   const loadInto = useCallback(
     (source: string) => {
-      const result = loadSource(source, makeProcessor.current, {
-        ...defaultConfig(),
-        forwarding: forwardingRef.current,
-        branchPrediction: branchPredictionRef.current,
-        cache: cacheRef.current,
-        issueWidth: issueWidthRef.current,
-        outOfOrderIssue: outOfOrderIssueRef.current,
-        robSize: robSizeRef.current,
-        slowOpLatency: slowOpLatencyRef.current,
-        numMshrs: numMshrsRef.current,
-      });
+      // `engineConfigFor` narrows the session config to the knobs THIS model claims — today that is
+      // the cache alone, and only for a model that REFUSES rather than ignores it (M11 step 5; see
+      // its docblock). The session's own `cacheRef` is untouched, so leaving the deep pipeline
+      // restores whatever geometry was set before it.
+      const result = loadSource(
+        source,
+        activeModel.current.make,
+        engineConfigFor(activeModel.current, {
+          ...defaultConfig(),
+          forwarding: forwardingRef.current,
+          branchPrediction: branchPredictionRef.current,
+          cache: cacheRef.current,
+          issueWidth: issueWidthRef.current,
+          outOfOrderIssue: outOfOrderIssueRef.current,
+          robSize: robSizeRef.current,
+          slowOpLatency: slowOpLatencyRef.current,
+          numMshrs: numMshrsRef.current,
+        }),
+      );
       if (!result.ok) {
         loaded.current = null;
         setErrors(result.errors);
@@ -460,7 +474,7 @@ export function useSimulator(): Simulator {
         numMshrs: numMshrsRef.current,
       });
       const choice = modelById(opening.modelId);
-      makeProcessor.current = choice.make;
+      activeModel.current = choice;
       setModelState(choice.id);
       forwardingRef.current = opening.forwarding;
       setForwardingState(opening.forwarding);
@@ -504,7 +518,7 @@ export function useSimulator(): Simulator {
     (id: string) => {
       const choice = modelById(id);
       if (choice.id === model) return; // already selected — keep the cursor where it is
-      makeProcessor.current = choice.make; // read by loadInto below (and every later load)
+      activeModel.current = choice; // read by loadInto below (and every later load)
       setModelState(choice.id);
       // Re-drive whatever is currently loaded under the new engine. `loaded.current.source` is
       // always the exact running source — the corpus program in free-play/lesson mode, or the

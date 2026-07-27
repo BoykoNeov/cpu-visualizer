@@ -12,9 +12,11 @@
  * {@link DeepPipelineProcessor} (M11 step 1) is a fork of `engine/pipeline`'s stage walk with six
  * latches, enumerated `EX2/MEM → EX1` and `MEM/WB → EX1` forwarding paths, and an interlock that
  * watches BOTH execute stages. The timing matrix that proves the depth is real — rather than a
- * 5-stage wearing seven labels — is step 3, and nothing here is wired into the model picker until
- * step 5. A non-null `cache` config is REFUSED BY NAME until step 6 pins how M6's miss-freeze meets
- * two execute stages.
+ * 5-stage wearing seven labels — is step 3; step 5 wires it into the model picker. A non-null
+ * `cache` config is REFUSED BY NAME until step 6 pins how M6's miss-freeze meets two execute
+ * stages — and because the shell holds its cache geometry at SESSION level and hands it to every
+ * model, that refusal is what makes the shell clamp the knob for a model that declares it does not
+ * honor it (`engineConfigFor` in `web/src/models.ts`, M11 step 5).
  *
  * Implements the {@link Processor} interface (handoff §6) over the pure {@link ProgramImage};
  * `toProgramImage` (in `@cpu-viz/engine-common`) adapts an `AssembledProgram` into that image.
@@ -34,3 +36,18 @@ export {
 
 /** Stable id of this model within the model family (handoff §2). */
 export const DEEP_PIPELINE_MODEL_ID = 'deep-pipeline';
+
+/**
+ * The picker's one-liner, exported from the ENGINE rather than typed into the web shell (the
+ * superscalar/out-of-order precedent) — a description re-typed in the shell is a second place for
+ * the same claim to go stale.
+ *
+ * It names the stage set explicitly because the picker shows "Pipeline" directly above "Deep
+ * pipeline", and two adjacent rows that both say "pipeline" are mush unless one of them says how
+ * many stages and what that buys. The second clause is the milestone's thesis, not decoration: the
+ * 5-stage's description promises forwarding, and this one has to say that forwarding is no longer
+ * enough.
+ */
+export const DEEP_PIPELINE_MODEL_DESCRIPTION =
+  'Deep 7-stage pipeline — IF1 IF2 ID EX1 EX2 MEM WB: a two-cycle fetch and a two-cycle ' +
+  'execute, so a dependent instruction waits even with forwarding on.';

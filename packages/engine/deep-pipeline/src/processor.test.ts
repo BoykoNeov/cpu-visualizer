@@ -688,3 +688,69 @@ describe('micro — six latches, independently snapshotted', () => {
     expect(micro(ts[2]!).ex2Mem).toBeNull();
   });
 });
+
+/**
+ * The two knob CLUSTERS this machine ignores, pinned whole-trace (M11 step 5).
+ *
+ * Step 2 left refuse-vs-ignore for `issueWidth` and the out-of-order cluster as an open question,
+ * on the grounds that nothing could reach this engine with them set. **Step 5 is what makes them
+ * reachable**: the web shell holds every knob at SESSION level and hands the config to whichever
+ * model is driving, so `Superscalar` at 2-wide → `Deep pipeline` really does arrive here with
+ * `issueWidth: 2`, and `Out-of-order` → `Deep pipeline` with `outOfOrderIssue: true` and a
+ * four-entry ROB. The answer is IGNORE, and this is the proof — the same argument and the same
+ * shape the 5-stage uses (`pipeline/src/processor.test.ts`), which `models.test.ts` cites when it
+ * says the shell only needs to clamp the ONE knob that is refused.
+ *
+ * The comparison is the ENTIRE trace array, in BOTH forwarding positions, because in-order
+ * completion keeps the final architectural state identical either way — a leaked width or a leaked
+ * scheduler would move cycle counts while INV-8 stayed green, which is this milestone's whole
+ * failure mode. `RAW_PAIR_CHAIN` is used rather than a straight run: a knob that reordered issue
+ * would need a bubble to reorder around, and the stalls are where the bubbles are.
+ */
+const KNOB_PROBE = [
+  '.text',
+  'addi x1, x0, 4',
+  'addi x2, x0, 0',
+  'loop:',
+  'add x2, x2, x1', // ALU→ALU on x2 across the back edge — a bubble even with forwarding on
+  'addi x1, x1, -1',
+  'bne x1, x0, loop',
+  'sw x2, 256(x0)',
+  'lw x3, 256(x0)', // load-use into the ecall's neighbourhood
+  'add x4, x3, x3',
+  'ecall',
+].join('\n');
+
+describe('the knobs this machine ignores (M11 step 5)', () => {
+  it.each([
+    ['forwarding off', OFF],
+    ['forwarding on', ON],
+  ])('issueWidth is inert — the whole trace is identical at width 1 and 2 (%s)', (_l, base) => {
+    expect(run(KNOB_PROBE, { ...base, issueWidth: 2 })).toEqual(
+      run(KNOB_PROBE, { ...base, issueWidth: 1 }),
+    );
+  });
+
+  it.each([
+    ['forwarding off', OFF],
+    ['forwarding on', ON],
+  ])(
+    'the out-of-order cluster is inert — whole trace, aggressive non-defaults (%s)',
+    (_l, base) => {
+      const OOO = { outOfOrderIssue: true, robSize: 4, slowOpLatency: 20, numMshrs: 4 };
+      expect(run(KNOB_PROBE, { ...base, ...OOO })).toEqual(run(KNOB_PROBE, base));
+    },
+  );
+
+  /**
+   * And the ASYMMETRY, stated where both halves are visible: the cache is the one knob this engine
+   * refuses rather than ignores. That difference is exactly why the shell needs `engineConfigFor`
+   * (`web/src/models.ts`) for the cache and for nothing else — an ignored knob defends itself.
+   */
+  it('…while the cache is REFUSED, not ignored — the asymmetry the shell has to know about', () => {
+    expect(() => run(KNOB_PROBE, { ...ON, issueWidth: 2, outOfOrderIssue: true })).not.toThrow();
+    expect(() => run(KNOB_PROBE, { ...ON, cache: CACHE_SMALL })).toThrow(
+      /not a knob this machine has yet/,
+    );
+  });
+});
