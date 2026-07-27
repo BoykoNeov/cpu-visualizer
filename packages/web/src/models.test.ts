@@ -105,6 +105,7 @@ describe('the model table', () => {
     // ignored, which is why the shell has `engineConfigFor` (see its own tests below).
     expect(honoring((c) => c.configurableCache)).toEqual([
       'pipeline',
+      'deep-pipeline',
       'superscalar',
       'out-of-order',
     ]);
@@ -194,7 +195,10 @@ describe('the model table', () => {
  */
 describe('the config a model is handed', () => {
   const withCache = { ...defaultConfig(), cache: CACHE_SMALL };
-  const deep = modelById('deep-pipeline');
+  // The exemplar of a model that does NOT honor a cache. It was `deep-pipeline` until M11 step 6
+  // implemented one; `single-cycle` has no memory-latency notion at all, so it is the stable choice
+  // rather than the next one about to change.
+  const clamped = modelById('single-cycle');
   const pipeline = modelById('pipeline');
 
   it('hands a cache-honoring model the session config untouched', () => {
@@ -203,8 +207,8 @@ describe('the config a model is handed', () => {
   });
 
   it('clamps the cache to null for a model that declares it does not honor one', () => {
-    expect(deep.capabilities.configurableCache).toBe(false);
-    expect(engineConfigFor(deep, withCache).cache).toBeNull();
+    expect(clamped.capabilities.configurableCache).toBe(false);
+    expect(engineConfigFor(clamped, withCache).cache).toBeNull();
   });
 
   it('clamps ONLY the cache — every other knob reaches the engine as the session set it', () => {
@@ -222,22 +226,47 @@ describe('the config a model is handed', () => {
       slowOpLatency: 8,
       numMshrs: 4,
     };
-    expect(engineConfigFor(deep, busy)).toEqual({ ...busy, cache: null });
+    expect(engineConfigFor(clamped, busy)).toEqual({ ...busy, cache: null });
   });
 
   it('does not clamp the SESSION value — leaving the model restores the geometry', () => {
     // The clamp is on the value passed to the engine, never on the shell's state, so
     // pipeline(cache small) → deep pipeline → pipeline finds its cache still small.
     const session = { ...defaultConfig(), cache: CACHE_SMALL };
-    engineConfigFor(deep, session);
+    engineConfigFor(clamped, session);
     expect(session.cache).toBe(CACHE_SMALL);
     expect(engineConfigFor(pipeline, session).cache).toBe(CACHE_SMALL);
   });
 
-  it('is load-bearing: the UNCLAMPED config really does throw on the model that refuses it', () => {
+  /**
+   * **What this test USED to assert, and why it changed, because the difference is the point.**
+   * Through M11 step 5 it pinned that the unclamped config really THREW — `deep-pipeline` refused a
+   * cache by name while step 6 held the miss-freeze seam open, so the clamp was protection and this
+   * was the test that stopped it decaying into decoration. **Step 6 implemented that cache, so no
+   * shipped engine refuses anything and there is no throw left to observe.** Asserting one now would
+   * be asserting a bug.
+   *
+   * What survives is the weaker, still-true claim: the clamp is NORMALIZATION — a model that does
+   * not honor a cache is handed none, and would have ignored one anyway (`simulator.test.ts` pins
+   * that inertness per model). Written out rather than deleted so the next engine to refuse a knob
+   * finds both the guard and the reason it exists.
+   */
+  it('is normalization now, not protection: the clamped model would have ignored one anyway', () => {
     const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
-    expect(() => loadSource(sumLoop.source, deep.make, withCache)).toThrow(
-      /not a knob this machine has yet/,
+    const unclamped = loadSource(sumLoop.source, clamped.make, withCache);
+    expect(unclamped.ok, 'no shipped engine refuses a cache any more').toBe(true);
+    if (!unclamped.ok) return;
+    const unclampedCycles = unclamped.loaded.recorder.runToEnd();
+
+    const applied = loadSource(sumLoop.source, clamped.make, engineConfigFor(clamped, withCache));
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+    const appliedCycles = applied.loaded.recorder.runToEnd();
+
+    // Same cycle count and same answer either way — which is exactly what "ignored" means.
+    expect(appliedCycles).toBe(unclampedCycles);
+    expect(applied.loaded.recorder.currentState().registers).toEqual(
+      unclamped.loaded.recorder.currentState().registers,
     );
   });
 

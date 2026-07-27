@@ -90,11 +90,31 @@
  *
  * ## Config
  *
- * `forwarding` and `branchPrediction` are honored. **A non-null `cache` is REFUSED BY NAME**
- * (M11 step 6 owns it): M6's miss-freeze holds IF/ID/EX, and which of IF1/IF2/EX1/EX2 freeze —
- * and whether an in-flight EX2 completes — is a choice with no external ground truth. Refusing
- * rather than silently ignoring is the house rule that keeps an unhonored knob from shipping inert
- * (the superscalar's `issueWidth > 2` throw is the shape copied here).
+ * `forwarding`, `branchPrediction` and — since M11 step 6 — `cache` are all honored.
+ *
+ * **The miss-freeze on seven stages (M11 step 6).** M6's variable-latency MEM freezes everything
+ * younger than it; here that is FIVE stages (IF1, IF2, ID, EX1, EX2) rather than the 5-stage's
+ * three. The plan expected a taste call — *which of them freeze, and does an in-flight EX2
+ * complete?* — and the answer turned out to be forced in both halves:
+ *
+ *  - **All five freeze, by back-pressure.** MEM re-presents its own waiting instruction, so EX2 has
+ *    nowhere to advance to; EX2 holding means EX1 has nowhere to go; and so on up the pipe. There
+ *    is no skid buffer to make any other answer coherent.
+ *  - **EX2 needs nothing external to hold.** Its operands were fixed on the {@link Ex1Ex2Latch} and
+ *    nothing forwards INTO it, so "does it complete?" has no consequence to trade off: it simply
+ *    holds and runs once, on release.
+ *  - **EX1 is the one that is NOT free**, and getting it wrong was a real bug in two shipped
+ *    engines — see {@link stageEx1} and `docs/reviews/m11-miss-freeze-forward-loss.md`.
+ *
+ * **What depth does NOT change: the price.** A miss costs `missPenalty` cycles here exactly as it
+ * does on the 5-stage, because the freeze stops the whole machine however long it is. The cache
+ * axis is a purely additive `+M` term (`M = misses × missPenalty`) over the closed form, and the
+ * MISS SEQUENCE is identical to the 5-stage's for the same program and geometry — no wrong-path
+ * instruction ever reaches MEM on either machine, so both see the same address stream. That was
+ * proved over the corpus × forwarding × prediction × two cache geometries plus five adversarial
+ * programs before this was written; `cache.test.ts` keeps the parts of it a test can hold.
+ * **Depth taxes fetch and execute, not memory** — which is worth saying out loud in a model whose
+ * whole thesis is that depth taxes you.
  *
  * ## The mutation check step 3 will run — spelled out here so it is not re-derived
  *
@@ -116,8 +136,9 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget } from '@cpu-viz/engine-common';
+import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
 import {
+  type CacheConfig,
   defaultConfig,
   makeRegisters,
   SparseMemory,
@@ -246,9 +267,11 @@ export interface MemWbLatch extends FetchLatch {
  * `engine-pipeline` keeps four: `future-microarchitectures.md` pins that a deeper pipeline is a
  * sibling package with its own `micro` type, not a retrofit of the 5-stage's.
  *
- * **There is deliberately no `cache` field.** This machine refuses a cache config by name (M11 step
- * 6 owns it), and a field that could only ever be `null` is the inert-shipping shape M10 step 0
- * found and this milestone is written to avoid.
+ * The `cache` field is the ONE exception to "immutable and rebuilt each cycle": {@link CacheState}
+ * is single-buffered and mutated in place by {@link access}, so {@link DeepPipelineProcessor.
+ * snapshotState} DEEP-COPIES it. A shallow copy would alias one final cache across every recorded
+ * cycle and replay as warm-from-the-start — a bug only time-travel can see, never final-state
+ * conformance. `null` when no cache is configured.
  */
 export interface DeepPipelineMicro {
   readonly if1If2: FetchLatch | null;
@@ -257,12 +280,13 @@ export interface DeepPipelineMicro {
   readonly ex1Ex2: Ex1Ex2Latch | null;
   readonly ex2Mem: Ex2MemLatch | null;
   readonly memWb: MemWbLatch | null;
+  readonly cache: CacheState | null;
 }
 
 /**
- * **`configurableCache: false` is a claim about this MVP, not about the machine's future.** The knob
- * is refused rather than ignored (see {@link DeepPipelineProcessor.reset}), so the capability and
- * the behaviour cannot drift apart.
+ * `configurableCache` became true at M11 step 6, once the miss-freeze's meeting with two execute
+ * stages was pinned (see the file header). Until then the knob was REFUSED by name rather than
+ * ignored, so the capability and the behaviour could not drift apart while it was unimplemented.
  *
  * `configurableBranchPrediction: true` is a claim about two schemes, not three, exactly as in the
  * 5-stage: `'none'` and `'static-not-taken'` are the SAME MACHINE here. A processor with no
@@ -275,9 +299,7 @@ export const DEEP_PIPELINE_CAPABILITIES: ProcessorCapabilities = {
   hasHazards: true,
   configurableForwarding: true,
   configurableBranchPrediction: true,
-  // M11 step 6: the miss-freeze meeting two execute stages is a pinned CHOICE, not a mechanical
-  // ripple. Until it is made, `reset()` throws on a non-null cache rather than running unfrozen.
-  configurableCache: false,
+  configurableCache: true,
   // One instruction per stage is this model's definition, not a setting (M7's axis is width).
   configurableIssueWidth: false,
   // In-order issue and completion are this model's definition (M9's axis is the ROB/RS cluster).
@@ -456,6 +478,27 @@ interface CycleCtx {
    * prediction at 2 instead of 4.
    */
   bet: boolean;
+  /**
+   * Raised by MEM on a cache miss (M6, wired here at M11 step 6); read by the FIVE stages younger
+   * than it in the reverse walk (EX2, EX1, ID, IF2, IF1), which then freeze their occupants in
+   * place — while MEM re-presents the waiting instruction and WB bubbles. The 5-stage freezes
+   * three; depth is the only difference, and it is not a choice: MEM owns `next.ex2Mem`, so EX2 has
+   * nowhere to advance to, and the block propagates up the pipe from there.
+   *
+   * Unlike the one-shot `stalled` it persists across cycles, via {@link missCyclesRemaining}.
+   * Highest priority: while it is set, none of the five raise `stalled`/`squash`/`bet`, so it never
+   * coexists with those.
+   */
+  memStall: boolean;
+  /**
+   * Is this the cycle the miss was DETECTED, as opposed to a mid-stall cycle? Read by EX1, which
+   * captures its forwarded operands on exactly this cycle and no other — see {@link stageEx1}.
+   *
+   * Semantic, not an optimization: the frozen occupant must execute on the values it would have
+   * seen had the miss never happened, and those are the ones alive on the detection cycle. A later
+   * frozen cycle reads a DIFFERENT, draining source set.
+   */
+  memStallStarted: boolean;
 }
 
 export class DeepPipelineProcessor implements Processor {
@@ -480,6 +523,20 @@ export class DeepPipelineProcessor implements Processor {
    */
   private predictTaken = false;
   private latches: Latches = EMPTY_LATCHES();
+  /**
+   * The D-cache config (M11 step 6), or `null` for the cache-less machine `defaultConfig()` still
+   * selects. When null the entire cache path below is inert and MEM is byte-for-byte what steps 1–5
+   * pinned — the inertness contract every knob in this repo carries.
+   */
+  private cacheConfig: CacheConfig | null = null;
+  /** The single-buffered tag/valid state, mutated in place by {@link access}; null iff no cache. */
+  private cache: CacheState | null = null;
+  /**
+   * Cycles left to serve on a miss in progress. A plain field rather than a rider on the EX2/MEM
+   * latch (where the 5-stage keeps it): MEM re-presents that latch unchanged during the hold, so
+   * there is nothing a per-latch copy would buy, and `micro.cache` is what the view actually reads.
+   */
+  private missCyclesRemaining = 0;
   /** The instruction in the IF1 stage: fetched this cycle, or held over across a stall. */
   private ifSlot: Fetched | null = null;
   /** Sticky once an architectural halt is decoded: fetch never restarts, the pipe just drains. */
@@ -491,13 +548,9 @@ export class DeepPipelineProcessor implements Processor {
     // completes under the freeze is a choice with no external ground truth (the M9 finding-F9
     // shape). M11 step 6 pins it with a named seam. Until then, running with the knob silently
     // unhonored is exactly how M10 step 0 found `slowOpLatency` shipped INERT.
-    if (config.cache !== null) {
-      throw new Error(
-        'deep-pipeline: a cache is not a knob this machine has yet — M6’s miss-freeze meeting ' +
-          'two execute stages is an unpinned choice (M11 step 6), so which of IF1/IF2/EX1/EX2 ' +
-          'freeze has no answer here. Refusing rather than silently running cache-less.',
-      );
-    }
+    this.cacheConfig = config.cache;
+    this.cache = config.cache === null ? null : newCache(config.cache);
+    this.missCyclesRemaining = 0;
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
     this.registers = makeRegisters();
@@ -547,6 +600,8 @@ export class DeepPipelineProcessor implements Processor {
       redirect: null,
       stopFetch: false,
       bet: false,
+      memStall: false,
+      memStallStarted: false,
     };
 
     // Who is where, captured before the walk. `prev` is the start-of-cycle latch state, so the
@@ -703,6 +758,34 @@ export class DeepPipelineProcessor implements Processor {
     const em = ctx.prev.ex2Mem;
     if (em === null) return;
 
+    // The cycle splits three ways once a cache is configured (M6's shape, M11 step 6's wiring):
+    //   - MID-STALL: a miss detected earlier is still being served. Decrement and keep holding; the
+    //     memory access does NOT happen until release, so no `mem-read`/`mem-write` re-fires and —
+    //     decisively — `access` is NOT re-consulted (it mutated the cache on detection; a second
+    //     call would now spuriously hit).
+    //   - FRESH ARRIVAL WITH A MISS: consult the cache once (installing the tag and emitting the
+    //     lone `cache-access`), then hold. The data access is deferred to the release cycle.
+    //   - HIT, NO CACHE, OR THE RELEASE CYCLE: do the access and build MEM/WB, exactly as the
+    //     cache-less machine always has.
+    if (this.missCyclesRemaining > 0) {
+      this.missCyclesRemaining -= 1;
+      if (this.missCyclesRemaining > 0) {
+        ctx.memStall = true;
+        ctx.next.ex2Mem = em; // re-present; `next.memWb` stays null — the WB bubble
+        return;
+      }
+      // remaining === 0 ⇒ the release cycle: fall through to the real access + MEM/WB build.
+    } else {
+      const penalty = this.consultCache(ctx, em);
+      if (penalty > 0) {
+        this.missCyclesRemaining = penalty;
+        ctx.memStall = true;
+        ctx.memStallStarted = true;
+        ctx.next.ex2Mem = em;
+        return;
+      }
+    }
+
     const mnemonic = em.decoded.mnemonic;
     let mdr: number | null = null;
     let writeValue = em.writeValue;
@@ -758,6 +841,33 @@ export class DeepPipelineProcessor implements Processor {
   }
 
   /**
+   * Consult the D-cache for a memory instruction's line, MUTATING the cache and emitting the single
+   * `cache-access`. Returns the miss penalty to serve (`0` for a hit, a non-memory instruction, or
+   * no configured cache). Loads allocate on a miss; stores do not (no-write-allocate) — the policy
+   * name lives here, at the call site, over `cache.ts`'s pure `allocate` mechanism. Store misses
+   * stall too, matching the 5-stage.
+   */
+  private consultCache(ctx: CycleCtx, em: Ex2MemLatch): number {
+    if (this.cacheConfig === null || this.cache === null) return 0;
+    const mnemonic = em.decoded.mnemonic;
+    const load = isLoad(em.decoded);
+    if (!load && !STORES.has(mnemonic)) return 0;
+    if (em.aluOut === null) {
+      throw new Error(`deep-pipeline: ${mnemonic} reaches the cache with no effective address`);
+    }
+    const addr = em.aluOut >>> 0;
+    const result = access(this.cache, this.cacheConfig, addr, load);
+    ctx.events.push({
+      type: 'cache-access',
+      level: 1,
+      addr,
+      hit: result.hit,
+      ...(result.evicted === undefined ? {} : { evicted: result.evicted }),
+    });
+    return result.hit ? 0 : this.cacheConfig.missPenalty;
+  }
+
+  /**
    * EX2 — compute, and resolve control flow. The SECOND execute cycle, and the first moment this
    * machine has an answer: the ALU runs here, `alu-op` fires here, and every branch AND jump
    * resolves here (pinned 2026-07-27). There is no ID comparator, so `jal` and `jalr` are not
@@ -773,6 +883,15 @@ export class DeepPipelineProcessor implements Processor {
   private stageEx2(ctx: CycleCtx): void {
     const ee = ctx.prev.ex1Ex2;
     if (ee === null) return; // a bubble: nothing to execute
+
+    // A MEM miss freezes EX2: no ALU, no `alu-op`, no control resolution — it holds and runs
+    // exactly once, on release. **This is the half of the step-6 seam that costs nothing to decide:**
+    // EX2's operands were fixed on the Ex1Ex2 latch and nothing forwards INTO this stage, so
+    // "does an in-flight EX2 complete?" has no value to lose either way. Compare EX1, which does.
+    if (ctx.memStall) {
+      ctx.next.ex1Ex2 = ee;
+      return;
+    }
 
     const d = ee.decoded;
     const { imm, mnemonic } = d;
@@ -1016,6 +1135,27 @@ export class DeepPipelineProcessor implements Processor {
   private stageEx1(ctx: CycleCtx): void {
     const ie = ctx.prev.idEx1;
     if (ie === null) return; // a bubble: nothing to execute
+    // A MEM miss freezes EX1 — but the freeze holds the ADVANCE, not the forwarding CAPTURE, and
+    // that distinction was a real bug in two shipped engines (M11 step 6a,
+    // `docs/reviews/m11-miss-freeze-forward-loss.md`). A producer sitting in MEM/WB on the detection
+    // cycle RETIRES during the freeze and its latch drains, so a value reachable only by forwarding
+    // right now is gone by the release cycle — and this occupant would then execute on the stale,
+    // pre-forwarding register read it latched back in ID. A cache would have changed the ANSWER.
+    //
+    // So resolve here, on the detection cycle, and latch the results back onto `a`/`b`: the release
+    // cycle's own `resolveOperand` then finds no producer and returns exactly these values. The
+    // storage has to be the held `idEx1` — it CANNOT be `ex1Ex2`, which EX2's own frozen occupant
+    // is holding, and that is the one place this machine's fix differs from the 5-stage's.
+    if (ctx.memStall) {
+      ctx.next.idEx1 = ctx.memStallStarted
+        ? {
+            ...ie,
+            a: this.resolveOperand(ctx, ie, 'rs1', ie.decoded.rs1, ie.a),
+            b: this.resolveOperand(ctx, ie, 'rs2', ie.decoded.rs2, ie.b),
+          }
+        : ie;
+      return;
+    }
     // An older mispredicted transfer killed everything younger. EX2 ran before us, so we simply
     // never execute — and `next.ex1Ex2` stays null, the bubble the flush leaves behind.
     if (ctx.squash !== null) return;
@@ -1101,6 +1241,13 @@ export class DeepPipelineProcessor implements Processor {
   private stageId(ctx: CycleCtx): void {
     const fd = ctx.prev.if2Id;
     if (fd === null) return; // nothing in ID
+    // A MEM miss freezes ID: hold the occupant (EX1 ran earlier and is holding its own, so it did
+    // not consume ours) and do nothing else — no reads, no hazard detection, no bet. Highest
+    // priority, above the squash check: while a miss is being served nothing younger moves.
+    if (ctx.memStall) {
+      ctx.next.if2Id = fd;
+      return;
+    }
     // An older mispredicted transfer killed everything younger. EX2 ran before us, so we simply
     // never execute: no reads, no hazard detection, no chance of a squashed shadow polluting the
     // trace with a phantom stall or a `forward` the timing suite would read.
@@ -1229,6 +1376,12 @@ export class DeepPipelineProcessor implements Processor {
     const held = ctx.prev.if1If2;
     if (held === null) return; // a bubble
 
+    // A MEM miss freezes IF2. ID froze too, so it did not consume this occupant.
+    if (ctx.memStall) {
+      ctx.next.if1If2 = held;
+      return;
+    }
+
     if (ctx.squash !== null || ctx.bet) {
       // Whatever IF2 holds dies, and nothing enters ID. A squash is an older instruction's
       // correction; a bet is ID's own steer, which does not kill ID but does kill everything the
@@ -1276,7 +1429,7 @@ export class DeepPipelineProcessor implements Processor {
       return slot; // it was here this cycle, and it dies here
     }
 
-    if (ctx.stalled) {
+    if (ctx.stalled || ctx.memStall) {
       // Hold it in IF1. IF2 (earlier in the walk) already re-presented its own occupant into
       // `next.if1If2`, so IF1 must not touch that latch — only keep its own occupant for next cycle.
       this.ifSlot = slot;
@@ -1317,8 +1470,13 @@ export class DeepPipelineProcessor implements Processor {
   /**
    * An independent full-state snapshot — what each CycleTrace carries (handoff §6). The latch
    * objects are immutable and rebuilt each cycle, so copying the container is enough to keep every
-   * recorded cycle's `micro` genuinely its own. (The 5-stage's one exception — the single-buffered
-   * cache — does not exist here: this machine has no cache.)
+   * recorded cycle's `micro` genuinely its own.
+   *
+   * **The cache is the ONE exception, and it needs a real deep copy.** {@link CacheState} is
+   * single-buffered and mutated in place by {@link access}, so a shallow copy would alias one final
+   * cache across every recorded cycle and replay as warm-from-the-start. Final-state conformance
+   * cannot see that — only time-travel can, which is why `cache.test.ts` pins a cold early snapshot
+   * against a warm late one rather than trusting the copy to be right.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: DeepPipelineMicro = {
@@ -1328,6 +1486,7 @@ export class DeepPipelineProcessor implements Processor {
       ex1Ex2: latches.ex1Ex2,
       ex2Mem: latches.ex2Mem,
       memWb: latches.memWb,
+      cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
     };
     return {
       pc: this.pc,

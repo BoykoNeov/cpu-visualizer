@@ -1094,7 +1094,16 @@ export function PredictionToggle(props: {
  * The `title`s carry where the honesty budget goes: that flipping the size only changes anything for
  * a program whose working set straddles the two sizes — the same program can be all-hits at both
  * (`array-sum.s`, one pass, all compulsory misses) — so "bigger is better" is a claim about REUSE,
- * not a law. Rendered only where `capabilities.configurableCache` is true (the pipeline).
+ * not a law. Rendered only where `capabilities.configurableCache` is true — the pipeline, the deep
+ * pipeline, the superscalar and the out-of-order core.
+ *
+ * **The numbers in these titles are depth- and width-invariant, which is why they can be stated at
+ * all.** A miss costs `missPenalty` cycles on every machine that has a cache: the freeze stops the
+ * whole pipe, however long or wide it is (M11 step 6 proved the cache axis purely additive on the
+ * 7-stage, with the same miss sequence as the 5-stage). Contrast the PREDICTION titles, which had to
+ * be reworded at M11 step 5 precisely because their coefficients are NOT invariant — a bet costs 1
+ * on the 5-stage and 2 on the deep one. Anything added here that names a stage count or a per-hazard
+ * cost stops being true the moment a new model renders this control.
  */
 function CacheToggle(props: {
   cache: CacheConfig | null;
@@ -1109,7 +1118,7 @@ function CacheToggle(props: {
       label: 'off',
       value: null,
       title:
-        'No D-cache — every load and store takes one MEM cycle. This is the pipeline as M4 left it; turn the cache on to watch memory accesses miss and stall.',
+        'No D-cache — every load and store takes one MEM cycle, however deep or wide the machine is. Turn the cache on to watch memory accesses miss and freeze the whole pipe.',
     },
     {
       label: 'small',

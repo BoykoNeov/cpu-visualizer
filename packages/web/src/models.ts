@@ -181,23 +181,29 @@ export function modelById(id: string): ModelChoice {
  * clamps exactly one field: **`cache`, for a model whose `configurableCache` is false.**
  *
  * The shell holds forwarding, prediction, the cache geometry, issue width and the out-of-order
- * cluster at SESSION level and hands the whole config to whichever engine is driving — which worked
- * for five models because a knob an engine does not honor is simply a knob it IGNORES
- * (`simulator.test.ts` pins that inertness per model). `deep-pipeline` is the first shipped engine
- * that **REFUSES** one: `reset()` throws on a non-null cache rather than run silently cache-less
- * (M11 step 6 owns the miss-freeze/EX2 seam). So "hand every model everything" stopped being safe:
- * pipeline with the cache on, then switch to Deep pipeline, and the load throws out of an event
- * handler.
+ * cluster at SESSION level and hands the whole config to whichever engine is driving — which is
+ * safe because a knob an engine does not honor is simply a knob it IGNORES (`simulator.test.ts`
+ * pins that inertness per model).
  *
- * **Clamping rather than surfacing the error is forced, not a preference.** The cache CONTROL is
- * gated on this very flag (`App.tsx`), so on the deep pipeline it is not rendered at all — an error
- * message would leave the user in a state with no control to leave it by. The flag the shell already
- * treats as authoritative for whether to SHOW the knob now also decides whether to SEND it.
+ * **Read the history, because it changes what this function is FOR.** It was added at M11 step 5
+ * because `deep-pipeline` was then the one shipped engine that **REFUSED** a cache — `reset()` threw
+ * rather than run silently cache-less, while step 6 held the miss-freeze seam open — so "hand every
+ * model everything" had stopped being safe: pipeline with the cache on, switch to Deep pipeline,
+ * and the load threw out of an event handler. **M11 step 6 implemented that cache, so no shipped
+ * engine refuses anything today** and this is no longer protection; it is NORMALIZATION, keeping a
+ * model's recording free of a geometry it never consulted.
+ *
+ * It is kept rather than deleted because the invariant it states — *send a model only the knobs it
+ * claims* — is the one that made the step-5 crash impossible rather than merely unlikely, and the
+ * next engine to refuse a knob will want it already here. **If it ever protects again, the argument
+ * that forced CLAMPING over an error message is still the right one:** a knob's CONTROL is gated on
+ * the same capability flag (`App.tsx`), so a refused knob is one the user has no control to unset,
+ * and an error would strand them.
  *
  * **Only `cache`, deliberately.** Extending this to the other four knobs would be four more
  * judgement calls, each able to change an existing model's recording — and every model's cycle
- * counts are pinned in a timing suite. The other knobs are ignored, not refused, and the tests that
- * pin that inertness are what make ignoring safe. A second refusing knob belongs here, beside this
+ * counts are pinned in a timing suite. The other knobs are ignored, and the tests that pin that
+ * inertness are what make ignoring safe. A knob some future model REFUSES belongs here, beside this
  * one, with the same argument written out.
  *
  * Note what is NOT clamped: the session's own value. The caller keeps its cache geometry while

@@ -657,7 +657,7 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
         broken ones. **Checking cycles alone would have declared the cache mechanical and been
         wrong.** Any re-verification keeps the adversarial-plus-multiset shape.
 
-- [ ] **6. Cache on the deep pipeline (the third knob) — or DROPPED WITH PROOF.** M6's
+- [x] **6. Cache on the deep pipeline (the third knob) — SHIPPED, not dropped.** ✅ DONE 2026-07-27. M6's
       miss-freeze meets a machine with two execute stages: `missCyclesRemaining` freezes
       IF/ID/EX, and which of IF1/IF2/EX1/EX2 freeze — and whether an in-flight EX2 completes
       — was framed here as a CHOICE with no external ground truth, exactly like M9 finding F9's
@@ -672,6 +672,62 @@ load-bearing numbers are the per-misprediction and per-hazard penalties above. H
       Acceptance: the fwd × predict × cache matrix green with hand-derived cells, or a
       written drop with the dump that justifies it — **and the dump must be the event multiset
       under adversarial programs, never cycles alone** (step 6a's method finding).
+
+      **What landed (23 tests, repo 4287 → 4310), and the judgement calls step 7 should not
+      re-litigate:**
+
+      - **THE DUMP SAID "MECHANICAL", WHICH THE PLAN READ AS "⇒ DROP" — and the user pinned SHIP
+        with proportionate tests instead, 2026-07-27.** The evidence: over the corpus × forwarding ×
+        prediction × two geometries (132 cells) plus the five adversarial programs, every run
+        satisfied `cycles = cycles_cacheless + misses × missPenalty`, with an invariant event
+        multiset and byte-identical state. Dropping would have left `deep-pipeline` as the ONLY
+        pipelined model without a cache and kept `engineConfigFor`'s clamp alive forever for one
+        model; the engine work was already written and validated. **Mechanical made shipping cheap
+        and safe — it was never an argument for not doing it.**
+      - **BOTH HALVES OF THE PLAN'S SEAM TURNED OUT FORCED, in opposite ways.** *Which stages
+        freeze* is back-pressure: MEM owns `next.ex2Mem`, so EX2 cannot advance, and the block
+        propagates up — all five younger stages hold, no choice to make. *Does an in-flight EX2
+        complete* has **no consequence either way** — EX2's operands are already on the `Ex1Ex2`
+        latch and nothing forwards INTO it, so there is nothing to trade off. **The one that was
+        NOT free is EX1**, which the plan never named — and getting it wrong was step 6a's bug.
+      - **The headline for the model: DEPTH TAXES FETCH AND EXECUTE, NOT MEMORY.** A miss costs
+        `missPenalty` here exactly as on the 5-stage, because the freeze stops the whole machine
+        however long it is. That is worth stating out loud in the one model whose entire thesis is
+        that depth taxes you — it is the boundary of the thesis, and it is the reason the test file
+        is small.
+      - **`cache.test.ts` is ~200 cells smaller than the house shape ON PURPOSE.** A third axis
+        through `differential.test.ts` (68 → 204) and through the timing matrix would add cells that
+        **cannot fail independently** of ones already asserted: every term is fixed by a cycle count
+        `timing.test.ts` already pins and a miss count the address stream already fixes. The repo's
+        standing rule (a pin earns its place only when something could lie without it) says
+        enumerate what CAN lie, which is what the file does — and its header states the argument so
+        the gap does not read as an omission.
+      - **The load-bearing assertion is the VERDICT SEQUENCE**, pinned as the same literals
+        `engine/pipeline`'s cache suite pins for the same program and geometry, and independently
+        derived: the D-cache sees the accesses that REACH MEM in program order, and on both machines
+        no wrong-path instruction ever gets past the execute stages — so the streams are both just
+        "the retired memory ops, in order". **Cross-model comparison is PROSE + duplicated literals,
+        never an import** (eslint denies model→model; step 3's precedent). It is also asserted
+        invariant under forwarding × all three prediction schemes, which is where a speculation leak
+        would show up and nowhere else.
+      - **The recorder's deep-copy obligation came with the knob**: `CacheState` is single-buffered
+        and mutated in place, so `micro.cache` is DEEP-COPIED per snapshot. Pinned by a cold-early /
+        warm-late comparison — final-state conformance cannot see that bug, only time-travel can.
+      - **The step-5 question was asked again and it paid: "what user-visible prose is gated on a
+        flag this model turns on?"** The cache tooltips' NUMBERS were safe (they interpolate the
+        geometry constants, and the miss penalty is exactly the coefficient depth does not change —
+        the opposite of the prediction tooltips, which had to be reworded at step 5 because a bet
+        costs 1 on the 5-stage and 2 here). One sentence was not: _"This is the pipeline as M4 left
+        it"_ in the cache-off title. Reworded, and the docblock now says why these titles may state
+        numbers where the prediction ones may not.
+      - **`engineConfigFor` KEPT, but it is no longer protection.** It was added at step 5 because
+        this engine THREW on a cache; step 6 removed the throw, so nothing refuses anything and the
+        clamp is now NORMALIZATION. Its test that pinned "the unclamped config really does throw"
+        could not be preserved — asserting a throw now would be asserting a bug — so it was rewritten
+        to the weaker true claim (the clamped model would have ignored one anyway, same cycles same
+        answer), with the history written out for the next engine that refuses a knob. The clamp's
+        exemplar moved to `single-cycle`, which has no memory-latency notion at all, rather than to
+        the next model about to change.
 
 - [ ] **7. Bespoke datapath (SHEDDABLE).** A `datapath-deep-pipeline.ts` geometry+activation
       module (pure, tested) + view wrapper + render smoke test + browser eyeball, then flip

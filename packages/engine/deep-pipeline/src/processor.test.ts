@@ -228,21 +228,21 @@ describe('capabilities', () => {
   });
 
   /**
-   * The three knobs this machine does NOT have, and the one that matters: `configurableCache` is
-   * false AND `reset` throws on a cache config. M10 step 0 found `slowOpLatency` shipped INERT — a
-   * config field with no engine consumer — so the capability and the behaviour are pinned together
-   * here rather than trusting the flag alone.
+   * The two knobs this machine does not have, and the third that it GAINED at M11 step 6. Until
+   * then `configurableCache` was false and `reset` THREW on a cache config — the pairing that kept
+   * the flag and the behaviour from drifting while the knob was unimplemented (M10 step 0 found
+   * `slowOpLatency` shipped INERT, a config field with no engine consumer). The pairing is still
+   * what is asserted; only its polarity moved. `cache.test.ts` is where the honoring is proved.
    */
-  it('refuses a cache config by name rather than silently running cache-less', () => {
-    expect(DEEP_PIPELINE_CAPABILITIES.configurableCache).toBe(false);
+  it('declares the knobs it has, and no longer refuses a cache', () => {
+    expect(DEEP_PIPELINE_CAPABILITIES.configurableCache).toBe(true);
     expect(DEEP_PIPELINE_CAPABILITIES.configurableIssueWidth).toBe(false);
     expect(DEEP_PIPELINE_CAPABILITIES.configurableOutOfOrder).toBe(false);
 
     const p = new DeepPipelineProcessor();
-    expect(() => p.reset(toProgramImage(asm(RAW_PAIR)), { ...ON, cache: CACHE_SMALL })).toThrow(
-      /not a knob this machine has yet/,
-    );
-    // ...and the cache-less config it DOES have still works.
+    expect(() =>
+      p.reset(toProgramImage(asm(RAW_PAIR)), { ...ON, cache: CACHE_SMALL }),
+    ).not.toThrow();
     expect(() => p.reset(toProgramImage(asm(RAW_PAIR)), ON)).not.toThrow();
   });
 });
@@ -743,14 +743,17 @@ describe('the knobs this machine ignores (M11 step 5)', () => {
   );
 
   /**
-   * And the ASYMMETRY, stated where both halves are visible: the cache is the one knob this engine
-   * refuses rather than ignores. That difference is exactly why the shell needs `engineConfigFor`
-   * (`web/src/models.ts`) for the cache and for nothing else — an ignored knob defends itself.
+   * …and the cache is now neither ignored nor refused, but HONORED (M11 step 6) — the third
+   * outcome, kept beside the other two so the trichotomy is visible in one place. It is asserted
+   * negatively here (the trace MOVES) rather than positively; what it moves to is `cache.test.ts`.
+   *
+   * This also records why `engineConfigFor` (`web/src/models.ts`) no longer has a model to clamp:
+   * it was added at step 5 because this engine THREW on a knob the shell holds at session level,
+   * and step 6 removed the throw. It stays as the general guard for the two non-pipelined models,
+   * whose `configurableCache` is false — but nothing routes through it for this one any more.
    */
-  it('…while the cache is REFUSED, not ignored — the asymmetry the shell has to know about', () => {
+  it('…while the cache is HONORED, not ignored — it really does move the trace', () => {
     expect(() => run(KNOB_PROBE, { ...ON, issueWidth: 2, outOfOrderIssue: true })).not.toThrow();
-    expect(() => run(KNOB_PROBE, { ...ON, cache: CACHE_SMALL })).toThrow(
-      /not a knob this machine has yet/,
-    );
+    expect(run(KNOB_PROBE, { ...ON, cache: CACHE_SMALL })).not.toEqual(run(KNOB_PROBE, ON));
   });
 });
