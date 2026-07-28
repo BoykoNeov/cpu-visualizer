@@ -1,6 +1,6 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b, 1 and 2 DONE 2026-07-28. The guard now admits 1..4 and the
+**Status: IN PROGRESS — steps 0, 0b, 1, 2 and 3 DONE 2026-07-28. The guard now admits 1..4 and the
 engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
 the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
@@ -207,13 +207,73 @@ against it — it was a missing UNDO, not a missing fourth rule.
       the claim it was pretending to make. Every geometry in the file was DUMPED AND READ before its
       assertion was written, and the freeze program's first draft reached the right shape only by
       accident of the slide — its load was refused from slot 2 and slid to lead the next group.
-- [ ] **3. The timing matrix at widths 3 and 4 — DERIVED, never copied.** `cycles = G + L + P + M +
-4`. M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had
-      to redo them; this step does not repeat that. Predict each new cell from the closed form
-      BEFORE running the engine, as M7 step 4 did for its seven forwarding-OFF counts. Acceptance:
-      every width-3/4 cell derived and asserted term by term (G, L, P, M separately — `L` counted
-      DIRECTLY as "stall fired AND nothing issued", never as a residual, or the assertion is
-      `0 === 0`).
+- [x] **3. The timing matrix at widths 3 and 4 — DERIVED, never copied.** ✅ DONE 2026-07-28 (repo
+      4523 → **5113** tests), all in `timing.test.ts` — extended IN PLACE rather than forked, so
+      `measure`/`issuedPerCycle`/`run`/`penaltyOf` keep one owner. Derivations in
+      `M:\claud_projects\temp\m13-step3\predictions.md`, written in full BEFORE the engine ran.
+      **The blocker was in the SUITE, not the engine, and it was this step's vacuity trap.**
+      `issuedPerCycle` looped `s < 2` (M7 step 4's arity). Left alone, every group of 3 or 4 would
+      have read as at most 2, `G` would have come out too high, and all 44 derived cells would have
+      been fitted to a broken ruler — permanently green. **Step 1's audit could not have found it:**
+      that sweep matched literal slot indexing (`idEx[0|1]`, `exMem[…]`), and this arity is a loop
+      bound over a TEMPLATE STRING. Now a parameter, taking the width the CALLER asked for rather
+      than `micro.width` off the trace — the two differ only if the engine ran narrow while claiming
+      wide, and over-scanning empty slots is harmless where trusting the engine's own claim would
+      hide exactly that bug.
+      **`Q` does not generalize; the ISSUE-SIZE HISTOGRAM does.** `sizes[k]` = cycles that dispatched
+      exactly `k`, and `G + Q = retires + doomed` becomes `Σ k·sizes[k] = retires + doomed`, both
+      sides measured from the trace. That is what answers this plan's own trap about width-4
+      assertions measuring width 3 — and on this corpus it answers it out loud: **only
+      `branch-flavors.s`, `paired-branches.s` and `slow-op-loop.s` ever fill four slots**, measured
+      and asserted by name, so the other eight programs' width-4 cells now SAY they are width-3
+      measurements instead of implying otherwise.
+      **Acceptance MET, and the blind claim stated honestly.** The w3/w4 totals at forwarding-ON /
+      predict-none / no-cache are published in the step-0 dump table above, so those eleven numbers
+      are a CROSS-CHECK, not a prediction; claiming otherwise would be the `CycleCtx.bet` defect
+      class again. Genuinely blind: the entire term decomposition at both widths, every
+      forwarding-OFF count, every `static-taken` count, both cache columns. **435 of 441 wide cells
+      green on the first run.**
+      **The six that failed are ONE number, and the engine was right.** `call-return.s` @ {w3, w4} ×
+      OFF × `static-taken`: predicted `L = 0`, measured 1. Diagnosed by DUMPING the trace rather than
+      patching the pin: under the base behaviour the `jal`'s two-cycle misprediction penalty is
+      exactly the gap its producers need to reach WB, so `bge` never interlocks; **the correct bet
+      deletes that gap**, ID runs a cycle earlier, and meets both `addi`s still standing in EX/MEM.
+      The bet buys 2 cycles of flush and hands 1 straight back. It is a WIDTH-3 effect — at width 2
+      the `jal` sits in the second group and bets a cycle later, which is why `w2.blocked` is 0 in
+      both positions. **Widening the machine moved the bet one cycle earlier and exposed an interlock
+      that had never fired anywhere in the repo.** Generalises: _a penalty and a stall can be
+      covering for each other, and removing the penalty is what reveals the bill._ It was also the
+      risk NAMED IN ADVANCE as most likely to be wrong (#4, the forwarding-OFF `L` values); the other
+      three named risks were all predicted correctly, including `array-sum-twice`'s `branch-slot`
+      firing 24 times at w3 as well as w4, which this plan's own prose had implied was w4-only.
+      **Three breaks watched, and the second is the step's real evidence.** Restoring `s < 2` reddens
+      **432** cells while all 764 width-1/2 cells stay green. Capping the issue group at 3 reddens
+      **55** — exactly the three programs that fill four slots — and `branch-flavors.s` at width 4
+      still runs **exactly 10 cycles** under it: `issue slots consumed: expected [9, 10, 10] to
+    deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; only the
+      histogram and the accounting identity catch it, which is the whole case for pinning a
+      histogram instead of a `pairs` count.
+      **Two findings about the machine that the cycle counts hide, both now asserted:**
+      _(i)_ `paired-branches.s`'s 9 → 7 → 7 → 6 resolves into something better than arithmetic. w3
+      buys nothing NOT because the third slot goes unused — it fills. G is 3 at w2 and w3 with
+      different shapes (`{1,2,2}` against `{1,3,1}`): the third slot pulls `addi a7` forward and
+      thereby pushes `ecall` out of the tail group into one of its own. **The widening moved work
+      between groups without reducing their number.** w4 is where the tail finally fits in one group.
+      _(ii)_ `slow-op-loop.s`'s single w4 cycle is **entirely a PROLOGUE effect** — four independent
+      `li`s, one group of four, ONCE in a run of six iterations; the loop body is byte-identical at
+      both widths. That is why the gain is 1 cycle and not 6, and it is the width axis's honest
+      lesson: _the fourth slot pays where four independent instructions sit in a row, and real loop
+      bodies do not._ Its mirror: **`static-taken` SPENDS the width** — a bet ends its group, so
+      `paired-branches.s` runs 6 at w4 under the base behaviour and 11 under betting, the same 11 it
+      runs at w3.
+      **And one structural finding the field shape now records:** `groups`/`sizes`/`doomed` are NOT
+      keyed by forwarding position at width ≥ 3, because the toggle never moves the partition there —
+      asserted, not assumed. At width 2 it did: `array-sum.s` runs G = 25/26 across the toggle
+      because the `lw@16`'s slot-1 `raw` refusal splits a pair. **A third slot MASKS it** — the same
+      `lw` is refused for `intra-pair-raw` whatever the toggle says, and pairing rules are checked
+      first. Widening deleted the corpus's only forwarding-shaped partition change.
+      `WIDE_WIDTHS` is DERIVED from `MAX_ISSUE_WIDTH` with a completeness test per program, so
+      raising the bound cannot leave the widest machine unpinned in silence (step 1's precedent).
 - [ ] **4. Conformance and `configLabel` at N widths.** The matrix gains two width columns.
       `configLabel` already knows `issueWidth` (M7 step 3) — verify it does not collide at 3 and 4,
       and remember why that guard exists: **both new columns are green by construction, so a

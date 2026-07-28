@@ -10,7 +10,7 @@ import {
   type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
-import { SuperscalarProcessor } from './index';
+import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from './index';
 
 /**
  * **THE net for M7 step 2a — the closed form, transplanted from M3.**
@@ -163,6 +163,47 @@ interface Width2 {
   readonly betting: Readonly<Record<Position, { readonly groups: number; readonly pairs: number }>>;
 }
 
+/**
+ * **One width-3/4 schedule, under one prediction behaviour — M13 step 3's deliverable.**
+ *
+ * Two things about the SHAPE, both of them measurements rather than conveniences:
+ *
+ * 1. **`groups`, `sizes` and `doomed` carry NO forwarding position**, because at width ≥ 3 the
+ *    forwarding toggle never moves the partition — asserted below, not assumed. At width 2 it did:
+ *    `array-sum.s` runs G = 25 / Q = 13 with forwarding on and G = 26 / Q = 12 with it off, because
+ *    the `lw@16`'s slot-1 refusal for `raw` split a pair. A third slot MASKS that: the same `lw` is
+ *    refused for `intra-pair-raw` against `addi t0@4` whatever the toggle says, and a pairing rule
+ *    is checked BEFORE the ordinary hazard. **Widening deleted the corpus's only forwarding-shaped
+ *    partition change**, which is a fact about this machine worth having a field shape state.
+ * 2. **`sizes` is a HISTOGRAM, not a `pairs` count.** `Q` does not generalize. This is the term that
+ *    answers the plan's "a width-4 assertion that does not first CHECK the group size it claims to
+ *    exercise is measuring width 3" — and on this corpus it says so out loud: `array-sum.s`,
+ *    `array-sum-twice.s` and `sum-loop.s` never reach a group of 4 at width 4 at all.
+ */
+interface WideCell {
+  /** `G` — issue-group cycles. */
+  readonly groups: number;
+  /** `sizes[k]` = cycles that dispatched exactly `k`. Absent keys are zero. */
+  readonly sizes: Readonly<Record<number, number>>;
+  /** Instructions that consumed an issue slot and never retired. `Σ k·sizes[k] = retires + doomed`. */
+  readonly doomed: number;
+  /** `L` — the ONE term the forwarding toggle still moves at width ≥ 3. */
+  readonly blocked: Readonly<Record<Position, number>>;
+}
+
+/** A program's schedule at one width, under both prediction behaviours. */
+interface WideSchedule {
+  /** `'none'` / `'static-not-taken'` — one machine. */
+  readonly base: WideCell;
+  /**
+   * `'static-taken'`. Stated ABSOLUTELY rather than as a delta off `base`, unlike the width-2
+   * `betting` field: at width ≥ 3 a bet re-partitions the tail rather than shaving one pair off it,
+   * so a `{groups, pairs}` delta cannot express what changes. The deltas are still worth reading —
+   * they are recorded in each program's docblock — but the assertion is against the absolute cell.
+   */
+  readonly taken: WideCell;
+}
+
 interface Timing {
   /** Instructions that RETIRE — a property of the program. Config-invariant. */
   readonly retires: number;
@@ -175,6 +216,13 @@ interface Timing {
   readonly misses: { readonly small: number; readonly large: number };
   /** The width-2 schedule. `N` and `S` above are the width-1 schedule; these replace them. */
   readonly w2: Width2;
+  /**
+   * The width-3 and width-4 schedules, keyed by width — M13 step 3. Keyed rather than named `w3`/
+   * `w4` so {@link WIDE_WIDTHS} can be derived from `MAX_ISSUE_WIDTH` and the table checked for
+   * completeness mechanically: raising the engine's bound must not be able to leave the widest
+   * machine unpinned in silence (step 1's `halt-shadow.test.ts` precedent).
+   */
+  readonly wide: Readonly<Record<number, WideSchedule>>;
 }
 
 /** `T` — taken control transfers, derived. Stating it beside its own parts would invite drift. */
@@ -243,6 +291,25 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 0, on: 0 },
       betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } }, // no transfers
     },
+    /**
+     * WIDTHS 3 AND 4 — identical to width 2 in every cell, and the reason is a DEPENDENCY rather
+     * than a structural rule. `add@8` reads BOTH registers the group in front of it writes, so
+     * `intra-pair-raw` refuses it from `{addi x1, addi x2}` at every width; a third and fourth slot
+     * are offered the only instruction left and must refuse it. `{addi x1, addi x2}` / `{add}`.
+     * G = 2, sizes {1: 1, 2: 1}, slots = 3 = 3 retires + 0 doomed. L = 0 on, 2 off (the interlock
+     * holds `add` in slot 0 until both producers reach WB). cycles = 2 + L + 0 + 0 + 4.
+     * No transfers, so `taken` is `base`.
+     */
+    wide: {
+      3: {
+        base: { groups: 2, sizes: { 1: 1, 2: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+        taken: { groups: 2, sizes: { 1: 1, 2: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+      },
+      4: {
+        base: { groups: 2, sizes: { 1: 1, 2: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+        taken: { groups: 2, sizes: { 1: 1, 2: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+      },
+    },
   },
 
   /**
@@ -297,6 +364,43 @@ const TIMING: Readonly<Record<string, Timing>> = {
       blocked: { off: 27, on: 5 },
       doomed: { off: 4, on: 4 },
       betting: { off: { groups: 1, pairs: -5 }, on: { groups: 1, pairs: -5 } },
+    },
+    /**
+     * WIDTHS 3 AND 4 — **the fourth slot is offered eleven times and refused eleven times.**
+     * Loop period 6 at BOTH widths, and the partition is byte-identical between them:
+     *   `{lw@16}`                          — `add@20` reads the t2 it loads ⇒ intra-group RAW
+     *   ·                                  — BLOCKED: load-use, the bubble no forward removes
+     *   `{add@20, addi t0@24, addi t1@28}` — three abreast
+     *   `{bne@32, lui t3@36}`              — `addi t3@40` reads the t3 the lui writes ⇒ intra RAW
+     * Prologue `{lui@0}` / `{addi t0@4, addi t1@8, addi a0@12}`; five iterations, four taken (the
+     * fifth `bne` falls through so its `lui t3` mate SURVIVES); epilogue `{addi t3@40}` /
+     * `{sw@44, addi a7@48, ecall@52}`.
+     *   G = 2 + 5×3 + 2 = 19, sizes {1: 7, 2: 5, 3: 7}, slots = 38 = 34 + 4 doomed.
+     *   ON:  L = 5 (one load-use per iteration) ⇒ cycles = 19 + 5 + 8 + 0 + 4 = **36**.
+     *   OFF: period stretches to 9 (4 blocked per iteration); L = 2 (the `la` addi) + 2 (the first
+     *        `lw`'s own slot-0 wait) + 5×4 + 2 + 2 (the epilogue's `addi t3` and `sw`) = 27… no:
+     *        **28**, and the two extra over width 2's 27 are the first `lw`'s wait, which at width 3
+     *        blocks for two cycles rather than one because its producers all issued in one group.
+     *        cycles = 19 + 28 + 8 + 0 + 4 = **59**.
+     * At WIDTH 4 the ID stage holds four instructions on every group-forming cycle and the fourth is
+     * refused every time — `lw@16` behind `addi t0@4`, `bne@32` behind `addi t1@28`, `sw@44` behind
+     * `addi t3@40`, all `intra-pair-raw`. **Max group size is 3.** So "w3 = w4" here is not the
+     * fourth slot going unoffered; it is the fourth slot being refused by the one rule the tier
+     * exists to teach, and the histogram is what says which.
+     * BETTING: the `bne` bets from slot 0, so `killedRest` kills `lui t3@36` in ID — period 6 → 5,
+     *   doomed 4 → 0. The epilogue then costs an extra group after the fifth bne mispredicts:
+     *   `{lui t3}` / `{addi t3}` / `{sw, addi a7, ecall}`, a three-deep dependent chain the extra
+     *   slots cannot compress. G = 2 + 15 + 3 = 20 (delta **+1**), sizes {1: 13, 3: 7}, slots = 34.
+     */
+    wide: {
+      3: {
+        base: { groups: 19, sizes: { 1: 7, 2: 5, 3: 7 }, doomed: 4, blocked: { off: 28, on: 5 } },
+        taken: { groups: 20, sizes: { 1: 13, 3: 7 }, doomed: 0, blocked: { off: 28, on: 5 } },
+      },
+      4: {
+        base: { groups: 19, sizes: { 1: 7, 2: 5, 3: 7 }, doomed: 4, blocked: { off: 28, on: 5 } },
+        taken: { groups: 20, sizes: { 1: 13, 3: 7 }, doomed: 0, blocked: { off: 28, on: 5 } },
+      },
     },
   },
 
@@ -353,6 +457,59 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 23, on: 23 },
       betting: { off: { groups: 2, pairs: -25 }, on: { groups: 2, pairs: -25 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — the inner loop is `array-sum.s`'s, so it keeps that program's period
+     * exactly: 6 ON, 9 OFF, at both widths. The one genuinely new refusal is structural:
+     *   `{bne@36, addi t3@40}` — `bne@44` is a SECOND TRANSFER ⇒ **BRANCH-SLOT**, refused in slot 2.
+     * It fires 24 times, once per inner iteration, **and it fires at width 3 as well as width 4** —
+     * the dump reports the refusal histogram at w2 and w4 only, so "0 → 24" is a w2→w4 comparison
+     * and says nothing about w3. It is a free refusal (`bne@36` issued), so it costs no cycle.
+     * The two passes PARTITION DIFFERENTLY, which is the thing to read twice: pass 1's `lui t0@8` is
+     * pulled into the prologue group `{addi a0@0, addi t3@4, lui t0@8}`, while pass 2's is the outer
+     * branch's TARGET and therefore leads a group of its own — `{lui t0@8}` / `{addi t0@12,
+     * addi t1@16}`. Same group COUNT, different sizes, and only the histogram can see it.
+     *   G = 2 (pass-1 header) + 2 (pass-2 header) + 24×3 + 2 (footers) = 78,
+     *   sizes {1: 25, 2: 26, 3: 27}, slots = 158 = 134 + 24 doomed (22 taken inner `bne` × 1 mate,
+     *   plus pass 1's taken outer `bne` × 2 mates — `addi a7@48` AND `ecall@52`, since the halt
+     *   co-issues with the unresolved branch: exactly `a9f1b70`'s case, three times over).
+     *   ON: L = 24 ⇒ cycles = 78 + 24 + 46 + 0 + 4 = **152**.
+     *   OFF: L = 108 ⇒ cycles = 78 + 108 + 46 + 0 + 4 = **236**.
+     * **Max group size 3 — the corpus's longest program never fills the fourth slot.**
+     * BETTING: both `bne` flavours bet from slot 0 and kill what is behind them; inner period 6 → 5,
+     *   doomed 24 → 0, and each pass's footer splits into `{addi t3@40}` / `{bne@44}` (intra-group
+     *   RAW, then a bet) plus a final `{addi a7, ecall}` once pass 2's outer bne mispredicts.
+     *   G = 81 (delta **+3**, against +2 at width 2), sizes {1: 53, 2: 3, 3: 25}, slots = 134.
+     */
+    wide: {
+      3: {
+        base: {
+          groups: 78,
+          sizes: { 1: 25, 2: 26, 3: 27 },
+          doomed: 24,
+          blocked: { off: 108, on: 24 },
+        },
+        taken: {
+          groups: 81,
+          sizes: { 1: 53, 2: 3, 3: 25 },
+          doomed: 0,
+          blocked: { off: 108, on: 24 },
+        },
+      },
+      4: {
+        base: {
+          groups: 78,
+          sizes: { 1: 25, 2: 26, 3: 27 },
+          doomed: 24,
+          blocked: { off: 108, on: 24 },
+        },
+        taken: {
+          groups: 81,
+          sizes: { 1: 53, 2: 3, 3: 25 },
+          doomed: 0,
+          blocked: { off: 108, on: 24 },
+        },
+      },
+    },
   },
 
   /**
@@ -395,6 +552,41 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 0, on: 0 },
       betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — **the program where `doomed` starts moving with the width.** `blt@12` issues
+     * in SLOT 1 of its group at every width ≥ 2, and a taken transfer in slot `k` strands up to
+     * `width − 1 − k` mates. So the group behind it grows and every new occupant dies in EX:
+     *   w2 `{mv a0, blt}` ⇒ 0 doomed · w3 `{mv a0, blt, mv a0@16}` ⇒ 1 · w4 adds `mv a1@20` ⇒ 2.
+     * This is the one corpus program that separates "the group got wider" from "the machine got
+     * faster": both widths run 10 cycles, and the wider one issues MORE instructions to do it.
+     *   w3: `{addi t0, addi t1}` / `{mv a0@8, blt@12, mv a0@16}` / (2 lost) /
+     *       `{mv a1@20, bltu@24, mv a1@28}` / `{addi a7@32, ecall@36}`.
+     *       G = 4, sizes {2: 2, 3: 2}, slots = 10 = 9 + 1 doomed.
+     *   w4: `{addi t0, addi t1}` / `{mv a0, blt, mv a0@16, mv a1@20}` / (2 lost) /
+     *       `{mv a1@20, bltu, mv a1@28, addi a7@32}` / `{ecall@36}`.
+     *       G = 4, sizes {1: 1, 2: 1, 4: 2}, slots = 11 = 9 + 2 doomed. **A group of FOUR, twice —
+     *       and it buys nothing**, because each four's extra occupant is either doomed or merely
+     *       pulled one group earlier.
+     *   L = 0 ON, 2 OFF (`mv a0@8` waits on `addi t0@0`'s write-back). P = 2.
+     *   cycles = 4 + L + 2 + 0 + 4 ⇒ **10** ON, **12** OFF, at both widths.
+     * BETTING: the bet ends the group (`killedRest`), so the shadow dies in ID BEFORE it consumes an
+     *   issue slot — **doomed collapses to 0 at every width** and `slots` becomes exactly `retires`.
+     *   `{addi t0, addi t1}` / `{mv a0, blt}` (correct bet) / `{mv a1@20, bltu}` (WRONG bet) /
+     *   `{mv a1@28, addi a7, ecall}`. G = 4 (delta **+0**), sizes {2: 3, 3: 1}, slots = 9.
+     *   P = 1·1 + 2·1 = 3 ⇒ cycles = **11** ON, **13** OFF. The second program after
+     *   `paired-branches.s` where betting is a net LOSS at these widths, and here it loses even
+     *   though the bet is RIGHT: the correct prediction costs a group it cannot earn back.
+     */
+    wide: {
+      3: {
+        base: { groups: 4, sizes: { 2: 2, 3: 2 }, doomed: 1, blocked: { off: 2, on: 0 } },
+        taken: { groups: 4, sizes: { 2: 3, 3: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+      },
+      4: {
+        base: { groups: 4, sizes: { 1: 1, 2: 1, 4: 2 }, doomed: 2, blocked: { off: 2, on: 0 } },
+        taken: { groups: 4, sizes: { 2: 3, 3: 1 }, doomed: 0, blocked: { off: 2, on: 0 } },
+      },
+    },
   },
 
   /**
@@ -433,6 +625,28 @@ const TIMING: Readonly<Record<string, Timing>> = {
       blocked: { off: 4, on: 0 },
       doomed: { off: 0, on: 0 },
       betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } }, // no transfers
+    },
+    /**
+     * WIDTHS 3 AND 4 — the three refusals are a CHAIN the extra slots cannot break, and each link
+     * is a different rule: `intra-pair-raw`, `intra-pair-raw`, `mem-port`, in that order. So slots
+     * 2 and 3 stay empty for three groups running and the entire gain is in the tail:
+     *   `{lui@0}` / `{addi t0@4}` / `{lb@8}` / `{lbu@12, addi a7@16, ecall@20}`.
+     *   G = 4, sizes {1: 3, 3: 1}, slots = 6 = 6 retires + 0 doomed. L = 0 ON, 4 OFF.
+     *   cycles = 4 + L + 0 + 0 + 4 ⇒ **8** ON, **12** OFF (against 13 at width 2), both widths.
+     * The tail group is 3 at width 4 as well — `ecall` is the last word of `.text`, so there is no
+     * fourth instruction in existence to fetch. **A width-4 assertion here is measuring width 3**,
+     * and the histogram is the only thing that says so; the equal cycle counts do not.
+     * No transfers, so `taken` is `base`.
+     */
+    wide: {
+      3: {
+        base: { groups: 4, sizes: { 1: 3, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+        taken: { groups: 4, sizes: { 1: 3, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+      },
+      4: {
+        base: { groups: 4, sizes: { 1: 3, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+        taken: { groups: 4, sizes: { 1: 3, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+      },
     },
   },
 
@@ -480,6 +694,58 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 0, on: 1 },
       betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: -1 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — the same four groups at both, and **12 cycles in BOTH forwarding positions**:
+     *   `{addi a0@0, addi a1@4, jal@8}` / (2 lost) / `{bge@24, mv a0@28}` (`jalr@32` is a second
+     *   transfer ⇒ BRANCH-SLOT) / `{jalr@32}` / (2 lost) / `{mv s0@12, addi a7@16, ecall@20}`.
+     *   G = 4, sizes {1: 1, 2: 1, 3: 2}, slots = 9 = 9 retires + **0 doomed**, L = 0, P = 4.
+     *   cycles = 4 + 0 + 4 + 0 + 4 = **12**.
+     * Three things worth stating, because each is a different mechanism reaching the same number:
+     *   1. **`doomed` is 0 at every width, and for a NEW reason at width 4.** At w2 the `jal`'s
+     *      would-be mate sat behind a group boundary; at w3 the `jal` is the last slot of its group;
+     *      at w4 `mv s0@12` DOES sit behind it in ID and is refused for `intra-pair-raw`, because
+     *      `addi a0@0` in the same group writes the `a0` that `mv s0, a0` reads. **The fall-through
+     *      is spared by a dependency, not by geometry** — the one place in the corpus where a
+     *      pairing rule accidentally protects an instruction from being stranded.
+     *   2. `jalr@32` is refused for `branch-slot` at every width ≥ 2: it is adjacent to `bge@24`, and
+     *      the single branch unit splits them however many slots exist.
+     *   3. **"Forwarding is not free money" survives its third widening**, with a different reason at
+     *      each: at w1 every RAW was already separated by a flush gap, at w2 the one refusal was free,
+     *      and here the refusals are all pairing rules, which do not consult the toggle.
+     * BETTING: `{addi a0, addi a1, jal}` (bet, correct) / `{bge}` (bet, WRONG — `killedRest` kills
+     *   `mv a0@28` and `jalr@32` in ID) / `{mv a0@28, jalr@32}` / `{mv s0, addi a7, ecall}`.
+     *   G = 4 (delta **+0**), sizes {1: 1, 2: 1, 3: 2}, slots = 9. P = 5 ⇒ cycles = **13** ON.
+     *   The 12 → 13 regression M3 pinned at width 1 survives at 3 and 4 with forwarding ON.
+     * **⚠ AND WITH FORWARDING OFF IT IS 14, NOT 13 — `L` = 1, and this cell is the one number in
+     *   the whole step the hand-derivation got WRONG.** It was predicted 0 and measured 1; the
+     *   engine is right and the reasoning was missing a stage. Read off the trace:
+     *     base:  c1 `{addi a0, addi a1, jal}` · c2 jal TAKEN ⇒ squash · c3 idle · c4 `{bge, mv a0}`
+     *     taken: c1 `{…, jal}` bets · c2 idle · c3 **STALL(raw)** · c4 `{bge}` bets
+     *   Under the base behaviour the `jal`'s two-cycle MISPREDICTION PENALTY is exactly the gap the
+     *   producers need to reach WB, so `bge` — which reads the `a0`/`a1` those two `addi`s write —
+     *   never interlocks. The correct bet DELETES that gap, ID runs a cycle earlier, and it meets
+     *   `addi a0`/`addi a1` still standing in EX/MEM. **So the bet buys 2 cycles of flush and
+     *   immediately hands 1 back as a stall the flush had been hiding.**
+     *   It is a WIDTH-3 effect, not a general one: at width 2 the `jal` sits in the second group
+     *   (`{addi a0, addi a1}` / `{jal, mv s0}`), so it bets a cycle later and the producers are a
+     *   stage further along — `w2.blocked` is 0 in both positions. **Widening the machine moved the
+     *   bet one cycle earlier and exposed an interlock that had never fired.** The generalisable
+     *   shape: a penalty and a stall can be covering for each other, and removing the penalty is
+     *   what reveals the bill — which is why `L` had to be derived per width per SCHEME and not
+     *   carried over, and why the prediction that carried it over is the one that failed.
+     */
+    wide: {
+      3: {
+        base: { groups: 4, sizes: { 1: 1, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 0, on: 0 } },
+        // ⚠ off: 1, not 0 — the correct bet exposes an interlock the flush gap was covering.
+        taken: { groups: 4, sizes: { 1: 1, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 1, on: 0 } },
+      },
+      4: {
+        base: { groups: 4, sizes: { 1: 1, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 0, on: 0 } },
+        // ⚠ off: 1, not 0 — the correct bet exposes an interlock the flush gap was covering.
+        taken: { groups: 4, sizes: { 1: 1, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 1, on: 0 } },
+      },
+    },
   },
 
   /**
@@ -526,6 +792,41 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 0, on: 0 },
       betting: { off: { groups: 1, pairs: -1 }, on: { groups: 1, pairs: -1 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — **the flagged anomaly, 9 → 7 → 7 → 6, and it resolves into something better
+     * than an arithmetic explanation.** Every source is x0, so L = 0 and the partition is identical
+     * at both forwarding positions, at every width; P = 0 under the base behaviour. So `cycles =
+     * G + 4` exactly, and the whole shape is a claim about the PARTITION.
+     *   w3: `{bne@0}` / `{bne@4, addi a0@8, addi a7@12}` / `{ecall@16}` — G = 3, sizes {1: 2, 3: 1}.
+     *   w4: `{bne@0}` / `{bne@4, addi a0@8, addi a7@12, ecall@16}`     — G = 2, sizes {1: 1, 4: 1}.
+     *   slots = 5 = 5 retires + 0 doomed at both. cycles = **7** at w3, **6** at w4.
+     * **THE FINDING.** w3 buys nothing over w2 — and NOT because the third slot goes unused. It
+     * fills. G is 3 at both w2 and w3, but the partitions are different shapes: `{1, 2, 2}` against
+     * `{1, 3, 1}`. The third slot pulls `addi a7@12` forward into the middle group and thereby
+     * **pushes `ecall@16` out of the tail group into one of its own.** The widening moved work
+     * between groups without reducing their number. A bare `G` comparison cannot see that, and the
+     * cycle count reports it as "width 3 bought nothing" — true, and completely uninformative.
+     * **The histogram is what shows the machine got wider and the schedule had nowhere to put it.**
+     * The `branch-slot` refusal at slot 1 survives every width: two adjacent transfers can never
+     * co-issue however many slots exist, so instruction 0 is alone in its group at w1/2/3/4 alike.
+     * BETTING: both branches bet taken and both mispredict; each bet ends its group.
+     *   w3: `{bne@0}` / (2) / `{bne@4}` / (2) / `{addi a0, addi a7, ecall}` — G = 3, delta **+0**.
+     *   w4: the same three groups — G = 3, delta **+1** (the tail can no longer be one group of
+     *       four, because the bets broke the stream into pieces that re-pack as 1 + 1 + 3).
+     *   P = 2·2 = 4 ⇒ cycles = **11 at BOTH widths**. So the single cycle width 4 buys exists ONLY
+     *   under the base behaviour: **the bet fragments the stream into groups too short to use the
+     *   fourth slot**, and a scheme sold as a speedup is also what spends the width.
+     */
+    wide: {
+      3: {
+        base: { groups: 3, sizes: { 1: 2, 3: 1 }, doomed: 0, blocked: { off: 0, on: 0 } },
+        taken: { groups: 3, sizes: { 1: 2, 3: 1 }, doomed: 0, blocked: { off: 0, on: 0 } },
+      },
+      4: {
+        base: { groups: 2, sizes: { 1: 1, 4: 1 }, doomed: 0, blocked: { off: 0, on: 0 } },
+        taken: { groups: 3, sizes: { 1: 2, 3: 1 }, doomed: 0, blocked: { off: 0, on: 0 } },
+      },
+    },
   },
 
   /**
@@ -565,6 +866,27 @@ const TIMING: Readonly<Record<string, Timing>> = {
       blocked: { off: 4, on: 0 },
       doomed: { off: 0, on: 0 },
       betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } }, // no transfers
+    },
+    /**
+     * WIDTHS 3 AND 4 — identical at both, and the tail is again three instructions long:
+     *   `{lui@0}` / `{addi t0@4, addi t1@8}` (`sw@12` reads BOTH ⇒ intra-group RAW) / `{sw@12}`
+     *   (`lw@16` ⇒ mem-port) / `{lw@16, addi a7@20, ecall@24}`.
+     *   G = 4, sizes {1: 2, 2: 1, 3: 1}, slots = 7 = 7 retires + 0 doomed. L = 0 ON, 4 OFF.
+     *   cycles = **8** ON, **12** OFF (against 13 at width 2), at both widths.
+     * Note this is the program whose `w3/nofwd/none/cache2` cell crashed the deliberately-broken
+     * engine in step 2(b) — it is the corpus's multi-follower MEM freeze. The freeze emits no
+     * `stall`, so its cycles are attributed to `M` and never to `L`, which is what keeps the L
+     * column above cache-invariant. No transfers, so `taken` is `base`.
+     */
+    wide: {
+      3: {
+        base: { groups: 4, sizes: { 1: 2, 2: 1, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+        taken: { groups: 4, sizes: { 1: 2, 2: 1, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+      },
+      4: {
+        base: { groups: 4, sizes: { 1: 2, 2: 1, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+        taken: { groups: 4, sizes: { 1: 2, 2: 1, 3: 1 }, doomed: 0, blocked: { off: 4, on: 0 } },
+      },
     },
   },
 
@@ -611,6 +933,39 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 9, on: 9 },
       betting: { off: { groups: 0, pairs: -9 }, on: { groups: 0, pairs: -9 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — **the loop the extra slots cannot help, and the fourth slot is never filled
+     * at all.** The body is cut in two by a dependency no width can cross: `bne@16` reads the `t0`
+     * that `addi t0@12` immediately in front of it writes, so `intra-pair-raw` refuses it from the
+     * body group at w2, w3 and w4 alike. Two groups per iteration at EVERY width:
+     *   `{add@8, addi t0@12}`               — `bne@16` refused, intra-group RAW
+     *   `{bne@16, addi a7@20, ecall@24}`    — the halt CO-ISSUES with the unresolved branch, which
+     *                                         is `a9f1b70`'s case reached nine times a run
+     * Loop period 4 (2 groups + 2 penalty). Iteration 10 falls through.
+     *   G = 1 + 2×10 = 21, sizes {2: 11, 3: 10}, slots = 52 = 34 + **18 doomed** (9 taken × the TWO
+     *   mates stranded beside the branch — a count width 2 cannot produce, where it is 9 × 1).
+     *   ON: L = 0 ⇒ cycles = 21 + 0 + 18 + 0 + 4 = **43**.
+     *   OFF: L = 22 (2 for the prologue's `add`, 2 per iteration for the `bne`) ⇒ **65**.
+     * The tail group is 3 at width 4 too — `ecall` is the last word of `.text`. **`sizes` has no
+     * key 4 at width 4**, which is the dump's "nine of eleven are identical at 3 and 4" in its
+     * purest form, and the histogram proves it where the equal cycle counts merely suggest it.
+     * BETTING: the `bne` bets from slot 0, so `killedRest` kills `addi a7` and `ecall` in ID — the
+     *   bne group collapses 3 → 1 and **doomed goes 18 → 0**. The period drops 4 → 3, but the
+     *   epilogue now needs a group of its own after the tenth bne mispredicts.
+     *   G = 1 + 20 + 1 = 22, delta **+1** — against +0 at width 2, where `addi a7` re-paired with
+     *   `ecall` and handed the group straight back. sizes {1: 10, 2: 12}, slots = 34.
+     *   cycles ON = 22 + 0 + 11 + 0 + 4 = **37**; OFF = 22 + 22 + 11 + 0 + 4 = **59**.
+     */
+    wide: {
+      3: {
+        base: { groups: 21, sizes: { 2: 11, 3: 10 }, doomed: 18, blocked: { off: 22, on: 0 } },
+        taken: { groups: 22, sizes: { 1: 10, 2: 12 }, doomed: 0, blocked: { off: 22, on: 0 } },
+      },
+      4: {
+        base: { groups: 21, sizes: { 2: 11, 3: 10 }, doomed: 18, blocked: { off: 22, on: 0 } },
+        taken: { groups: 22, sizes: { 1: 10, 2: 12 }, doomed: 0, blocked: { off: 22, on: 0 } },
+      },
+    },
   },
 
   /**
@@ -656,6 +1011,55 @@ const TIMING: Readonly<Record<string, Timing>> = {
       doomed: { off: 5, on: 5 },
       betting: { off: { groups: 0, pairs: -5 }, on: { groups: 0, pairs: -5 } },
     },
+    /**
+     * WIDTHS 3 AND 4 — **one of only two programs that gain anything at width 4, and the gain is
+     * entirely a PROLOGUE effect.** The body has two intra-group RAWs in series (`add@20` reads the
+     * t3 `sll@16` writes; `bne@28` reads the t1 `addi t1@24` writes), so it is three groups per
+     * iteration at every width ≥ 2 and the loop period is 5 at BOTH w3 and w4:
+     *   `{sll@16}` / `{add@20, addi t1@24}` / `{bne@28, addi a7@32, ecall@36}`.
+     * What differs is the prologue's four independent `li`s:
+     *   w3: `{addi t1@0, addi a0@4, addi t5@8}` / `{addi t6@12}` — TWO groups.
+     *       G = 2 + 3×6 = 20, sizes {1: 7, 2: 6, 3: 7}.
+     *   w4: `{addi t1@0, addi a0@4, addi t5@8, addi t6@12}`      — ONE group of four.
+     *       G = 1 + 3×6 = 19, sizes {1: 6, 2: 6, 3: 6, 4: 1}.
+     *   slots = 40 = 30 + 10 doomed (5 taken × 2 mates) at both. L = 0 ON, 26 OFF at both.
+     *   cycles ON = **34** at w3 and **33** at w4; OFF = **60** and **59**.
+     * **THE FINDING.** The loop body runs six times and is byte-identical at both widths; the size-4
+     * group occurs exactly ONCE in the whole run. That is precisely why the gain is 1 cycle and not
+     * 6, and it is the cleanest statement of the width axis's honest lesson: **the fourth slot pays
+     * only where the code has four independent instructions in a row, and real loop bodies do not.**
+     * A test that read the cycle delta alone would report "width 4 is 3% faster" and hide where.
+     * BETTING: the `bne` bets from slot 0 and kills `addi a7`/`ecall` in ID — the bne group goes
+     *   3 → 1, doomed 10 → 0, period 5 → 4, and the epilogue costs a group after the sixth bne
+     *   mispredicts. G = 21 at w3 (sizes {1: 13, 2: 7, 3: 1}) and 20 at w4 (sizes {1: 12, 2: 7,
+     *   4: 1}), slots = 30. Delta **+1** at both widths, against +0 at width 2.
+     *   cycles ON = **32** / **31**; OFF = **58** / **57**.
+     */
+    wide: {
+      3: {
+        base: { groups: 20, sizes: { 1: 7, 2: 6, 3: 7 }, doomed: 10, blocked: { off: 26, on: 0 } },
+        taken: {
+          groups: 21,
+          sizes: { 1: 13, 2: 7, 3: 1 },
+          doomed: 0,
+          blocked: { off: 26, on: 0 },
+        },
+      },
+      4: {
+        base: {
+          groups: 19,
+          sizes: { 1: 6, 2: 6, 3: 6, 4: 1 },
+          doomed: 10,
+          blocked: { off: 26, on: 0 },
+        },
+        taken: {
+          groups: 20,
+          sizes: { 1: 12, 2: 7, 4: 1 },
+          doomed: 0,
+          blocked: { off: 26, on: 0 },
+        },
+      },
+    },
   },
 
   /**
@@ -696,6 +1100,27 @@ const TIMING: Readonly<Record<string, Timing>> = {
       blocked: { off: 27, on: 5 },
       doomed: { off: 4, on: 4 },
       betting: { off: { groups: 1, pairs: -5 }, on: { groups: 1, pairs: -5 } },
+    },
+    /**
+     * WIDTHS 3 AND 4 — **a COPY of `array-sum.s`, and the copy is argued rather than assumed.** The
+     * two programs are byte-for-byte the same instruction stream; the only differences are the
+     * pointer bump immediate (`,16` against `,4`) and the `.data` values. Neither appears in any
+     * pairing rule, any hazard test, or any transfer outcome — an immediate is not a register and a
+     * datum is not an address the issue logic can see. So every G, every histogram, every L and
+     * every doomed count is identical to `array-sum.s` at both widths and both positions, and only
+     * `misses` differs (6 at both sizes against 2), which is a separate term.
+     * This is the one `wide` entry in the table that is a copy; it is spelled out because a copy
+     * whose justification is left implicit is indistinguishable from a number nobody derived.
+     */
+    wide: {
+      3: {
+        base: { groups: 19, sizes: { 1: 7, 2: 5, 3: 7 }, doomed: 4, blocked: { off: 28, on: 5 } },
+        taken: { groups: 20, sizes: { 1: 13, 3: 7 }, doomed: 0, blocked: { off: 28, on: 5 } },
+      },
+      4: {
+        base: { groups: 19, sizes: { 1: 7, 2: 5, 3: 7 }, doomed: 4, blocked: { off: 28, on: 5 } },
+        taken: { groups: 20, sizes: { 1: 13, 3: 7 }, doomed: 0, blocked: { off: 28, on: 5 } },
+      },
     },
   },
 };
@@ -1244,12 +1669,27 @@ const CONFIG_W2: Record<Position, ProcessorConfig> = {
  * The issue schedule, read off `location`: how many instructions moved `ID.*` → `EX.*` in each
  * cycle. This is the only observable that distinguishes a group from a pair, and it is what makes
  * every width-2 term measurable independently instead of by subtraction.
+ *
+ * **`width` is a PARAMETER as of M13 step 3, and the `2` it replaced was this suite's own vacuity
+ * trap.** The loop bound was `s < 2` from M7 step 4 — correct while two slots were all there were,
+ * and silently wrong the moment the guard opened: every group of 3 or 4 would have read as at most
+ * 2, so `G` would come out too high, the histogram would report width-2 shapes for ever, and every
+ * width-3/4 cell derived against it would have been fitted to a broken measurement. Note what would
+ * NOT have caught it: step 1's audit swept for literal slot indexing (`idEx[0|1]`, `exMem[…]`) and
+ * came back empty — this arity is a loop bound over a TEMPLATE STRING, which that sweep cannot
+ * match. It was watched failing (one width-3 cell, `2` restored ⇒ red) before any number below was
+ * trusted.
+ *
+ * The width is the one the CALLER asked for, deliberately not `micro.width` read back off the
+ * trace. The two differ only if the engine ran narrower than it claimed — and in that case scanning
+ * the requested width over-scans empty slots (harmless), while trusting the engine's own claim
+ * would under-scan and hide exactly that bug.
  */
-function issuedPerCycle(ts: CycleTrace[]): number[] {
+function issuedPerCycle(ts: CycleTrace[], width: number): number[] {
   const counts: number[] = [];
   for (let c = 0; c < ts.length - 1; c++) {
     let n = 0;
-    for (let s = 0; s < 2; s++) {
+    for (let s = 0; s < width; s++) {
       const inId = ts[c]!.instructions.find((i) => i.location === `ID.${s}`);
       if (
         inId &&
@@ -1263,31 +1703,47 @@ function issuedPerCycle(ts: CycleTrace[]): number[] {
   return counts;
 }
 
+/** What one run's issue schedule looks like, term by term. See {@link measure}. */
+interface Measured {
+  /** `G` — issue-group cycles: cycles in which ID dispatched at least one instruction. */
+  readonly G: number;
+  /** `Q` — cycles that issued exactly TWO. The width-2 spelling of `sizes[2]`, kept by name. */
+  readonly Q: number;
+  /** `L` — blocking stalls: a stall fired AND nothing issued. */
+  readonly L: number;
+  /** A stall fired and something issued anyway — the refusal that costs no cycle. */
+  readonly freeRefusals: number;
+  /**
+   * The ISSUE-SIZE HISTOGRAM, `sizes[k]` = cycles that dispatched exactly `k`, `k = 0..width`. This
+   * is what `Q` becomes at width > 2, and it is the term that answers the plan's "a width-4
+   * assertion that does not first CHECK the group size it claims to exercise is measuring width 3".
+   */
+  readonly sizes: readonly number[];
+  /** `Σ k · sizes[k]` — issue slots actually consumed. Feeds the accounting identity. */
+  readonly slots: number;
+}
+
 /**
- * The four measured terms. `L` is counted DIRECTLY — "a stall event fired and nothing issued" — and
+ * The measured terms. `L` is counted DIRECTLY — "a stall event fired and nothing issued" — and
  * never as `cycles − G − P − M − 4`. A residual would make the closed-form assertion below
  * `0 === 0`, which passes for any engine whatsoever; that is the one mistake this suite cannot
  * afford to make, since it is the milestone's only real net.
  */
-function measure(ts: CycleTrace[]): {
-  G: number;
-  Q: number;
-  L: number;
-  freeRefusals: number;
-} {
-  const issued = issuedPerCycle(ts);
+function measure(ts: CycleTrace[], width: number): Measured {
+  const issued = issuedPerCycle(ts, width);
+  const sizes = new Array<number>(width + 1).fill(0);
   let G = 0;
-  let Q = 0;
   let L = 0;
   let freeRefusals = 0;
   issued.forEach((n, c) => {
     const stalled = ts[c]!.events.some((e) => e.type === 'stall');
+    sizes[n] = (sizes[n] ?? 0) + 1;
     if (n > 0) G++;
-    if (n === 2) Q++;
     if (stalled && n === 0) L++;
     if (stalled && n > 0) freeRefusals++;
   });
-  return { G, Q, L, freeRefusals };
+  const slots = sizes.reduce((sum, count, k) => sum + k * count, 0);
+  return { G, Q: sizes[2] ?? 0, L, freeRefusals, sizes, slots };
 }
 
 /** `G` and `Q` under a scheme, applying the bet-kills-its-mate deltas. */
@@ -1299,7 +1755,7 @@ const pairsUnder = (p: Timing, pos: Position, scheme: Scheme): number =>
 describe('width 2 — the derived schedule (G, Q, L), against the base prediction behaviour', () => {
   it.each(CASES)('$file [forwarding $position]', ({ file, position }) => {
     const pinned = TIMING[file]!;
-    const m = measure(run(file, CONFIG_W2[position]));
+    const m = measure(run(file, CONFIG_W2[position]), 2);
 
     // Each term separately, so a failure names which one moved. A single opaque total would let a
     // compensating pair of errors — one group too many, one blocked cycle too few — pass silently.
@@ -1324,7 +1780,7 @@ describe('width 2 — the derived schedule (G, Q, L), against the base predictio
     // accounting without using G or Q's pinned values at all.
     const pinned = TIMING[file]!;
     const ts = run(file, CONFIG_W2[position]);
-    const m = measure(ts);
+    const m = measure(ts, 2);
 
     const retired = new Set(eventsOf(ts, 'instr-retire').map((e) => e.instr));
     const issuedIds = new Set(
@@ -1370,7 +1826,7 @@ describe('the form GENERALIZES M3 — at width 1 it is N + 4 + S + P + M', () =>
     // formula. At width 1 every group holds exactly one instruction, so G counts instructions; and
     // every stall refuses slot 0, so no refusal is ever free.
     const pinned = TIMING[file]!;
-    const m = measure(run(file, CONFIG[position]));
+    const m = measure(run(file, CONFIG[position]), 1);
     expect(m.Q, 'a width-1 machine never pairs').toBe(0);
     expect(m.G, 'G = N').toBe(pinned.retires);
     expect(m.L, 'L = S').toBe(total(pinned.stalls[position]));
@@ -1385,8 +1841,8 @@ describe('a slot-1 refusal is FREE — the fact that makes S ≠ L', () => {
     // forwarding on, because the jal beside it issued anyway.
     const off = run('call-return.s', CONFIG_W2.off);
     const on = run('call-return.s', CONFIG_W2.on);
-    expect(measure(off).freeRefusals, 'the refusal really fired').toBeGreaterThan(0);
-    expect(measure(off).L, '...and cost nothing').toBe(0);
+    expect(measure(off, 2).freeRefusals, 'the refusal really fired').toBeGreaterThan(0);
+    expect(measure(off, 2).L, '...and cost nothing').toBe(0);
     expect(off).toHaveLength(14);
     expect(on).toHaveLength(14);
   });
@@ -1395,13 +1851,13 @@ describe('a slot-1 refusal is FREE — the fact that makes S ≠ L', () => {
     // The corpus-wide form of the same fact. A reader who counted `stall` events at width 2 and
     // called the total "S" would over-charge every one of these programs.
     const withRefusals = Object.keys(TIMING).filter(
-      (file) => measure(run(file, CONFIG_W2.on)).freeRefusals > 0,
+      (file) => measure(run(file, CONFIG_W2.on), 2).freeRefusals > 0,
     );
     // Not a vacuous filter: pairing refusals are the model's soul and most of the corpus has them.
     expect(withRefusals.length).toBeGreaterThan(2);
     for (const file of withRefusals) {
       const ts = run(file, CONFIG_W2.on);
-      const m = measure(ts);
+      const m = measure(ts, 2);
       expect(eventsOf(ts, 'stall').length, `${file}: events`).toBe(m.L + m.freeRefusals);
       expect(m.L, `${file}: lost < fired`).toBeLessThan(eventsOf(ts, 'stall').length);
     }
@@ -1427,7 +1883,7 @@ describe('the full width-2 matrix — every cycle count derived, none observed',
       const behaviour: Scheme = scheme === 'static-taken' ? 'static-taken' : 'static-not-taken';
       const config = withCache({ ...CONFIG_W2[position], branchPrediction: scheme }, CACHE[cache]);
       const ts = run(file, config);
-      const m = measure(ts);
+      const m = measure(ts, 2);
 
       const G = groupsUnder(pinned, position, behaviour);
       const Q = pairsUnder(pinned, position, behaviour);
@@ -1534,4 +1990,339 @@ describe('M is orthogonal to both other axes — the size-delta is the program, 
       );
     },
   );
+});
+
+// =================================================================================================
+// WIDTHS 3 AND 4 — the derived timing matrix (M13 step 3)
+// =================================================================================================
+
+/**
+ * **The width-3/4 matrix, and what a green here is and is not worth.**
+ *
+ * The closed form is unchanged — `cycles = G + L + P + M + 4` — because nothing in its derivation
+ * mentioned an arity: the `+4` is pipeline depth, `P` is about the redirect's clock edge, and `M` is
+ * about a single-ported MEM. Width moves exactly one thing, **when each instruction leaves ID**, so
+ * the whole of this step is `G`, the issue-size histogram, `L` and `doomed`.
+ *
+ * ## The measurement bug this step had to fix first
+ *
+ * `issuedPerCycle` looped `s < 2`. Every group of 3 or 4 would have read as at most 2, `G` would
+ * have come out too high, and every number below would have been fitted to a broken ruler. It is
+ * now a parameter, it was watched failing with the `2` restored, and the whole width-2 matrix above
+ * passes unchanged through the parameterized version — see that function's docblock. Note what
+ * would NOT have caught it: step 1's audit swept for literal slot indexing and came back empty,
+ * because this arity was a loop bound over a template string.
+ *
+ * ## The derivation discipline, and the honest limit of the blind claim
+ *
+ * M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had to redo
+ * them. This step does not repeat that: every cell was hand-derived from the pinned issue rules by
+ * tracing the group partition and the loop period, written down in full, and only then run.
+ *
+ * **But say exactly which column was blind.** The w3/w4 cycle TOTALS at forwarding-ON /
+ * predict-none / no-cache are published in `docs/plans/m13-tasks.md`'s step-0 dump table, so those
+ * eleven numbers are a CROSS-CHECK and not a prediction, and claiming otherwise would be the same
+ * defect class as the `CycleCtx.bet` miscount this milestone already recorded. Genuinely blind: the
+ * entire term decomposition at both widths (`G`, `sizes`, `L`, `doomed`), every forwarding-OFF
+ * count, every `static-taken` count, and both cache columns — 44 pinned cells against 11 published
+ * totals.
+ *
+ * ## What the histogram buys that a cycle count cannot
+ *
+ * Three of the plan's self-deception traps are answerable only from `sizes`:
+ *
+ * - **"A test that passes at width 4 because nothing ever filled four slots."** `sizes` has no key
+ *   4 for `sum-loop.s`, `array-sum.s`, `array-sum-twice.s`, `byte-loads.s` or `store-forward.s` at
+ *   width 4. Those cells are honestly measuring width 3 and now SAY so.
+ * - **`paired-branches.s`'s 7 → 7.** G is 3 at w2 and w3 with different shapes (`{1,2,2}` against
+ *   `{1,3,1}`) — the third slot filled and pushed `ecall` into a group of its own.
+ * - **`branch-flavors.s` at width 4.** Two groups of FOUR, identical cycle count, and one MORE
+ *   instruction issued (`slots` 10 → 11) because the extra occupants are doomed mates.
+ */
+
+/**
+ * The widths this suite pins beyond the pair, DERIVED from the engine's own bound rather than typed
+ * `[3, 4]` — step 1's `halt-shadow.test.ts` precedent. Raising `MAX_ISSUE_WIDTH` must not be able to
+ * leave the widest machine the least tested; here it makes the completeness test below go red.
+ */
+const WIDE_WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH - 2 }, (_, i) => i + 3);
+
+const configAt = (width: number, position: Position): ProcessorConfig => ({
+  ...CONFIG[position],
+  issueWidth: width,
+});
+
+/** The cell a (width, scheme) pair selects. `'none'` and `'static-not-taken'` are one machine. */
+const cellOf = (pinned: Timing, width: number, scheme: Scheme): WideCell =>
+  scheme === 'static-taken' ? pinned.wide[width]!.taken : pinned.wide[width]!.base;
+
+/**
+ * The table's sparse histogram as a dense array over the GROUP sizes `k = 1..width`, and
+ * {@link groupSizes} is its counterpart on the measured side.
+ *
+ * **Index 0 is deliberately excluded, and the first draft of this comparison included it.** It went
+ * red on every wide cell at once, which is the good outcome: `measure`'s `sizes[0]` counts cycles in
+ * which NOTHING issued — blocked cycles, penalty cycles, the empty cycle after a bet — so comparing
+ * it here would have made the "issue-size histogram" pin depend on `L` and `P`, terms this table
+ * already asserts separately. A histogram of group sizes has no entry for "no group".
+ */
+const denseSizes = (sizes: Readonly<Record<number, number>>, width: number): number[] =>
+  Array.from({ length: width }, (_, k) => sizes[k + 1] ?? 0);
+
+/** The measured group-size histogram over `k = 1..width` — {@link denseSizes}'s counterpart. */
+const groupSizes = (m: Measured): number[] => m.sizes.slice(1);
+
+/** Every (program, width, forwarding) triple the wide table pins. */
+const WIDE_CASES = Object.keys(TIMING).flatMap((file) =>
+  WIDE_WIDTHS.flatMap((width) =>
+    (['off', 'on'] as const).map((position) => ({ file, width, position })),
+  ),
+);
+
+describe('widths 3 and 4 — the derived schedule (G, the histogram, L, doomed)', () => {
+  it('the table pins every width the engine admits', () => {
+    // A guard against the decay mode step 1 named: `MAX_ISSUE_WIDTH` is the engine's, and raising it
+    // without deriving new cells would otherwise leave the widest machine silently unpinned. It also
+    // guards the guard — an empty `WIDE_WIDTHS` would make every `it.each` below vacuous.
+    expect(WIDE_WIDTHS).toEqual([3, 4]);
+    for (const file of Object.keys(TIMING)) {
+      expect(Object.keys(TIMING[file]!.wide).map(Number).sort(), file).toEqual(WIDE_WIDTHS);
+    }
+  });
+
+  it.each(WIDE_CASES)('$file [width $width, forwarding $position]', ({ file, width, position }) => {
+    const pinned = TIMING[file]!;
+    const cell = pinned.wide[width]!.base;
+    const ts = run(file, configAt(width, position));
+    const m = measure(ts, width);
+
+    // Each term against its own pin BEFORE the total, so a failed cell names which term moved. A
+    // single opaque cycle count would let a compensating pair of errors — one group too many, one
+    // blocked cycle too few — pass and tell you nothing.
+    expect(m.G, 'G — issue-group cycles').toBe(cell.groups);
+    expect(groupSizes(m), 'the issue-size histogram').toEqual(denseSizes(cell.sizes, width));
+    expect(m.L, 'L — blocking stalls (slot 0 refused, nothing issued)').toBe(
+      cell.blocked[position],
+    );
+
+    // ...and the closed form from the PINNED terms, never the measured ones, or this line would be
+    // an identity rather than a claim.
+    const P = penaltyOf(pinned.transfers, 'static-not-taken');
+    expect(ts, 'cycles = G + L + P + M + 4').toHaveLength(
+      cell.groups + cell.blocked[position] + P + 0 + 4,
+    );
+  });
+
+  it.each(WIDE_CASES)(
+    '$file [width $width, forwarding $position]: Σ k·sizes[k] = retires + doomed',
+    ({ file, width, position }) => {
+      // The independent route to the histogram: every group consumes one slot per occupant, and
+      // every instruction that consumes one either retires or is a DOOMED mate — issued beside a
+      // taken transfer and squashed in EX. Both sides are measured from the trace, so this closes
+      // the accounting without using the pinned `groups` or `sizes` at all. It is the width-2
+      // `G + Q = retires + doomed` identity, generalized.
+      const pinned = TIMING[file]!;
+      const ts = run(file, configAt(width, position));
+      const m = measure(ts, width);
+
+      const retired = new Set(eventsOf(ts, 'instr-retire').map((e) => e.instr));
+      const issuedIds = new Set(
+        ts.flatMap((t) =>
+          t.instructions.filter((i) => i.location.startsWith('EX.')).map((i) => i.id),
+        ),
+      );
+      const doomed = [...issuedIds].filter((id) => !retired.has(id)).length;
+
+      expect(retired.size, 'N').toBe(pinned.retires);
+      expect(doomed, 'doomed mates').toBe(pinned.wide[width]!.base.doomed);
+      expect(m.slots, 'issue slots consumed').toBe(pinned.retires + doomed);
+    },
+  );
+
+  it('the forwarding toggle never moves the partition at width ≥ 3 — and did at width 2', () => {
+    // Asserted rather than assumed, because the width-2 table's `groups`/`pairs` ARE keyed by
+    // position and this step's `WideCell` deliberately is not. The reason the keying could be
+    // dropped is a real finding: at width 2 the only forwarding-shaped partition change in the
+    // corpus is `array-sum.s`/`strided-sum.s`, where the `lw@16` is refused from slot 1 for `raw`
+    // and splits a pair. A THIRD SLOT MASKS IT — the same `lw` is refused for `intra-pair-raw`
+    // against `addi t0@4` whatever the toggle says, and pairing rules are checked BEFORE the
+    // ordinary hazard. So widening deleted the corpus's one forwarding-dependent partition.
+    expect(TIMING['array-sum.s']!.w2.groups.off, 'width 2: the toggle DOES move G').not.toBe(
+      TIMING['array-sum.s']!.w2.groups.on,
+    );
+    for (const file of Object.keys(TIMING)) {
+      for (const width of WIDE_WIDTHS) {
+        const off = measure(run(file, configAt(width, 'off')), width);
+        const on = measure(run(file, configAt(width, 'on')), width);
+        expect(off.G, `${file} @ w${width}: G`).toBe(on.G);
+        expect(groupSizes(off), `${file} @ w${width}: histogram`).toEqual(groupSizes(on));
+      }
+    }
+  });
+});
+
+/** The full wide matrix: 11 programs × 2 widths × 2 forwarding × 3 prediction × 3 cache. */
+const WIDE_MATRIX = WIDE_CASES.flatMap(({ file, width, position }) =>
+  (['none', 'static-not-taken', 'static-taken'] as const).flatMap((scheme) =>
+    (['off', 'small', 'large'] as const).map((cache) => ({ file, width, position, scheme, cache })),
+  ),
+);
+
+describe('the full width-3/4 matrix — every cycle count derived, none copied', () => {
+  it.each(WIDE_MATRIX)(
+    '$file [width $width, forwarding $position, predict $scheme, cache $cache]',
+    ({ file, width, position, scheme, cache }) => {
+      const pinned = TIMING[file]!;
+      const behaviour: Scheme = scheme === 'static-taken' ? 'static-taken' : 'static-not-taken';
+      const cell = cellOf(pinned, width, behaviour);
+      const config = withCache(
+        { ...configAt(width, position), branchPrediction: scheme },
+        CACHE[cache],
+      );
+      const ts = run(file, config);
+      const m = measure(ts, width);
+
+      const P = penaltyOf(pinned.transfers, behaviour);
+      const M = missesAt(pinned, cache) * MISS_PENALTY;
+
+      expect(m.G, 'G').toBe(cell.groups);
+      expect(groupSizes(m), 'the issue-size histogram').toEqual(denseSizes(cell.sizes, width));
+      expect(m.L, 'L — untouched by prediction and by the cache').toBe(cell.blocked[position]);
+      expect(penaltyFromEvents(ts), 'P — priced from the engine’s own outcomes').toBe(P);
+      expect(missCount(ts) * MISS_PENALTY, 'M').toBe(M);
+      // N is still the program: no toggle on any of the four axes may change what retires.
+      expect(eventsOf(ts, 'instr-retire'), 'N').toHaveLength(pinned.retires);
+
+      expect(ts, 'cycles = G + L + P + M + 4').toHaveLength(
+        cell.groups + cell.blocked[position] + P + M + 4,
+      );
+    },
+  );
+});
+
+describe('P and M stay width-invariant at 3 and 4 — asserted, not argued', () => {
+  // The claim that lets `penaltyOf` and the miss table price the wide matrix unchanged. The
+  // ARGUMENTS are good (a mispredict costs 2 because the redirect is clocked at the end of EX
+  // whatever the width; the mem-port rule keeps MEM single-lane so the address stream cannot move),
+  // but the width-2 versions of these tests exist precisely because an argument is not a net, and
+  // extending them costs one loop.
+  const P_CASES = Object.keys(TIMING).flatMap((file) =>
+    WIDE_WIDTHS.flatMap((width) =>
+      (['off', 'on'] as const).flatMap((position) =>
+        SCHEMES.map((scheme) => ({ file, width, position, scheme })),
+      ),
+    ),
+  );
+
+  it.each(P_CASES)(
+    '$file [width $width, forwarding $position, predict $scheme]: same P as width 1',
+    ({ file, width, position, scheme }) => {
+      const w1 = run(file, withScheme(CONFIG[position], scheme));
+      const wide = run(file, withScheme(configAt(width, position), scheme));
+      expect(penaltyFromEvents(wide), 'P').toBe(penaltyFromEvents(w1));
+      expect(penaltyFromEvents(wide)).toBe(penaltyOf(TIMING[file]!.transfers, scheme));
+    },
+  );
+
+  it.each(Object.keys(TIMING))('%s: the same misses at widths 3 and 4, at every size', (file) => {
+    for (const cache of ['small', 'large'] as const) {
+      for (const width of WIDE_WIDTHS) {
+        const wide = run(file, withCache(configAt(width, 'on'), CACHE[cache]));
+        expect(missCount(wide), `${file} [w${width}, ${cache}]`).toBe(TIMING[file]!.misses[cache]);
+      }
+    }
+  });
+});
+
+describe('what the histogram says that the cycle counts cannot', () => {
+  /**
+   * The plan's sharpest self-deception trap, made into an assertion: *"a test that passes at width 4
+   * because nothing ever filled four slots is measuring width 3."* Rather than argue the corpus
+   * does fill four slots, MEASURE which programs do — and name the ones that never do. Every one of
+   * their width-4 cells above is honestly a width-3 measurement, and this is where that is stated.
+   */
+  it('names exactly which programs ever fill four slots — and most never do', () => {
+    const fillsFour = Object.keys(TIMING).filter(
+      (file) => (measure(run(file, configAt(4, 'on')), 4).sizes[4] ?? 0) > 0,
+    );
+    // Measured from the traces, then compared to the pins — not read off the table, which would
+    // re-bless whatever the table says.
+    expect([...fillsFour].sort()).toEqual(
+      ['branch-flavors.s', 'paired-branches.s', 'slow-op-loop.s'].sort(),
+    );
+    for (const file of ['sum-loop.s', 'array-sum.s', 'array-sum-twice.s', 'byte-loads.s']) {
+      expect(TIMING[file]!.wide[4]!.base.sizes[4], `${file} never reaches a group of 4`).toBe(
+        undefined,
+      );
+    }
+  });
+
+  it('paired-branches.s: w2 and w3 run 7 cycles with DIFFERENT partitions', () => {
+    // The flagged 9 → 7 → 7 → 6 anomaly, accounted term by term. G is 3 at both widths and the
+    // shapes differ: the third slot fills and pushes `ecall` out of the tail group into its own.
+    // "Width 3 bought nothing" is true and uninformative; this is the informative form.
+    const w2 = measure(run('paired-branches.s', CONFIG_W2.on), 2);
+    const w3 = measure(run('paired-branches.s', configAt(3, 'on')), 3);
+    const w4 = measure(run('paired-branches.s', configAt(4, 'on')), 4);
+    expect(w2.G, 'w2: {1, 2, 2}').toBe(3);
+    expect(w3.G, 'w3: {1, 3, 1} — same G, wider groups, one MORE group boundary in the tail').toBe(
+      3,
+    );
+    expect(w2.sizes.slice(1), 'w2 histogram').toEqual([1, 2]);
+    expect(w3.sizes.slice(1), 'w3 histogram — the third slot really did fill').toEqual([2, 0, 1]);
+    expect(w4.G, 'w4: the whole tail in one group of four').toBe(2);
+    expect(w4.sizes[4], '...and it IS a four').toBe(1);
+    // The cycle counts the histogram explains.
+    expect(run('paired-branches.s', CONFIG_W2.on)).toHaveLength(7);
+    expect(run('paired-branches.s', configAt(3, 'on'))).toHaveLength(7);
+    expect(run('paired-branches.s', configAt(4, 'on'))).toHaveLength(6);
+  });
+
+  it('branch-flavors.s: width 4 issues MORE instructions for the same 10 cycles', () => {
+    // A taken transfer in slot `k` strands up to `width − 1 − k` mates, and `blt@12` sits in slot 1
+    // at every width ≥ 2. So the group behind it grows, every new occupant dies in EX, and the cycle
+    // count does not move at all. `toHaveLength` alone would call this "width 4 changed nothing".
+    const w2 = measure(run('branch-flavors.s', CONFIG_W2.on), 2);
+    const w3 = measure(run('branch-flavors.s', configAt(3, 'on')), 3);
+    const w4 = measure(run('branch-flavors.s', configAt(4, 'on')), 4);
+    expect([w2.slots, w3.slots, w4.slots], 'issue slots consumed').toEqual([9, 10, 11]);
+    expect(run('branch-flavors.s', configAt(3, 'on'))).toHaveLength(10);
+    expect(run('branch-flavors.s', configAt(4, 'on'))).toHaveLength(10);
+  });
+
+  it('slow-op-loop.s: the ONE cycle width 4 buys is a prologue, not a loop', () => {
+    // One of only two programs that gain anything at width 4, and the size-4 group happens exactly
+    // ONCE in a run of six iterations — the four independent `li`s of the prologue. The loop body is
+    // byte-identical at both widths. That is why the gain is 1 cycle and not 6, and it is the width
+    // axis's honest lesson: the fourth slot pays where four independent instructions sit in a row,
+    // and real loop bodies do not.
+    const w3 = measure(run('slow-op-loop.s', configAt(3, 'on')), 3);
+    const w4 = measure(run('slow-op-loop.s', configAt(4, 'on')), 4);
+    expect(w4.sizes[4], 'exactly one group of four in the whole run').toBe(1);
+    expect(w4.G, 'and it saves exactly one group').toBe(w3.G - 1);
+    expect(w3.slots, 'the same instructions issue either way').toBe(w4.slots);
+    expect(run('slow-op-loop.s', configAt(3, 'on'))).toHaveLength(34);
+    expect(run('slow-op-loop.s', configAt(4, 'on'))).toHaveLength(33);
+  });
+
+  it('static-taken SPENDS the width — paired-branches gives its w4 cycle back', () => {
+    // The step's second finding, and one no cycle-count-only matrix would surface: a bet ends its
+    // group (`killedRest`), so betting fragments the instruction stream into pieces too short to
+    // fill four slots. `paired-branches.s` runs 6 cycles at width 4 under the base behaviour and 11
+    // under `static-taken` — the same 11 it runs at width 3. The width buys nothing once the
+    // predictor is on.
+    const taken = (width: number): number =>
+      run('paired-branches.s', withScheme(configAt(width, 'on'), 'static-taken')).length;
+    expect(taken(3), 'w3 under static-taken').toBe(11);
+    expect(taken(4), 'w4 under static-taken — no better than w3').toBe(11);
+    expect(run('paired-branches.s', configAt(4, 'on')), 'w4 under the base behaviour').toHaveLength(
+      6,
+    );
+    // ...and the mechanism, so the number is attributable: the bet deletes the group of four.
+    const betting = measure(
+      run('paired-branches.s', withScheme(configAt(4, 'on'), 'static-taken')),
+      4,
+    );
+    expect(betting.sizes[4], 'no group of four survives the bet').toBe(0);
+  });
 });
