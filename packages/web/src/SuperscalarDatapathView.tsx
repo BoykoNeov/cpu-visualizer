@@ -64,13 +64,17 @@ import { PHASE_COLORS, T } from './theme';
  */
 export const LANE_COLORS: Readonly<Record<Lane, string>> = { 0: 'var(--lane-0)', 1: 'var(--lane-1)', 2: 'var(--lane-2)', 3: 'var(--lane-3)' }; // prettier-ignore
 
-/** How a pairing refusal reads in the legend caption — the three verdicts, in plain words. The
- *  full readout is step 8's job; this is the one-line version the diagram can carry today, and it
- *  exists because "why is that lane dark?" is the question the picture provokes. */
+/** How a pairing refusal reads in the diagram's header — the three verdicts, in plain words. This is
+ *  the one-line version the picture can carry; `pairing-readout.ts` owns the full sentence. It exists
+ *  because "why is that lane dark?" is the question the picture provokes.
+ *
+ *  `intra-pair-raw` said "it reads what its PARTNER writes" until M13 step 8. A partner is one other
+ *  instruction, and from width 3 the writer is one of up to three elders in the group — so the line
+ *  named a relation the machine does not have. It now says what the readout says, in fewer words. */
 export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   'mem-port': 'refused: one data-memory port',
   'branch-slot': 'refused: one branch unit',
-  'intra-pair-raw': 'refused: it reads what its partner writes',
+  'intra-pair-raw': 'refused: it reads what an older group-mate writes',
 };
 
 export function SuperscalarDatapath(props: {

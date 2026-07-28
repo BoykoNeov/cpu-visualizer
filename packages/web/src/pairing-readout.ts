@@ -5,17 +5,24 @@
  *
  * ## What this panel answers, and why it needs a source the other panels do not use
  *
- * The tier's whole question is "may these two go together, and if not, why not?" — a verdict on the
- * pair sitting in ID, decided at ISSUE. Naming the pair is easy: it is the `ID.0`/`ID.1` occupants,
- * straight off `instructions[].location` like every other view. **Deciding whether they actually
- * went is what is hard, and the obvious rule is a lie.**
+ * The tier's whole question is "may these go together, and if not, why not?" — a verdict on the
+ * GROUP sitting in ID, decided at ISSUE. Naming the group is easy: it is the `ID.<slot>` occupants
+ * for every slot the machine has, straight off `instructions[].location` like every other view.
+ * **Deciding whether they actually went is what is hard, and the obvious rule is a lie.**
  *
- * The obvious rule is "a `stall` event names the refused instruction, so no stall ⇒ they paired."
+ * The word "group" rather than "pair" is M13 step 8's whole edit here, and it is not a preference:
+ * the control offers widths 1–4 since step 6, so a sentence that says "the pair" or "both" is
+ * simply false on screen at width 3 or 4. The MECHANISM keeps its historical name — the engine's
+ * rules are the "pairing" rules and `intra-pair-raw` is a `stall.reason` three consumers read, so
+ * renaming it would move trace bytes for a spelling (step 1's call, unchanged). What moved is every
+ * sentence asserting a COUNT OF TWO.
+ *
+ * The obvious rule is "a `stall` event names the refused instruction, so no stall ⇒ they all went."
  * That was DUMPED AND DISPROVED before this file was written. On `array-sum.s` at width 2 with the
  * small cache, cycles 6–14 hold `ID.0=i5, ID.1=i6` frozen by a d-cache miss with **no `stall` event
  * on any of them** — a miss-freeze emits none (the M6 finding, still true here). A readout keyed on
- * the absence of an event would have announced "paired, issuing together" for eleven consecutive
- * cycles while nothing moved at all. That is not a corner case; it is the flagship cache program.
+ * the absence of an event would have announced "issuing together" for eleven consecutive cycles
+ * while nothing moved at all. That is not a corner case; it is the flagship cache program.
  *
  * The deeper problem is that the obvious rule requires ENUMERATING every way an issue can be
  * blocked — pairing refusal, ordinary hazard, flush, miss-freeze — and being complete. The freeze
@@ -36,6 +43,12 @@
  * flush cycles where the two disagree with every simpler rule. `cache-grid.ts` reads `micro` for the
  * same post-cycle-state reason and is the precedent.
  *
+ * **M13 step 8 widened that guard to every width the control offers, and that was the step's most
+ * load-bearing test change rather than a formality.** The identity is this module's entire licence
+ * for reading `micro` at all, and until step 8 it had never run above width 2 — so the design's one
+ * unfalsifiable-if-wrong assumption was verified only on the machine that no longer ships alone.
+ * See `pairing-readout.test.ts`.
+ *
  * ## The `issue` trace event: DECLINED, with proof
  *
  * `superscalar-visuals.md` proposed a new `{type:'issue', slot, instr}` event plus a
@@ -55,26 +68,36 @@ import { PAIRING_REASONS } from './datapath-superscalar';
 
 /**
  * The verdict on the group forming in ID this cycle. Five values, and the split that matters is
- * `refused` vs `blocked`: `refused` is a PAIRING failure — the older went, the younger did not, and
- * the machine still made progress — while `blocked` is nobody moving at all. Conflating them would
- * make the tier's own lesson ("pairing failed, but we did not stop") unreadable.
+ * `refused` vs `blocked`: `refused` is a PAIRING failure — some older prefix of the group went, at
+ * least one younger member did not, and the machine still made progress — while `blocked` is nobody
+ * moving at all. Conflating them would make the tier's own lesson ("pairing failed, but we did not
+ * stop") unreadable.
+ *
+ * The `'paired'` IDENTIFIER is deliberately not renamed at M13 step 8, though its user-facing label
+ * is. It is asserted by name across two test files and means "the whole group went" at every width;
+ * moving it would be step 1's `intra-pair-raw` mistake in the view layer — churn for a spelling.
+ * The BADGE the reader sees is `CO-ISSUED`, which is true of three and of four.
  */
 export type IssueVerdict =
   /** ID is empty — nothing is up for issue (start of run, or behind a flush). */
   | 'idle'
-  /** Every ID occupant issued, and there was more than one: the money shot. */
+  /** Every ID occupant issued, and there was more than one: the money shot. Two of them at width 2,
+   *  and — measured on the corpus at M13 step 8 — three or four at width 4, never two. */
   | 'paired'
   /** Exactly one instruction was up and it issued. At width 1 this is every productive cycle. */
   | 'solo'
-  /** The older issued, a younger did not — a pairing refusal. `reason` names which rule. */
+  /** An older prefix issued, at least one younger member did not — a pairing refusal. `reason` names
+   *  which rule. At width 4 the corpus holds THREE back more often than one (51 cycles vs 41), which
+   *  is why nothing here or in the view may say "the younger". */
   | 'refused'
   /** Nobody issued. An ordinary hazard, a flush, or a miss-freeze. */
   | 'blocked';
 
 /** One instruction up for issue this cycle — an ID-slot occupant. */
 export interface IssueCandidate {
-  /** The ID slot it sits in. NOT a stable lane: an instruction refused in slot 1 leads the next
-   *  group from slot 0 (the sliding-issue decision), which is why identity rides `id`, not slot. */
+  /** The ID slot it sits in. NOT a stable lane: a refused instruction leads the next group from slot
+   *  0 whatever slot it was refused in (the sliding-issue decision), which is why identity rides
+   *  `id`, not slot. At width ≥ 3 a slot can move by more than one in a cycle (M13 step 5). */
   readonly slot: number;
   /** The stable id (INV-4) — what the follow-ring, the map row and the datapath all key on. */
   readonly id: string;
@@ -86,7 +109,9 @@ export interface IssueCandidate {
 }
 
 export interface PairingReadoutView {
-  /** Issue width in force for this recording — 1 or 2. Straight from the engine's own micro. */
+  /** Issue width in force for this recording — `1 … MAX_ISSUE_WIDTH`. Straight from the engine's own
+   *  micro, never a default: a hardcoded number here mislabels every recording made at another
+   *  width, and the caption and the IPC tile's ceiling are both derived from it. */
   readonly width: number;
   /** The ID occupants, oldest first. Length 0 (idle), 1, or `width`. */
   readonly candidates: readonly IssueCandidate[];
@@ -113,11 +138,20 @@ export type IssueReason =
  * The plain-English gloss. Each says WHAT RULE fired, in the vocabulary the pairing decisions were
  * pinned in — the readout has to agree with the pipeline map's shape, and it can only do that if it
  * names the same rule the engine applied.
+ *
+ * **Every gloss describes the HELD instruction's relation to an OLDER GROUP-MATE, which is what
+ * makes it true at all four widths** (M13 step 8). The three pairing glosses used to say "both"
+ * and "the younger" — a two-instruction relation, and false on screen from the moment step 6
+ * offered width 3: a `mem-port` refusal in a group of four is one instruction refused because ONE
+ * of up to three elders holds the port, not "both". The per-instruction framing is also the
+ * lawful-simplification shape (INV-5): it is exactly as true at width 2, so the narrow machine's
+ * reading is not contradicted by the wide one's.
  */
 export const REASON_TEXT: Readonly<Record<IssueReason, string>> = {
-  'mem-port': 'both use the one data-memory port',
-  'branch-slot': 'both need the one branch unit',
-  'intra-pair-raw': 'the younger reads what the older writes — no forwarding can fix this',
+  'mem-port': 'an older instruction in its group already has the one data-memory port',
+  'branch-slot': 'an older instruction in its group already has the one branch unit',
+  'intra-pair-raw':
+    'it reads a register an older instruction in the same group writes — no forwarding can fix this',
   'load-use': 'waiting for a load already in flight',
   raw: 'waiting for a register write (forwarding is off)',
   flush: 'squashed — a taken branch redirected the front end',
@@ -141,6 +175,13 @@ export interface IpcView {
  * same reason — `sum-loop.s` at forwarding ON is 34 retires over 56 cycles at width 1 and 34 over 44
  * at width 2 (0.607 → 0.773), both counted off a dumped trace.
  *
+ * **At four positions the tile teaches something it could not teach at two, and it is the milestone's
+ * own headline: the number STOPS MOVING.** `sum-loop` runs 0.607 → 0.773 → 0.791 → 0.791; `array-sum`
+ * 0.667 → 0.810 → 0.944 → 0.944. Nine of the eleven corpus programs are IPC-identical at widths 3 and
+ * 4 (measured, M13 step 8), so a reader who flips ISSUE from 3 to 4 and watches this figure sit still
+ * is reading the diminishing return directly. That is why the width axis stops at 4, and it is the one
+ * thing in the app that says so with a number rather than with prose.
+ *
  * The denominator is the recording's LENGTH, not the last cycle's number: the transport is 0-indexed,
  * so a 56-cycle run's final cursor reads `55`. Dividing by the displayed number is an off-by-one that
  * makes the honest figure look wrong.
@@ -162,7 +203,9 @@ function superscalarMicro(trace: CycleTrace): SuperscalarMicro | null {
   return m as SuperscalarMicro;
 }
 
-/** The ID-slot occupants this cycle, oldest first. `location` is `"ID.<slot>"` at BOTH widths. */
+/** The ID-slot occupants this cycle, oldest first. `location` is `"ID.<slot>"` at EVERY width — the
+ *  encoding is uniform 0…width-1, which M13 step 5 proved by sweeping the location set rather than
+ *  by reading the recorder. */
 function idOccupants(trace: CycleTrace, width: number): (InstructionInstance | undefined)[] {
   const out: (InstructionInstance | undefined)[] = [];
   for (let s = 0; s < width; s++) {
@@ -254,8 +297,19 @@ function reasonFor(
   if (verdict === 'idle' || verdict === 'paired' || verdict === 'solo') return null;
 
   // 1. The engine's own verdict, if it named one of the instructions standing here. Matching on id
-  //    rather than just taking the cycle's first stall matters: at width 2 a stall can name an
-  //    instruction in a different stage, and attributing it here would misreport the cause.
+  //    rather than just taking the cycle's first stall matters: a stall can name an instruction in
+  //    a different stage, and attributing it here would misreport the cause.
+  //
+  //    **Taking the FIRST match is total, not arbitrary, and at width ≥ 3 that stopped being
+  //    structural.** At width 2 a group has one possible refusee, so "the reason" cannot be
+  //    ambiguous; from width 3 the group has several younger members and one might imagine two
+  //    rules firing at once, with this loop silently picking one. It cannot happen, because the
+  //    engine emits AT MOST ONE stall per cycle — `stageId` breaks out of the group on a refusal —
+  //    and that is pinned in `datapath-superscalar.test.ts` across every provoker and width, not
+  //    assumed here. M13 step 8 measured the readout's own version of it too: over the corpus plus
+  //    the three refusal fixtures × 4 widths × forwarding × cache, **zero cycles carry two distinct
+  //    stall reasons naming one ID group**, and `pairing-readout.test.ts` holds that as a standing
+  //    net. So the panel names one rule because there is only ever one to name.
   const here = new Set(candidates.map((c) => c.id));
   for (const e of trace.events) {
     if (e.type === 'stall' && here.has(e.instr) && STALL_REASONS.has(e.reason)) {

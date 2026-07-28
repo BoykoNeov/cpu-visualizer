@@ -10,11 +10,12 @@
  *
  * ## Reading it beside the other two surfaces — the one-cycle offset
  *
- * The readout's subject is the pair in **ID**, being decided *this* cycle. The datapath's dark
- * `ALU 1` is that decision's *consequence*, and it shows up **one cycle later**, when the refused
- * instruction is not in EX beside its partner. So at a refusal cursor the readout says "refused"
- * while the datapath below still shows two busy lanes — that is correct, not a disagreement, and
- * the caption says so rather than leaving a reader to discover it as an apparent bug.
+ * The readout's subject is the GROUP in **ID**, being decided *this* cycle. A dark execute lane in
+ * the datapath is that decision's *consequence*, and it shows up **one cycle later**, when the
+ * refused instruction is not in EX beside its group-mates. So at a refusal cursor the readout says
+ * "refused" while the datapath below still shows the previous group's lanes busy — that is correct,
+ * not a disagreement, and the caption says so rather than leaving a reader to discover it as an
+ * apparent bug.
  *
  * The surface that agrees with this one *at the same cursor* is the **pipeline map**, where a
  * refusal is a visible stagger: the older instruction's `EX` cell sits one column left of the
@@ -56,19 +57,42 @@ function laneColor(slot: number): string {
  * blocked is nobody moving. Collapsing them into one "stalled" chip would erase the distinction the
  * tier exists to teach. Amber for refused (a warn, not a fault — the machine is working as designed)
  * and the danger hue for blocked, matching how the rest of the app grades severity.
+ *
+ * **The two glosses that used to state a COUNT are now derived from one** (M13 step 8). `paired` read
+ * "both issued together" and `refused` read "the older issued; the younger waits a cycle" — a
+ * two-instruction sentence under a control that has offered four positions since step 6. Neither was
+ * merely imprecise: measured over the corpus at width 4, **every one of the 26 `paired` cycles holds
+ * three or four instructions and none holds two**, and `refused` holds THREE back more often than one
+ * (51 cycles vs 41). So the old wording was wrong on the majority of the cycles it described.
+ *
+ * Deriving them from `candidates` rather than rewording them to something vague ("several issued") is
+ * the same call the caption made: a count is ARITHMETIC, so a test can watch it, where a hand-picked
+ * adjective is prose that ships green whatever it says. The `paired` LABEL moves too — `CO-ISSUED` is
+ * true of three and of four, where `PAIRED` is a claim about two — but the verdict IDENTIFIER stays
+ * `'paired'`, because it is asserted by name across two test files and renaming it would be step 1's
+ * `intra-pair-raw` mistake one layer up.
  */
-const VERDICT_STYLE: Readonly<Record<IssueVerdict, { label: string; hue: string; gloss: string }>> =
-  {
-    paired: { label: 'PAIRED', hue: T.monoGreen, gloss: 'both issued together this cycle' },
-    solo: { label: 'SOLO', hue: T.accent, gloss: 'one instruction was up, and it issued' },
-    refused: {
-      label: 'REFUSED',
-      hue: T.monoAmber,
-      gloss: 'the older issued; the younger waits a cycle',
+const VERDICT_STYLE: Readonly<
+  Record<IssueVerdict, { label: string; hue: string; gloss: (r: Readout) => string }>
+> = {
+  paired: {
+    label: 'CO-ISSUED',
+    hue: T.monoGreen,
+    gloss: (r) => `${r.candidates.length} instructions issued together this cycle`,
+  },
+  solo: { label: 'SOLO', hue: T.accent, gloss: () => 'one instruction was up, and it issued' },
+  refused: {
+    label: 'REFUSED',
+    hue: T.monoAmber,
+    gloss: (r) => {
+      const went = r.candidates.filter((c) => c.issued).length;
+      const held = r.candidates.length - went;
+      return `${went} of ${r.candidates.length} issued; ${held} held for the next group`;
     },
-    blocked: { label: 'BLOCKED', hue: T.danger, gloss: 'nothing issued this cycle' },
-    idle: { label: 'IDLE', hue: T.ink3, gloss: 'nothing is waiting to issue' },
-  };
+  },
+  blocked: { label: 'BLOCKED', hue: T.danger, gloss: () => 'nothing issued this cycle' },
+  idle: { label: 'IDLE', hue: T.ink3, gloss: () => 'nothing is waiting to issue' },
+};
 
 export function PairingReadout(props: {
   /** The trace at the cursor. `null` pre-run, and non-superscalar recordings fold to `null` too —
@@ -142,7 +166,7 @@ function Verdict({ readout }: { readout: Readout }): React.JSX.Element {
         {v.label}
       </span>
       <span style={{ fontSize: '0.8rem', color: T.ink2 }}>
-        {v.gloss}
+        {v.gloss(readout)}
         {readout.reason !== null ? ' — ' : ''}
         {readout.reason !== null ? (
           <strong style={{ color: T.ink }}>{REASON_TEXT[readout.reason]}</strong>
@@ -215,14 +239,34 @@ function Candidates({
           </li>
         ))}
       </ul>
-      {/* The offset warning, stated on the surface rather than left to be discovered as a bug. */}
-      {readout.verdict === 'refused' ? (
-        <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', color: T.ink3 }}>
-          The held instruction leads the next issue group — watch it move to slot 0. The execute
-          lane it would have used goes dark on the <em>next</em> cycle, not this one.
-        </p>
-      ) : null}
+      {/* The offset warning, stated on the surface rather than left to be discovered as a bug. The
+          singular/plural is DERIVED: at width 4 a refusal holds three instructions back more often
+          than one, so a fixed "the held instruction" is wrong on the majority of refusal cycles. */}
+      {readout.verdict === 'refused' ? <RefusalNote readout={readout} /> : null}
     </>
+  );
+}
+
+/**
+ * What a refusal means for the NEXT cycle — the one-cycle offset, said on the surface rather than
+ * left to be discovered as an apparent bug.
+ *
+ * Split out of {@link Candidates} at M13 step 8 only because its number moved: how many instructions
+ * are held is a property of the group, so the sentence has to be built rather than written. The
+ * lanes going dark are likewise plural at width ≥ 3 — a `mem-port` refusal in a group of four can
+ * leave three lanes idle next cycle, which is precisely the picture the datapath draws and this
+ * sentence is here to predict.
+ */
+function RefusalNote({ readout }: { readout: Readout }): React.JSX.Element {
+  const held = readout.candidates.filter((c) => !c.issued).length;
+  return (
+    <p style={{ margin: '0.4rem 0 0', fontSize: '0.72rem', color: T.ink3 }}>
+      {held === 1
+        ? 'The held instruction leads the next issue group — watch it move to slot 0.'
+        : `The ${held} held instructions lead the next issue group — watch the oldest move to slot 0.`}{' '}
+      The execute {held === 1 ? 'lane it would have used goes' : 'lanes they would have used go'}{' '}
+      dark on the <em>next</em> cycle, not this one.
+    </p>
   );
 }
 

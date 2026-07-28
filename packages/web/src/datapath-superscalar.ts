@@ -509,7 +509,7 @@ function laneNodes(L: Layout, lane: Lane): DatapathNode[] {
     { id: laneId('fwdmuxb', lane), label: '', x: L.fwdmuxX, y: ly + 126, w: 18, h: 56, shape: 'mux', lane, minTier: 'expert', forwardingOnly: true, controlLabel: `ForwardB${s}` }, // prettier-ignore
     { id: laneId('alu', lane), label: `ALU ${s}`, x: L.aluX, y: ly + 54, w: ALU_W, h: 132, shape: 'adder', lane }, // prettier-ignore
     // The dedicated pc/immediate adder, REPLICATED — settled by dumping a trace, not by reasoning:
-    // two `lui`s pair, and U/J producers emit no `alu-op`, so both lanes can need it in one cycle.
+    // two `lui`s co-issue, and U/J producers emit no `alu-op`, so EVERY lane can need it at once.
     { id: laneId('pcarith', lane), label: `PC\narith ${s}`, x: L.aluX, y: ly + 212, w: 68, h: 48, shape: 'adder', lane }, // prettier-ignore
     { id: laneId('wbmux', lane), label: '', x: L.wbmuxX, y: ly + 64, w: 18, h: 100, shape: 'mux', lane, minTier: 'detailed', controlLabel: `MemtoReg${s}` }, // prettier-ignore
   ];
@@ -563,7 +563,7 @@ function sharedWires(L: Layout, A: ReturnType<typeof anchors>): DatapathWire[] {
     { id: 'addn-pcmux', ends: ['addn', 'pcmux'], points: [at('addn', 'r'), [L.seqCh, at('addn', 'r')[1]], [L.seqCh, L.rail.seq], [L.leftCh[0]!, L.rail.seq], [L.leftCh[0]!, L.spineY + L.pcmuxOff(0)], at('pcmux', 'l', L.pcmuxOff(0))] }, // prettier-ignore
     // --- ID: the ISSUE unit — the pairing verdict, and the machine's soul ----------------------
     // It reads the fetch group out of IF/ID and answers by holding the ones it refused, which is
-    // what a refusal LOOKS like: the younger instruction sits in ID for a second cycle and leads
+    // what a refusal LOOKS like: the refused instructions sit in ID for a second cycle and lead
     // the next group. Width-2-and-up only (see the node's `minWidth`).
     { id: 'ifid-issue', ends: ['ifid', 'issue'], points: [bar('ifid', 'r', at('issue', 'l')[1]), at('issue', 'l')], minWidth: 2 }, // prettier-ignore
     { id: 'issue-ifid', ends: ['issue', 'ifid'], points: [at('issue', 'l', 14), bar('ifid', 'r', at('issue', 'l', 14)[1])], minWidth: 2 }, // prettier-ignore
@@ -950,9 +950,9 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
   const eventsFor = (inst: InstructionInstance): readonly TaggedEvent[] =>
     trace.events.filter((e): e is TaggedEvent => 'instr' in e && e.instr === inst.id);
 
-  // --- IF: one pc addresses the memory; a PAIR of words comes back --------------------------
-  // The address is the OLDEST occupant's pc — the pair is fetched from `pc` and `pc + 4`, so there
-  // is one address and the second word is implied by it. `inst.pc`/`inst.encoding` rather than the
+  // --- IF: one pc addresses the memory; WIDTH consecutive words come back --------------------
+  // The address is the OLDEST occupant's pc — the group is fetched from `pc`, `pc + 4`, … so there
+  // is one address and the rest are implied by it. `inst.pc`/`inst.encoding` rather than the
   // `instr-fetch` event: an instruction HELD in IF by a refusal was fetched in an earlier cycle and
   // emits no event now, but the pc it presents is unchanged — which is what a hold IS.
   const ifSlots = byStage.get('IF') ?? [];
@@ -971,14 +971,14 @@ export function activate(trace: CycleTrace | null): DatapathActivation {
     let last = ifOldest.pc;
     for (const inst of ifSlots) if (inst) last = Math.max(last, inst.pc);
     w('addn-pcmux', 'IF', 0, ifOldest, (last + 4) >>> 0, 'hex');
-    // One fetch wire per slot — the pair, drawn as a pair.
+    // One fetch wire per slot — the group, drawn one word per lane.
     for (const lane of LANES) {
       const inst = ifSlots[lane];
       if (inst) w(laneId('imem-ifid', lane), 'IF', lane, inst, inst.encoding, 'hex');
     }
   }
 
-  // --- ID: decode both candidates, read four register ports, issue or refuse ------------------
+  // --- ID: decode every candidate, read 2 × width register ports, issue or refuse -------------
   // The ISSUE unit and the HAZARD unit are told apart by the stall's REASON, which is the only
   // thing that distinguishes them in the trace — and it is enough, because `issueVerdict` checks
   // the three pairing rules and `detectHazard` the two ordinary ones, with no overlap between the
