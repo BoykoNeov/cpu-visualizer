@@ -52,6 +52,9 @@ track. Repo **4498 tests**, five gates green.
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11).
   **WIDTH is the one open axis**: `superscalar/processor.ts` still refuses
   `issueWidth > 2` by name, so that milestone generalizes pairing rules IN PLACE.
+- [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
+  keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
+  each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
 - [Workflow rituals](workflow-rituals.md) — batch-end / "session end" = update
   memory+docs, commit, push.
 - [Commit and push preference](feedback_commit_and_push.md) — always commit and push
