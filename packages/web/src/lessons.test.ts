@@ -400,6 +400,30 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
   });
 
   /**
+   * The deep pipeline's count (M12 step 0), added at the step that makes the axis REACHABLE — the
+   * first lesson to declare `deep-pipeline` — rather than at the step that invented the model, which
+   * is the pattern the two staleness bugs above and M7 step 6 both established.
+   *
+   * **It is asserted as an EQUALITY with the pipeline's list, because sameness is the claim.** M12's
+   * falsifiable prediction is that this is the first track since M7 to need no new sweep axis: the
+   * deep pipeline honors forwarding × prediction × cache and nothing else, so its machine list is
+   * the 5-stage's, label for label. A spelled-out copy of twelve strings would assert the same thing
+   * while hiding what is being asserted, and would go on passing if one model's axes drifted from
+   * the other's by a rename. The length is pinned alongside so the equality cannot pass vacuously on
+   * two empty lists.
+   *
+   * What would falsify it: a knob this model honors and the 5-stage does not (an `issueWidth`, a
+   * second execute-latency control). That is a real possibility for the deeper machines M11's
+   * decisions table left open — `MEM1`/`MEM2`, a 12-stage — so this case is the guard that makes the
+   * next depth milestone say so out loud.
+   */
+  it('gives the deep pipeline the SAME twelve machines as the 5-stage — no new axis', () => {
+    const deep = positionsFor('deep-pipeline').map((p) => p.label);
+    expect(deep).toHaveLength(12);
+    expect(deep).toEqual(positionsFor('pipeline').map((p) => p.label));
+  });
+
+  /**
    * The superscalar's own count (M7 step 6) — and the case that gives this guard something to fail
    * on, because it is the ONLY model that reaches the width axis. Without it the axis could be
    * dropped, mis-gated, or given one position and every test here would stay green: `positionsFor`
