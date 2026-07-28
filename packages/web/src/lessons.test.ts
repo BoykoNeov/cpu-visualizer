@@ -773,7 +773,7 @@ describe('authored lessons (INV-6)', () => {
     // `deep-pipeline` and teach that forwarding — the thing the machine track taught them to trust —
     // stops being enough once execute takes two cycles. That is why they could not be authored onto
     // the 5-stage and why they are not more `forwarding-bubble` steps.
-    expect(LESSONS.length).toBe(20);
+    expect(LESSONS.length).toBe(21);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -797,7 +797,7 @@ describe('authored lessons (INV-6)', () => {
       LESSONS.filter((l) => l.model === 'deep-pipeline')
         .map((l) => l.id)
         .sort(),
-    ).toEqual(['deep-bubble-survives']);
+    ).toEqual(['deep-bet-pays-double', 'deep-bubble-survives']);
   });
 
   it('canonicalizes every declared cache to a shipped constant (M6 step 7 reconcile)', () => {
@@ -3413,5 +3413,142 @@ describe('deep-bubble-survives — forwarding stops being enough (M12 step 1)', 
     expect(retires).toBe(34);
     expect(stalls).toBe(18);
     expect(retires + 6 + stalls + 16).toBe(here.length);
+  });
+});
+
+/**
+ * `deep-bet-pays-double`' oracle — the doubled speculation penalty (M12 step 2).
+ *
+ * ## Its steps are CONFIG-EXCLUSIVE, like `branch-bet`'s, and for a sharper reason
+ *
+ * The three flush reasons partition by prediction scheme: `branch-taken` fires only where nothing
+ * bets, `branch-predicted-taken` and `branch-not-taken` only where something does. So the lesson
+ * cannot have all its steps alive at once, and the sweep's "fires in at least one position" licence
+ * (M3 step 8) is doing real work here rather than tolerating an accident.
+ *
+ * ## The trap this lesson is written around, and it is IN the corpus
+ *
+ * A flush's `stages` array is NOT the penalty. This program's taken branch names **two** casualties
+ * (`['EX1','ID']`) and costs **four** cycles, because the `ex-latency` stall one line above left
+ * bubbles in the other two slots; `array-sum`'s identical four-cycle branch names four. Narration
+ * that counted the dead would therefore be right on one corpus program and wrong on another while
+ * every anchor stayed green. So the prose states the penalty as a total, and the assertion below
+ * measures it the same way — as a cycle DELTA between the two prediction positions, never as
+ * `stages.length`.
+ */
+describe('deep-bet-pays-double — the speculation penalty doubles too (M12 step 2)', () => {
+  const lesson = (): Lesson => byId('deep-bet-pays-double');
+
+  /** The lesson's declared machine with the one knob it is about varied (the M4 step 4 shape). */
+  const deep = (predict: boolean): readonly CycleTrace[] =>
+    recordLesson(lesson(), {
+      ...lesson().config!,
+      branchPrediction: predict ? 'static-taken' : 'static-not-taken',
+    });
+
+  /** The same program and knobs on the 5-stage — the machine the prose compares against. */
+  const shallow = (predict: boolean): readonly CycleTrace[] =>
+    recordProgram('sum-loop', () => new PipelineProcessor(), {
+      ...lesson().config!,
+      branchPrediction: predict ? 'static-taken' : 'static-not-taken',
+    });
+
+  const flushes = (t: readonly CycleTrace[], reason: string): TraceEvent[] =>
+    t.flatMap((c) => c.events).filter((e) => e.type === 'flush' && e.reason === reason);
+
+  it('opens where nothing bets, so the four-cycle branch is visible before the fix', () => {
+    expect(lesson().model).toBe('deep-pipeline');
+    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    // Forwarding is pinned as a CONTROL rather than as this lesson's subject: it is not what the
+    // prose is about, but every cycle count the closing step quotes moves with it (109 and 95 with
+    // it off), so it has to be declared. Same rule as `forwarding-bubble` pinning prediction.
+    expect(lesson().config!.forwarding).toBe(true);
+  });
+
+  it('the penalty is asserted as a cycle DELTA, never as the casualty list', () => {
+    const [noBet, bet] = [deep(false), deep(true)];
+
+    // The trap, pinned first so the rest of this test cannot be read as endorsing the shortcut: the
+    // taken branch here names TWO stages and costs FOUR cycles.
+    const taken = flushes(noBet, 'branch-taken');
+    expect(taken).toHaveLength(9); // ten iterations, the tenth falls through
+    expect((taken[0] as { stages: string[] }).stages).toEqual(['EX1', 'ID']);
+
+    // What it actually costs, measured the only honest way — against the same machine with the same
+    // program and the bet turned on. Nine branches: 9 x 4 = 36 with no predictor, 9 x 2 + 1 x 4 = 22
+    // with one. The 14-cycle gap is the number the narration quotes.
+    expect(noBet.length).toBe(87);
+    expect(bet.length).toBe(73);
+    expect(noBet.length - bet.length, 'the saving the lesson claims').toBe(14);
+  });
+
+  it('THE DISCRIMINATOR: the five-stage saves exactly half, on the same program and knobs', () => {
+    // The track's rule — move the lesson to `pipeline` and its prose goes false. Here the falsehood
+    // is quantitative rather than structural: the beats still fire on the shallower machine, but
+    // every coefficient the narration states is wrong by a factor of two. That is precisely the
+    // defect M11 step 5 found in the shipped prediction tooltip, which stated the five-stage's "1
+    // and 2" on a machine where the numbers are 2 and 4 — an INV-5 contradiction, not a lawful
+    // simplification. This assertion is the guard that would catch it recurring in a lesson.
+    expect(shallow(false).length).toBe(56);
+    expect(shallow(true).length).toBe(49);
+    expect(shallow(false).length - shallow(true).length, 'half of the deep machine’s 14').toBe(7);
+  });
+
+  it('every step fires, in its own prediction position, and the two positions partition', () => {
+    const [noBet, bet] = [deep(false), deep(true)];
+    const [anchoredNoBet, anchoredBet] = [
+      anchorLesson(lesson(), noBet),
+      anchorLesson(lesson(), bet),
+    ];
+
+    // Step 1 — the unpredicted taken branch. Alive with no predictor, and structurally impossible
+    // with one: a machine that bets emits `branch-predicted-taken` instead, so this is not a step
+    // that happens to be dead, it is one that cannot fire.
+    expect(anchoredEvent(noBet, anchoredNoBet[1]!)).toMatchObject({
+      type: 'flush',
+      reason: 'branch-taken',
+    });
+    expect(anchoredBet[1]!.cycle, 'a bet-less flush fired on a machine that bets').toBeNull();
+
+    // Steps 2 and 3 — the correct bet and the one wrong bet — the mirror image.
+    expect(anchoredNoBet[2]!.cycle).toBeNull();
+    expect(anchoredNoBet[3]!.cycle).toBeNull();
+    expect(anchoredEvent(bet, anchoredBet[2]!)).toMatchObject({
+      type: 'flush',
+      reason: 'branch-predicted-taken',
+    });
+    expect(anchoredEvent(bet, anchoredBet[3]!)).toMatchObject({
+      type: 'flush',
+      reason: 'branch-not-taken',
+    });
+
+    // The bet is right nine times and wrong once — the trade the narration describes, counted.
+    expect(flushes(bet, 'branch-predicted-taken')).toHaveLength(10); // one per decoded branch
+    expect(flushes(bet, 'branch-not-taken')).toHaveLength(1); // ...and exactly one is corrected
+  });
+
+  it('the answer is 55 in both positions — the closing step is about the program, not the machine', () => {
+    for (const trace of [deep(false), deep(true)]) {
+      // The closing step anchors on the LAST RETIRE rather than on the write of 55, and the reason
+      // is an ordering fact worth keeping: a0 reaches 55 in the final iteration, BEFORE the branch
+      // that ends the loop is corrected. Under prediction that puts the write ahead of the wrong-bet
+      // beat, and the sweep's per-position order check catches it — which is what it caught here.
+      // The value is still asserted, just not used as the anchor.
+      const last = anchorLesson(lesson(), trace).at(-1)!;
+      expect(anchoredEvent(trace, last)).toMatchObject({ type: 'instr-retire' });
+      const totals = trace
+        .flatMap((c) => c.events)
+        .filter((e) => e.type === 'reg-write' && e.reg === 10)
+        .map((e) => (e as { value: number }).value);
+      expect(totals.at(-1), 'a0 ends at 55 whichever way the predictor is set').toBe(55);
+    }
+    // And the term the expert tier says does NOT move, which is the claim most likely to rot: M11
+    // step 3 found that S is not prediction-invariant in general on this machine (a fall-through can
+    // stall in ID and then be squashed), so "only P moves" is a fact about THIS program that had to
+    // be measured rather than assumed.
+    const stalls = (t: readonly CycleTrace[]): number =>
+      t.flatMap((c) => c.events).filter((e) => e.type === 'stall').length;
+    expect(stalls(deep(false))).toBe(11);
+    expect(stalls(deep(true))).toBe(11);
   });
 });

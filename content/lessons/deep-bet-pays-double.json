@@ -1,0 +1,78 @@
+{
+  "id": "deep-bet-pays-double",
+  "title": "The bet that pays double",
+  "program": "sum-loop",
+  "model": "deep-pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "A ten-iteration loop, on a machine with nothing predicting its branch.",
+        "detailed": "This loop adds 10 + 9 + ... + 1 and closes with `bnez t0, loop` — a backward branch taken nine times out of ten. The machine has no predictor right now: it keeps fetching straight ahead and finds out the branch was taken only once the branch has finished computing. On the five-stage pipeline that cost two cycles each time round. Watch what depth does to that price.",
+        "expert": "`static-not-taken` on a machine with no predictor is the same behavior as `none` — the fall-through IS the not-taken path. What changed is where the answer arrives: the branch resolves at the end of EX2, two stages later than the five-stage machine resolves it, and everything fetched behind it in the meantime is speculative."
+      }
+    },
+    {
+      "trigger": {
+        "event": "flush",
+        "nth": 1,
+        "where": {
+          "reason": "branch-taken"
+        }
+      },
+      "narration": {
+        "essentials": "The branch was taken. Four cycles of fetched work go in the bin.",
+        "detailed": "The branch has finished computing and it was taken, so everything fetched behind it is wrong and gets thrown away. That costs four cycles here. The same branch costs two on the five-stage pipeline, which resolves it a stage earlier with less work standing behind it. Notice that the trace names two stages, not four: the other two slots were already empty, because the stall just above left bubbles in them. The price is four cycles either way — what a flush reports is which instructions died, not what they cost.",
+        "expert": "`flush` with `reason: 'branch-taken'`, naming EX1 and ID. Read the two numbers separately. The penalty is a TOTAL of four cycles: the redirect applies at the clock edge, and the correct target then walks IF1, IF2 and ID before it can execute. The casualty list is only the slots that happened to be occupied, which is why the same four-cycle branch reports four dead instructions in one program and two in another. Nine taken iterations here means 36 of the run's 87 cycles."
+      }
+    },
+    {
+      "trigger": {
+        "event": "flush",
+        "nth": 1,
+        "where": {
+          "reason": "branch-predicted-taken"
+        }
+      },
+      "narration": {
+        "essentials": "With the bet on, the same branch costs two instead of four.",
+        "detailed": "Prediction is on. The machine now bets that a backward branch will be taken, redirects fetch as soon as it decodes the branch, and throws away only the two instructions already in the front end. The branch that cost four cycles costs two — and the bet is right nine times out of ten. The loop drops from 87 cycles to 73. The five-stage pipeline running this same program goes from 56 to 49: it saves seven cycles where this machine saves fourteen. Prediction is worth twice as much on a machine with twice as much pipeline in front of the branch.",
+        "expert": "`branch-predicted-taken`, naming IF2 and IF1. The bet is placed in ID, so a correct bet still pays for the two front-end cycles already spent fetching the fall-through: it halves a taken branch rather than making it free. Closing those last two would take a branch-target buffer betting in IF1 — new mechanism, and a different machine."
+      }
+    },
+    {
+      "trigger": {
+        "event": "flush",
+        "nth": 1,
+        "where": {
+          "reason": "branch-not-taken"
+        }
+      },
+      "narration": {
+        "essentials": "The tenth time, the bet is wrong — and that one costs four.",
+        "detailed": "The last iteration. The counter reaches zero, the branch is not taken, and the bet was wrong. Fetch had already been redirected to the top of the loop, so the correction throws that away and starts again after the branch. A wrong bet costs four cycles here — exactly what an unpredicted taken branch cost. That is the deal prediction makes on this machine: nine right bets at two cycles each and one wrong bet at four, instead of ten unpredicted branches at four.",
+        "expert": "`branch-not-taken`. Both flush shapes under prediction are `[IF2, IF1]`, so the shape cannot tell you which of the two happened and the cost does not follow it — the reason string is what distinguishes them. Correct bet 2, wrong bet 4. On the five-stage machine those same two numbers are 1 and 2, which is why the coefficients had to be re-derived rather than carried over."
+      }
+    },
+    {
+      "trigger": {
+        "event": "instr-retire",
+        "nth": 34
+      },
+      "narration": {
+        "essentials": "55 either way. Only the clock moved.",
+        "detailed": "The total is 55 no matter how the predictor is set and no matter how deep the machine is. A prediction cannot change what a program computes — it can only stop the machine throwing away work it has already done. Here that is worth 14 cycles out of 87. On the five-stage pipeline, it is worth 7 out of 56.",
+        "expert": "`cycles = N + 6 + S + P`, with N = 34 retires and S = 11 stall cycles fixed by the program and the forwarding position. Only P moves: 36 with no predictor (nine taken branches at four), 22 with the bet on (nine correct at two, one wrong at four). 34 + 6 + 11 + 36 = 87; 34 + 6 + 11 + 22 = 73."
+      }
+    }
+  ]
+}
