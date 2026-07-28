@@ -1,0 +1,208 @@
+import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { assemble } from '@cpu-viz/assembler';
+import { toProgramImage, CACHE_SMALL, CACHE_LARGE } from '@cpu-viz/engine-common';
+import {
+  defaultConfig,
+  type CacheConfig,
+  type CycleTrace,
+  type ProcessorConfig,
+} from '@cpu-viz/trace';
+import { SuperscalarProcessor } from './index';
+
+/**
+ * **A HALT IN A BRANCH'S SHADOW MUST NOT STOP FETCH FOREVER — the wedge, and the net that sees it.**
+ *
+ * `haltFetch` is sticky by design ("fetch never restarts, the pipe just drains"), and that is right
+ * for a halt on the real path. But `isArchHalt` raises it in ID, at ISSUE, which is cycles before an
+ * older branch sitting in EX has resolved. When that branch turns out to be TAKEN, the halt was
+ * wrong-path all along: the squash kills it, the redirect moves `fetchPc` back to the loop — and the
+ * sticky flag it already set means nothing is ever fetched from there. The pipe drains, `halted` is
+ * never raised (the halt died; only a RETIRING halt raises it), and `step()` returns empty cycles
+ * for ever. **`isHalted()` never goes true, so every caller that loops on it hangs**, including the
+ * recorder and therefore the web app.
+ *
+ * **This is width ≥ 2 only, and it is NOT a milestone-13 finding — it is live in shipped code.**
+ * At width 1 the halt reaches ID a whole cycle after the branch reaches EX, so `stageId`'s
+ * `ctx.squash` early-return always beats it. From width 2 a halt can issue in the SAME GROUP as an
+ * unresolved branch, and nothing refuses that pairing: `ecall` has no source registers (no
+ * intra-pair RAW), uses no memory port, and is not in `TRANSFERS`.
+ *
+ * **The corpus was safe by accident of one idiom, which is why 4498 tests were green.** Every
+ * program in `content/programs/` exits with `li a7, 10` sitting between the branch and the `ecall`,
+ * and that spacer is the only reason the halt never co-issues. Move `li a7, 10` above the loop —
+ * an ordinary thing to write, and the shorter program — and the 2-wide machine hangs. The
+ * termination sweep at the bottom of this file exists because "empty pipe, no fetch, not halted"
+ * was a reachable state that no suite in the repo could see: every runner loops `while
+ * (!p.isHalted())`, so the failure mode is a hang rather than a red test.
+ *
+ * The fix is at the clock edge and is deliberately the narrowest of the three candidates: a
+ * branch squash CLEARS `haltFetch`. It cannot move a single pinned cycle count, because it only
+ * ever fires on a run that previously did not terminate at all — and `timing`/`pairing`/
+ * `conformance` were re-run to confirm zero numbers moved. The two broader candidates (ending the
+ * issue group at any unresolved transfer; deferring `stopFetch` to retirement) both change WHEN
+ * fetch stops on runs that already work, and would have invalidated M7 step 4's matrix.
+ *
+ * Why clearing is safe in general, not just here: once a halt issues it squashes everything younger
+ * (`killedRest` breaks the group), so no instruction younger than a halt is ever in flight behind
+ * it. A branch resolving in EX is therefore never younger than a live halt — so any `haltFetch`
+ * standing when a branch squash lands belongs to a wrong-path halt, always.
+ */
+
+const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));
+
+/**
+ * The bug's own program. `a7` is set BEFORE the loop, so `bnez` and `ecall` are adjacent and can
+ * land in one issue group — the exact shape the corpus's `li a7, 10` spacer hides.
+ */
+const NO_SPACER = `    .text
+    .globl _start
+_start:
+    li   a7, 10
+    li   t0, 3
+loop:
+    addi t0, t0, -1
+    bnez t0, loop
+    ecall
+`;
+
+/** The corpus exit idiom, for contrast: the spacer keeps the halt out of the branch's group. */
+const SPACER = `    .text
+    .globl _start
+_start:
+    li   t0, 3
+loop:
+    addi t0, t0, -1
+    bnez t0, loop
+    li   a7, 10
+    ecall
+`;
+
+/**
+ * Runs to completion, or throws once past `cap`. **The cap IS the assertion** — the failure this
+ * file exists for is a non-terminating run, and an uncapped `while (!p.isHalted())` expresses that
+ * as a hung suite rather than a failure.
+ */
+function run(source: string, config: ProcessorConfig, cap = 500): CycleTrace[] {
+  const { program, errors } = assemble(source);
+  if (!program) throw new Error('assembly failed: ' + errors.map((e) => e.message).join('; '));
+  const p = new SuperscalarProcessor();
+  p.reset(toProgramImage(program), config);
+  const ts: CycleTrace[] = [];
+  while (!p.isHalted()) {
+    ts.push(p.step());
+    if (ts.length > cap) {
+      throw new Error(
+        `did not terminate within ${cap} cycles — the pipe drained but isHalted() stayed false`,
+      );
+    }
+  }
+  return ts;
+}
+
+const cfg = (over: Partial<ProcessorConfig>): ProcessorConfig => ({
+  ...defaultConfig(),
+  forwarding: true,
+  ...over,
+});
+
+const SCHEMES: ProcessorConfig['branchPrediction'][] = ['none', 'static-not-taken', 'static-taken'];
+const WIDTHS = [1, 2] as const;
+
+describe('a halt in a taken branch’s shadow', () => {
+  it('does not wedge the machine — every width × prediction scheme terminates', () => {
+    for (const issueWidth of WIDTHS) {
+      for (const branchPrediction of SCHEMES) {
+        expect(() => run(NO_SPACER, cfg({ issueWidth, branchPrediction }))).not.toThrow();
+      }
+    }
+  });
+
+  /**
+   * The provocation, pinned as its own case. Before the fix this was the ONLY position of the six
+   * above that hung — `static-taken` escapes because the branch BETS, which ends the issue group
+   * and keeps the `ecall` out of it, and width 1 escapes structurally. A future change that
+   * re-broke the general case while leaving this one working would be a strange bug; a change that
+   * re-broke exactly this cell is the bug this file is about.
+   */
+  it('is a width-2, no-bet phenomenon — the exact cell that used to hang', () => {
+    const ts = run(NO_SPACER, cfg({ issueWidth: 2, branchPrediction: 'none' }));
+    expect(ts.length).toBeGreaterThan(0);
+    // The wedge signature: a taken-branch flush, then cycles that fetch nothing and never halt.
+    const flushes = ts.flatMap((t) => t.events.filter((e) => e.type === 'flush'));
+    expect(flushes.length).toBeGreaterThan(0);
+    // Fetching RESUMED after the last flush — the thing the sticky flag used to prevent.
+    let lastFlush = -1;
+    for (let c = 0; c < ts.length; c++) {
+      if (ts[c]!.events.some((e) => e.type === 'flush')) lastFlush = c;
+    }
+    const fetchedAfter = ts
+      .slice(lastFlush + 1)
+      .some((t) => t.events.some((e) => e.type === 'instr-fetch'));
+    expect(fetchedAfter).toBe(true);
+  });
+
+  /**
+   * The architectural check. Terminating is not enough — the loop must have run its full trip count
+   * and the halt must be the one on the REAL path. Both spellings of the same program agree with
+   * each other and across widths, which is what says the wrong-path halt was properly discarded
+   * rather than merely survived.
+   */
+  it('reaches the same architectural state as the spacer spelling, at both widths', () => {
+    const finals = new Set<string>();
+    for (const source of [NO_SPACER, SPACER]) {
+      for (const issueWidth of WIDTHS) {
+        for (const branchPrediction of SCHEMES) {
+          const ts = run(source, cfg({ issueWidth, branchPrediction }));
+          const last = ts[ts.length - 1]!;
+          finals.add(JSON.stringify(Array.from(last.state.registers)));
+        }
+      }
+    }
+    expect(finals.size).toBe(1);
+  });
+
+  /**
+   * **The general net — and it is honest about what it did NOT do.** This sweep was written
+   * alongside the fix and run against the BROKEN engine, where it passed: every corpus program uses
+   * the `li a7, 10` spacer, so none of them could reach the wedge. It would not have found this bug.
+   * What it is for is the next one — a corpus program written without the spacer, or any future
+   * change that makes "empty pipe, no fetch, not halted" reachable again. That state was previously
+   * unobservable anywhere in the repo, because every runner loops on `isHalted()`, so the failure
+   * mode is a hung suite rather than a red test. The bound is what converts a hang into a failure.
+   *
+   * The bound is generous on purpose — it is a LIVENESS net, not a timing one. `timing.test.ts`
+   * owns the exact counts, and a bound tight enough to double as a timing assertion would have to
+   * be re-derived every time the matrix moves.
+   */
+  it('every corpus program terminates, at every width × forwarding × prediction × cache', () => {
+    const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));
+    expect(files.length).toBeGreaterThan(0);
+    const caches: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
+    for (const file of files) {
+      const source = readFileSync(PROGRAMS_DIR + file, 'utf8');
+      for (const issueWidth of WIDTHS) {
+        for (const forwarding of [false, true]) {
+          for (const branchPrediction of SCHEMES) {
+            for (const cache of caches) {
+              expect(
+                () =>
+                  run(source, {
+                    ...defaultConfig(),
+                    forwarding,
+                    branchPrediction,
+                    cache,
+                    issueWidth,
+                  }),
+                `${file} @ w${issueWidth}/${forwarding ? 'fwd' : 'nofwd'}/${branchPrediction}/${
+                  cache === null ? 'nocache' : `cache${cache.numLines}`
+                }`,
+              ).not.toThrow();
+            }
+          }
+        }
+      }
+    }
+  });
+});

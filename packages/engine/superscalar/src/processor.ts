@@ -620,6 +620,28 @@ export class SuperscalarProcessor implements Processor {
     if (ctx.redirect !== null) this.fetchPc = ctx.redirect;
     if (ctx.stopFetch) this.haltFetch = true;
 
+    // ...and the UNDO, which only a machine of width ≥ 2 needs. `haltFetch` is sticky because a halt
+    // on the real path really does stop fetching for good — but `isArchHalt` raises it in ID, at
+    // ISSUE, and from width 2 a halt can issue in the SAME GROUP as a branch that has not resolved
+    // yet (`ecall` reads no register, uses no memory port, and is not a transfer, so no pairing rule
+    // refuses it). If that branch then resolves TAKEN, the halt was wrong-path all along: the squash
+    // kills it and the redirect points fetch back at the loop — but the flag it already set would
+    // stop anything from being fetched from there. The pipe drains, `halted` is never raised (only a
+    // RETIRING halt raises it), and every caller looping on `isHalted()` hangs. See
+    // `halt-shadow.test.ts`; the corpus hid it behind the `li a7, 10` spacer in its exit idiom.
+    //
+    // Clearing is always right, not just here: a halt squashes everything younger the moment it
+    // issues (`killedRest` ends the group), so nothing younger than a live halt is ever in flight
+    // behind it — and a branch resolving in EX is therefore never younger than one. Any `haltFetch`
+    // still standing when a branch squash lands belongs to a halt on a path that did not happen.
+    //
+    // This is the narrowest of the three fixes available, and the only one that cannot move a pinned
+    // cycle count: it fires exclusively on runs that previously never terminated. The alternatives —
+    // ending the issue group at any unresolved transfer, or deferring `stopFetch` to retirement —
+    // both change when fetch stops on runs that already work, and would have invalidated M7 step 4's
+    // timing matrix.
+    if (ctx.squash !== null && ctx.squash.reason === 'branch') this.haltFetch = false;
+
     // The `flush` event belongs here, at the edge: it is when the kill actually lands, and IF —
     // which runs last — is the only stage that knows whether it had anything to lose.
     //
