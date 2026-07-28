@@ -3,8 +3,10 @@
 **Status: NOT STARTED. Step 0 (the dump) is DONE 2026-07-28 and its findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
 uncovered is ALREADY FIXED AND PUSHED (`a9f1b70`, repo 4498 → 4502 tests) — it was live in shipped
-code at width 2 and did not belong inside an unpinned milestone. Every decision in the table at the
-bottom is OPEN; two of them gate steps and are seeded for the user to pin.**
+code at width 2 and did not belong inside an unpinned milestone. The two GATING decisions are PINNED
+(user, 2026-07-28): the UI offers widths 1/2/3/4, and the lane hue set EXTENDS to four validated
+tints. The second overrode its seed, and the seed was wrong for a reason worth keeping — see
+_Decision H_ at the bottom. The remaining rows are open and none of them gates step 1.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12.4 (the superscalar tier) and the
 architectural invariants (§3). The model's ground truth is `docs/plans/m7-tasks.md`, whose pairing
@@ -116,7 +118,7 @@ against it — it was a missing UNDO, not a missing fourth rule.
       in the last slot of a full group** — `branch-slot` and the bet/squash slot arithmetic have only
       ever been exercised at slot ≤ 1. Acceptance: three provocations, each confirmed to BITE.
 - [ ] **3. The timing matrix at widths 3 and 4 — DERIVED, never copied.** `cycles = G + L + P + M +
-  4`. M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had
+4`. M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had
       to redo them; this step does not repeat that. Predict each new cell from the closed form
       BEFORE running the engine, as M7 step 4 did for its seven forwarding-OFF counts. Acceptance:
       every width-3/4 cell derived and asserted term by term (G, L, P, M separately — `L` counted
@@ -134,10 +136,17 @@ against it — it was a missing UNDO, not a missing fourth rule.
       `issueWidth` from `loadInto`'s config left all web tests green because the field is optional
       and the engine's `?? 1` runs every position at width 1 — **a dead toggle reads the same number
       twice**, so the seam test must be a MOVING number.
-- [ ] **7. The datapath at N lanes.** GATED BY DECISION **H** — the lane hue channel does not scale
-      past two, and no answer to that is available from the trace. Everything else about the geometry
-      is mechanical: M7 step 7 already derives every coordinate from the node via `at()`/`aUp()`/
-      `aLo()`, which is what lets lanes be added without hand-typed endpoints detaching.
+- [ ] **7. The datapath at N lanes.** Decision **H** is PINNED: the lane set extends to four
+      validated tints (`--lane-2`, `--lane-3` join `--lane-0`/`--lane-1`, in the base block and BOTH
+      dark blocks — `styles.css` says "keep the two blocks identical" and a tint added to only one
+      is a defect no headless test can see). The palette acceptance is spelled out under _Decision
+      H_ below; it is re-validation work, not a color choice. The geometry itself is mechanical:
+      `LANE_DY` is already a pitch and lane `n`'s block top is already `EX_TOP + n * LANE_DY`, and
+      M7 step 7 derives every coordinate from its node via `at()`/`aUp()`/`aLo()` — which is exactly
+      what lets lanes be added without hand-typed endpoints silently detaching. Two things are NOT
+      mechanical and need watching: `LANES` is a hard-coded `[0, 1]`, and the forwarding rails are
+      built on "lane 0's returns ride the TOP rails, lane 1's the BOTTOM" — an outboard-side scheme
+      with exactly two sides, which four lanes do not have.
 - [ ] **8. The pairing readout and IPC at N lanes.** The panel's vocabulary is pair-shaped in the
       PROSE (`refused`/`blocked` are fine; "the pair in ID" is not). Keep the M7 step 8 rule that
       earned it: **read the RESULT (`micro.idEx`), never enumerate the REASONS** — the naive
@@ -174,12 +183,39 @@ against it — it was a missing UNDO, not a missing fourth rule.
 
 ## Decisions to pin (seeded with recommended answers)
 
-| Decision                              | Recommendation (seed)                                                                                                                                                                                                                                                                                                           | Pinned answer |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| **W** — which widths the UI offers    | **1 / 2 / 3 / 4.** The honest case for 4 is not speed — it is that 4 is where widening visibly STOPS paying (9 of 11 programs identical to w3), and that is the width axis's real lesson. Offering 1/2/3 hides the diminishing return that makes the tier worth teaching. Gates steps 1, 6, 7                                   | _open_        |
-| **H** — the lane hue channel at N > 2 | **Tint only lanes 0 and 1; lanes 2+ share a single neutral "further lanes" tint, with the slot number in the node label.** The 5-hue palette is machine-validated and M7 spent stroke=STAGE, tint=LANE, ring=IDENTITY; there is no lane-FAMILY analogue to M11's stage-family trick, and inventing hues is barred. Gates step 7 | _open_        |
-| Scope of the pairing rules            | **Unchanged in kind** — one mem port, one branch unit, no intra-group RAW, per group. Relaxing any is a different milestone (see Headline decision)                                                                                                                                                                             | _open_        |
-| A new corpus program                  | **No.** The dump answers the question that would have forced one: the existing corpus reaches groups of 3 and 4 and shows the diminishing return. An addition pays the full INV-8 ripple across six models (M12's finding). The adversarial programs in step 2 are hand-built INSIDE their test files, not corpus additions     | _open_        |
-| A new trace event / field             | **No** — predicted, not assumed. `location` already absorbs `"EX.3"` as a plain string, `stall.reason` is free-form, and `micro.idEx` is arity-generic. House record: M4 +1 field of 5, M6 +0, M7 +0, M11 +0                                                                                                                    | _open_        |
-| A lesson track for the wider machine  | **Not in this milestone.** M7/M8 and M11/M12 both split model+view from track; the existing "The wide machine" track would gain a delta lesson, which is the M12 shape and its own milestone                                                                                                                                    | _open_        |
-| Maximum width the guard admits        | **4**, matching the UI. A guard that admits more than the product offers is untested surface; the error message should name the reason, as today's does                                                                                                                                                                         | _open_        |
+| Decision                              | Recommendation (seed)                                                                                                                                                                                                                                                                                                       | Pinned answer                                                   |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **W** — which widths the UI offers    | **1 / 2 / 3 / 4.** The honest case for 4 is not speed — it is that 4 is where widening visibly STOPS paying (9 of 11 programs identical to w3), and that is the width axis's real lesson. Offering 1/2/3 hides the diminishing return that makes the tier worth teaching. Gates steps 1, 6, 7                               | **As seeded — 1 / 2 / 3 / 4** (user, 2026-07-28)                |
+| **H** — the lane hue channel at N > 2 | Seeded as "tint lanes 0/1, neutral beyond" on the grounds that inventing hues is barred. **That seed was WRONG about which rule applies, and the correction is recorded here rather than quietly dropped** — see the note below the table. Gates step 7                                                                     | **EXTEND THE LANE SET TO 4 VALIDATED TINTS** (user, 2026-07-28) |
+| Scope of the pairing rules            | **Unchanged in kind** — one mem port, one branch unit, no intra-group RAW, per group. Relaxing any is a different milestone (see Headline decision)                                                                                                                                                                         | _open_                                                          |
+| A new corpus program                  | **No.** The dump answers the question that would have forced one: the existing corpus reaches groups of 3 and 4 and shows the diminishing return. An addition pays the full INV-8 ripple across six models (M12's finding). The adversarial programs in step 2 are hand-built INSIDE their test files, not corpus additions | _open_                                                          |
+| A new trace event / field             | **No** — predicted, not assumed. `location` already absorbs `"EX.3"` as a plain string, `stall.reason` is free-form, and `micro.idEx` is arity-generic. House record: M4 +1 field of 5, M6 +0, M7 +0, M11 +0                                                                                                                | _open_                                                          |
+| A lesson track for the wider machine  | **Not in this milestone.** M7/M8 and M11/M12 both split model+view from track; the existing "The wide machine" track would gain a delta lesson, which is the M12 shape and its own milestone                                                                                                                                | _open_                                                          |
+| Maximum width the guard admits        | **4**, matching the UI. A guard that admits more than the product offers is untested surface; the error message should name the reason, as today's does                                                                                                                                                                     | _open_                                                          |
+
+### Decision H — the correction the seed needed
+
+The seed argued from "the 5-hue palette is machine-validated; never invent a hue." **That rule is
+about `PHASE_COLORS`, the 5-slot STAGE set, and it does not govern the lane channel.** The lane
+tints are a second, separate categorical set — `--lane-0` / `--lane-1` in `styles.css`, deliberately
+NOT phase hues, with their own validation record: _"Machine-validated 2026-07-14 against both
+surfaces — CVD separation dE 41.3 light / 42.6 dark."_ A 2-slot set that was validated at 2 slots
+carries no prohibition on being validated at 4. M11's stage-family trick is not the relevant
+precedent either: it existed because seven stages had to fold into a set that was fixed at five for
+a different reason. Nothing fixes the lane set at two.
+
+So extending it is lawful, and the work it creates is **re-validation, not invention**. Step 7's
+palette acceptance, from the constraints the existing block already states:
+
+- **CVD separation across all four tints**, on both surfaces, at least matching the recorded 2-slot
+  dE — and measured, not eyeballed (the M7 step 7 precedent: "it looks tight" is exactly the
+  judgement an eyeball is worst at, so the overlap check was run in SVG space instead).
+- **No red and no amber**, at any slot — red is the danger/flush family and amber the warn wash, so
+  a lane in either would impersonate a status. This is the real constraint on the two new hues, and
+  it is tighter than it sounds once blue and magenta are also spoken for.
+- **Lane 0 keeps aliasing the accent** — a single-issue machine's lane 0 is today's picture, and
+  that is the right degenerate case.
+- **The RELIEF RULE survives**: the existing set already ships one WARN (light magenta at 2.62:1
+  against the surface), which is why a lane hue never appears without a text label and every
+  lane-tinted node carries its lane number. Four tints must not add a second such warning, and the
+  label rule stays pinned by test whatever the contrast comes out at.
