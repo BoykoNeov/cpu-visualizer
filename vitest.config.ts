@@ -30,5 +30,18 @@ export default defineConfig({
   test: {
     include: ['packages/**/src/**/*.test.{ts,tsx}'],
     environment: 'node',
+    /**
+     * Vitest's 5 s default is the one non-deterministic thing in an otherwise pure suite, and M13
+     * step 8's break pass caught it flaking: `datapath-superscalar.test.ts`'s `throughBox` litmus
+     * runs ~2 s alone and was measured at **6.4 s under a loaded full run**, failing as a TIMEOUT
+     * on a deliberate break that touched a different package entirely. A wall-clock red herring in
+     * the middle of a break measurement is worse than a slow test.
+     *
+     * Raising it does not weaken the liveness net, which is the objection to check before doing
+     * this: non-termination here is caught by CYCLE bounds, not by the clock — `halt-shadow.test.ts`
+     * sweeps at 500 cycles and `Recorder.runToEnd` caps at 1 000 000 — so a hung machine still
+     * fails as a hung machine. What this removes is only the machine-speed dependence.
+     */
+    testTimeout: 30_000,
   },
 });

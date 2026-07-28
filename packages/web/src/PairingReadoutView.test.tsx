@@ -30,7 +30,7 @@ import { CACHE_SMALL } from '@cpu-viz/engine-common';
 import { defaultConfig, type CycleTrace, type ProcessorConfig } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { readPairing, type IssueReason, type IssueVerdict } from './pairing-readout';
+import { readPairing, REASON_TEXT, type IssueReason, type IssueVerdict } from './pairing-readout';
 import { PairingReadout } from './PairingReadoutView';
 import { REFUSAL_TEXT } from './SuperscalarDatapathView';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -71,38 +71,46 @@ const FIXTURES = [
   `  beq x0, x0, a\na:\n  beq x0, x0, b\nb:\n  beq x0, x0, c\nc:\n  beq x0, x0, d\nd:\n  addi x3, x0, 3`,
 ];
 
-/** One rendered cycle per verdict and per reason the machine can reach at `width` — the smallest
- *  set of renders that exercises every string this panel can put on screen. */
+/**
+ * One RENDERED cycle per verdict and per reason the machine can reach at `width` — the smallest set
+ * of renders that exercises every string this panel can put on screen.
+ *
+ * **It returns HTML per key, not traces per key, and the difference is a defect this step's own
+ * break pass found in the first draft.** That draft keyed the coverage sets off `readPairing` — the
+ * PURE fold — and then rendered separately. Breaking the panel so it returns `null` at width 4 left
+ * the coverage assertion perfectly green: the fold still produced all five verdicts and all seven
+ * reasons, because the fold does not know the component exists. It was step 7's own closing-pass
+ * lesson — _a pure-data test of a view proves the data; the seam needs its own render_ — recurring
+ * inside the test written to enforce it, one width later.
+ */
 function surfacesAt(width: number): {
-  html: string[];
-  verdicts: Set<IssueVerdict>;
-  reasons: Set<IssueReason>;
+  byVerdict: Map<IssueVerdict, string>;
+  byReason: Map<IssueReason, string>;
 } {
-  const byVerdict = new Map<IssueVerdict, CycleTrace>();
-  const byReason = new Map<IssueReason, CycleTrace>();
+  const byVerdict = new Map<IssueVerdict, string>();
+  const byReason = new Map<IssueReason, string>();
   const sources = [...EXAMPLE_PROGRAMS.map((p) => p.source), ...FIXTURES];
-  const recordings: (readonly CycleTrace[])[] = [];
   for (const src of sources) {
     for (const forwarding of [true, false]) {
       const base: ProcessorConfig = { ...defaultConfig(), forwarding, issueWidth: width };
       for (const cfg of [base, { ...base, cache: CACHE_SMALL }]) {
         const rec = record(src, cfg);
-        recordings.push(rec);
         for (const t of rec) {
           const r = readPairing(t);
           if (r === null) continue;
-          if (!byVerdict.has(r.verdict)) byVerdict.set(r.verdict, t);
-          if (r.reason !== null && !byReason.has(r.reason)) byReason.set(r.reason, t);
+          const wantVerdict = !byVerdict.has(r.verdict);
+          const wantReason = r.reason !== null && !byReason.has(r.reason);
+          if (!wantVerdict && !wantReason) continue;
+          const html = renderToStaticMarkup(
+            <PairingReadout trace={t} recording={rec} followed={null} />,
+          );
+          if (wantVerdict) byVerdict.set(r.verdict, html);
+          if (wantReason) byReason.set(r.reason!, html);
         }
       }
     }
   }
-  const html: string[] = [];
-  for (const t of [...byVerdict.values(), ...byReason.values()]) {
-    const rec = recordings.find((r) => r.includes(t))!;
-    html.push(renderToStaticMarkup(<PairingReadout trace={t} recording={rec} followed={null} />));
-  }
-  return { html, verdicts: new Set(byVerdict.keys()), reasons: new Set(byReason.keys()) };
+  return { byVerdict, byReason };
 }
 
 /**
@@ -173,14 +181,27 @@ describe('the readout says nothing pair-shaped at any width', () => {
     const NARROW: IssueReason[] = ['flush', 'load-use', 'memory-stall', 'raw'];
     const PAIRING: IssueReason[] = ['branch-slot', 'intra-pair-raw', 'mem-port'];
     for (const w of WIDTHS) {
-      const { html, verdicts, reasons } = surfacesAt(w);
-      expect(html.length, `width ${w} rendered nothing`).toBeGreaterThan(0);
-      expect([...verdicts].sort(), `width ${w} verdicts`).toEqual(
+      const { byVerdict, byReason } = surfacesAt(w);
+      expect([...byVerdict.keys()].sort(), `width ${w} verdicts`).toEqual(
         w === 1 ? ['blocked', 'idle', 'solo'] : ['blocked', 'idle', 'paired', 'refused', 'solo'],
       );
-      expect([...reasons].sort(), `width ${w} reasons`).toEqual(
+      expect([...byReason.keys()].sort(), `width ${w} reasons`).toEqual(
         w === 1 ? NARROW : [...NARROW, ...PAIRING].sort(),
       );
+      // The clause that makes the sweep a net rather than a formality: the PANEL rendered, and it
+      // rendered the gloss it looked up. Checked against `REASON_TEXT` itself rather than against
+      // a copy of its sentences — this pins the WIRING, which is what a vocabulary rewrite must
+      // survive, not the words, which are what it changes.
+      for (const [v, html] of byVerdict) {
+        expect(html, `width ${w} verdict ${v}: the panel rendered nothing`).toContain(
+          'aria-label="Issue and pairing"',
+        );
+      }
+      for (const [reason, html] of byReason) {
+        expect(html, `width ${w} reason ${reason}: gloss absent from the render`).toContain(
+          REASON_TEXT[reason],
+        );
+      }
     }
   });
 
@@ -190,9 +211,10 @@ describe('the readout says nothing pair-shaped at any width', () => {
     // relation to an OLDER GROUP-MATE, which is exactly as true of a pair as of a group of four.
     // A narrower tier that must not contradict a wider one is INV-5's shape, in prose.
     for (const w of WIDTHS) {
-      for (const html of surfacesAt(w).html) {
+      const { byVerdict, byReason } = surfacesAt(w);
+      for (const [key, html] of [...byVerdict, ...byReason]) {
         const hit = PAIR_SHAPED.exec(html);
-        expect(hit?.[0], `width ${w} rendered a pair-shaped claim: ${hit?.[0]}`).toBeUndefined();
+        expect(hit?.[0], `width ${w} (${key}) rendered a pair-shaped claim`).toBeUndefined();
       }
     }
   });
