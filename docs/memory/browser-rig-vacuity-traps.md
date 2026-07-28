@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-28T07:21:03.118Z
+  modified: 2026-07-28T07:27:44.809Z
 ---
 
 Once you can drive the app ([[browser-rig-cdp-recipe]]), the remaining failure mode is a check that
@@ -88,7 +88,8 @@ Two more things from that pass:
   which is not rendered. The geometry is the honest key anyway: it is what the reader sees.
 - **Read every expected NUMBER from the dump; never guess a threshold.** A guessed ">40 wires"
   failed at 34 — which was exactly right for the state the shell opens in (dump a
-  tier×config→count table and index it with the state you read live).
+  tier×config→count table and index it with the state you read live). Of the failures in that
+  run, **all** were the rig, continuing the M11 step-5 pattern.
 
 **Ask which path the last refactor existed to fix, and whether anything ever clicked it.** M11's
 `useSimulator` change was made because "two refs assigned at three sites is how the LESSON path

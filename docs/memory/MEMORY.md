@@ -25,24 +25,11 @@ track. Repo **4498 tests**, five gates green.
   `docs/reviews/m9-m10-review-findings.md`.
 - [The browser is the only net](browser-is-the-only-net.md) — headless tests here are
   `renderToStaticMarkup` with no jsdom, so **no test can see a click**; 9 of 10 view
-  steps shipped a defect only the browser caught. **Hub** — read before any browser
-  pass, then the four siblings below for the operational detail.
-  - [Browser rig — CDP recipe](browser-rig-cdp-recipe.md) — launch & attach: global
-    `WebSocket` + headless Chrome, `--strictPort` read back from the log, target by URL
-    with **no fallback**, poll the specific element and throw, drive the `vite preview`
-    bundle. Sweepable rig inventory under `M:/claud_projects/temp/`.
-  - [Browser rig — Chrome cleanup](browser-rig-chrome-cleanup.md) — **never** `taskkill
-//IM chrome.exe` (it closed the user's real Chrome twice); `chrome.kill()` does NOT
-    kill the browser (21, then 66, leftovers; the next run inherits the old page). Kill
-    the tree by PID, sweep by `--user-data-dir` path.
-  - [Browser rig — vacuity traps](browser-rig-vacuity-traps.md) — how a green check
-    measures nothing: assert the NEGATIVE state first, use the ARIA the component
-    exposes, scope reads to their `<section>`, read every number from a dump. In two M11
-    runs **every failure was the rig, not the app**.
-  - [Browser rig — screenshot limits](browser-rig-screenshot-limits.md) — the image
-    caught what every string check missed, but a native `<select>` popup isn't in the
-    render tree, HTML5 DnD isn't drivable by a synthesized mouse, and `getBBox()` on
-    `<text>` is the advance box — report a signed clearance.
+  steps shipped a defect only the browser caught. **Hub** — read before any browser pass.
+  - [CDP recipe](browser-rig-cdp-recipe.md) — launch & attach; target by URL, no fallback.
+  - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; kill the tree by PID.
+  - [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
+  - [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
 - [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — several vite
   projects climb past each other on 5173+; **a port never tells you whose server it is**
   — identify by served `<title>`. Applies to CDP debug ports too.
