@@ -681,16 +681,16 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       with `git checkout -- packages/web/src/`, which reverted every UNCOMMITTED step-7 edit — the
       geometry, the tests, the view, the stylesheet. Recovered in full (every edit was scripted or
       in a temp file), but the lesson is cheap to state and expensive to learn: **commit before you
-      break.** A deliberate-break pass is a destructive operation on the working tree, and `git
-  checkout` cannot distinguish the break from the work it sits on.
+      break.** A deliberate-break pass is a destructive operation on the working tree, and a
+      `checkout` cannot distinguish the break from the work it sits on.
       **Eight breaks watched, and six isolate to exactly ONE test** — clamp the slot back to 2 (13
       red, and the suite SHRINKS 1533 → 1527, because the width-parameterized cases stop existing:
       a break that deletes tests); stop filtering lanes (5); pin the canvas to a constant (1);
       hand two lanes the same channel (1); the same stub (1); restore M7's crossing route (1); drop
       a tint from ONE dark block (1 — nothing else in the repo can see a drifted dark block); restore
       M7's fixture (2).
-      **Handed to step 8, explicitly rather than silently.** `REFUSAL_TEXT`'s `'it reads what its
-  partner writes'` is pair-shaped, and — sharper — `PairingReadoutView`'s caption is a literal
+      **Handed to step 8, explicitly rather than silently.** `REFUSAL_TEXT`'s gloss for
+      `intra-pair-raw` is pair-shaped, and — sharper — `PairingReadoutView`'s caption is a literal
       **"up to 2 instructions may issue together"**, which has been WRONG at widths 3 and 4 since
       step 6 shipped the control. It is user-facing copy in step 8's file, so it moves with step 8's
       vocabulary pass; it is named here so it cannot be lost. The complement still holds:
