@@ -40,6 +40,33 @@ const W2: ProcessorConfig = { ...defaultConfig(), forwarding: true, issueWidth: 
  *  matrix follow, so raising `MAX_ISSUE_WIDTH` cannot leave the widest machine the least tested. */
 const WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1);
 
+/**
+ * The whole config space a width sweep has to cross, and it is not decoration.
+ *
+ * A first draft of the width-derived tests below ran ONE config — forwarding on, no prediction, no
+ * cache — and two of its assertions turned out to be true only there. `static-taken` **spends** the
+ * width, because a bet ends its issue group, so a betting scheme re-partitions every group a width
+ * change would otherwise widen; step 6 recorded the counter-intuitive direction of that (a betting
+ * scheme HIDES a width effect the base scheme exposes, where intuition says a scheme that adds a
+ * mechanism should expose more). Sweeping the axes is a loop; discovering which of your claims were
+ * config-specific is not something reading them can do. **A measurement's glob is part of its
+ * claim** — step 4's rule, and this is the third milestone step it has caught something in.
+ */
+function configsAt(width: number): [string, ProcessorConfig][] {
+  const out: [string, ProcessorConfig][] = [];
+  for (const forwarding of [true, false])
+    for (const branchPrediction of ['static-not-taken', 'static-taken'] as const)
+      for (const [name, cache] of [
+        ['none', null],
+        ['small', CACHE_SMALL],
+      ] as const)
+        out.push([
+          `fwd=${forwarding} pred=${branchPrediction} cache=${name}`,
+          { ...defaultConfig(), forwarding, branchPrediction, cache, issueWidth: width },
+        ]);
+  return out;
+}
+
 /** Record a whole run and hand back every cycle. */
 function record(source: string, config: ProcessorConfig = W2): readonly CycleTrace[] {
   const r = loadSource(source, () => new SuperscalarProcessor(), config);
@@ -242,22 +269,31 @@ describe('the group at N lanes', () => {
    * those sentences cannot describe, so a future edit that re-hardcodes "both" has something
    * standing against it beyond a comment.
    *
-   * Asserted as SHAPES rather than exact counts: the histogram (26 paired cycles at width 4, of
-   * which 22 hold three and 4 hold four) is a fact about today's corpus and would move if a program
-   * were added, whereas "width 4 co-issues more than two, and never exactly two" is the claim the
-   * prose actually depends on.
+   * **The first draft asserted the exact set `[3, 4]`, and that was a latent FALSE assertion caught
+   * by widening the config sweep.** Under forwarding ON / no prediction / no cache the corpus really
+   * does never co-issue exactly two at width 4 — but across the twelve configs a 2-instruction
+   * co-issue happens on **24 cycles**, and when it does the derived gloss "2 instructions issued
+   * together this cycle" is CORRECT, because it is derived. So the exact-set version would have
+   * reddened on a cycle the code handles perfectly. What the prose actually depends on is only that
+   * a co-issue at width 4 is not always a pair, and that is what is asserted; the histogram
+   * ({2: 24, 3: 168, 4: 30}) stays here as an observation, where an enumeration belongs.
    */
-  it('at width 4 a co-issue is NEVER a pair — measured, not assumed', () => {
+  it('at width 4 a co-issue is routinely MORE than a pair — measured, not assumed', () => {
     const sizes = new Set<number>();
     for (const p of EXAMPLE_PROGRAMS) {
-      for (const t of record(p.source, { ...W2, issueWidth: 4 })) {
-        const r = readPairing(t)!;
-        if (r.verdict === 'paired') sizes.add(r.candidates.length);
+      for (const [, cfg] of configsAt(4)) {
+        for (const t of record(p.source, cfg)) {
+          const r = readPairing(t)!;
+          if (r.verdict === 'paired') sizes.add(r.candidates.length);
+        }
       }
     }
     // Non-vacuity first: the corpus really does co-issue at width 4.
     expect(sizes.size, 'no paired cycle at width 4 at all').toBeGreaterThan(0);
-    expect([...sizes].sort()).toEqual([3, 4]);
+    // A `paired` verdict means EVERY occupant went and there was more than one, so 1 is a
+    // contradiction in terms — the one size that would mean the fold is broken.
+    expect(sizes.has(1), 'a "paired" cycle with a single candidate').toBe(false);
+    expect([...sizes].some((n) => n > 2), 'no co-issue wider than a pair — the prose is unmotivated').toBe(true); // prettier-ignore
   });
 
   it('and a refusal holds MORE THAN ONE instruction back, which width 2 cannot do', () => {
@@ -268,9 +304,11 @@ describe('the group at N lanes', () => {
     const heldAt = (w: number): Set<number> => {
       const s = new Set<number>();
       for (const p of EXAMPLE_PROGRAMS) {
-        for (const t of record(p.source, { ...W2, issueWidth: w })) {
-          const r = readPairing(t)!;
-          if (r.verdict === 'refused') s.add(r.candidates.filter((c) => !c.issued).length);
+        for (const [, cfg] of configsAt(w)) {
+          for (const t of record(p.source, cfg)) {
+            const r = readPairing(t)!;
+            if (r.verdict === 'refused') s.add(r.candidates.filter((c) => !c.issued).length);
+          }
         }
       }
       return s;
@@ -383,26 +421,53 @@ describe('the IPC tile', () => {
    * engine that ignores the toggle entirely).
    *
    * So the claim is split into the two halves that are separately true and separately falsifiable:
-   * a UNIVERSAL ceiling-and-monotonicity claim over every program and width, and a STRICT rise
-   * pinned to the one program that moves at every position, BY NAME. `slow-op-loop` is that program
-   * — 0.682 → 0.857 → 0.882 → 0.909 — and it is the same name step 6 had to adopt for the seam
+   * a UNIVERSAL ceiling-and-monotonicity claim over every program, width AND CONFIG, and a STRICT
+   * rise pinned to one program and one scheme, both BY NAME. `slow-op-loop` under the base scheme is
+   * that program — 0.682 → 0.857 → 0.882 → 0.909 — the same name step 6 had to adopt for the seam
    * fixture, for the same reason: `sum-loop` and `array-sum` are structurally blind to the 3 → 4
    * flip and would have made a width-4 test into a width-3 measurement.
+   *
+   * The two halves have DIFFERENT config globs, and that asymmetry is load-bearing rather than
+   * untidy. The universal half is swept across all twelve configs because a claim that reads as
+   * config-general must be asked config-generally; the strict half names its scheme because it is
+   * false under the other one. A single glob covering both would have to be the narrow one, and the
+   * universal claim would then be a single-config measurement wearing a universal name.
    */
-  it('never exceeds the width and never falls as the width rises — at all four positions', () => {
+  it('never exceeds the width and never falls as the width rises — every program, every config', () => {
+    // The UNIVERSAL half, swept across all twelve configs rather than the one the strict rise below
+    // is pinned to. That is the point of the split: a claim that holds everywhere should be ASKED
+    // everywhere, and this one does hold — measured, zero violations. Stated over a single config it
+    // would READ as config-general and be nothing of the kind.
     for (const p of EXAMPLE_PROGRAMS) {
-      const byWidth = WIDTHS.map((w) => readIpc(record(p.source, { ...W2, issueWidth: w })));
-      for (const [i, v] of byWidth.entries()) {
-        const w = WIDTHS[i]!;
-        expect(v.ipc, `${p.name} w${w} exceeds its own width`).toBeLessThanOrEqual(w);
-        // In-order retirement: width changes how LONG a program takes, never how much it runs.
-        expect(v.retired, `${p.name} w${w} retire count moved`).toBe(byWidth[0]!.retired);
-        if (i > 0) expect(v.ipc, `${p.name} w${w} fell below w${WIDTHS[i - 1]}`).toBeGreaterThanOrEqual(byWidth[i - 1]!.ipc); // prettier-ignore
+      for (const [ci, label] of configsAt(1)
+        .map(([l]) => l)
+        .entries()) {
+        // prettier-ignore
+        const byWidth = WIDTHS.map((w) => readIpc(record(p.source, configsAt(w)[ci]![1])));
+        for (const [i, v] of byWidth.entries()) {
+          const where = `${p.name} ${label} w${WIDTHS[i]}`;
+          expect(v.ipc, `${where} exceeds its own width`).toBeLessThanOrEqual(WIDTHS[i]!);
+          // In-order retirement: width changes how LONG a program takes, never how much it runs.
+          expect(v.retired, `${where} retire count moved`).toBe(byWidth[0]!.retired);
+          if (i > 0) expect(v.ipc, `${where} fell below w${WIDTHS[i - 1]}`).toBeGreaterThanOrEqual(byWidth[i - 1]!.ipc); // prettier-ignore
+        }
       }
     }
   });
 
-  it('slow-op-loop is the one program whose IPC rises at EVERY position — and it is named', () => {
+  /**
+   * **The config is in the title because the claim is FALSE without it, and finding that out cost a
+   * config sweep the first draft did not run.** Under `static-taken`, `slow-op-loop` runs
+   * 41 → 32 → 32 → 31: flat from width 2 to 3, because a bet ENDS its issue group, so a betting
+   * scheme re-partitions the tail instead of widening it. That is step 6's finding — _a betting
+   * scheme HIDES a width effect the base scheme exposes_ — recurring in the panel two steps later,
+   * and it runs against the intuition that a scheme with more mechanism should expose more.
+   *
+   * So this is the one program that rises at every position UNDER THE BASE SCHEME. There is no
+   * program that rises at every position under every scheme, and saying so is the honest version of
+   * "the one program that moves".
+   */
+  it('slow-op-loop rises at EVERY position under the BASE scheme — the scheme is part of it', () => {
     const ipcs = WIDTHS.map((w) =>
       readIpc(record(program('slow-op-loop'), { ...W2, issueWidth: w })),
     );
@@ -410,6 +475,13 @@ describe('the IPC tile', () => {
     for (let i = 1; i < ipcs.length; i++) {
       expect(ipcs[i]!.ipc, `w${WIDTHS[i]} did not beat w${WIDTHS[i - 1]}`).toBeGreaterThan(ipcs[i - 1]!.ipc); // prettier-ignore
     }
+    // ...and the betting scheme really does flatten it, so the caveat above is watched, not asserted
+    // in a comment. Without this line the title's qualifier would be unfalsifiable prose.
+    const taken = WIDTHS.map(
+      (w) =>
+      readIpc(record(program('slow-op-loop'), { ...W2, issueWidth: w, branchPrediction: 'static-taken' })), // prettier-ignore
+    );
+    expect(taken.map((v) => v.cycles)).toEqual([41, 32, 32, 31]);
   });
 
   it('...and the OTHER programs are enumerated as flat, so no width-4 cell implies otherwise', () => {
@@ -417,6 +489,8 @@ describe('the IPC tile', () => {
     // this list has the SAME IPC at widths 3 and 4, so any assertion about it at width 4 is a
     // width-3 measurement wearing a width-4 name. Enumerated rather than characterised — step 6's
     // 33 survivors were characterised from memory of the table and the characterisation was wrong.
+    // Scoped to the base scheme deliberately, for the same reason the strict rise above is: the flat
+    // SET is a property of a config, not of the corpus.
     const flat: string[] = [];
     for (const p of EXAMPLE_PROGRAMS) {
       const w3 = readIpc(record(p.source, { ...W2, issueWidth: 3 })).ipc;

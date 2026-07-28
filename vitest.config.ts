@@ -32,16 +32,25 @@ export default defineConfig({
     environment: 'node',
     /**
      * Vitest's 5 s default is the one non-deterministic thing in an otherwise pure suite, and M13
-     * step 8's break pass caught it flaking: `datapath-superscalar.test.ts`'s `throughBox` litmus
-     * runs ~2 s alone and was measured at **6.4 s under a loaded full run**, failing as a TIMEOUT
-     * on a deliberate break that touched a different package entirely. A wall-clock red herring in
-     * the middle of a break measurement is worse than a slow test.
+     * step 8's break pass caught it flaking — on a deliberate break that touched a different
+     * PACKAGE entirely, which is a wall-clock red herring in the middle of a measurement.
+     *
+     * **Re-provoked deliberately rather than left as an inference, and the first reading was wrong
+     * in two ways.** Five full runs at the 5 s default: one failed, so the flake rate is ~20%, not a
+     * one-off. Its captured error text is `Test timed out in 5000ms.` — so "timeout" is now READ
+     * rather than deduced from a duration. And it is not ONE slow test but four, all of them
+     * width-4 geometry sweeps: `throughBox` at **17.3 s** against a ~2 s median, the collinearity
+     * litmus at 9.0 s, and two `activation coherence` sweeps at 6.3 s and 8.0 s. The first draft of
+     * this comment said 6.4 s and named one test; both numbers came from a single observation.
+     *
+     * 60 s is ~3.5× the worst measured, chosen after that correction — 30 s would have left 1.7×
+     * headroom over a value already 8× its own median.
      *
      * Raising it does not weaken the liveness net, which is the objection to check before doing
      * this: non-termination here is caught by CYCLE bounds, not by the clock — `halt-shadow.test.ts`
      * sweeps at 500 cycles and `Recorder.runToEnd` caps at 1 000 000 — so a hung machine still
      * fails as a hung machine. What this removes is only the machine-speed dependence.
      */
-    testTimeout: 30_000,
+    testTimeout: 60_000,
   },
 });
