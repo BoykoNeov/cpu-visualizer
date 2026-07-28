@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { assemble } from '@cpu-viz/assembler';
 import { toProgramImage, CACHE_SMALL } from '@cpu-viz/engine-common';
 import { defaultConfig, type CycleTrace, type ProcessorConfig } from '@cpu-viz/trace';
-import { SuperscalarProcessor } from './index';
+import { SuperscalarProcessor, MAX_ISSUE_WIDTH } from './index';
+
+const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));
 
 /**
  * **M13 step 2 — the adversarial nets: the things a group of three or four can do that a pair
@@ -23,21 +27,23 @@ import { SuperscalarProcessor } from './index';
  *
  * Four provocations, and **each was watched failing against a deliberately broken engine before
  * being kept** (the M11+M12 review's method lesson: one property sweep passed 8/8 on the bug it was
- * written for). Six breaks were run in all; what each was, and what ELSE it reddened, is recorded
+ * written for). Seven breaks were run in all; what each was, and what ELSE it reddened, is recorded
  * per section — because a break that reddens `pairing.test.ts` proves the new test is correct
  * without proving it covers new ground.
  *
- * **What that record turned up is worth more than the tests themselves.** Exactly one of the six
- * breaks — §(a)'s two-slot-capped forwarding scan — is invisible to every other test in the repo
- * (4519 green, this file alone red). The other three arity-specific breaks are caught by exactly
- * ONE existing file, `halt-shadow.test.ts`, and only because step 1 derived its `WIDTHS` from
- * `MAX_ISSUE_WIDTH` rather than typing `[1, 2]`. **Every time, it reports the defect as a hang or
- * an internal-invariant crash** — "did not terminate within 500 cycles", "halted with instructions
+ * **What that record turned up is worth more than the tests themselves.** Two of the seven breaks
+ * are invisible to every other test in the repo — the two forwarding scans capped at two slots
+ * (4519 and 4521 green respectively, this file alone red). Capping them one at a time is what
+ * showed they are two provocations and not one: breaking EX/MEM leaves the MEM/WB cases green and
+ * vice versa. The other three arity-specific breaks are caught by exactly ONE existing file,
+ * `halt-shadow.test.ts`, and only because step 1 derived its `WIDTHS` from `MAX_ISSUE_WIDTH`
+ * rather than typing `[1, 2]`. **Every time, it reports the defect as a hang or an
+ * internal-invariant crash** — "did not terminate within 500 cycles", "halted with instructions
  * still in flight" — never as the thing that went wrong. So the repo's width-3/4 coverage after
  * step 1 was a liveness net that converts arity bugs into crashes without naming them, and three
  * of the four sections below exist to give those crashes a diagnosis. The width-1/2 suites
- * (`pairing`, `timing`, `differential`, `miss-freeze-forward`) stayed green under all four, which
- * is the measurement that says this file covers ground they cannot reach.
+ * (`pairing`, `timing`, `differential`, `miss-freeze-forward`) stayed green under every one of the
+ * seven, which is the measurement that says this file covers ground they cannot reach.
  *
  * Widths are chosen PER GEOMETRY rather than swept over `1..MAX_ISSUE_WIDTH`: a group-of-four shape
  * passes vacuously at width 3, where it can never form. Each test therefore asserts the group it
@@ -107,6 +113,45 @@ function expectMonotoneRetirement(ts: CycleTrace[], where: string): void {
 const MEM_OPS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu', 'sb', 'sh', 'sw']);
 const TRANSFERS = new Set(['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu', 'jal', 'jalr']);
 
+/**
+ * The classes that write a register, restated here rather than imported. `decoded.rd` is
+ * meaningless for S/B words (those bits carry the immediate), so a sweep that trusted it would
+ * invent destinations out of branch offsets — the same reason the engine enumerates rather than
+ * derives. A local copy is right for a test: importing the engine's own set would make this agree
+ * with the engine by construction rather than by check. Loads write; **stores do not** — `sb`/`sh`/
+ * `sw` are S-format, so their `rd` bits are immediate.
+ */
+const WRITES_RD = new Set([
+  'lb',
+  'lh',
+  'lw',
+  'lbu',
+  'lhu',
+  'lui',
+  'auipc',
+  'jal',
+  'jalr',
+  'addi',
+  'slti',
+  'sltiu',
+  'xori',
+  'ori',
+  'andi',
+  'slli',
+  'srli',
+  'srai',
+  'add',
+  'sub',
+  'sll',
+  'slt',
+  'sltu',
+  'xor',
+  'srl',
+  'sra',
+  'or',
+  'and',
+]);
+
 // =================================================================================================
 // (a) SAME-`rd` CO-ISSUE — three writers of one register in one group
 // =================================================================================================
@@ -126,6 +171,26 @@ const SAME_RD = `.text
 addi x1, x0, 11
 addi x1, x0, 22
 addi x1, x0, 33
+addi x7, x1, 0
+li a7, 10
+ecall
+`;
+
+/**
+ * The same three writers, but with a whole filler GROUP between them and the consumer — so by the
+ * time the consumer resolves its operands the writers have drained out of EX/MEM and into MEM/WB.
+ * That is what reaches `resolveOperand`'s SECOND descending scan; `SAME_RD` can only reach its
+ * first.
+ */
+const SAME_RD_DRAINED = `.text
+addi x1, x0, 11
+addi x1, x0, 22
+addi x1, x0, 33
+addi x20, x0, 1
+addi x21, x0, 2
+addi x22, x0, 3
+addi x23, x0, 4
+addi x24, x0, 5
 addi x7, x1, 0
 li a7, 10
 ecall
@@ -187,10 +252,78 @@ describe('(a) three writers of one register, co-issued', () => {
    * `cycles-cannot-see-a-lost-forward` family exactly. The forwarding source set's arity was read
    * at step 1 and never watched; this is where it gets watched.
    */
-  it('is not a claim about the corpus — no corpus program builds this group', () => {
-    // Kept as an explicit note rather than a comment: the three-writer group is hand-built here
-    // precisely because nothing in `content/programs/` writes one register three times in a row.
-    expect(SAME_RD.match(/addi x1,/g)?.length).toBe(3);
+  /**
+   * **The SECOND descending scan, which the test above cannot reach.** `resolveOperand` has two:
+   * EX/MEM first, then MEM/WB. In `SAME_RD` the consumer lands in EX while the three writers are
+   * still in EX/MEM, so the first loop answers and the second one never sees more than one
+   * candidate — its arity was in exactly the state step 1 left the first one in: read, not watched.
+   *
+   * A whole intervening group is what reaches it. The writers issue, a filler group issues behind
+   * them, and by the time the consumer executes the writers have drained to MEM/WB while EX/MEM
+   * holds only fillers. Both widths were dumped: the forward is MEM/WB-sourced at each.
+   *
+   * **Watched failing:** the MEM/WB loop capped at two slots, the same shape as break (2) above —
+   * the consumer forwards 22 and x7 ends 22. Broken alone, with the EX/MEM loop left correct, the
+   * test above stays green: the two loops needed separate provocations.
+   */
+  for (const width of [3, 4]) {
+    it(`width ${width}: the MEM/WB scan picks the youngest of three too`, () => {
+      const ts = run(SAME_RD_DRAINED, cfg(width));
+      const c = ts.findIndex((t) =>
+        t.instructions.some((i) => i.id === 'i8' && i.location.startsWith('EX')),
+      );
+      expect(c).toBeGreaterThan(0);
+
+      // THE SETUP, and it is the whole test — `miss-freeze-forward.test.ts`'s lesson in this file's
+      // dialect. If the front end ever packs these differently the writers are still in EX/MEM, the
+      // first loop answers, and every assertion below passes while measuring the wrong scan.
+      expect([at(ts[c]!, 'WB.0'), at(ts[c]!, 'WB.1'), at(ts[c]!, 'WB.2')]).toEqual([
+        'i0',
+        'i1',
+        'i2',
+      ]);
+      const forwards = eventsOf(ts, 'forward').filter((e) => e.instr === 'i8');
+      expect(forwards.map((e) => e.from)).toEqual(['MEM/WB']); // ...not EX/MEM: the setup held
+      expect(forwards.map((e) => e.value)).toEqual([33]);
+      expect(ts[ts.length - 1]!.state.registers[7]).toBe(33);
+    });
+  }
+
+  /**
+   * **The claim that these groups are hand-built, measured rather than asserted about a string.**
+   * The first version of this was `expect(SAME_RD.match(/addi x1,/g)?.length).toBe(3)` — a test of
+   * a literal three lines above it, which can only fail if someone edits the literal and says
+   * nothing at all about the engine or the corpus. In a file whose thesis is that a green check
+   * which cannot fail is worse than none, that was the wrong shape.
+   *
+   * So it is a corpus sweep instead: run every shipped program at the widest machine and count the
+   * same-`rd` writers that ever co-issue. The most any corpus program manages is two — which is
+   * why the three-writer group has to be written by hand, and which is a fact about the corpus that
+   * will change loudly rather than silently if a program is ever added.
+   */
+  it('no corpus program ever co-issues three writers of one register', () => {
+    const files = readdirSync(PROGRAMS_DIR).filter((f) => f.endsWith('.s'));
+    expect(files.length).toBeGreaterThan(0);
+    let mostSeen = 0;
+    for (const file of files) {
+      const ts = run(readFileSync(PROGRAMS_DIR + file, 'utf8'), cfg(MAX_ISSUE_WIDTH));
+      for (const t of ts) {
+        const dests = new Map<number, number>();
+        for (let s = 0; s < MAX_ISSUE_WIDTH; s++) {
+          const occupant = t.instructions.find((i) => i.location === `EX.${s}`);
+          if (occupant === undefined || !WRITES_RD.has(occupant.decoded.mnemonic)) continue;
+          const rd = occupant.decoded.rd;
+          if (rd === 0) continue; // x0 and "writes nothing" coincide, as the engine has it
+          dests.set(rd, (dests.get(rd) ?? 0) + 1);
+        }
+        mostSeen = Math.max(mostSeen, ...dests.values());
+      }
+    }
+    // Non-vacuity first: the sweep must have SEEN co-issued writers, or "never three" is free.
+    expect(mostSeen).toBeGreaterThan(0);
+    expect(mostSeen, 'a corpus program now builds the group this section hand-builds').toBeLessThan(
+      3,
+    );
   });
 });
 
@@ -272,6 +405,13 @@ describe('(b) a cache miss with more than one follower in MEM', () => {
     it(`width ${width}: the cache stays a pure timing shadow across the multi-follower freeze`, () => {
       // The other half of the same claim, and the one a structural test cannot make: holding three
       // instructions in place must cost cycles and change no answer.
+      //
+      // **A COMPANION PIN, not the net.** Under the single-follower break recorded below this one
+      // stayed green — the overtaking followers still retire, still write the same values, and the
+      // run is still `missPenalty` longer, because a load that finishes late does not finish wrong.
+      // The monotonicity assertion above is what catches that break; this one catches a "fix" that
+      // quietly stopped freezing at all, which would satisfy every structural check and destroy the
+      // M6 lesson.
       const off = run(FREEZE, cfg(width, { cache: null }));
       const on = run(FREEZE, cfg(width, { cache: CACHE_SMALL }));
       expect(on.length - off.length).toBe(CACHE_SMALL.missPenalty);

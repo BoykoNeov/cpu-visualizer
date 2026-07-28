@@ -1,6 +1,6 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b and 1 DONE 2026-07-28. The guard now admits 1..4 and the
+**Status: IN PROGRESS — steps 0, 0b, 1 and 2 DONE 2026-07-28. The guard now admits 1..4 and the
 engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
 the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
@@ -154,18 +154,59 @@ against it — it was a missing UNDO, not a missing fourth rule.
       at `min(width, 2)` while `width` is stored honestly reddens the shape test — and that is
       precisely the bug the obvious `expect(micro.width).toBe(w)` cannot see, since it only checks
       that `reset()` remembered its argument.
-- [ ] **2. The adversarial engine nets — the three things the corpus CANNOT show.** Each hand-built,
-      each **watched failing against a deliberately broken engine before being kept** (the M11+M12
-      review's sharpest method lesson: one property sweep passed 8/8 on the bug it was written for).
-      (a) **Same-`rd` co-issue** — two independent instructions in one group writing the same
-      register (no RAW between them, so nothing refuses the pairing); a forwarding scan that walks
-      slots ascending and takes the first match forwards the OLDER writer. Assert on the event
-      MULTISET, not cycles (`cycles-cannot-see-a-lost-forward`). (b) **The MEM freeze at arity > 2**
-      — a miss in `MEM.0` with non-memory instructions behind it in `MEM.2`/`MEM.3`; M7's one real
-      bug lived exactly here and the freeze's "propagate downward in age only" rule has never been
-      run against more than one follower. Retire-id monotonicity is the assertion. (c) **A transfer
-      in the last slot of a full group** — `branch-slot` and the bet/squash slot arithmetic have only
-      ever been exercised at slot ≤ 1. Acceptance: three provocations, each confirmed to BITE.
+- [x] **2. The adversarial engine nets — what the corpus does not show, and one thing it turns out
+      it does.** ✅ DONE 2026-07-28 (repo 4504 → 4523 tests), `packages/engine/superscalar/src/
+    wide-groups.test.ts`, 19 cases. The scoped heading for this step was "the THREE things the
+      corpus CANNOT show", and **the measurement falsified it for (b)** — see below; the sentence is
+      corrected here rather than left standing, which is the `CycleCtx.bet` lesson applied to the
+      file that records the contradiction.
+      **Four provocations, not three.** The fourth came from asking what break would be invisible at
+      width 2 _by construction_: (d) **the pairing rules asked of a NON-LEADER older group member.**
+      `issueVerdict`'s `for (const older of group)` and a single check against `group[0]` are the
+      SAME FUNCTION at width 2 — when slot 1 is judged the group holds exactly the leader — so every
+      existing test in the package is blind to the difference. Three programs, one per rule, each
+      packed (by dumping) so the conflicting member sits at ID slot 1 or 2 while the leader is
+      innocent. `intra-pair-raw` is the sharpest: breaking it is a WRONG ANSWER (`x8` ends 1 instead
+      of 10), where the two structural rules only cost a port.
+      **(a) Same-`rd` co-issue — and it needed TWO programs, not one.** Three writers of x1 co-issue
+      (nothing refuses it: no RAW between them) and the consumer must forward the youngest. But
+      `resolveOperand` has TWO descending scans, and the obvious program only reaches the first:
+      with the writers in EX/MEM the MEM/WB loop never sees more than one candidate, so its arity
+      was left in exactly the state step 1 left the other one in — read, not watched. A second
+      program puts a whole filler GROUP between writers and consumer so they drain to MEM/WB.
+      Capping each loop at two slots reddens only its own cases, which is what proves they are two
+      provocations.
+      **(b) The MEM freeze with more than one follower — and the corpus DOES build it.** Widths 3/4
+      hold 2 and 3 followers behind a missing load (width 2 holds exactly one, pinned here as the
+      reason the geometry needs width ≥ 3). Retire-id monotonicity is the assertion. The break —
+      hold only the FIRST follower — also reddens `halt-shadow.test.ts`: `store-forward.s @
+    w3/nofwd/none/cache2` throws _"halted at cycle 21 with instructions still in flight"_. So this
+      hole is corpus-reachable at width 3, and the step's heading was wrong about it.
+      **(c) A transfer in a non-zero slot of a full group — the last slot is the DEGENERATE end.**
+      A slot-3 transfer kills nobody in EX, which is structurally what a width-2 slot-1 transfer
+      does; it is kept because the plan names it, but two shapes carry the information. The MIDDLE
+      slot has both older survivors AND younger casualties in one stage — a state width 2 cannot
+      build (pinned by a test that shows the same program at width 2 producing only one side). The
+      LEADING slot has three younger mates to kill, where width 2 has one; "everything above me
+      dies" and "the slot above me dies" are the same sentence at width 2 and different ones here.
+      Both bet spellings are covered too: a bet from the middle kills one ID seat of three, a bet
+      from the last slot kills none and `stages` is `['IF']` alone.
+      **Acceptance MET — seven breaks watched, and the record is the step's real finding.** Two are
+      invisible to the rest of the repo (the two capped scans: 4519 and 4521 green, only this file
+      red). Three are caught by exactly ONE existing file, `halt-shadow.test.ts`, and only because
+      step 1 derived its `WIDTHS` from `MAX_ISSUE_WIDTH` — **and every time it reports a hang or an
+      internal-invariant crash rather than the defect.** So the repo's width-3/4 coverage after step
+      1 was a liveness net that converts arity bugs into crashes without naming them; three of these
+      four sections exist to give those crashes a diagnosis. Every width-1/2 suite stayed green
+      under all seven, which is the measurement that says this file reaches ground they cannot.
+      Two further notes worth keeping: an eighth candidate break was **rejected as provably inert**
+      (`ctx.squash.slot !== slot` looks like it would kill a middle-slot transfer's older mates, but
+      EX is walked oldest-first, so those slots have already executed) — an edit that reads like a
+      bug and cannot be one; and the first version of one assertion was a **tautology over a string
+      literal** (`SAME_RD.match(/addi x1,/g).length === 3`), replaced by a corpus sweep that measures
+      the claim it was pretending to make. Every geometry in the file was DUMPED AND READ before its
+      assertion was written, and the freeze program's first draft reached the right shape only by
+      accident of the slide — its load was refused from slot 2 and slid to lead the next group.
 - [ ] **3. The timing matrix at widths 3 and 4 — DERIVED, never copied.** `cycles = G + L + P + M +
 4`. M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had
       to redo them; this step does not repeat that. Predict each new cell from the closed form
@@ -239,6 +280,12 @@ against it — it was a missing UNDO, not a missing fourth rule.
 - **Assuming the corpus's shape is the language's shape.** Finding 2 is exactly this: eleven
   programs, one exit idiom, one hidden hang. Before trusting any corpus-wide sweep in this
   milestone, ask what all eleven programs happen to share.
+- **...and its mirror image, which step 2 walked into: assuming the corpus CANNOT reach something.**
+  Step 2 was scoped as "the three things the corpus cannot show" and one of the three was wrong —
+  `store-forward.s` builds the multi-follower freeze at width 3, and the broken engine crashes on
+  it. "No corpus program does X" is a measurement too, and it has a width at which it expires
+  exactly as the exit-idiom spacer did. Where this milestone still needs the claim, it is now
+  measured (§(a)'s corpus sweep for three same-`rd` co-issuers) rather than asserted in prose.
 - **Copying width-3/4 counts out of the engine.** The M7 step 2b trap, already paid for once.
 - **Explaining away `paired-branches`.** It runs 9 → 7 → 7 → **6**: flat from w2 to w3, then a gain
   at w4. That is an odd shape for a monotone-issue machine — a width the group never fills buying

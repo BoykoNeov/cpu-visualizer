@@ -1,18 +1,61 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1 done, the guard now admits 1..4 (MAX_ISSUE_WIDTH). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2 done, the guard admits 1..4 (MAX_ISSUE_WIDTH) and the arity->2 nets are in (wide-groups.test.ts, 7 breaks watched). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T11:17:08.863Z
+  modified: 2026-07-28T11:46:21.270Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / **1** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / **2** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → 4503 → **4504** tests. See [[project-overview]] for
+`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → **4523** tests. See [[project-overview]] for
 the index, [[m7-superscalar-engine]] for the machine this generalizes.
+
+### Step 2 SHIPPED — the arity > 2 nets, and **the break record is worth more than the tests**
+
+`wide-groups.test.ts`, 19 cases, four provocations, **seven deliberate breaks watched**. The
+generalisable results, in order of how much they cost to learn:
+
+- **The step's real finding is about the REPO, not the machine.** Only two of the seven breaks are
+  invisible to everything else. Three are caught by exactly ONE existing file —
+  `halt-shadow.test.ts`, and only because step 1 derived its `WIDTHS` from `MAX_ISSUE_WIDTH` — and
+  **every time it reports a hang or an internal-invariant crash rather than the defect** ("did not
+  terminate within 500 cycles"; "halted with instructions still in flight"). So after step 1 the
+  repo's entire width-3/4 coverage was a LIVENESS net, which converts arity bugs into crashes
+  without naming them. Generalises: _when a net catches your break, ask what it says it caught._
+- **The break that hides at width 2 BY CONSTRUCTION is the one to design for.** `issueVerdict`'s
+  `for (const older of group)` vs. `group[0]` are the same function at width 2 — when slot 1 is
+  judged, the group holds exactly the leader. So no existing test could see the difference, and the
+  loop's arity had been read at step 1, never watched. Finding that break is what added a FOURTH
+  provocation the plan never scoped. Same shape found the two-slot-capped forwarding scans.
+- **One rule, two implementations: `resolveOperand` has TWO descending scans** (EX/MEM then
+  MEM/WB), and the obvious program only reaches the first — the writers are still in EX/MEM when
+  the consumer resolves, so the second loop never sees three candidates. A second program with a
+  whole filler GROUP between them drains the writers to MEM/WB. Capping each loop separately reddens
+  only its own cases. **"The forwarding scan is watched" was covering for half a claim.**
+- **"The corpus CANNOT show X" is a measurement, not a premise — and one of the three was FALSE.**
+  The step was scoped as three things the corpus cannot reach; the single-follower freeze break
+  crashes `store-forward.s @ w3/nofwd/none/cache2`. Mirror image of the exit-idiom finding above:
+  claims about corpus coverage expire at some width in BOTH directions. Where the claim is still
+  needed it is now a sweep (no corpus program co-issues three same-`rd` writers; max observed is 2).
+- **The degenerate case is the one the plan asked for, and it was the least informative.** A
+  transfer in the LAST slot kills nobody in EX — structurally what a width-2 slot-1 transfer does.
+  The informative shapes are the MIDDLE (older survivors AND younger casualties in one stage, which
+  width 2 cannot build) and the LEADER (three younger mates to kill, where "everything above me
+  dies" and "the slot above me dies" stop being the same sentence). **Ask which slot makes the
+  claim differ from its width-2 spelling, not which slot is extreme.**
+- **An edit that reads like a bug and provably is not.** `ctx.squash.slot !== slot` looks like it
+  would kill a middle-slot transfer's older mates; EX is walked oldest-first, so those slots have
+  already executed. Rejected as inert rather than run — but only after checking, and it is recorded
+  because the next reader will have the same idea.
+- **A tautology got as far as a passing test.** `expect(SAME_RD.match(/addi x1,/g).length).toBe(3)`
+  asserts a property of a string literal three lines above it — it can only fail if someone edits
+  the literal. In a file whose thesis is that an unfailable green check is worse than none. Replaced
+  by the corpus sweep that measures the claim. **Vacuity is not a beginner's mistake; it is what
+  "documenting the setup" turns into when nobody asks what would falsify it.**
 
 ### Step 1 SHIPPED `3fbda0c` — and it confirmed the dump's headline the hard way
 
