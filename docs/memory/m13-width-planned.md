@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T10:37:31.975Z
+  modified: 2026-07-28T10:38:10.774Z
 ---
 
 ## M13 — the wide machine, widened. **PLANNED 2026-07-28, NOT BUILT.** Steps 0/0b done.
@@ -36,7 +36,13 @@ from the guard.
 A halt (`ecall`) in an unresolved branch's shadow raised the **sticky** `haltFetch` at ISSUE. When
 the branch resolved taken the halt was wrong-path — squashed — but fetch never restarted. The pipe
 drained, `halted` was never raised (only a RETIRING halt raises it), and `isHalted()` stayed false
-for ever, so **every caller looping on it HANGS**, including the recorder and the web app.
+for ever, so **a bare `while (!p.isHalted())` never returns.** Precisely, because the layers differ:
+`Recorder.runToEnd` (`recorder.ts:158`) loops on `isHalted()` but is guarded by
+`maxCycles = 1_000_000`, so it THROWS rather than hanging — after accumulating a million cycle
+traces, each with a full state snapshot, which is not survivable memory (this investigation's own
+first dump run exhausted a 4 GB heap that way and had to cap itself before it could report).
+**A guard that turns an infinite hang into an OOM is not a guard that makes the bug benign** — and
+saying "it hangs" of a layer that actually throws is the kind of prose defect M7 step 3 named.
 
 - **Reachable at width 2**, not just at the new widths: `bnez` immediately followed by `ecall`.
   From width 2 a halt can issue in the SAME GROUP as an unresolved branch — `ecall` reads no
