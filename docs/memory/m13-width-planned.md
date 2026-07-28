@@ -42,9 +42,19 @@ is capped at the same bound **and netted at it** (user pinned CAP BOTH over gate
 - **⚠ THE STEP'S SHARPEST RESULT, and it is an experiment: `this.width = Math.min(width, 2)` —
   an engine running NARROW while reporting the width it was handed — reddens 147 of the 180 new
   TIMING cells and leaves ALL 807 conformance cells green**, including the 396 width-3/4 ones added
-  in the same step. That is "INV-8 is a FALSE net here" built rather than warned about. The 33 wide
-  cells that stay green are the programs cycle-identical at 2/3/4 — **a wide cell on one of those is
-  a width-2 measurement wearing a width-4 name.**
+  in the same step. That is "INV-8 is a FALSE net here" built rather than warned about.
+- **⚠ THE 33 SURVIVORS HAD TO BE ENUMERATED, AND THE FIRST CHARACTERISATION WAS WRONG.** The draft
+  docblock called them "the programs cycle-identical at 2/3/4 — `add.s`, `byte-loads.s`,
+  `call-return.s` and the like". Measured: `byte-loads` and `call-return` are fully RED. The real set
+  is `add.s` w3+w4 (9/9 each), `paired-branches` w3 (6/9, base schemes only), `sum-loop` w3+w4 (3/9
+  each) and `slow-op-loop` w3 (3/9) — **the last three surviving under `static-taken` ONLY.** So only
+  `add.s` survives for the boring reason; **the other 15 are scheme-specific, and a BETTING scheme
+  HIDES a width bug the base scheme exposes.** The intuition runs the other way (betting adds a
+  mechanism, so it should expose more) and is wrong. Practical rule: **a wide assertion whose program
+  AND scheme fall in that set is a width-2 measurement wearing a width-4 name** — and `N`/`P`/`M` are
+  width-invariant, so the TOTAL is the only line carrying the width claim. Generalises past the repo:
+  _"which cells survived my break" is a measurement too — enumerate it, don't characterise it from
+  memory of the table._
 - **The transplant copies TERMS, never totals** (`base.groups`, `base.blocked.on`, `taken.groups`
   from the superscalar's `wide` table); the closed form computes the total. A table of expected
   CYCLE COUNTS read off a passing run is an identity over engine output and looks exactly like a

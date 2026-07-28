@@ -211,6 +211,30 @@ export function modelById(id: string): ModelChoice {
  * inertness are what make ignoring safe. A knob some future model REFUSES belongs here, beside this
  * one, with the same argument written out.
  *
+ * ## Why `issueWidth` is NOT clamped here, re-examined at M13 step 6 rather than inherited
+ *
+ * Step 6 gave `issueWidth` something no other knob on this list has: **two engines that ENFORCE a
+ * bound on it** (`MAX_ISSUE_WIDTH`, in `@cpu-viz/engine-common`, thrown from both the superscalar's
+ * and the out-of-order core's `reset`). That is exactly the shape of thing this function exists to
+ * absorb, so the omission is a decision and is recorded as one.
+ *
+ * It is not clamped because **nothing refuses it.** Measured at step 6: of the six shipped models,
+ * the two that read `issueWidth` accept the whole range the shared control can produce (that is what
+ * capping both engines at one bound bought — the alternative, per-model control positions, was
+ * rejected precisely because this function does not clamp width and so could not have contained it),
+ * and the other four — `pipeline`, `deep-pipeline`, `single-cycle`, `multi-cycle` — do not mention
+ * `issueWidth` **anywhere in their `processor.ts`**. They do not read it, do not default it, and
+ * cannot throw on it. So the value the shell hands a width-blind model is inert in the strongest
+ * sense available, and M7 step 1 pinned that inertness as whole-trace identity rather than assuming
+ * it.
+ *
+ * **What would change the answer, named so it is checked rather than rediscovered:** a model that
+ * declares `configurableIssueWidth: false` *and* guards the field. Since its CONTROL would be hidden
+ * (App gates the toggle on that same capability flag), a reader arriving at width 4 could not unset
+ * the width that broke it — the exact strand the cache clamp exists to prevent, and the M11 step 5
+ * crash (a throw out of an event handler) reproduced on a new knob. **Such a model belongs here, in
+ * the clamp, on the day it lands** — not after the browser pass finds it.
+ *
  * Note what is NOT clamped: the session's own value. The caller keeps its cache geometry while
  * visiting a model that cannot take one, so switching back restores it — the clamp is on the value
  * PASSED to the engine, not on the shell's state.

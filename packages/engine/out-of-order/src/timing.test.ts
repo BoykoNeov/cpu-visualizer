@@ -444,13 +444,35 @@ describe('width 2 ≡ M7’s superscalar closed form (cycles = G + L + P + M + 4
  * `this.width = Math.min(width, 2)` in `reset()` — an engine that silently runs NARROW while
  * reporting the width it was handed, which is precisely the bug opening the guard makes possible:
  *
- *  - **`timing.test.ts`: 147 of these 180 cells go RED.** (The 33 that stay green are the programs
- *    that are cycle-identical at widths 2/3/4 — `add.s`, `byte-loads.s`, `call-return.s` and the
- *    like, whose dependency structure refuses a third slot anyway. Worth knowing: a wide cell on
- *    one of those programs is a width-2 measurement wearing a width-4 name, which is this
- *    milestone's recurring trap and the reason the terms are pinned separately from the total.)
+ *  - **`timing.test.ts`: 147 of these 180 cells go RED.**
  *  - **`differential.test.ts`: all 807 cells stay GREEN**, including the 396 width-3/4 ones added
  *    in this same step.
+ *
+ * **The 33 survivors were ENUMERATED, not characterised — and the first characterisation was
+ * wrong.** The draft of this docblock said they were "the programs cycle-identical at widths 2/3/4 —
+ * `add.s`, `byte-loads.s`, `call-return.s` and the like". Measured, `byte-loads.s` and
+ * `call-return.s` are fully RED at both widths, and the real set is:
+ *
+ * | program              | width  | surviving cells | which                              |
+ * | -------------------- | ------ | --------------- | ---------------------------------- |
+ * | `add.s`              | 3 and 4| 9 of 9 each     | all schemes, all caches            |
+ * | `paired-branches.s`  | 3      | 6 of 9          | `none` + `static-not-taken` only   |
+ * | `sum-loop.s`         | 3 and 4| 3 of 9 each     | **`static-taken` only**            |
+ * | `slow-op-loop.s`     | 3      | 3 of 9          | **`static-taken` only**            |
+ *
+ * Only `add.s` is a survivor for the boring reason (its `add@8` reads both registers the leading
+ * group writes, so `intra-pair-raw` refuses it a third and fourth slot at every width — the table
+ * above says so in its own docblock). **The other 15 are scheme-specific, and that is the finding:
+ * a BETTING scheme can hide a width bug the base scheme exposes.** On `sum-loop.s` and
+ * `slow-op-loop.s` the width-2 machine and the wide machine reach the same total under
+ * `static-taken` by different routes — the bet ends a group either way — while the base scheme
+ * separates them cleanly. The intuition runs the other way (betting adds a mechanism, so it should
+ * expose more), and it is wrong here.
+ *
+ * The practical consequence, for anyone adding a wide cell later: **a wide assertion whose program
+ * and scheme happen to fall in that table is a width-2 measurement wearing a width-4 name.** That is
+ * this milestone's recurring trap, and it is why every term is pinned separately from the total —
+ * `N`, `P` and `M` are width-invariant, so the total is the only line carrying the width claim.
  *
  * That is the milestone's "INV-8 is a FALSE net here" written as an experiment instead of a
  * warning. Every width-1/2 cell in this file also stayed green under the break, which is the

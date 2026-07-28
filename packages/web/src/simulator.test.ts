@@ -1,3 +1,4 @@
+import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
@@ -598,6 +599,14 @@ describe('loadSource issue width — the pairing flip on the live scrub bar (M7 
   it('carries EVERY width the control offers — four positions, four different numbers', () => {
     // Derived from the engine's bound, so a raised `MAX_ISSUE_WIDTH` cannot leave the widest
     // position unpinned at the shell's edge while the control happily offers it.
+    //
+    // **The length check earns its place, and it is not redundant with the `toEqual` below it.**
+    // The cycle list is a LITERAL — the one thing a derived position list does not protect. Raise
+    // `MAX_ISSUE_WIDTH` to 5 and the map yields five numbers against four expected, which reddens
+    // with an array-diff that looks like a WRONG CYCLE COUNT rather than a missing table cell. This
+    // line makes the failure name its own cause, which is the difference between a guard and an
+    // alarm. Same reasoning as `WIDE_WIDTHS`'s completeness check in the engine suites.
+    expect(ISSUE_POSITIONS).toHaveLength(MAX_ISSUE_WIDTH);
     expect(ISSUE_POSITIONS).toEqual([1, 2, 3, 4]);
     expect(ISSUE_POSITIONS.map((w) => cyclesOf('slow-op-loop', w))).toEqual([44, 35, 34, 33]);
   });
