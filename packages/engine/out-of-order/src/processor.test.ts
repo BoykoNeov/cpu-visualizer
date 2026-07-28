@@ -229,4 +229,34 @@ describe('config validation: fail fast rather than livelock', () => {
   it('accepts the minimal positive values (robSize 1, numMshrs 1, issueWidth 1)', () => {
     expect(() => reset({ ...DEFAULT, robSize: 1, numMshrs: 1, issueWidth: 1 })).not.toThrow();
   });
+
+  /**
+   * The three tests above pinned the guard against the value someone thought of, and the guard was
+   * spelled `x < 1` — which lets through the two shapes that reach the SAME livelock by another
+   * road. `NaN < 1` is false, and `NaN` then makes `length < NaN` false forever, so dispatch never
+   * proceeds; `1.5 < 1` is false, and a fractional capacity is not a capacity. Found by the M11+M12
+   * review as finding 3: a fix from the previous review, landed with a test, still wrong.
+   */
+  it.each([
+    ['NaN', Number.NaN],
+    ['a fraction', 1.5],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])('rejects %s in every structural-capacity knob', (_label, value) => {
+    expect(() => reset({ ...DEFAULT, issueWidth: value })).toThrow(
+      /issueWidth .* is not a positive/,
+    );
+    expect(() => reset({ ...DEFAULT, robSize: value })).toThrow(/robSize .* is not a positive/);
+    expect(() => reset({ ...DEFAULT, numMshrs: value })).toThrow(/numMshrs .* is not a positive/);
+  });
+
+  /**
+   * And `slowOpLatency` is deliberately NOT guarded, asserted rather than left to be rediscovered
+   * as an omission: every use of it sits behind a `>= 2` test, so a zero or a fraction makes the
+   * machine defer nothing. Inert, not stuck — the opposite of the three above.
+   */
+  it('leaves slowOpLatency unguarded, because a bad value there is inert', () => {
+    for (const slowOpLatency of [0, 1.5, Number.NaN]) {
+      expect(() => reset({ ...DEFAULT, slowOpLatency })).not.toThrow();
+    }
+  });
 });

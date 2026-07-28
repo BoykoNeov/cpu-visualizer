@@ -179,6 +179,22 @@ function isArchHalt(d: DecodedInstruction): boolean {
   );
 }
 
+/**
+ * Reject a structural-capacity knob that is not a whole count of at least one.
+ *
+ * `x < 1` is the obvious spelling and it is WRONG in two directions, which is how the M9+M10
+ * review's own fix shipped with a hole: `NaN < 1` is false, so a `NaN` capacity sails through and
+ * makes every `length < NaN` comparison false forever; and `1.5 < 1` is false, so a fractional ROB
+ * quietly floors to a machine nobody asked for. Both are the livelock the guard exists to prevent,
+ * reached past the guard. Test the property that is actually required instead of the negation of
+ * the failure someone happened to think of.
+ */
+function positiveCapacity(name: string, value: number): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`out-of-order: ${name} ${value} is not a positive whole capacity`);
+  }
+}
+
 /** An instruction fetched but not yet dispatched — the IF-stage occupant, one per slot. */
 interface Fetched {
   readonly id: string;
@@ -269,28 +285,26 @@ export class OutOfOrderProcessor implements Processor {
 
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     const width = config.issueWidth ?? 2;
-    if (width < 1) {
-      throw new Error(`out-of-order: issueWidth ${width} is not a positive width`);
-    }
+    positiveCapacity('issueWidth', width);
     this.width = width;
     this.predictTaken = config.branchPrediction === 'static-taken';
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.outOfOrder = config.outOfOrderIssue ?? false;
-    // Fail fast on the two structural-capacity knobs, mirroring the `issueWidth` guard above: 0 (or
-    // negative) silently LIVELOCKS otherwise. `robSize: 0` makes `Rob.hasRoom` permanently false so
-    // dispatch never proceeds; `numMshrs: 0` (with a cache) makes the MSHR gate permanently full so
-    // the first miss never completes — both spin until the recorder's cycle cap throws a misleading
-    // "non-terminating program?" error. Public API, bare optional numbers in the trace config, so a
-    // clear message here beats a runaway (M9+M10 review finding 6).
+    // Fail fast on the two structural-capacity knobs, as `issueWidth` does above: a value that is
+    // not a whole count ≥ 1 silently LIVELOCKS otherwise. `robSize: 0` makes `Rob.hasRoom`
+    // permanently false so dispatch never proceeds; `numMshrs: 0` (with a cache) makes the MSHR
+    // gate permanently full so the first miss never completes — both spin until the recorder's
+    // cycle cap throws a misleading "non-terminating program?" error. Public API, bare optional
+    // numbers in the trace config, so a clear message here beats a runaway (M9+M10 review finding
+    // 6; the shapes it let through are the M11+M12 review's finding 3).
+    //
+    // `slowOpLatency` deliberately has no guard: every use of it is behind a `>= 2` test, so a zero
+    // or a fraction makes the machine defer nothing at all. It is inert, not stuck.
     const robSize = config.robSize ?? 16;
-    if (robSize < 1) {
-      throw new Error(`out-of-order: robSize ${robSize} is not a positive capacity`);
-    }
+    positiveCapacity('robSize', robSize);
     this.numMshrs = config.numMshrs ?? 2;
-    if (this.numMshrs < 1) {
-      throw new Error(`out-of-order: numMshrs ${this.numMshrs} is not a positive count`);
-    }
+    positiveCapacity('numMshrs', this.numMshrs);
     this.slowOpLatency = config.slowOpLatency ?? 1;
     this.missInFlight = new Set();
     this.deferredBroadcasts = [];
