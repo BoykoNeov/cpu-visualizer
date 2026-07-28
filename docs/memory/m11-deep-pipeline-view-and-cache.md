@@ -4,7 +4,15 @@ description: 'M11 steps 6-8, the half that ships to the screen. Step 6 was a DET
 metadata:
   node_type: memory
   type: project
+  originSessionId: c09ed410-3ad2-44be-9942-c29fb034a441
+  modified: 2026-07-28T07:53:21.305Z
 ---
+
+## M11 — the 7-stage deep pipeline, steps 6–8 (cache, datapath, closing pass)
+
+Split out of [[m11-deep-pipeline-planned]] 2026-07-28, which holds the plan, every pinned
+decision, steps 0–5 and the `M11 IS COMPLETE` status. Written newest-step-first (8, then 7,
+then 6), as it was in the original log.
 
 **STEP 8 (2026-07-27) — THE CLOSING PASS OVER THE SHIPPED BUNDLE. 76 checks, ALL PASS, NO DEFECT**
 (`M:\claud_projects\temp\m11-browser\step8-preview.mjs`; label geometry via `s8-crop.mjs`).

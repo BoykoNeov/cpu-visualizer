@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 459fcb2c-a51a-49c7-8465-fb9b8cf51a03
+  modified: 2026-07-28T07:53:45.010Z
 ---
 
 Stated 2026-07-16: beyond M3's classic 5-stage pipeline, the user wants **longer/deeper
@@ -33,7 +34,8 @@ future _sibling_ package, not a retrofit of `engine/pipeline`.
 - **Do NOT generalize step-1 model internals.** `PipelineMicro` stays a concrete four-latch
   shape (not an N-latch abstraction); forwarding paths stay enumerated (EX/MEM→EX, MEM/WB→EX,
   not "any later latch → EX"). Pinned this way deliberately in `docs/plans/m3-tasks.md`
-  (decisions table) — see [[project-overview]] for milestone status.
+  (decisions table) — see [[m3-pipeline-engine]] for that milestone's log, or
+  [[project-overview]] for the index over all of them.
 - **The pipeline map (M3 step 7) is the one shared surface** a deeper pipeline reuses as-is —
   it's a pure fold over `instructions[].location` (INV-3). It must be **stage-and-lane-
   parametric**: stage set and hue mapping derived from the trace, never a hard-coded 5-element

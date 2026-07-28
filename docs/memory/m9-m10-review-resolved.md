@@ -1,9 +1,11 @@
 ---
 name: m9-m10-review-resolved
-description: The M9+M10 code review is fully fixed — plus the bug-class guardrails to not repeat those bugs when expanding the OoO corpus, models, or knobs
+description: 'The M9+M10 code review is fully fixed — plus the bug-class guardrails to not repeat those bugs when expanding the OoO corpus, models, or knobs'
 metadata:
   node_type: memory
   type: project
+  originSessionId: c09ed410-3ad2-44be-9942-c29fb034a441
+  modified: 2026-07-28T07:53:36.928Z
 ---
 
 The `/code-review high` over M9+M10 (10 verified findings) is **fully RESOLVED
@@ -45,5 +47,6 @@ why the findings are worth remembering, not the instances):
   No external ground truth (the pipeline family has no multi-cycle FU) — the
   `fuFreezesDuringMemStall()` seam + parity test pin the choice.
 
-See [[project-overview]] for the milestone log, and
-`docs/reviews/m9-m10-review-findings.md` for the ranked findings.
+See [[m9-out-of-order]] and [[m10-ooo-lesson-track]] for the milestone logs themselves
+([[project-overview]] is now only their index), and `docs/reviews/m9-m10-review-findings.md`
+for the ranked findings.

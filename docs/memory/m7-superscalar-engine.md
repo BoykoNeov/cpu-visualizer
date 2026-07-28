@@ -4,7 +4,15 @@ description: "M7 steps 2b-5 (engine half): the pairing rules and why width 2 is 
 metadata:
   node_type: memory
   type: project
+  originSessionId: c09ed410-3ad2-44be-9942-c29fb034a441
+  modified: 2026-07-28T07:53:13.426Z
 ---
+
+## M7 — in-order superscalar, the ENGINE half (steps 2b–5)
+
+Split out of [[project-overview]] 2026-07-28. Steps 6–8 (web enablement, the widened datapath,
+the pairing readout) are in [[m7-superscalar-web]], which carries the milestone's status header.
+Written newest-step-first, as it was in the original log.
 
 **Step 5 was a PROOF, not a build: `packages/trace/src/recorder.ts` is UNTOUCHED.** That is the
 claim that could have failed — `follow()` keys on `id`, never on `location`, and

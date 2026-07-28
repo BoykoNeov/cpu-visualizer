@@ -4,6 +4,8 @@ description: 'M2 build log: the multi-cycle model (static per-opcode phase sets,
 metadata:
   node_type: memory
   type: project
+  originSessionId: c09ed410-3ad2-44be-9942-c29fb034a441
+  modified: 2026-07-28T07:52:04.368Z
 ---
 
 \*\*M2 ALL STEPS BUILT (0–5b) & pushed (2026-07-13, 429 tests). Model (0–4) + web model picker (5a)
@@ -100,6 +102,7 @@ a small dedicated `pcarith`. Key differences from single-cycle, all load-bearing
 
 **~~Only remaining M2 loose ends~~ — BOTH CLOSED 2026-07-20 by step 5c** (the 5b layout was
 browser-verified in the same session and had no defect).
+
 **STEP 5C — M2's last open item, DONE 2026-07-20 (1352 tests, commit `86382a5`). M2 IS NOW FULLY
 COMPLETE with no deferred work.** "Draw the next-PC redirect", which had been deferred since
 2026-07-13. Findings worth keeping:
