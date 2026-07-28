@@ -2,8 +2,9 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2 done; the guard admits widths 1..4 and the arity->2 adversarial nets are in.
-Six models ship, each with a lesson track. Repo **4523 tests**, five gates green.
+steps 0/0b/1/2/3 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, and
+the width-3/4 timing matrix is derived. Next: step 4 (conformance + `configLabel`).
+Six models ship, each with a lesson track. Repo **5113 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -53,7 +54,13 @@ Six models ship, each with a lesson track. Repo **4523 tests**, five gates green
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/**2** done. The rules were
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/**3** done. Step 3's sharpest
+    finding is about MEASUREMENT: the timing suite's ruler looped `s < 2`, so every group of 3 or 4
+    would have read as 2 and all 44 derived cells would have been permanently green — and **step 1's
+    arity sweep could not have matched it**, because the arity was a loop bound over a template
+    string. Also: only 3 of 11 programs ever fill four slots, and a break that caps the group at 3
+    leaves `branch-flavors` at exactly 10 cycles — **no cycle count in the repo can see it.**
+    ⚠ `Set-Content` mojibaked a source file mid-step; never use it on one here. The rules were
     already width-generic and the audit's code sweep came back EMPTY; **a live width-2 HANG in
     shipped code** (`bnez` then `ecall`; the corpus was safe only by its `li a7, 10` exit spacer
     — fixed `a9f1b70`); width 4 is where widening stops paying. Guard now `MAX_ISSUE_WIDTH = 4`,

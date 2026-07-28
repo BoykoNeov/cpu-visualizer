@@ -1,18 +1,71 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2 done, the guard admits 1..4 (MAX_ISSUE_WIDTH) and the arity->2 nets are in (wide-groups.test.ts, 7 breaks watched). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts) and the width-3/4 timing matrix is DERIVED (timing.test.ts, repo 5113 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots and no audit could have found it. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T11:46:21.270Z
+  modified: 2026-07-28T13:38:41.023Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / **2** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / **3** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → **4523** tests. See [[project-overview]] for
-the index, [[m7-superscalar-engine]] for the machine this generalizes.
+`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → **5113** tests. See
+[[project-overview]] for the index, [[m7-superscalar-engine]] for the machine this generalizes.
+
+### Step 3 SHIPPED `ba14b43` — **the ruler measured 2, and no audit could have found it**
+
+The width-3/4 timing matrix, 44 hand-derived cells in `timing.test.ts` (extended IN PLACE — a forked
+file would have duplicated `measure`/`run`/`penaltyOf`, two copies of the thing under test).
+Derivations at `M:\claud_projects\temp\m13-step3\predictions.md`, written in full BEFORE the run.
+**435 of 441 cells green on the first run.** In descending order of what they cost to learn:
+
+- **The blocker was in the SUITE, and it is the generalisable finding.** `issuedPerCycle` looped
+  `s < 2` — M7 step 4's arity. Left alone, every group of 3 or 4 reads as at most 2, `G` comes out
+  too high, and all 44 cells get fitted to a broken ruler, **permanently green**. Restoring the `2`
+  reddens 432 cells while all 764 width-1/2 cells stay green. **Step 1's audit could NOT have found
+  it**: that sweep matched literal slot indexing (`idEx[0|1]`), and this arity is a loop bound over a
+  TEMPLATE STRING (`` `ID.${s}` ``). So "the mechanical sweep came back empty" was true and did not
+  mean what it sounded like. Generalises: **an arity sweep finds the arities you spelled the way you
+  searched.** Before trusting any wide measurement, ask what the MEASURING code assumes about width.
+  Width now comes from the CALLER, not `micro.width` off the trace — over-scanning empty slots is
+  harmless, trusting the engine's own claim would hide an engine that ran narrow while claiming wide.
+- **`Q` does not generalise; the ISSUE-SIZE HISTOGRAM does** — and it is the only thing that catches
+  the plan's own trap. Capping the issue group at 3 reddens exactly the three programs that fill four
+  slots, and **`branch-flavors.s` at width 4 still runs exactly 10 cycles under that break**
+  (`slots` 10 vs 11). **No cycle count in this repo can see it.** `G + Q = retires + doomed` becomes
+  `Σ k·sizes[k] = retires + doomed`, both sides measured. Only `branch-flavors`, `paired-branches`
+  and `slow-op-loop` ever reach a group of 4 — measured and asserted BY NAME, so the other eight
+  programs' width-4 cells now say they are width-3 measurements instead of implying otherwise.
+- **The six failing cells were ONE number and the engine was right.** `call-return.s` @ w3/w4 × fwd
+  OFF × `static-taken`: L = 1, predicted 0. Diagnosed by DUMPING the trace, not by patching the pin.
+  Under the base behaviour the `jal`'s two-cycle misprediction penalty is exactly the gap its
+  producers need to reach WB, so `bge` never interlocks; **the correct bet deletes that gap** and
+  meets both `addi`s still in EX/MEM. The bet buys 2 cycles of flush and hands 1 back. A WIDTH-3
+  effect — at w2 the `jal` bets a cycle later, so `w2.blocked` is 0. **Widening moved the bet one
+  cycle earlier and exposed an interlock that had never fired anywhere.** Generalises: _a penalty and
+  a stall can be covering for each other; removing the penalty reveals the bill._ It was also the
+  risk NAMED IN ADVANCE as most likely wrong — naming them beforehand made the post-mortem cheap.
+- **Two findings the cycle counts hide.** `paired-branches`'s 9→7→7→6: w3 buys nothing NOT because
+  the third slot goes unused — **it fills**. G is 3 at w2 and w3 with different SHAPES (`{1,2,2}` vs
+  `{1,3,1}`); the third slot pulls `addi a7` forward and pushes `ecall` into a group of its own.
+  And `slow-op-loop`'s single w4 cycle is **entirely a PROLOGUE** — four independent `li`s, one group
+  of four, ONCE in six iterations. Mirror image: **`static-taken` SPENDS the width** (a bet ends its
+  group), so that program runs 6 at w4 base and 11 under betting — the same 11 it runs at w3.
+- **Widening DELETED the corpus's only forwarding-shaped partition change**, so `groups`/`sizes`/
+  `doomed` carry no forwarding position at width ≥ 3 (asserted, not assumed). At w2 `array-sum` ran
+  G = 25/26 across the toggle because the `lw`'s slot-1 `raw` refusal split a pair; a third slot
+  refuses the same `lw` for `intra-pair-raw` whatever the toggle says, and pairing is checked first.
+- **State which of your green columns was BLIND.** The w3/w4 fwd-ON/predict-none/no-cache totals were
+  already published in the step-0 dump, so those 11 numbers are a cross-check, not a prediction —
+  said so in the docblock rather than claiming a clean sweep. Same defect class as `CycleCtx.bet`.
+- **⚠ PowerShell `Set-Content` CORRUPTED this file mid-step** — it read UTF-8 as cp1252 and wrote the
+  mojibake back, mangling 268 lines plus BOM plus CRLF (`git diff --stat` jumped to 316 deletions).
+  Reversible (decode UTF-8 → re-encode through cp1252 → decode UTF-8; script kept at
+  `M:\claud_projects\temp\m13-step3\fix-encoding.mjs`), but **never use `Set-Content` on a source
+  file in this repo.** Bash `cat`/`perl -0pi` are byte-safe; the Edit tool always is. Also: a large
+  `cat << 'EOF'` heredoc TRUNCATED silently mid-content — write to a temp file and `cat` it on.
 
 ### Step 2 SHIPPED — the arity > 2 nets, and **the break record is worth more than the tests**
 

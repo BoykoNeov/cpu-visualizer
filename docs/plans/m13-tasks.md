@@ -232,7 +232,13 @@ against it — it was a missing UNDO, not a missing fourth rule.
       are a CROSS-CHECK, not a prediction; claiming otherwise would be the `CycleCtx.bet` defect
       class again. Genuinely blind: the entire term decomposition at both widths, every
       forwarding-OFF count, every `static-taken` count, both cache columns. **435 of 441 wide cells
-      green on the first run.**
+      green on the first run WITH A CORRECT COMPARISON** — and that qualifier is doing real work, so
+      it is stated rather than rounded away. The literal first run was 441 red, on a spec error in
+      the assertion and not in a single derived number: `measure` indexes `sizes[0]` (cycles in which
+      nothing issued at all) and the comparison included it, which would have made the "issue-size
+      histogram" pin depend on `L` and `P`, terms the same test already asserts separately. A
+      histogram of group sizes has no entry for "no group". It went red on every wide cell at once,
+      which is the good failure mode.
       **The six that failed are ONE number, and the engine was right.** `call-return.s` @ {w3, w4} ×
       OFF × `static-taken`: predicted `L = 0`, measured 1. Diagnosed by DUMPING the trace rather than
       patching the pin: under the base behaviour the `jal`'s two-cycle misprediction penalty is
@@ -250,7 +256,7 @@ against it — it was a missing UNDO, not a missing fourth rule.
       **432** cells while all 764 width-1/2 cells stay green. Capping the issue group at 3 reddens
       **55** — exactly the three programs that fill four slots — and `branch-flavors.s` at width 4
       still runs **exactly 10 cycles** under it: `issue slots consumed: expected [9, 10, 10] to
-    deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; only the
+deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; only the
       histogram and the accounting identity catch it, which is the whole case for pinning a
       histogram instead of a `pairs` count.
       **Two findings about the machine that the cycle counts hide, both now asserted:**
@@ -274,6 +280,19 @@ against it — it was a missing UNDO, not a missing fourth rule.
       first. Widening deleted the corpus's only forwarding-shaped partition change.
       `WIDE_WIDTHS` is DERIVED from `MAX_ISSUE_WIDTH` with a completeness test per program, so
       raising the bound cannot leave the widest machine unpinned in silence (step 1's precedent).
+      **A review pass then found a DEAD PINNED FIELD in the step's own output**, which is the third
+      time this milestone has caught that shape (after M12's `Lesson.depthDefault` and step 2's
+      string tautology): the accounting test ran the base behaviour only, so `wide[3].taken.doomed`
+      and `wide[4].taken.doomed` were pinned for all eleven programs and **read by nothing** — while
+      the docblocks made load-bearing claims about exactly those numbers ("doomed 18 → 0", "doomed
+      24 → 0"). It now runs across both behaviours and selects with `cellOf`; inverting one
+      `taken.doomed` reddens 2 cells where it previously reddened 0. The same pass found the
+      `fillsFour` complement asserting `TIMING[...].sizes[4] === undefined` — a property of a literal
+      three hundred lines above it that no engine change could falsify — now measured, and stated as
+      **eight of eleven** rather than a hand-picked four. And one wrong number in prose (`array-sum`'s
+      OFF `L` derivation carried a visible false start and called a difference of one "two"), which is
+      the `CycleCtx.bet` class in the step that cites it. Repo 5113 → **5157** tests.
+      **All five gates run** — test, typecheck, lint, format, and `build`.
 - [ ] **4. Conformance and `configLabel` at N widths.** The matrix gains two width columns.
       `configLabel` already knows `issueWidth` (M7 step 3) — verify it does not collide at 3 and 4,
       and remember why that guard exists: **both new columns are green by construction, so a

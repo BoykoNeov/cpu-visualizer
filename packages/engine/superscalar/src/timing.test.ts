@@ -377,10 +377,11 @@ const TIMING: Readonly<Record<string, Timing>> = {
      * `{sw@44, addi a7@48, ecall@52}`.
      *   G = 2 + 5×3 + 2 = 19, sizes {1: 7, 2: 5, 3: 7}, slots = 38 = 34 + 4 doomed.
      *   ON:  L = 5 (one load-use per iteration) ⇒ cycles = 19 + 5 + 8 + 0 + 4 = **36**.
-     *   OFF: period stretches to 9 (4 blocked per iteration); L = 2 (the `la` addi) + 2 (the first
-     *        `lw`'s own slot-0 wait) + 5×4 + 2 + 2 (the epilogue's `addi t3` and `sw`) = 27… no:
-     *        **28**, and the two extra over width 2's 27 are the first `lw`'s wait, which at width 3
-     *        blocks for two cycles rather than one because its producers all issued in one group.
+     *   OFF: period stretches to 9 (4 blocked per iteration). L = 2 (the `la` addi) + 2 (the first
+     *        `lw`'s own slot-0 wait) + 5×4 (each iteration's `add` and `bne`) + 2 + 2 (the
+     *        epilogue's `addi t3` and `sw`) = **28**. That is ONE more than width 2's 27, and the
+     *        extra cycle is the first `lw`'s wait: at width 2 it blocks once, at width 3 twice,
+     *        because all three of its producers issued in a single group and so reach WB together.
      *        cycles = 19 + 28 + 8 + 0 + 4 = **59**.
      * At WIDTH 4 the ID stage holds four instructions on every group-forming cycle and the fourth is
      * refused every time — `lw@16` behind `addi t0@4`, `bne@32` behind `addi t1@28`, `sw@44` behind
@@ -2031,9 +2032,9 @@ describe('M is orthogonal to both other axes — the size-delta is the program, 
  *
  * Three of the plan's self-deception traps are answerable only from `sizes`:
  *
- * - **"A test that passes at width 4 because nothing ever filled four slots."** `sizes` has no key
- *   4 for `sum-loop.s`, `array-sum.s`, `array-sum-twice.s`, `byte-loads.s` or `store-forward.s` at
- *   width 4. Those cells are honestly measuring width 3 and now SAY so.
+ * - **"A test that passes at width 4 because nothing ever filled four slots."** **Eight of the
+ *   eleven corpus programs never reach a group of 4 at width 4** — measured, not enumerated by
+ *   hand. Their width-4 cells are honestly width-3 measurements and now SAY so.
  * - **`paired-branches.s`'s 7 → 7.** G is 3 at w2 and w3 with different shapes (`{1,2,2}` against
  *   `{1,3,1}`) — the third slot filled and pushed `ecall` into a group of its own.
  * - **`branch-flavors.s` at width 4.** Two groups of FOUR, identical cycle count, and one MORE
@@ -2113,16 +2114,33 @@ describe('widths 3 and 4 — the derived schedule (G, the histogram, L, doomed)'
     );
   });
 
-  it.each(WIDE_CASES)(
-    '$file [width $width, forwarding $position]: Σ k·sizes[k] = retires + doomed',
-    ({ file, width, position }) => {
+  it.each(
+    WIDE_CASES.flatMap(({ file, width, position }) =>
+      SCHEMES.map((scheme) => ({ file, width, position, scheme })),
+    ),
+  )(
+    '$file [width $width, forwarding $position, predict $scheme]: Σ k·sizes[k] = retires + doomed',
+    ({ file, width, position, scheme }) => {
       // The independent route to the histogram: every group consumes one slot per occupant, and
       // every instruction that consumes one either retires or is a DOOMED mate — issued beside a
       // taken transfer and squashed in EX. Both sides are measured from the trace, so this closes
       // the accounting without using the pinned `groups` or `sizes` at all. It is the width-2
       // `G + Q = retires + doomed` identity, generalized.
+      //
+      // It is NOT redundant with the histogram assertion above, and the difference is the point:
+      // `doomed` here is an INSTRUCTION-IDENTITY count (entered `EX.*`, never emitted
+      // `instr-retire`) while `m.slots` is CYCLE-DERIVED (`Σ k·sizes[k]`). Two different readings
+      // of the trace have to agree.
+      //
+      // **It runs under BOTH prediction behaviours, and the first draft ran only the base one** —
+      // which left `wide[3].taken.doomed` and `wide[4].taken.doomed` pinned for all eleven programs
+      // and read by nothing, while the docblocks above made load-bearing claims about exactly those
+      // numbers ("doomed 18 → 0", "doomed 24 → 0"). That is `Lesson.depthDefault` and step 2's
+      // string tautology in the file whose thesis is that an unfailable green is worse than none.
+      // Betting is precisely where the mechanism changes — the mate dies in ID instead of being
+      // stranded in EX — so it is the column that most needed the cross-check, not the one to skip.
       const pinned = TIMING[file]!;
-      const ts = run(file, configAt(width, position));
+      const ts = run(file, withScheme(configAt(width, position), scheme));
       const m = measure(ts, width);
 
       const retired = new Set(eventsOf(ts, 'instr-retire').map((e) => e.instr));
@@ -2134,7 +2152,7 @@ describe('widths 3 and 4 — the derived schedule (G, the histogram, L, doomed)'
       const doomed = [...issuedIds].filter((id) => !retired.has(id)).length;
 
       expect(retired.size, 'N').toBe(pinned.retires);
-      expect(doomed, 'doomed mates').toBe(pinned.wide[width]!.base.doomed);
+      expect(doomed, 'doomed mates').toBe(cellOf(pinned, width, scheme).doomed);
       expect(m.slots, 'issue slots consumed').toBe(pinned.retires + doomed);
     },
   );
@@ -2241,19 +2259,23 @@ describe('what the histogram says that the cycle counts cannot', () => {
    * does fill four slots, MEASURE which programs do — and name the ones that never do. Every one of
    * their width-4 cells above is honestly a width-3 measurement, and this is where that is stated.
    */
-  it('names exactly which programs ever fill four slots — and most never do', () => {
-    const fillsFour = Object.keys(TIMING).filter(
-      (file) => (measure(run(file, configAt(4, 'on')), 4).sizes[4] ?? 0) > 0,
-    );
-    // Measured from the traces, then compared to the pins — not read off the table, which would
+  it('names exactly which programs ever fill four slots — EIGHT of eleven never do', () => {
+    const groupsOfFour = (file: string): number =>
+      measure(run(file, configAt(4, 'on')), 4).sizes[4] ?? 0;
+    const fillsFour = Object.keys(TIMING).filter((file) => groupsOfFour(file) > 0);
+
+    // Measured from the traces, then compared to the names — never read off the table, which would
     // re-bless whatever the table says.
     expect([...fillsFour].sort()).toEqual(
       ['branch-flavors.s', 'paired-branches.s', 'slow-op-loop.s'].sort(),
     );
-    for (const file of ['sum-loop.s', 'array-sum.s', 'array-sum-twice.s', 'byte-loads.s']) {
-      expect(TIMING[file]!.wide[4]!.base.sizes[4], `${file} never reaches a group of 4`).toBe(
-        undefined,
-      );
+    // ...and the complement, stated as a count rather than a hand-picked subset. The first draft of
+    // this half read `TIMING[file].wide[4].base.sizes[4]` and asserted `undefined` — a property of
+    // the literal three hundred lines above it, which no engine change could ever falsify. It is
+    // the same shape step 2 caught and replaced, and it survived to a passing test twice now.
+    expect(Object.keys(TIMING).length - fillsFour.length, 'eight of eleven').toBe(8);
+    for (const file of Object.keys(TIMING).filter((f) => !fillsFour.includes(f))) {
+      expect(groupsOfFour(file), `${file} never reaches a group of 4`).toBe(0);
     }
   });
 
