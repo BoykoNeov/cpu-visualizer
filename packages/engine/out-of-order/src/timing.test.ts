@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble } from '@cpu-viz/assembler';
-import { toProgramImage, CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
+import { toProgramImage, CACHE_LARGE, CACHE_SMALL, MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import {
   defaultConfig,
   type CacheConfig,
@@ -95,6 +95,28 @@ function penaltyOf(t: Transfers, behaviour: 'static-taken' | 'static-not-taken')
   return 2 * (t.takenPredictable + t.takenUnpredictable);
 }
 
+/**
+ * A width-3-or-wider schedule, copied from the superscalar's `TIMING[file].wide[w]` (M13 step 6).
+ *
+ * **The shape differs from the width-2 fields below, and the difference is a real property of the
+ * machine rather than a transcription choice.** At width 2 a correctly-predicted taken bet kills
+ * its own group's single mate, so its effect on `G` is expressible as a DELTA
+ * ({@link Pinned.bettingGroupsOn}, added only under `static-taken`). At width ≥ 3 a bet
+ * RE-PARTITIONS the tail — the group it ends may have had one, two or three younger occupants, and
+ * the instructions it displaces re-group differently downstream — so no single delta can express
+ * it. The superscalar's own table says this in as many words and stores the betting case as an
+ * ABSOLUTE cell; this transplant has to store it the same way or it would be copying a number
+ * whose meaning it had changed.
+ */
+interface WideSchedule {
+  /** `wide[w].base.groups` — G under `none`/`static-not-taken` (one machine). */
+  readonly groups: number;
+  /** `wide[w].base.blocked.on` — L. Forwarding-on only; this model has no off-position. */
+  readonly blockedOn: number;
+  /** `wide[w].taken.groups` — G under `static-taken`. ABSOLUTE, not a delta. See above. */
+  readonly takenGroups: number;
+}
+
 interface Pinned {
   readonly retires: number;
   readonly sOn: number; // M3's `stalls.on` total (width 1, forwarding on)
@@ -103,6 +125,14 @@ interface Pinned {
   readonly groupsOn: number; // M7's `w2.groups.on`
   readonly blockedOn: number; // M7's `w2.blocked.on`
   readonly bettingGroupsOn: number; // M7's `w2.betting.on.groups` — applies under static-taken only
+  /**
+   * M13 step 3's width-3/4 schedules, keyed by width — copied from the superscalar's
+   * `TIMING[file].wide`. Keyed rather than named `w3`/`w4` for the reason that table gives:
+   * {@link WIDE_WIDTHS} is derived from `MAX_ISSUE_WIDTH`, so raising the engine's bound must not
+   * be able to leave the widest machine unpinned in silence — the completeness check below reads
+   * these keys.
+   */
+  readonly wide: Readonly<Record<number, WideSchedule>>;
 }
 
 /**
@@ -119,6 +149,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 2,
     blockedOn: 0,
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 2, blockedOn: 0, takenGroups: 2 },
+      4: { groups: 2, blockedOn: 0, takenGroups: 2 },
+    },
   },
   'array-sum.s': {
     retires: 34,
@@ -128,6 +162,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 25,
     blockedOn: 5,
     bettingGroupsOn: 1,
+    wide: {
+      3: { groups: 19, blockedOn: 5, takenGroups: 20 },
+      4: { groups: 19, blockedOn: 5, takenGroups: 20 },
+    },
   },
   'array-sum-twice.s': {
     retires: 134,
@@ -137,6 +175,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 104,
     blockedOn: 24,
     bettingGroupsOn: 2,
+    wide: {
+      3: { groups: 78, blockedOn: 24, takenGroups: 81 },
+      4: { groups: 78, blockedOn: 24, takenGroups: 81 },
+    },
   },
   'branch-flavors.s': {
     retires: 9,
@@ -146,6 +188,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 5,
     blockedOn: 0,
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 4, blockedOn: 0, takenGroups: 4 },
+      4: { groups: 4, blockedOn: 0, takenGroups: 4 },
+    },
   },
   'byte-loads.s': {
     retires: 6,
@@ -155,6 +201,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 5,
     blockedOn: 0,
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 4, blockedOn: 0, takenGroups: 4 },
+      4: { groups: 4, blockedOn: 0, takenGroups: 4 },
+    },
   },
   'call-return.s': {
     retires: 9,
@@ -168,6 +218,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     // pairs never enter the cycle-total formula. `-1` here (copied from `pairs` by mistake) was a
     // transcription bug that cost this program one extra cycle in every static-taken width-2 run.
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 4, blockedOn: 0, takenGroups: 4 },
+      4: { groups: 4, blockedOn: 0, takenGroups: 4 },
+    },
   },
   'paired-branches.s': {
     retires: 5,
@@ -177,6 +231,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 3,
     blockedOn: 0,
     bettingGroupsOn: 1,
+    wide: {
+      3: { groups: 3, blockedOn: 0, takenGroups: 3 },
+      4: { groups: 2, blockedOn: 0, takenGroups: 3 },
+    },
   },
   'sum-loop.s': {
     retires: 34,
@@ -186,6 +244,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 22,
     blockedOn: 0,
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 21, blockedOn: 0, takenGroups: 22 },
+      4: { groups: 21, blockedOn: 0, takenGroups: 22 },
+    },
   },
   // M10 step 3 — the slow-op witness. Copied from `pipeline`'s TIMING (retires, transfers, misses)
   // and `superscalar`'s w2 (groupsOn, blockedOn, bettingGroupsOn). sOn = 0: register-only, no loads,
@@ -199,6 +261,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 21,
     blockedOn: 0,
     bettingGroupsOn: 0,
+    wide: {
+      3: { groups: 20, blockedOn: 0, takenGroups: 21 },
+      4: { groups: 19, blockedOn: 0, takenGroups: 20 },
+    },
   },
   // M10 step 4 — the miss-stream witness. `array-sum`'s TWIN: every field except `misses` is copied
   // from that entry above (same instruction stream, same hazards, cache-blind). The stride-per-line
@@ -212,6 +278,10 @@ const PINNED: Readonly<Record<string, Pinned>> = {
     groupsOn: 25,
     blockedOn: 5,
     bettingGroupsOn: 1,
+    wide: {
+      3: { groups: 19, blockedOn: 5, takenGroups: 20 },
+      4: { groups: 19, blockedOn: 5, takenGroups: 20 },
+    },
   },
 };
 
@@ -244,6 +314,31 @@ function width2Total(
     pinned.blockedOn +
     penaltyOf(pinned.transfers, behaviour) +
     missesAt(pinned, cache) * MISS_PENALTY
+  );
+}
+
+/**
+ * The width-3-and-wider total (M13 step 6) — the SAME closed form as {@link width2Total},
+ * `G + L + P + M + 4`, differing only in where `G` comes from under `static-taken`.
+ *
+ * `width2Total` adds a delta; this reads an absolute cell. See {@link WideSchedule} for why that is
+ * a property of the machine rather than a difference in bookkeeping — at width ≥ 3 a bet
+ * re-partitions the tail rather than shaving one mate off a pair, and the superscalar's own table
+ * stores the betting case absolutely for exactly that reason.
+ */
+function wideTotal(
+  cell: WideSchedule,
+  pinned: Pinned,
+  behaviour: 'static-taken' | 'static-not-taken',
+  cache: CacheSize,
+): number {
+  const G = behaviour === 'static-taken' ? cell.takenGroups : cell.groups;
+  return (
+    G +
+    cell.blockedOn +
+    penaltyOf(pinned.transfers, behaviour) +
+    missesAt(pinned, cache) * MISS_PENALTY +
+    4
   );
 }
 
@@ -311,6 +406,99 @@ describe('width 2 ≡ M7’s superscalar closed form (cycles = G + L + P + M + 4
     expect(measuredMissCycles(ts), 'M').toBe(missesAt(pinned, cache) * MISS_PENALTY);
     expect(ts, 'cycles = G + L + P + M + 4').toHaveLength(width2Total(pinned, behaviour, cache));
   });
+});
+
+/**
+ * **Widths 3 and 4 ≡ M7's superscalar at those widths (M13 step 6)** — the transplant extended to
+ * every width the guard now admits, and the thing that makes offering them in the shell defensible.
+ *
+ * ## Why this suite is the net and `differential.test.ts` is not
+ *
+ * Step 6 pinned (user) that this model is capped at `MAX_ISSUE_WIDTH` rather than the shared ISSUE
+ * control being gated per model. Opening a guard obliges you to net what it admits *in the same
+ * commit* (step 1's rule, from the superscalar). The widened conformance matrix cannot be that net:
+ * in-order commit makes final architectural state width-invariant BY CONSTRUCTION, so it would pass
+ * with the scheduler completely wrong — the M7 step 2b trap, which ran green through a matrix of
+ * this exact shape. Cycle counts are the only thing that can see a width bug here.
+ *
+ * ## Every number is the SUPERSCALAR'S, and specifically its TERMS
+ *
+ * Copied from `packages/engine/superscalar/src/timing.test.ts`'s `TIMING[file].wide[w]` —
+ * `base.groups`, `base.blocked.on`, `taken.groups` — which M13 step 3 hand-derived BEFORE running
+ * its engine. The totals are computed here by {@link wideTotal}, never transcribed. That
+ * distinction is the M7 step 2b trap in its other form: a table of expected CYCLE COUNTS read off
+ * a passing run is an identity over engine output, and it looks exactly like a derivation.
+ *
+ * ## What this suite's green does and does not prove — stated because it was measured in advance
+ *
+ * **It is a cross-check, not a prediction, and saying so is the point** (step 3's "state which of
+ * your green columns was BLIND"). Step 6 dumped this model over corpus × widths 1..4 × both issue
+ * orders × 3 schemes × 3 cache geometries before a line of this block was written, and a script
+ * computed all 180 of these cells from the superscalar's terms and compared them to that dump:
+ * **180/180 matched.** So the transplant was KNOWN to hold. What the suite adds is that it stays
+ * held — it converts a one-off measurement into a standing regression net, which is exactly what
+ * the width-1/2 blocks above are for and no more than that.
+ *
+ * ## The break that shows why this file and not the conformance matrix — MEASURED, not argued
+ *
+ * `this.width = Math.min(width, 2)` in `reset()` — an engine that silently runs NARROW while
+ * reporting the width it was handed, which is precisely the bug opening the guard makes possible:
+ *
+ *  - **`timing.test.ts`: 147 of these 180 cells go RED.** (The 33 that stay green are the programs
+ *    that are cycle-identical at widths 2/3/4 — `add.s`, `byte-loads.s`, `call-return.s` and the
+ *    like, whose dependency structure refuses a third slot anyway. Worth knowing: a wide cell on
+ *    one of those programs is a width-2 measurement wearing a width-4 name, which is this
+ *    milestone's recurring trap and the reason the terms are pinned separately from the total.)
+ *  - **`differential.test.ts`: all 807 cells stay GREEN**, including the 396 width-3/4 ones added
+ *    in this same step.
+ *
+ * That is the milestone's "INV-8 is a FALSE net here" written as an experiment instead of a
+ * warning. Every width-1/2 cell in this file also stayed green under the break, which is the
+ * measurement that says these 180 reach ground the older blocks cannot.
+ *
+ * The `it.each` matrix is over `WIDE_WIDTHS × MATRIX`, and `WIDE_WIDTHS` is DERIVED from
+ * `MAX_ISSUE_WIDTH`, so raising the bound cannot leave the widest machine the least tested — the
+ * decay mode step 1 named. The completeness check below guards the derivation itself, since a table
+ * keyed by width is the one thing a derived width list does not protect.
+ */
+const WIDE_WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH - 2 }, (_, i) => i + 3);
+
+describe('widths 3+ ≡ M7’s superscalar closed form (cycles = G + L + P + M + 4)', () => {
+  it('the table pins every width past the pair that the guard admits', () => {
+    // Guards the guard: an empty `WIDE_WIDTHS` would make the `it.each` below vacuous rather than
+    // absent, and a `MAX_ISSUE_WIDTH` raised without new cells would leave the widest machine
+    // unpinned in silence. Both are the failure this milestone has now caught four times.
+    expect(WIDE_WIDTHS).toEqual([3, 4]);
+    for (const file of FILES) {
+      expect(Object.keys(PINNED[file]!.wide).map(Number).sort(), file).toEqual(WIDE_WIDTHS);
+    }
+  });
+
+  it.each(WIDE_WIDTHS.flatMap((width) => MATRIX.map((m) => ({ ...m, width }))))(
+    '$file [width $width, predict $scheme, cache $cache]',
+    ({ file, scheme, cache, width }) => {
+      const pinned = PINNED[file]!;
+      const cell = pinned.wide[width]!;
+      const behaviour = behaviourOf(scheme);
+      const config: ProcessorConfig = {
+        ...defaultConfig(),
+        branchPrediction: scheme,
+        cache: CACHE[cache],
+        issueWidth: width,
+      };
+      const ts = run(file, config);
+
+      // Each term against its own pin BEFORE the total, exactly as the two blocks above and as the
+      // superscalar's own wide block: a single opaque cycle count would let a compensating pair of
+      // errors — one group too many, one blocked cycle too few — pass and tell you nothing.
+      expect(eventsOf(ts, 'instr-retire'), 'N').toHaveLength(pinned.retires);
+      expect(measuredPenalty(ts), 'P').toBe(penaltyOf(pinned.transfers, behaviour));
+      expect(measuredMissCycles(ts), 'M').toBe(missesAt(pinned, cache) * MISS_PENALTY);
+      expect(ts, 'cycles = G + L + P + M + 4').toHaveLength(
+        wideTotal(cell, pinned, behaviour, cache),
+      );
+    },
+  );
 });
 
 describe('the degenerate width-1 position is not a stub', () => {

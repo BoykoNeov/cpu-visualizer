@@ -1,6 +1,7 @@
 import { runConformance } from '@cpu-viz/engine-conformance';
 import { defaultConfig, type CacheConfig, type ProcessorConfig } from '@cpu-viz/trace';
-import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
+import { CACHE_LARGE, CACHE_SMALL, MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
+import { describe, expect, it } from 'vitest';
 import { OutOfOrderProcessor } from './index';
 
 /**
@@ -36,7 +37,36 @@ import { OutOfOrderProcessor } from './index';
  */
 const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
 const CACHES: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
-const WIDTHS = [1, 2] as const;
+
+/**
+ * **DERIVED from `MAX_ISSUE_WIDTH`, not typed `[1, 2, 3, 4]`** — M13 step 6 widened this from
+ * `[1, 2]`, and the derivation is what step 1 established on the superscalar: raising the engine's
+ * bound must not be able to leave the widest machine the least tested, in silence. The completeness
+ * assertion below is the guard on the derivation itself.
+ *
+ * **Step 4 deliberately left this at `[1, 2]`** and handed the widening here, because it follows
+ * the BOUND decision rather than preceding it — and the bound is what step 6 pinned (this model is
+ * capped at `MAX_ISSUE_WIDTH` too, rather than the shared UI control being gated per model).
+ *
+ * ## What these 396 new cells buy, said honestly
+ *
+ * **Nearly nothing on their own, and the milestone's own log says why in capitals: INV-8 is a FALSE
+ * NET on a machine that commits in order.** Final architectural state is width-invariant here by
+ * construction, so this matrix would pass with the scheduler completely wrong — that is the M7 step
+ * 2b trap, which ran green through a matrix this exact shape. `timing.test.ts`'s widened transplant
+ * is the net; this is the smoke test.
+ *
+ * They are not worthless, and the exception is the one this file's header already names: **memory
+ * disambiguation**. A load that bypasses an aliasing older store DOES corrupt architectural state,
+ * and widths 3/4 put more independent work in flight for it to bypass — which is the one bug class
+ * where extra width buys extra teeth rather than extra green.
+ *
+ * Their other honest value is that they were CHEAP and they were run BEFORE the guard opened: step
+ * 6's dump swept exactly these cells (plus a 3000-cycle liveness bound) and reported 792/792
+ * terminating and reference-equal, so this suite is holding a measurement that already existed
+ * rather than making a prediction. **Say which of your green checks was cheap** — this one was.
+ */
+const WIDTHS: readonly number[] = Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1);
 const ORDERS = [false, true] as const;
 
 const CONFIGS: ProcessorConfig[] = ORDERS.flatMap((outOfOrderIssue) =>
@@ -75,5 +105,38 @@ const ROB_SIZE_PROBE: ProcessorConfig = {
   outOfOrderIssue: true,
   robSize: 1,
 };
+
+/**
+ * The COMPLETENESS half of the width claim, in this model's own file (M13 step 6).
+ *
+ * The split is step 4's, and the reason it survives the constant's move is worth stating: the
+ * harness (`engine-conformance`) owns the SHAPE claim — N distinct widths produce N distinct
+ * `it()` titles — and it must stay model-agnostic, so it cannot know what any one model's bound
+ * is. **That used to be enforced by a package cycle** (importing `MAX_ISSUE_WIDTH` from the
+ * superscalar into the harness inverted the graph); after step 6 moved the constant into
+ * `engine-common`, which the harness already imports from, only judgement enforces it. Recorded
+ * here and in `engine-common/src/issue-width.ts` rather than left to be rediscovered.
+ *
+ * What would falsify this: someone raising `MAX_ISSUE_WIDTH` to 5 and leaving `WIDTHS` behind — the
+ * matrix would silently stop reaching the widest machine the guard admits, which is exactly the
+ * decay mode the derivation above exists to prevent.
+ *
+ * **Watched, and the measurement is the argument.** Hard-coding `WIDTHS` back to `[1, 2]` takes the
+ * file from 807 cells to 411 — **396 conformance cells simply STOP EXISTING** — and the only two
+ * that go RED are the two here. All 409 others pass. That is what "a narrower matrix is invisible
+ * to the matrix itself" looks like when you build it: a suite cannot notice the cases it no longer
+ * enumerates, so the guard has to live outside the enumeration.
+ */
+describe('the matrix reaches every width the guard admits (M13 step 6)', () => {
+  it('sweeps 1..MAX_ISSUE_WIDTH with no gaps', () => {
+    expect([...WIDTHS]).toEqual(Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1));
+  });
+
+  it('crosses width against every other axis, so widening cannot narrow the product', () => {
+    // ORDERS × WIDTHS × SCHEMES × CACHES — stated as a product rather than a literal count so
+    // raising any single axis is caught here rather than in a stale number.
+    expect(CONFIGS).toHaveLength(ORDERS.length * MAX_ISSUE_WIDTH * SCHEMES.length * CACHES.length);
+  });
+});
 
 runConformance('out-of-order', () => new OutOfOrderProcessor(), [...CONFIGS, ROB_SIZE_PROBE]);

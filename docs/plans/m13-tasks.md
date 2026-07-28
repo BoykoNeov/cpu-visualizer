@@ -462,7 +462,102 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       against `WIDTHS` — steps 1/3/4's guard, for the same reason. And the four-position toggle test
       pins that **width 4 buys nothing at all on `sum-loop`**: the diminishing return is the pinned
       product claim, not a disappointment to round away.
-- [ ] **6. Web enablement — the ISSUE toggle gains positions.** `models.ts`, `session.ts`,
+- [x] **6. Web enablement — the ISSUE toggle gains positions.** ✅ DONE 2026-07-28 (repo 5575 →
+      **6157** tests). The control offers 1/2/3/4; `MAX_ISSUE_WIDTH` moved to `engine-common`; the
+      out-of-order model is capped at the same bound and NETTED at it. In descending order of what
+      each cost to learn:
+      **The gating decision was pinned as CAP BOTH (user), and the DAG decided how.** `eslint.config.js`
+      forbids `engine/out-of-order` importing `engine-superscalar` ("a concrete model never imports
+      another model's production code"), so the constant could not stay where step 1 put it. It moved
+      to **`engine-common`** — the one production edge both engines already declare, and the exact
+      precedent `predict.ts`/`cache.ts` set at M7 step 0 ("a second model needs it, and the models
+      import no sibling model"). `engine-superscalar` RE-EXPORTS it, so all eight existing importers
+      are untouched. **Check the DAG before choosing between two 'lawful answers' — they were not
+      symmetric, and only one of them was cheap.**
+      **The rejected alternative was rejected for a reason worth keeping: gating the control's
+      POSITIONS per model contains nothing.** `useSimulator` hands `issueWidthRef.current` to whichever
+      engine is driving and `engineConfigFor` clamps only `cache`, so a reader at superscalar width 4
+      who switched models would have handed the out-of-order core an unbounded width whatever the
+      widget offered. **A hazard reachable by a path the control does not sit on is not fixed by
+      changing the control.**
+      **The dump came first and it repriced the whole step.** Out-of-order × corpus × widths 1..4 ×
+      both issue orders × 3 schemes × 3 cache geometries = **792 cells, 0 mismatches**, every one
+      terminating inside a 3000-cycle bound and architecturally equal to the golden reference — run
+      BEFORE the guard was touched. It also found that every out-of-order test runner is ALREADY
+      bounded (`timing` 500, `processor` 2000, `scheduler` 500, conformance 100k), unlike the
+      superscalar's at step 1. So the liveness hazard that made this look like its own milestone was
+      **measured absent**, and the step stayed one commit. The dump's other result is a product
+      finding: **width 4 keeps paying out of order where it stops paying in order** — `array-sum.s`
+      is 51 → 42 → 36 → 36 in order and 51 → 33 → 30 → **26** out of order, `array-sum-twice.s`
+      208 → 132 → 127 → **104**. The diminishing return that justifies the bound is a property of the
+      IN-ORDER machines, not of the width axis, and the control now teaches both.
+      **The net is the TRANSPLANT, and the experiment proving that is the step's sharpest result.**
+      `timing.test.ts` gains 180 cells (10 programs × widths {3,4} × 3 schemes × 3 caches) copied
+      from the superscalar's `TIMING[file].wide[w]` **TERMS** (`base.groups`, `base.blocked.on`,
+      `taken.groups`) with the totals computed by the closed form — never transcribed from a run,
+      which is the M7 step 2b trap. Break: `this.width = Math.min(width, 2)`, an engine that runs
+      NARROW while reporting the width it was handed. **147 of the 180 timing cells go red; all 807
+      conformance cells stay green, including the 396 width-3/4 ones added in the same step.** That
+      is "INV-8 is a FALSE net here" built as an experiment instead of written as a warning. (The 33
+      wide cells that stay green are the programs cycle-identical at 2/3/4 — a wide cell on one of
+      those is a width-2 measurement wearing a width-4 name, which is why the terms are pinned
+      separately from the total.)
+      **The transplant was verified BEFORE it was written, and the docblock says so.** A script
+      computed all 180 cells from the superscalar's terms and compared them to the dump: **180/180
+      matched.** So the suite is a cross-check converted into a standing net, not a prediction —
+      step 3's "state which of your green columns was BLIND", applied in advance.
+      **The width-2 betting DELTA does not generalise, and copying it would have been a silent
+      meaning change.** At width 2 a bet kills its group's single mate, so `bettingGroupsOn` is a
+      delta added under `static-taken`. At width ≥ 3 a bet RE-PARTITIONS the tail, which no delta can
+      express — the superscalar's own table stores those cells ABSOLUTELY. The transplant needed a
+      different field shape (`WideSchedule`) and a different code path (`wideTotal`), not six more
+      numbers per program.
+      **⚠ THE SEAM FIXTURE HAD TO CHANGE, AND THE OLD ONE WAS BLIND BY CONSTRUCTION.** The existing
+      seam test pins `sum-loop` 56 → 44 and `array-sum` 51 → 42. Across four positions those run
+      56 → 44 → 43 → **43** and 51 → 42 → 36 → **36** — so a seam test on either is structurally
+      unable to see the 3→4 flip, which is step 5's _a fixture sized for the old width is a different
+      measurement wearing the same name_ recurring one step later. `slow-op-loop` is the fixture that
+      moves at every position: **44 → 35 → 34 → 33**. Note the plan's own acceptance criterion names
+      `array-sum`'s 51 → 42 → 36 — correct as a demo, useless as a seam.
+      **The wiring gap re-provoked, and it is WORSE at four positions than at two.** Clamping
+      `loadInto`'s width to 2 leaves **all 1518 web tests green** — re-measured, not carried over from
+      M7. M7's provocation deleted the field and the engine's `?? 1` ran both positions at width 1: a
+      FULLY dead toggle, which an eyeball catches instantly because two positions read one number. The
+      reachable failure now is a clamp, where widths 1 and 2 stay CORRECT and only 3 and 4 collapse
+      onto 2. **Step 9 must check the WIDEST position specifically** — a control that is right where
+      the reader checks it and wrong at the end is the defect this milestone made possible. Breaking
+      the half that IS reachable (`loadSource`) reddens **exactly one test in 1519: the new one.**
+      **`configLabel`'s `?? 1` — MEASURED, and the honest report is that step 6 did NOT make it
+      reachable.** Step 4 handed it forward on the theory that a shared control would produce an
+      absent `issueWidth`. Measured: all 4 out-of-order lesson JSONs state `issueWidth` explicitly,
+      `session.ts` applies its own `?? 1` before anything reaches an engine, and `useSimulator` seeds
+      `useState(1)` and always passes a concrete width. **No path produces an absent width, so the
+      inconsistency stays handed forward rather than being claimed closed.** Deliberately did NOT
+      "fix" it by changing the out-of-order engine's `?? 2` default — that moves recordings whose
+      cycle counts are pinned.
+      **The OUT-OF-ORDER datapath needed no width work, and the reason is structural rather than
+      lucky.** Step 5 found `datapath-superscalar.ts` silently dropping an `EX.2` occupant, so opening
+      the shared control made `datapath-out-of-order.ts` a second consumer at a width it had never
+      seen. Both of step 5's sweep spellings came back EMPTY on it, on `OutOfOrderDatapathView.tsx`,
+      and on `MicroTablePanel.tsx`: this model's `location` is uniformly `"ROB#tag"` (tag-keyed, not
+      slot-keyed) and its functional units are drawn as POOLS, not replicated lanes. **A model with no
+      slot in its location encoding has no slot arity to get wrong.** Step 7's finding stands and is
+      still step 7's.
+      **Everything derived, nothing re-typed.** The control's positions, the toggle's shape test, the
+      out-of-order guard, both `WIDTHS`, `WIDE_WIDTHS`, and — new here — **the model picker's
+      user-facing prose**: `SUPERSCALAR_MODEL_DESCRIPTION` (step 1's deliberate debt, "up to two")
+      now interpolates `MAX_ISSUE_WIDTH`. That is the one place the number is USER-FACING, where a
+      stale copy fails silently because nothing in this repo asserts on a description's wording.
+      **A per-position tooltip, because the old one was a ternary on `=== 2`.** Left alone, widths 3
+      and 4 would have rendered width 1's copy — "the same machine, never finding a partner" — telling
+      the reader they were on the degenerate machine, in a string no test read. Now pinned by a
+      distinctness assertion rather than by wording, so copy edits stay free.
+      **What did NOT move, checked:** `App.test.tsx`'s "opens on the degenerate case" (the shell still
+      seeds width 1 for both models); every width-1/2 cell in every suite under all four breaks.
+      <details><summary><em>The scope as planned, kept for the record — three of its predictions were
+      wrong and the corrections are above.</em></summary>
+
+      `models.ts`, `session.ts`,
       `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Import `MAX_ISSUE_WIDTH` rather
       than typing a `4`. **Decide the OUT-OF-ORDER model's bound here, before the control ships.**
       `out-of-order/processor.ts` runs `positiveCapacity('issueWidth', width)` with **no upper
@@ -486,6 +581,9 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       `issueWidth` from `loadInto`'s config left all web tests green because the field is optional
       and the engine's `?? 1` runs every position at width 1 — **a dead toggle reads the same number
       twice**, so the seam test must be a MOVING number.
+
+      </details>
+
 - [ ] **7. The datapath at N lanes.** Decision **H** is PINNED: the lane set extends to four
       validated tints (`--lane-2`, `--lane-3` join `--lane-0`/`--lane-1`, in the base block and BOTH
       dark blocks — `styles.css` says "keep the two blocks identical" and a tint added to only one

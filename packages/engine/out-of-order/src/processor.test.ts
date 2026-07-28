@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble, type AssembledProgram } from '@cpu-viz/assembler';
-import { toProgramImage } from '@cpu-viz/engine-common';
+import { toProgramImage, MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { defaultConfig, type CycleTrace, type ProcessorConfig } from '@cpu-viz/trace';
 import { OutOfOrderProcessor, OUT_OF_ORDER_CAPABILITIES } from './index';
 
@@ -215,7 +215,12 @@ describe('config validation: fail fast rather than livelock', () => {
   };
 
   it('rejects issueWidth < 1', () => {
-    expect(() => reset({ ...DEFAULT, issueWidth: 0 })).toThrow(/issueWidth 0 is not a positive/);
+    // M13 step 6 moved width to its OWN guard (`boundedIssueWidth`), so its message no longer
+    // reads "is not a positive whole capacity" like the two knobs below — the range is now part
+    // of what it says. Matched on the knob name and the value, which is the part that must not
+    // drift; the sibling assertions keep the old wording because THEIR guard is unchanged, and
+    // that difference is the point (width acquired an upper bound, robSize/numMshrs must not).
+    expect(() => reset({ ...DEFAULT, issueWidth: 0 })).toThrow(/issueWidth 0 is not a whole/);
   });
 
   it('rejects robSize < 1 (would livelock: dispatch never proceeds)', () => {
@@ -242,11 +247,41 @@ describe('config validation: fail fast rather than livelock', () => {
     ['a fraction', 1.5],
     ['Infinity', Number.POSITIVE_INFINITY],
   ])('rejects %s in every structural-capacity knob', (_label, value) => {
-    expect(() => reset({ ...DEFAULT, issueWidth: value })).toThrow(
-      /issueWidth .* is not a positive/,
-    );
+    expect(() => reset({ ...DEFAULT, issueWidth: value })).toThrow(/issueWidth .* is not a whole/);
     expect(() => reset({ ...DEFAULT, robSize: value })).toThrow(/robSize .* is not a positive/);
     expect(() => reset({ ...DEFAULT, numMshrs: value })).toThrow(/numMshrs .* is not a positive/);
+  });
+
+  /**
+   * **The UPPER bound (M13 step 6), and the two things it has to get right.**
+   *
+   * The bound is `MAX_ISSUE_WIDTH`, imported from `@cpu-viz/engine-common` — the same constant the
+   * superscalar enforces, moved down there in this step precisely so this model could share it
+   * (eslint forbids importing the superscalar's copy). Pinned with the user: the shell's ISSUE
+   * control is SHARED between the two models, and gating its positions per model would not have
+   * closed the hazard — `useSimulator` hands its width to whatever engine is driving, so a reader
+   * at superscalar width 4 switching to this model would hand it an unbounded width whatever the
+   * widget offered.
+   *
+   * **Derived, never typed `4`.** A literal here would let someone raise the constant and leave
+   * this model's bound behind — silently, since a wider width still runs. The `+ 1` cell is what
+   * separates "the guard is enforced" from "the constant is exported": step 1's precedent on the
+   * superscalar, where the one edit that can tell them apart is a guard reading
+   * `MAX_ISSUE_WIDTH - 1` while the constant stays 4.
+   *
+   * **What makes 3 and 4 acceptable is not this test.** It is step 6's dump (792 cells: corpus ×
+   * widths 1..4 × both issue orders × 3 schemes × 3 cache geometries, every one terminating and
+   * architecturally equal to the reference) plus the widened transplant in `timing.test.ts` and the
+   * widened matrix in `differential.test.ts`, all in this commit. A guard that admits a width
+   * nothing measures is the untested surface the bound exists to prevent.
+   */
+  it('accepts every width up to MAX_ISSUE_WIDTH and rejects the one past it', () => {
+    for (let w = 1; w <= MAX_ISSUE_WIDTH; w++) {
+      expect(() => reset({ ...DEFAULT, issueWidth: w }), `width ${w}`).not.toThrow();
+    }
+    expect(() => reset({ ...DEFAULT, issueWidth: MAX_ISSUE_WIDTH + 1 })).toThrow(
+      /issueWidth .* is not a whole/,
+    );
   });
 
   /**

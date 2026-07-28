@@ -9,6 +9,10 @@ import {
   type ProcessorConfig,
 } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
+// The ACTUAL positions the ISSUE control renders, not a re-derivation of them (M13 step 6). A seam
+// test that computed its own `1..MAX_ISSUE_WIDTH` would stay green if the control offered a
+// different set — the seam runs from the widget to the engine, so both ends must be the real ones.
+import { ISSUE_POSITIONS } from './App';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { predictsTaken, type BranchPrediction } from './session';
 import { loadSource } from './simulator';
@@ -543,6 +547,59 @@ describe('loadSource issue width — the pairing flip on the live scrub bar (M7 
     expect(cyclesOf('sum-loop', 2)).toBe(44);
     expect(cyclesOf('array-sum', 1)).toBe(51);
     expect(cyclesOf('array-sum', 2)).toBe(42);
+  });
+
+  /**
+   * **The seam at every position the control now offers (M13 step 6), and the FIXTURE is the point.**
+   *
+   * The block above pins the seam on `sum-loop` (56 → 44) and `array-sum` (51 → 42). Neither can
+   * carry the widened claim, and the reason is this milestone's most-repeated trap: **a fixture
+   * sized for the old width is a different measurement wearing the same name.** Across all four
+   * positions `sum-loop` runs 56 → 44 → 43 → **43** and `array-sum` 51 → 42 → 36 → **36**. A seam
+   * test built on either is structurally BLIND to the 3→4 flip — the shell could drop the width on
+   * the floor above 3 and both would still read exactly what this file expects.
+   *
+   * `slow-op-loop` is the fixture that moves at every step: **44 → 35 → 34 → 33**, four distinct
+   * numbers for four positions. That is what makes the assertion a seam test rather than a
+   * coincidence — M7's own finding, restated for four positions: *a dead toggle reads the same
+   * number twice*, and at four positions a HALF-dead toggle reads the same number twice at the top.
+   *
+   * All four are equalities, never `w4 < w3`. An inequality would pass for an engine that issued
+   * wrongly but still got shorter, and — worse at these widths — `<` is simply FALSE between 3 and 4
+   * on nine of eleven corpus programs, so the obvious monotone assertion would have had to be
+   * weakened to `<=`, which the identity toggle also satisfies.
+   *
+   * The absolute figures are the engine's, derived in closed form in the superscalar's
+   * `timing.test.ts` (`cycles = G + L + P + M + 4`, M13 step 3's derivation for widths 3 and 4);
+   * they are cross-referenced here as "what the user reads off the scrub bar", not re-derived.
+   *
+   * ## Watched failing, and the measurement says exactly how much of the seam this reaches
+   *
+   * Clamping `loadSource`'s config to `min(width, 2)` — the half-dead toggle — reddens **exactly
+   * ONE test in the entire 1519-test web suite: this one.** Every other cell, including the
+   * `sum-loop`/`array-sum` block directly above, stays green. That is the fixture argument
+   * confirmed rather than asserted.
+   *
+   * ## And the half it does NOT reach, re-provoked rather than inherited
+   *
+   * This test enters at `loadSource`. The other half of the seam is `useSimulator.loadInto`, which
+   * is a React hook and cannot be invoked without jsdom. **Clamping `issueWidth` to 2 in
+   * `loadInto`'s config leaves all 1518 web tests green** — re-measured at M13 step 6, not carried
+   * over from M7's note.
+   *
+   * It is WORSE than the gap M7 recorded, and the difference is the widening itself. M7's
+   * provocation deleted the field, and the engine's `?? 1` ran both positions at width 1 — a fully
+   * dead toggle, where the two positions read the same number and an eyeball catches it at once.
+   * At four positions the reachable failure is a clamp: widths 1 and 2 stay CORRECT and only 3 and
+   * 4 silently collapse onto 2. A control that is right where the reader checks it and wrong at the
+   * end is the thing the browser pass (step 9) has to look for, and it should look at the widest
+   * position specifically — a 3-wide run showing 2-wide's cycle count is the whole defect.
+   */
+  it('carries EVERY width the control offers — four positions, four different numbers', () => {
+    // Derived from the engine's bound, so a raised `MAX_ISSUE_WIDTH` cannot leave the widest
+    // position unpinned at the shell's edge while the control happily offers it.
+    expect(ISSUE_POSITIONS).toEqual([1, 2, 3, 4]);
+    expect(ISSUE_POSITIONS.map((w) => cyclesOf('slow-op-loop', w))).toEqual([44, 35, 34, 33]);
   });
 
   it('lands on the IDENTICAL final architectural state at both widths (INV-8 by construction)', () => {

@@ -2,12 +2,12 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3/4/5 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, the
-width-3/4 timing matrix is derived, conformance runs all four widths (72 configs), and the recorder +
-`location` encoding are proven free at widths 3/4. Next: step 6 (web enablement — the ISSUE toggle
-gains positions; **note step 5 found `datapath-superscalar.ts`'s `MAX_WIDTH = 2` silently dropping an
-`EX.2` occupant** — step 7's to fix). Six models ship, each with a lesson track. Repo **5575 tests**,
-five gates green.
+steps 0/0b/1/2/3/4/5/**6** done; the ISSUE control now offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
+in `engine-common` so the **out-of-order model shares the bound and is netted at it**, and the
+arity->2 nets, derived width-3/4 timing matrix and recorder/`location` proofs are all in. Next: step 7
+(the datapath at N lanes — **step 5 found `datapath-superscalar.ts`'s `MAX_WIDTH = 2` silently
+dropping an `EX.2` occupant**, and the lane set extends to four validated tints). Six models ship,
+each with a lesson track. Repo **6157 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -57,7 +57,16 @@ five gates green.
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/**5** done. **Step 5's
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/**6** done. **Step 6
+    proved INV-8 is a FALSE net by EXPERIMENT rather than assertion:** an engine running narrow
+    (`Math.min(width, 2)`) reddens 147 of the 180 new out-of-order timing cells and **zero of 807
+    conformance cells.** It also found that two "lawful answers" were not symmetric (eslint forbids
+    OoO importing the superscalar, so the shared bound had to move down to `engine-common`); that
+    gating a CONTROL's positions cannot contain a hazard reachable by a model switch; that the old
+    seam fixtures (`sum-loop`, `array-sum`) are **structurally blind to the 3→4 flip**; and that the
+    `loadInto` wiring gap is now a **HALF-dead toggle** — widths 1/2 correct, 3/4 collapsed, invisible
+    to all 1518 web tests, so **step 9 must check the WIDEST position specifically.** `configLabel`'s
+    `?? 1` was MEASURED still unreachable and stays handed forward rather than claimed closed. **Step 5's
     finding is in the VIEW, not the engine:** `datapath-superscalar.ts` hard-codes `MAX_WIDTH = 2`, so
     `parseLocation` returns `null` for slot ≥ 2 and an `EX.2` occupant is **dropped from occupancy
     with no crash and no red test** — handed to step 7. Its method lessons: a fixture sized for the

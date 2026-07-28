@@ -1,5 +1,6 @@
 import type { AssemblerError } from '@cpu-viz/assembler';
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
+import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-pipeline';
 import type { CacheConfig, InstructionInstance } from '@cpu-viz/trace';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -1207,27 +1208,62 @@ function CacheToggle(props: {
 }
 
 /**
- * The issue-width toggle (M7 step 6) — the milestone's flagship experiment (§12.4), and the FOURTH
- * control to change the machine rather than the picture. It rides M3's config seam exactly as
- * forwarding, prediction and the cache did, and the finding is the same one a fourth time: a whole
- * new tier of microarchitecture needed no widening of the seam it was handed.
+ * The positions the ISSUE control offers, **derived from the engine's own bound** rather than typed
+ * `[1, 2, 3, 4]` (M13 step 6, decision **W**: widths 1/2/3/4).
  *
- * **Two positions, and BOTH are honest machines — which is the thing this control has to get right.**
+ * Derived for the reason every `WIDTHS` in the engine suites is: raising `MAX_ISSUE_WIDTH` must not
+ * be able to leave the widest machine unreachable in the product, in silence. It is imported from
+ * `@cpu-viz/engine-common` — where step 6 moved it, so the superscalar and the out-of-order core
+ * can share one bound — and NOT re-typed here, which is the whole reason step 1 exported a constant
+ * instead of writing a `4`.
+ *
+ * **One bound for both models, and the alternative was considered and rejected.** Gating the
+ * positions per model would not have contained anything: {@link useSimulator} hands
+ * `issueWidthRef.current` to whichever engine is driving and `engineConfigFor` clamps only `cache`,
+ * so a reader at superscalar width 4 who switched to the out-of-order model would have handed it an
+ * unbounded width whatever this widget offered. The bound belongs at the engine; both now enforce
+ * it (pinned with the user, 2026-07-28).
+ */
+export const ISSUE_POSITIONS: readonly number[] = Array.from(
+  { length: MAX_ISSUE_WIDTH },
+  (_, i) => i + 1,
+);
+
+/**
+ * The issue-width toggle (M7 step 6; widened to `MAX_ISSUE_WIDTH` positions at M13 step 6) — the
+ * milestone's flagship experiment (§12.4), and the FOURTH control to change the machine rather than
+ * the picture. It rides M3's config seam exactly as forwarding, prediction and the cache did, and
+ * the finding is the same one a fourth time: a whole new tier of microarchitecture needed no
+ * widening of the seam it was handed. M13 widened the control and, again, not the seam.
+ *
+ * **Every position is an honest machine — which is the thing this control has to get right.**
  * The 1-wide position is not the M3 pipeline relabelled: it runs the superscalar's own issue logic
- * and simply never finds a pair, which is the pairing-failure picture at its limit. That is what
+ * and simply never finds a partner, which is the pairing-failure picture at its limit. That is what
  * makes the flip a same-program A/B on ONE machine rather than a model switch in disguise, and it is
- * the reason the width is a config knob here instead of a fifth row in the model picker. It also
- * satisfies the rule the other three toggles live by — *a control that cannot move anything is worse
- * than no control* — twice over: every corpus program runs strictly fewer cycles at width 2, so
- * neither position is ever a no-op (M7 step 2b, exact counts pinned in `pairing.test.ts`).
+ * the reason the width is a config knob here instead of a fifth row in the model picker.
+ *
+ * **The rule the other three toggles live by — *a control that cannot move anything is worse than no
+ * control* — is the one M13 had to re-examine rather than inherit, and the honest answer is that it
+ * now holds per-model rather than per-position.** Through M7 it held twice over: every corpus program
+ * ran strictly fewer cycles at width 2. It does NOT hold that way at 4 on the in-order machine —
+ * step 0's dump measured nine of eleven corpus programs cycle-identical at widths 3 and 4, and
+ * `sum-loop.s` gains nothing at all past 3. That was the argument FOR offering 4 rather than against
+ * it (decision W): the diminishing return is this tier's actual lesson, and a control that stopped
+ * at 3 would hide the one thing the width axis has left to teach. On the out-of-order model the
+ * fourth position pays properly — 51 → 33 → 30 → 26 on `array-sum.s` — so the same control teaches
+ * "wider stops paying" and "wider keeps paying" depending on which machine is behind it, which is
+ * a better lesson than either alone.
  *
  * Rendered only where `capabilities.configurableIssueWidth` is true, so it exists for the
- * superscalar and for nothing else — the three earlier models are not merely *unmoved* by the knob,
- * they ignore it, and step 1 pinned that as whole-trace inertness rather than assuming it.
+ * superscalar and the out-of-order core and nothing else — the four earlier models are not merely
+ * *unmoved* by the knob, they ignore it, and M7 step 1 pinned that as whole-trace inertness rather
+ * than assuming it.
  *
- * The `title`s carry where the honesty budget goes: that a wider machine does not double the speed,
- * because pairing keeps getting REFUSED for three reasons the reader can watch (two memory ops, two
- * branches, or a same-cycle RAW). "Two per cycle" is a ceiling, not a rate.
+ * The `title`s carry where the honesty budget goes: that a wider machine does not multiply the
+ * speed, because issue keeps getting REFUSED for three reasons the reader can watch (two memory
+ * ops, two branches, or one instruction reading what another in the same group writes). "N per
+ * cycle" is a ceiling, not a rate — and the labels say so at every position rather than only at the
+ * one that used to be the maximum.
  */
 export function WidthToggle(props: {
   width: number;
@@ -1247,24 +1283,47 @@ export function WidthToggle(props: {
         Issue
       </span>
       <div className="seg">
-        {([1, 2] as const).map((position) => (
+        {ISSUE_POSITIONS.map((position) => (
           <button
             key={position}
             className={position === width ? 'seg-btn seg-btn--on' : 'seg-btn'}
             onClick={() => setWidth(position)}
             aria-pressed={position === width}
-            title={
-              position === 2
-                ? 'Issue 2 per cycle — the machine tries to start the next TWO instructions together. It is a ceiling, not a rate: a pair is refused when both touch memory, when both are branches, or when the second reads what the first writes (forwarding cannot fix a same-cycle dependency). A refused instruction slides forward and pairs with the one behind it.'
-                : 'Issue 1 per cycle — the same machine, running its issue logic and never finding a pair. This is the 5-stage pipeline you already know, which is what makes it the baseline the 2-wide flip is measured against.'
-            }
+            title={widthTitle(position)}
           >
-            {position === 2 ? '2-wide' : '1-wide'}
+            {`${position}-wide`}
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+/**
+ * The per-position tooltip. **Written as a function over the position rather than a ternary on
+ * `=== 2`**, which is what the two-position version was: at four positions that ternary would have
+ * labelled widths 3 and 4 with width 1's copy and told the reader they were running the degenerate
+ * machine. A silent mislabel, since nothing headless reads a `title`.
+ *
+ * Three cases rather than N strings, because there are exactly three things a position can BE:
+ * the degenerate baseline, an ordinary widening, and the widest one the product offers — and the
+ * last of those has something specific and true to say that the others do not.
+ */
+function widthTitle(position: number): string {
+  if (position === 1) {
+    return 'Issue 1 per cycle — the same machine, running its issue logic and never finding a partner. This is the 5-stage pipeline you already know, which is what makes it the baseline every wider position is measured against.';
+  }
+  const refusals =
+    'It is a ceiling, not a rate: an instruction is refused when it would be the second to touch memory, the second branch, or when it reads what an instruction already in the group writes (forwarding cannot fix a same-cycle dependency). A refused instruction slides forward and starts the next group.';
+  if (position === MAX_ISSUE_WIDTH) {
+    return (
+      `Issue ${position} per cycle — the widest machine here, and the point of it is what does NOT happen. ` +
+      `On most programs this runs the same number of cycles as ${position - 1}-wide: the dependencies and the ` +
+      `single memory port bind long before the slots run out. Watch the widest machine buy nothing, ` +
+      `then switch to the out-of-order model and watch the same width start paying again. ${refusals}`
+    );
+  }
+  return `Issue ${position} per cycle — the machine tries to start the next ${position} instructions together. ${refusals}`;
 }
 
 /**

@@ -24,6 +24,7 @@
  * net rather than a formality — it has caught a genuine defect in five consecutive view steps.
  */
 
+import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { IssueOrderToggle, PredictionToggle, RobSizeControl, WidthToggle } from './App';
@@ -87,16 +88,51 @@ describe('the width control opens on the degenerate case (M7 step 6)', () => {
   const renderWidth = (width: number): string =>
     renderToStaticMarkup(<WidthToggle width={width} setWidth={noop} />);
 
-  it('renders exactly two positions — two widths, two real machines', () => {
-    expect((renderWidth(1).match(/<button/g) ?? []).length).toBe(2);
+  it('renders one position per width the engine admits', () => {
+    // M13 step 6 widened this from a literal `2`. **Derived from `MAX_ISSUE_WIDTH`, never typed
+    // `4`** — a literal here is the one thing a derived position list does not protect: raising the
+    // engine's bound would leave the widest machine unreachable in the product while this test
+    // stayed green, which is the exact decay mode steps 1/3/4/6 each installed a guard against.
+    expect((renderWidth(1).match(/<button/g) ?? []).length).toBe(MAX_ISSUE_WIDTH);
   });
 
-  it('lights 1-wide at the width the shell opens on, and 2-wide after the flip', () => {
-    // `useSimulator` seeds `issueWidth` to 1, so the first of these is what every reader sees on
-    // selecting the superscalar. If it lit neither (or both), the model's first impression would be
-    // a toggle showing no state — the failure the prediction control's `'none'` case guards against.
-    expect(litPosition(renderWidth(1))).toBe('1-wide');
-    expect(litPosition(renderWidth(2))).toBe('2-wide');
+  it('lights exactly the selected width, at every position', () => {
+    // `useSimulator` seeds `issueWidth` to 1, so the FIRST of these is what every reader sees on
+    // selecting the superscalar — the decision this block exists to pin, and M13 did not move it:
+    // the control still opens on the degenerate case so a reader arriving from the pipeline sees
+    // the machine they just learned, and every widening is the reveal. If it lit neither (or both),
+    // the model's first impression would be a toggle showing no state — the failure the prediction
+    // control's `'none'` case guards against.
+    //
+    // Swept over all positions rather than checked at 1 and 2, because the label used to be a
+    // TERNARY (`position === 2 ? '2-wide' : '1-wide'`) and the widened control's real hazard is a
+    // position that renders under another position's name. At two positions that is unimaginable;
+    // at four it is one stale ternary away, and nothing else in the repo reads these labels.
+    for (const w of Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1)) {
+      expect(litPosition(renderWidth(w)), `width ${w}`).toBe(`${w}-wide`);
+    }
+  });
+
+  /**
+   * The tooltips, pinned because **nothing else can see them and they are where this control's
+   * honesty lives** (M13 step 6).
+   *
+   * The two-position version keyed its `title` off `position === 2`, so every position that was not
+   * 2 got width 1's copy — "the same machine, never finding a partner". Widening the control
+   * without widening that ternary would have told a reader at width 3 or 4 that they were running
+   * the degenerate machine, in a string no test read and no type checker could reach. That is the
+   * `Lesson.depthDefault` class of defect (a declarative field nothing consumes) inverted: a field
+   * the READER consumes and no test does.
+   *
+   * Asserting the distinctness rather than the wording, so copy edits stay free.
+   */
+  it('gives every position its own tooltip — no position wears another’s copy', () => {
+    const titles = [...renderWidth(1).matchAll(/title="([^"]*)"/g)].map((m) => m[1]);
+    expect(titles).toHaveLength(MAX_ISSUE_WIDTH);
+    expect(new Set(titles).size, 'distinct tooltips').toBe(MAX_ISSUE_WIDTH);
+    // The degenerate position is the one whose copy makes a claim about a DIFFERENT model ("the
+    // 5-stage pipeline you already know"); no wider position may repeat it.
+    expect(titles.filter((t) => t?.includes('5-stage pipeline'))).toHaveLength(1);
   });
 });
 

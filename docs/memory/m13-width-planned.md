@@ -1,18 +1,86 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts), conformance runs 72 configs with configLabel fixed, and the recorder + location encoding are PROVEN free at widths 3/4 (repo 5575 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted; step 5s fixture stopped scaling and found datapath-superscalar MAX_WIDTH=2 silently dropping EX.2. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6 done, the ISSUE control now offers 1/2/3/4 and MAX_ISSUE_WIDTH lives in engine-common so the OUT-OF-ORDER model shares the bound and is netted at it (180 transplanted timing cells; repo 6157 tests). Step 6 proved INV-8 is a false net by experiment: an engine running narrow reddens 147 timing cells and ZERO of 807 conformance cells. Its other traps: the old seam fixtures are blind to the 3-to-4 flip, and the loadInto wiring gap is now a HALF-dead toggle (widths 1/2 correct, 3/4 collapse) invisible to all 1518 web tests. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts), conformance runs 72 configs with configLabel fixed, and the recorder + location encoding are PROVEN free at widths 3/4 (repo 5575 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted; step 5s fixture stopped scaling and found datapath-superscalar MAX_WIDTH=2 silently dropping EX.2. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T14:56:43.311Z
+  modified: 2026-07-28T15:57:40.048Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / **5** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / **6** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → 5157 → 5558 → **5575** tests. See
-[[project-overview]] for the index, [[m7-superscalar-engine]] for the machine this generalizes.
+`dump-postfix.txt` (the one to read); step 6's at `M:\claud_projects\temp\m13-step6\`. Repo 4498 →
+4504 → 4523 → 5157 → 5558 → 5575 → **6157** tests. See [[project-overview]] for the index,
+[[m7-superscalar-engine]] for the machine this generalizes, [[m9-out-of-order]] for the model step 6
+widened.
+
+### Step 6 SHIPPED — **the control gained positions, and so did a SECOND engine**
+
+The ISSUE toggle offers 1/2/3/4. `MAX_ISSUE_WIDTH` moved to `engine-common`; the OUT-OF-ORDER model
+is capped at the same bound **and netted at it** (user pinned CAP BOTH over gate-positions-per-model).
+
+- **Two "lawful answers" were NOT symmetric, and the DAG settled it in one query.** `eslint.config.js`
+  forbids `engine/out-of-order` importing `engine-superscalar`, so the constant could not stay where
+  step 1 put it. It moved to **`engine-common`** — the one production edge both engines declare, the
+  exact M7-step-0 precedent (`predict.ts`/`cache.ts` moved down because _a second model needed them_).
+  Superscalar RE-EXPORTS it, so all eight importers are untouched. **Check the DAG before weighing
+  two options as equals.** Side effect recorded in both files: `engine-conformance` CAN now import
+  the bound, so step 4's split is enforced by judgement rather than by a package cycle.
+- **The rejected alternative failed for a reusable reason: gating the CONTROL's positions contains
+  nothing.** `useSimulator` hands its width to whichever engine is driving and `engineConfigFor`
+  clamps only `cache`, so superscalar@w4 → switch model would hand OoO an unbounded width whatever
+  the widget offered. **A hazard reachable by a path the control does not sit on is not fixed by
+  changing the control.**
+- **The dump repriced the step from "own milestone" to "one commit".** OoO × corpus × widths 1..4 ×
+  both orders × 3 schemes × 3 caches = **792 cells, 0 mismatches**, run BEFORE the guard was touched;
+  and every OoO runner is ALREADY bounded (unlike the superscalar's at step 1), so the liveness
+  hazard was **measured absent**. Product finding: **width 4 keeps paying OUT of order where it stops
+  paying IN order** — `array-sum` 51→42→36→36 in order vs 51→33→30→**26** out of order. The
+  diminishing return that justifies the bound belongs to the IN-ORDER machines, not to the width axis.
+- **⚠ THE STEP'S SHARPEST RESULT, and it is an experiment: `this.width = Math.min(width, 2)` —
+  an engine running NARROW while reporting the width it was handed — reddens 147 of the 180 new
+  TIMING cells and leaves ALL 807 conformance cells green**, including the 396 width-3/4 ones added
+  in the same step. That is "INV-8 is a FALSE net here" built rather than warned about. The 33 wide
+  cells that stay green are the programs cycle-identical at 2/3/4 — **a wide cell on one of those is
+  a width-2 measurement wearing a width-4 name.**
+- **The transplant copies TERMS, never totals** (`base.groups`, `base.blocked.on`, `taken.groups`
+  from the superscalar's `wide` table); the closed form computes the total. A table of expected
+  CYCLE COUNTS read off a passing run is an identity over engine output and looks exactly like a
+  derivation — the M7 step 2b trap. Verified in advance: a script computed all 180 cells from those
+  terms and matched the dump **180/180**, so the docblock calls the suite a cross-check turned into a
+  standing net, not a prediction.
+- **The width-2 betting DELTA does not generalise.** At w2 a bet kills its group's single mate
+  (`bettingGroupsOn`, a delta); at w ≥ 3 a bet RE-PARTITIONS the tail, which the superscalar's table
+  stores ABSOLUTELY. Needed a new field shape + code path, not six more numbers per program.
+  **Copying a number whose meaning changed is not a transplant.**
+- **⚠ THE SEAM FIXTURE HAD TO CHANGE — step 5's trap, one step later.** The existing seam pins
+  `sum-loop` 56→44 and `array-sum` 51→42; across four positions those are 56→44→43→**43** and
+  51→42→36→**36**, so both are structurally BLIND to the 3→4 flip. `slow-op-loop` moves at every
+  position: **44→35→34→33**. The plan's own acceptance criterion names `array-sum` — fine as a demo,
+  useless as a seam. Also: `<` between 3 and 4 is simply FALSE on 9 of 11 programs, so the obvious
+  monotone assertion would have to weaken to `<=`, which the identity toggle satisfies too.
+- **⚠ THE WIRING GAP IS WORSE AT FOUR POSITIONS, and step 9 must be told where to look.** Clamping
+  `loadInto`'s width to 2 leaves **all 1518 web tests green** (re-provoked, not inherited). M7's
+  version deleted the field and ran BOTH positions at width 1 — a fully dead toggle an eyeball
+  catches at once. The reachable failure now is a clamp: **widths 1 and 2 stay CORRECT, only 3 and 4
+  collapse.** A control right where the reader checks it and wrong at the end. Breaking the half that
+  IS reachable (`loadSource`) reddens **exactly one test in 1519 — the new one.**
+- **`configLabel`'s `?? 1`: measured, and step 6 did NOT make it reachable.** All 4 OoO lesson JSONs
+  state `issueWidth`; `session.ts` applies its own `?? 1`; `useSimulator` seeds `useState(1)`. Stays
+  handed forward rather than claimed closed. Deliberately did NOT change OoO's `?? 2` engine default
+  — that moves pinned recordings.
+- **The OoO datapath needed no work, structurally rather than luckily.** Both of step 5's sweep
+  spellings came back EMPTY on `datapath-out-of-order.ts`, `OutOfOrderDatapathView.tsx` and
+  `MicroTablePanel.tsx`: this model's `location` is uniformly `"ROB#tag"` (tag-keyed) and its FUs are
+  drawn as POOLS, not replicated lanes. **A model with no slot in its location encoding has no slot
+  arity to get wrong.** Step 5's `MAX_WIDTH = 2` finding is still step 7's, unchanged.
+- **The picker's PROSE is now derived too.** `SUPERSCALAR_MODEL_DESCRIPTION` (step 1's deliberate
+  debt, "up to two") interpolates `MAX_ISSUE_WIDTH`. It is the one place the number is user-facing,
+  and a stale copy there fails silently — **nothing in this repo asserts on a description's wording.**
+  Same class: the tooltip was a ternary on `=== 2`, which would have rendered widths 3/4 under width
+  1's copy ("never finding a partner"), in a string no test read.
 
 ### Step 5 SHIPPED — **the fixture stopped scaling, and the sweep found the view's silent hole**
 

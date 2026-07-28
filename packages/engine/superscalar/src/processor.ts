@@ -88,7 +88,13 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
+import {
+  speculativeTarget,
+  access,
+  newCache,
+  MAX_ISSUE_WIDTH,
+  type CacheState,
+} from '@cpu-viz/engine-common';
 import {
   defaultConfig,
   makeRegisters,
@@ -255,17 +261,24 @@ export const SUPERSCALAR_CAPABILITIES: ProcessorCapabilities = {
 };
 
 /**
- * The widest machine this model admits (M13 step 1, decision **W**). Exported so the web's width
- * control and the conformance matrix read the bound from the engine that enforces it rather than
- * re-typing a `4` each — one number, one owner.
+ * The widest machine this model admits (M13 step 1, decision **W**) — **now
+ * `@cpu-viz/engine-common`'s, re-exported here (M13 step 6)** rather than declared here.
  *
- * **Why 4 and not "any N".** It is exactly what the product offers, and a guard that admits more
- * than the product offers is untested surface: widths 5+ have no derived timing cell, no dumped
- * group-size histogram, and no adversarial net. 4 is also where the corpus shows widening STOP
- * paying — nine of eleven programs are cycle-identical at 3 and 4 — so it is the last width with
- * anything left to teach. Raising it is a measurement, not an edit.
+ * Step 1 declared it in this file so the web control and the conformance matrix would read the
+ * bound "from the engine that enforces it rather than re-typing a `4` each — one number, one
+ * owner". Step 6 pinned that the OUT-OF-ORDER model is capped at the same bound, which makes this
+ * file the wrong owner: eslint forbids that model importing this one, so leaving the constant here
+ * would have forced the second literal `4` step 1 exported it to prevent. One number, one owner —
+ * the owner moved, the rule did not. See `engine-common/src/issue-width.ts` for why 4, and for the
+ * one boundary the move relaxed.
+ *
+ * Re-exported (not merely imported) so every existing consumer — `differential.test.ts`,
+ * `halt-shadow.test.ts`, `processor.test.ts`, `recorder.test.ts`, `timing.test.ts`,
+ * `wide-groups.test.ts`, and the web — keeps reading it from this package's `index.ts` unchanged.
+ * The bound is still ENFORCED here (see {@link SuperscalarProcessor.reset}'s guard); only its
+ * declaration moved.
  */
-export const MAX_ISSUE_WIDTH = 4;
+export { MAX_ISSUE_WIDTH };
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
 const STORES = new Set(['sb', 'sh', 'sw']);

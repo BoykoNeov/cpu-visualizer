@@ -62,7 +62,13 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
+import {
+  speculativeTarget,
+  access,
+  newCache,
+  MAX_ISSUE_WIDTH,
+  type CacheState,
+} from '@cpu-viz/engine-common';
 import {
   defaultConfig,
   makeRegisters,
@@ -195,6 +201,47 @@ function positiveCapacity(name: string, value: number): void {
   }
 }
 
+/**
+ * Reject an issue width outside `1..MAX_ISSUE_WIDTH` — the UPPER half of the width guard, which
+ * `positiveCapacity` above deliberately does not carry (M13 step 6).
+ *
+ * **Why a second function rather than a `max` parameter on the one above.** `positiveCapacity`
+ * also guards `robSize` and `numMshrs`, and those genuinely have no upper bound: a 64-entry ROB is
+ * a machine this model runs correctly and nothing in the product stops a lesson from asking for
+ * one. Width is different in kind — it is a PRODUCT OFFERING (the shell's ISSUE control has
+ * exactly `MAX_ISSUE_WIDTH` positions), and past that bound there is no derived timing cell to
+ * check the machine against. Folding an optional `max` into the shared helper would have put a
+ * bound-shaped parameter on two knobs that must not acquire one.
+ *
+ * **Why the bound applies to THIS model at all, since nothing structural in it caps width.**
+ * Pinned with the user at M13 step 6: the shell's width control is SHARED between the superscalar
+ * and this model, and the alternative — gating the control's positions per model — does not
+ * actually contain the hazard. `useSimulator` hands `issueWidthRef.current` to whatever engine is
+ * driving, and `models.ts`'s `engineConfigFor` clamps only `cache`, so a reader at superscalar
+ * width 4 who switches to this model would hand it a width no test covered, control positions or
+ * not. One shared bound closes that path at the engine rather than at the widget.
+ *
+ * **What earns widths 3 and 4 here is a measurement, not the guard.** Step 6 dumped this model
+ * over corpus × widths 1..4 × both issue orders × 3 prediction schemes × 3 cache geometries — 792
+ * cells, every one terminating and architecturally equal to the golden reference — BEFORE the
+ * bound was raised, and `timing.test.ts` extends the M3/M7 transplant to widths 3 and 4 in the
+ * same commit as this line. Step 1's rule, from the superscalar: never open a guard in one commit
+ * and net it in the next.
+ */
+function boundedIssueWidth(value: number): void {
+  if (!Number.isInteger(value) || value < 1 || value > MAX_ISSUE_WIDTH) {
+    throw new Error(
+      `out-of-order: issueWidth ${value} is not a whole number of instructions per cycle, ` +
+        `from 1 to ${MAX_ISSUE_WIDTH} (M13 step 6). The bound is shared with the superscalar ` +
+        `(@cpu-viz/engine-common) because the shell's ISSUE control is shared: past ` +
+        `${MAX_ISSUE_WIDTH} there is no derived timing cell and no dumped schedule to check ` +
+        `against. Note the guard tests INTEGRALITY, not just the range — a NaN width would make ` +
+        `every 's < this.width' body unreachable, i.e. a core that dispatches nothing and never ` +
+        `halts (the M9+M10 review's finding 6, in the shape M13 step 1 fixed it).`,
+    );
+  }
+}
+
 /** An instruction fetched but not yet dispatched — the IF-stage occupant, one per slot. */
 interface Fetched {
   readonly id: string;
@@ -285,7 +332,7 @@ export class OutOfOrderProcessor implements Processor {
 
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     const width = config.issueWidth ?? 2;
-    positiveCapacity('issueWidth', width);
+    boundedIssueWidth(width);
     this.width = width;
     this.predictTaken = config.branchPrediction === 'static-taken';
     this.cacheConfig = config.cache;

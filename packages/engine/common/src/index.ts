@@ -7,6 +7,14 @@
 export { toProgramImage } from './program-image';
 
 /**
+ * The shared issue-width bound — **moved down here from `engine-superscalar` at M13 step 6**,
+ * unchanged in value, for exactly the reason `predict.ts` and `cache.ts` moved down at M7 step 0:
+ * a SECOND model needs it, and the models in this repo import no sibling model. See its own
+ * docblock for the decision it implements and the one eslint boundary the move relaxed.
+ */
+export { MAX_ISSUE_WIDTH } from './issue-width';
+
+/**
  * Branch prediction's ID-stage half and the D-cache timing shadow — **moved down here from
  * `engine-pipeline` at M7 step 0**, unchanged in behaviour.
  *

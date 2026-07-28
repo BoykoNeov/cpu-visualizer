@@ -28,6 +28,10 @@
  * `toProgramImage` (in `@cpu-viz/engine-common`) adapts an `AssembledProgram` into that image.
  */
 
+// Imported (not only re-exported below) because {@link SUPERSCALAR_MODEL_DESCRIPTION} DERIVES the
+// picker's user-facing number from it — an `export ... from` re-export creates no local binding.
+import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
+
 export {
   SuperscalarProcessor,
   SUPERSCALAR_CAPABILITIES,
@@ -44,10 +48,24 @@ export {
 export const SUPERSCALAR_MODEL_ID = 'superscalar';
 
 /**
- * **Deliberately still says "two", and M13 step 1 left it alone.** This string is shown in the
- * model picker, and it describes WHAT THE PRODUCT OFFERS, not what the guard admits: the width
- * control still has two positions until step 6 enables 3 and 4. Widening it here would make the
- * picker promise a machine no user can reach. It moves in step 6, with the control.
+ * **The debt step 1 named, paid here (M13 step 6).** It read "up to two" through M7–M12 and step 1
+ * deliberately left it alone, because this string is shown in the model picker and describes WHAT
+ * THE PRODUCT OFFERS, not what the guard admits — the control still had two positions, and widening
+ * the copy first would have promised a machine no user could reach. The control gained its
+ * positions in this step, so the sentence moves with it and not before.
+ *
+ * **Derived from `MAX_ISSUE_WIDTH`, not re-typed**, which is the whole reason step 1 exported a
+ * constant. It is the same rule the guard message and the web control follow, applied to the one
+ * place in the product where the number is USER-FACING PROSE: raising the bound must not be able to
+ * leave the picker describing a narrower machine than the toggle offers. That failure would be
+ * silent — no test in this repo asserts on a description's wording, by design (M13 step 4's finding
+ * that nothing here asserts on `it()` titles is the same shape).
+ *
+ * The wording says "up to", and that is load-bearing rather than hedging: step 0's dump measured
+ * nine of eleven corpus programs cycle-identical at widths 3 and 4. The ceiling is real; the rate
+ * almost never reaches it, and the picker should not imply otherwise before the reader has run
+ * anything.
  */
 export const SUPERSCALAR_MODEL_DESCRIPTION =
-  'In-order superscalar — up to two instructions issue per cycle, sharing every pipeline stage.';
+  `In-order superscalar — up to ${MAX_ISSUE_WIDTH} instructions issue per cycle, ` +
+  'sharing every pipeline stage.';
