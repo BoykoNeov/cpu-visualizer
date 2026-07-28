@@ -83,6 +83,24 @@ replaces one drawing with four; the lane tint set is four. In descending order o
   tests, so the totals must be compared, not just the failures); stop filtering lanes → 5; constant
   canvas → 1; shared channel → 1; shared stub → 1; M7's crossing route → 1; a tint dropped from ONE
   dark block → 1 (nothing else in the repo can see a drifted dark block); M7's fixture → 2.
+- **⚠ THE CLOSING PASS FOUND TWO GAPS THE STEP'S OWN 55 TESTS COULD NOT — both about WHICH LAYER a
+  claim was made at.** (a) **The render seam had never executed above width 2.** The geometry suite
+  builds `DatapathConfig` literally, so it proves the geometry and nothing about the wrapper; every
+  render site used width 1 or 2, so `layoutLabels` had never seen a four-lane canvas. The new check
+  COUNTS distinct lane tints rather than checking presence, because **`geometryFor` clamps**: a wrong
+  width renders a plausible NARROWER diagram instead of throwing — step 6's half-dead toggle one
+  layer up. Break: clamp to 2 → 25 red (2 at the seam); tint only lanes 0/1 → **exactly 1 of 1535**.
+  (b) **Both readout fixes were UNWATCHED**: restoring the caption's literal `up to 2` reddened
+  **ZERO of 1535**, and the lane-hue cast emitted `color: undefined`, which React drops in silence.
+  Generalises: _a pure-data test of a view proves the data; the seam needs its own render._
+- **⚠ WIDTHS 1 AND 2 MOVED — enumerated, not characterised (step 6's lesson applied).** Every node
+  moved, but almost all by ONE uniform `(+8, +8)` translation (the fifth rail pushes `barTop`
+  112→120; the fifth channel pushes `fwdmuxX` 580→588 and the cluster with it). The four real
+  changes: the **width-1 canvas 1300×830 → 1308×600** with bars 588→410 (they used to run ~300px
+  past the only lane), `pcmux` sized to its actual redirect count (h 76→52 at w1), `signext-l1`
+  534→550 onto the uniform pitch, and the two rerouted wires. **So step 9 must NOT treat 1 and 2 as
+  already validated** — step 6's "check the widest position specifically" plus M7's validated
+  width-2 picture read together as permission to skip them, and that is now wrong.
 - **Handed to step 8, named so it cannot be lost:** `PairingReadoutView`'s caption is a literal
   **"up to 2 instructions may issue together"** — WRONG at widths 3/4 since step 6 shipped the control —
   and `REFUSAL_TEXT`'s "its partner" is pair-shaped. `pairing-readout.ts` itself stays arity-generic.

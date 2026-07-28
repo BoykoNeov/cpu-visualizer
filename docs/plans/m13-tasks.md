@@ -689,6 +689,41 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       hand two lanes the same channel (1); the same stub (1); restore M7's crossing route (1); drop
       a tint from ONE dark block (1 — nothing else in the repo can see a drifted dark block); restore
       M7's fixture (2).
+      **THE CLOSING PASS FOUND TWO GAPS THE STEP'S OWN 55 TESTS COULD NOT, and both are about which
+      LAYER a claim was made at.** _(a) The render seam had never executed above width 2._
+      `datapath-superscalar.test.ts` builds `DatapathConfig` literally at every width, so it proves
+      the GEOMETRY and says nothing about the wrapper; and every render site in
+      `DatapathDiagram.test.tsx` used width 1 or 2, so `layoutLabels` — which de-collides value
+      labels vertically and clamps them inside `canvas.height` — had never seen a four-lane canvas
+      at all. The new check is a COUNT of distinct lane tints rather than a presence check, because
+      **`geometryFor` clamps its argument**: a width that arrives wrong renders a plausible NARROWER
+      diagram instead of throwing, which is step 6's half-dead toggle one layer up, and a
+      `toContain('--lane-0')` passes straight through it. Watched: clamping `geometryFor` to 2
+      reddens 25 (23 geometry + **2 at the seam**); stopping the tint at lane 1 reddens **exactly 1
+      of 1535**, and it is the new one. _(b) The readout's two fixes were UNWATCHED._ Restoring the
+      caption's literal `up to 2` reddened **zero of 1535**, and the lane-hue cast beside it emitted
+      `color: undefined`, which React drops in silence. Both are now pinned at the render seam; the
+      pair-shaped WORDING is deliberately still unpinned, so step 8's vocabulary pass stays a copy
+      edit rather than a test edit.
+      **WIDTHS 1 AND 2 MOVED, and the list is enumerated rather than characterised.** The plan for
+      this step said "dump n=1,2 before/after and report exactly what moved"; that is done here
+      because skipping it is how step 6 shipped a wrong docblock. **Every node moved**, but almost
+      all of them by one uniform translation: `(+8, +8)`, from the FIFTH forwarding rail (which
+      pushes `barTop` 112 → 120) and the fifth channel (which pushes `fwdmuxX` 580 → 588 and the
+      whole execute cluster with it). The changes that are NOT that translation are four:
+      the **width-1 canvas is much shorter** (1300×830 → 1308×600) and its latch bars go 588 → 410,
+      because they used to run ~300px past the only lane there was; `pcmux` is now sized to the
+      redirect count it actually carries (h 76 → 52 at width 1); `signext-l1` moved 534 → 550 onto
+      the uniform lane pitch, which is what lets the translation litmus cover the ID band; and both
+      `hazard-pc` and `memwb-fwdunit` are rerouted. The width-2 canvas grows 830 → 846.
+      **So step 9 must NOT treat widths 1 and 2 as already validated.** M7's browser pass validated
+      the width-2 picture and step 6's entry says to check the WIDEST position specifically — read
+      together that is an invitation to skip 1 and 2, and it is now wrong. Two specific things to
+      look at that no test can settle: **the width-1 diagram's new proportions** (it is a third
+      shorter, so the label gaps beside the bars are the thing to check), and **label density at
+      width 4** — this file's own layout contract is "WIDTH IS SET BY THE LABELS", and the corridor
+      widening moved the execute cluster 32px right at widths 3/4 without anyone re-checking that
+      the 32-bit hex gaps beside the bars still hold at four times the label count.
       **Handed to step 8, explicitly rather than silently.** `REFUSAL_TEXT`'s gloss for
       `intra-pair-raw` is pair-shaped, and — sharper — `PairingReadoutView`'s caption is a literal
       **"up to 2 instructions may issue together"**, which has been WRONG at widths 3 and 4 since
@@ -726,6 +761,15 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       "no `stall` event ⇒ they issued together" rule is a lie a miss-freeze tells.
 - [ ] **9. The browser pass.** Non-negotiable — `browser-is-the-only-net`: 9 of 10 view steps in
       project history shipped a defect only the browser caught, and no test here can see a click.
+      **Step 7 sharpened what to look at, and one of its findings makes the obvious plan wrong.**
+      Step 6 said to check the WIDEST position specifically (the `loadInto` clamp is a half-dead
+      toggle there); step 7 shows that widths 1 and 2 also MOVED — the width-1 canvas is a third
+      shorter and its bars 588 → 410 — so "1 and 2 are already validated" no longer holds. Check
+      all four. The two things no test can settle: **label density and the hex-label gaps beside
+      the bars at width 4** (the file's layout contract is "WIDTH IS SET BY THE LABELS", and the
+      corridor widening moved the execute cluster 32px right without re-checking them), and **the
+      width-1 diagram's new proportions**. And the flagship A/B is still the acceptance criterion
+      at the top: flip ISSUE across all four positions on `array-sum.s` WITHOUT reloading.
 
 ## Acceptance criteria
 
