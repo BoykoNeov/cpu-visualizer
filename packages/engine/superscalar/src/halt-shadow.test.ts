@@ -20,8 +20,15 @@ import { SuperscalarProcessor } from './index';
  * wrong-path all along: the squash kills it, the redirect moves `fetchPc` back to the loop — and the
  * sticky flag it already set means nothing is ever fetched from there. The pipe drains, `halted` is
  * never raised (the halt died; only a RETIRING halt raises it), and `step()` returns empty cycles
- * for ever. **`isHalted()` never goes true, so every caller that loops on it hangs**, including the
- * recorder and therefore the web app.
+ * for ever.
+ *
+ * **`isHalted()` never goes true, so a bare `while (!p.isHalted())` never returns.** Stated
+ * precisely, because the two layers above this one differ: `Recorder.runToEnd` (`recorder.ts:158`)
+ * loops on `isHalted()` but is guarded by `maxCycles = 1_000_000`, so it THROWS
+ * "non-terminating program?" rather than hanging for ever — after accumulating a million cycle
+ * traces, each carrying a full state snapshot. That is not a survivable amount of memory: this
+ * investigation's own first dump run exhausted a 4 GB Node heap doing exactly this, which is why
+ * the harness that found the bug had to cap itself before it could report anything.
  *
  * **This is width ≥ 2 only, and it is NOT a milestone-13 finding — it is live in shipped code.**
  * At width 1 the halt reaches ID a whole cycle after the branch reaches EX, so `stageId`'s
@@ -65,6 +72,31 @@ loop:
     addi t0, t0, -1
     bnez t0, loop
     ecall
+`;
+
+/**
+ * The CONVERSE program, and the one that keeps the fix honest. Same adjacency — `bnez` then `ecall`
+ * with no spacer — but with **live code after the `ecall`**, so "did fetch stop?" is an observable
+ * question rather than a vacuous one. On the last trip the branch falls THROUGH, so the `ecall`
+ * co-issues with it and is on the REAL path: its `haltFetch` must survive, and nothing beyond it may
+ * ever be fetched.
+ *
+ * Without the trailing instructions this test cannot fail. The `ecall` would be the last word in
+ * `.text`, so fetch would stop on the `inText` bound whether or not the flag was wrongly cleared —
+ * a green check measuring nothing, which is the house's own named trap.
+ */
+const REAL_PATH_HALT = `    .text
+    .globl _start
+_start:
+    li   a7, 10
+    li   t0, 3
+loop:
+    addi t0, t0, -1
+    bnez t0, loop
+    ecall
+    addi t1, x0, 111
+    addi t2, x0, 222
+    addi t3, x0, 333
 `;
 
 /** The corpus exit idiom, for contrast: the spacer keeps the halt out of the branch's group. */
@@ -141,6 +173,54 @@ describe('a halt in a taken branch’s shadow', () => {
       .slice(lastFlush + 1)
       .some((t) => t.events.some((e) => e.type === 'instr-fetch'));
     expect(fetchedAfter).toBe(true);
+  });
+
+  /**
+   * **The converse, and the half a "does it terminate?" test cannot reach.** The fix clears
+   * `haltFetch` on a branch squash; this pins that it clears it on NO other occasion. On the last
+   * trip the branch falls through and the `ecall` co-issues with it on the REAL path — so its flag
+   * must stand, and the three instructions after it must never be fetched even though they sit in
+   * `.text` and the fetch pointer is aimed straight at them.
+   *
+   * Why the argument alone was not enough to skip this: "a branch resolving in EX is never younger
+   * than a live halt" is a claim about SLOT ORDERING, and this repo's rule is that any claim naming
+   * a slot must be watched rather than reasoned — M7 shipped a slot-1 test that passed while
+   * demonstrating its opposite. The reasoning happens to hold (a halt ends its group via
+   * `killedRest`, so nothing younger than it is ever in flight), but this is what checks it.
+   */
+  it('leaves a REAL-path halt’s flag alone — nothing past the ecall is ever fetched', () => {
+    for (const issueWidth of WIDTHS) {
+      for (const branchPrediction of SCHEMES) {
+        const ts = run(REAL_PATH_HALT, cfg({ issueWidth, branchPrediction }));
+        const fetched = ts.flatMap((t) =>
+          t.events.filter((e) => e.type === 'instr-fetch').map((e) => e.pc),
+        );
+        // **Instructions after the halt ARE fetched, and that is correct** — `stopFetch` applies at
+        // the clock edge, so IF still fetches the halt's shadow before the squash kills it, exactly
+        // as `stageId` documents. The bound is ONE FETCH GROUP, because that is how much IF can
+        // take in the cycle the halt issues: measured `maxPc` is 20 at width 1, 24 at width 2 under
+        // `none`/`static-not-taken`, and 28 at width 2 under `static-taken` — i.e. never past
+        // `halt + 4 × width`. So the assertion is width-derived rather than a constant.
+        //
+        // Two earlier drafts of this line failed against a CORRECT engine, which is the point of
+        // measuring instead of reasoning: `[]` past the halt ignored the shadow, and `[]` past the
+        // shadow ignored that a 2-wide machine fetches the shadow two at a time.
+        const bound = 20 + 4 * issueWidth;
+        const past = fetched.filter((pc) => pc > bound);
+        expect(
+          past,
+          `fetched past the halt’s shadow group (>${bound}) at w${issueWidth}/${branchPrediction}`,
+        ).toEqual([]);
+        // ...and whatever WAS fetched never committed: t1/t2/t3 are still zero. This is the
+        // config-independent half — it holds at every width and scheme regardless of how far the
+        // shadow reached, and it is what a wrongly-cleared flag could not survive, since fetch would
+        // run on through all three and retire them.
+        const regs = ts[ts.length - 1]!.state.registers;
+        expect([regs[6], regs[7], regs[28]], `dead code committed at w${issueWidth}`).toEqual([
+          0, 0, 0,
+        ]);
+      }
+    }
   });
 
   /**
