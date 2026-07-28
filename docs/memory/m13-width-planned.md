@@ -1,18 +1,58 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — the step-0 dump PLANNED but not built: the pairing rules were already width-generic, the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70), and width 4 is where widening stops paying. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1 done, the guard now admits 1..4 (MAX_ISSUE_WIDTH). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T10:38:10.774Z
+  modified: 2026-07-28T11:08:15.092Z
 ---
 
-## M13 — the wide machine, widened. **PLANNED 2026-07-28, NOT BUILT.** Steps 0/0b done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / **1** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → **4503** tests. See [[project-overview]] for the
-index, [[m7-superscalar-engine]] for the machine this generalizes.
+`dump-postfix.txt` (the one to read). Repo 4498 → 4503 → **4504** tests. See [[project-overview]] for
+the index, [[m7-superscalar-engine]] for the machine this generalizes.
+
+### Step 1 SHIPPED `3fbda0c` — and it confirmed the dump's headline the hard way
+
+`MAX_ISSUE_WIDTH = 4`, **exported** from `engine/superscalar` so steps 4/6/7 read the bound from the
+engine that enforces it instead of re-typing a `4`. Guard shape is the M9+M10 capacity one
+(`!Number.isInteger(w) || w < 1 || w > MAX`), because `w < 1` alone is false for both `NaN` and
+`1.5` — and a NaN width makes every `s < this.width` body unreachable, i.e. a processor that fetches
+nothing and never halts.
+
+- **The audit's CODE half came back empty, and that is the reportable result.** A sweep for literal
+  slot indexing (`idEx[0|1]`, `exMem[…]`, `ifSlot[…]`) across all of `packages/` matched **one line,
+  in a test, deliberately about slot 0**. There was no arity-2 code anywhere. The step was the guard
+  plus ~20 docblocks. **Run the mechanical sweep before believing either "it's all generic" or "this
+  will be a rewrite"** — it settles in one query what prose argues about for a page.
+- **One docblock was a real defect, not stale phrasing.** `CycleCtx.bet` said the bet's casualty set
+  "grows by exactly one seat"; it is up to `width - 1` seats. It survived because **the count never
+  reaches the trace** — `flush.stages` names stage FAMILIES, so N dead ID seats and one dead seat
+  are both the string `'ID'`. A wrong number that no consumer can observe is exactly the kind that
+  outlives its milestone.
+- **Names that reach the trace were deliberately NOT fixed.** `'intra-pair-raw'` is a `stall.reason`
+  three consumers read (`pairing.test.ts` asserts it, the readout glosses it, curriculum can anchor
+  on it) — renaming moves trace bytes for a spelling, and step 1's own acceptance is byte-identity.
+  It carries a line saying the name is historical and means intra-GROUP. Same call for
+  `SUPERSCALAR_MODEL_DESCRIPTION` ("up to two"): it is the picker's user-facing copy and describes
+  what the product OFFERS, not what the guard admits, so it moves in step 6 with the control.
+  **Two different rules, one distinction: is this string a contract, a UI promise, or a comment?**
+- **The byte-identity acceptance, reported for what it was worth.** 396 whole-trace sets (11 programs
+  × widths {1,2} × 18 configs), 22 455 cycles, ~50 MB: 396/396 byte-equal. Two things made it worth
+  running at all, and both are reusable: `MachineState.memory` is a `SparseMemory` whose `Map` is
+  PRIVATE, so a naive `JSON.stringify` emits `{}` and the compare **passes vacuously on memory
+  everywhere** — the serializer must enumerate `definedAddresses()`; and the compare was falsified
+  (w1≠w2, fwd≠nofwd, cache≠nocache) before being trusted. But the honest report is that byte-identity
+  was CHEAP here: no code outside the guard changed, so nothing could have moved. **Say which of your
+  green checks was cheap.**
+- **Liveness net widened in the SAME commit as the guard.** Opening the guard makes 3/4 reachable;
+  `halt-shadow.test.ts` is the only net in the repo that turns a width-3/4 non-termination into a red
+  test rather than a hung suite (every other runner loops `while (!p.isHalted())` unbounded). Its
+  `WIDTHS` is now DERIVED from `MAX_ISSUE_WIDTH`, not typed `[1,2,3,4]`, so raising the bound cannot
+  leave the widest machine the least tested. **Never open a guard in one commit and net it in the
+  next.**
 
 **The step-0 dump overturned two of the three things this milestone was scoped as. That is the
 milestone's first lesson: it cost one measurement pass and it saved the whole plan.**
