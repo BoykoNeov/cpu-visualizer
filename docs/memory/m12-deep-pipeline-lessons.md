@@ -95,3 +95,15 @@ fix nobody can see is not a fix).
   lesson dragged. Caption for the prediction control is **`Predict`** (positions `not taken`/`taken`);
   §0's "known-present control" check must select a model that HAS the control first — `single-cycle`
   honors no knobs, so checking there reports the rig broken when its own premise was wrong.
+
+**CORRECTED 2026-07-28 by the M11+M12 review (finding 2), and it is a LESSON-AUTHORING RULE:
+a lesson with config-exclusive steps must ASK for the config change, in the step BEFORE the
+first step that needs it.** `deep-bet-pays-double` declared `static-not-taken` while steps 3–4
+anchored on reasons only a betting machine emits, and no step requested the flip; `runner.ts`
+skips an unanchored step in SILENCE, so the learner saw 3 of 5 steps (the rail says so out loud
+— "Not started · 3 steps") and then read "Prediction is on." about a machine that wasn't. The
+config-exclusive SHAPE is right and is `branch-bet`'s — but `branch-bet` also does the thing
+that makes it work ("it is worth seeing before you flip the toggle", said one step earlier).
+This file and `m12-tasks.md` had both recorded the gap as **"known and deliberate", justified by
+prose that did not exist** ("step 1's prose is what invites the flip" — step 1 invites watching
+DEPTH). Ask of any documented-as-intentional gap: is the mechanism it names actually there?
