@@ -5,13 +5,13 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T10:25:27.397Z
+  modified: 2026-07-28T10:37:31.975Z
 ---
 
 ## M13 — the wide machine, widened. **PLANNED 2026-07-28, NOT BUILT.** Steps 0/0b done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → **4502** tests. See [[project-overview]] for the
+`dump-postfix.txt` (the one to read). Repo 4498 → **4503** tests. See [[project-overview]] for the
 index, [[m7-superscalar-engine]] for the machine this generalizes.
 
 **The step-0 dump overturned two of the three things this milestone was scoped as. That is the
@@ -60,6 +60,15 @@ for ever, so **every caller looping on it HANGS**, including the recorder and th
   corpus × width × forwarding × prediction × cache to convert a hang into a failure. **That sweep
   PASSED against the broken engine and its docblock says so**: it would not have found this bug. The
   three tests that would were watched failing first ([[m11-m12-review-resolved]]'s method lesson).
+- **The CONVERSE needed its own test, and two drafts of it failed against a CORRECT engine.** "Clears
+  the flag only on a branch squash" was an argument about slot ordering, so it had to be watched.
+  The program needs live code AFTER the `ecall` or the test cannot fail (with the halt last in
+  `.text`, fetch stops on the `inText` bound either way — a green check measuring nothing). Then:
+  asserting nothing past the halt is fetched is WRONG (the halt's shadow is fetched by design,
+  `stopFetch` applying at the clock edge), and asserting nothing past the SHADOW is wrong too (a
+  2-wide machine fetches the shadow two at a time). Measured bound: **one fetch GROUP**, `halt +
+4 × width`. The config-independent assertion — the dead code never commits — is the one that
+  matters. **Reasoning produced the right fix and the wrong test, twice.**
 
 ### 3. Width 4 is where widening STOPS paying — and that is the tier's real lesson
 

@@ -3,7 +3,7 @@
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is PLANNED, not
 built** — its step-0 dump found a live hang in shipped code. Six models ship, each with a
-lesson track. Repo **4502 tests**, five gates green.
+lesson track. Repo **4503 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one

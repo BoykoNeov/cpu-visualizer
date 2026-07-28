@@ -180,6 +180,11 @@ against it — it was a missing UNDO, not a missing fourth rule.
   programs, one exit idiom, one hidden hang. Before trusting any corpus-wide sweep in this
   milestone, ask what all eleven programs happen to share.
 - **Copying width-3/4 counts out of the engine.** The M7 step 2b trap, already paid for once.
+- **Explaining away `paired-branches`.** It runs 9 → 7 → 7 → **6**: flat from w2 to w3, then a gain
+  at w4. That is an odd shape for a monotone-issue machine — a width the group never fills buying
+  nothing, and the next one buying a cycle — and step 3 must account for it TERM BY TERM. If the
+  closed form cannot, that is a finding about the machine, not an arithmetic slip to round away. It
+  is the only program in the corpus with this shape, which is exactly why it is the one to check.
 
 ## Decisions to pin (seeded with recommended answers)
 
