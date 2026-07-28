@@ -155,9 +155,9 @@ against it — it was a missing UNDO, not a missing fourth rule.
       precisely the bug the obvious `expect(micro.width).toBe(w)` cannot see, since it only checks
       that `reset()` remembered its argument.
 - [x] **2. The adversarial engine nets — what the corpus does not show, and one thing it turns out
-      it does.** ✅ DONE 2026-07-28 (repo 4504 → 4523 tests), `packages/engine/superscalar/src/
-    wide-groups.test.ts`, 19 cases. The scoped heading for this step was "the THREE things the
-      corpus CANNOT show", and **the measurement falsified it for (b)** — see below; the sentence is
+      it does.** ✅ DONE 2026-07-28 (repo 4504 → 4523 tests), 19 cases in
+      `packages/engine/superscalar/src/wide-groups.test.ts`.
+      The scoped heading for this step was "the THREE things the corpus CANNOT show", and **the measurement falsified it for (b)** — see below; the sentence is
       corrected here rather than left standing, which is the `CycleCtx.bet` lesson applied to the
       file that records the contradiction.
       **Four provocations, not three.** The fourth came from asking what break would be invisible at
@@ -179,9 +179,9 @@ against it — it was a missing UNDO, not a missing fourth rule.
       **(b) The MEM freeze with more than one follower — and the corpus DOES build it.** Widths 3/4
       hold 2 and 3 followers behind a missing load (width 2 holds exactly one, pinned here as the
       reason the geometry needs width ≥ 3). Retire-id monotonicity is the assertion. The break —
-      hold only the FIRST follower — also reddens `halt-shadow.test.ts`: `store-forward.s @
-    w3/nofwd/none/cache2` throws _"halted at cycle 21 with instructions still in flight"_. So this
-      hole is corpus-reachable at width 3, and the step's heading was wrong about it.
+      hold only the FIRST follower — also reddens `halt-shadow.test.ts`, where the cell
+      `store-forward.s @ w3/nofwd/none/cache2` throws _"halted at cycle 21 with instructions still
+      in flight"_. So this hole is corpus-reachable at width 3, and the heading was wrong about it.
       **(c) A transfer in a non-zero slot of a full group — the last slot is the DEGENERATE end.**
       A slot-3 transfer kills nobody in EX, which is structurally what a width-2 slot-1 transfer
       does; it is kept because the plan names it, but two shapes carry the information. The MIDDLE
