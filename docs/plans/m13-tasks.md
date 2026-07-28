@@ -818,21 +818,48 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
         widths 3 and 4**, and `add` / `paired-branches` are already flat from 2 to 3. Relaxing `>` to
         `>=` corpus-wide would be satisfied by an engine that ignores the toggle (step 6's finding).
         Split instead into a UNIVERSAL half (ceiling `ipc ≤ w`, monotone non-decreasing, retire count
-        invariant — all four positions) and a STRICT rise pinned to **`slow-op-loop` BY NAME**
-        (0.682 → 0.857 → 0.882 → 0.909), the same name step 6 had to adopt for the seam fixture and
-        for the same reason. The flat set is **enumerated, not characterised** (step 6's 33 survivors).
+        invariant) and a STRICT rise pinned to **`slow-op-loop` BY NAME** (0.682 → 0.857 → 0.882 →
+        0.909), the same name step 6 had to adopt for the seam fixture and for the same reason. The
+        flat set is **enumerated, not characterised** (step 6's 33 survivors).
+      - **⚠ THREE OF THE STEP'S OWN NEW CLAIMS WERE NARROWER THAN THEY READ, AND ONE WAS FALSE — all
+        three found by widening a GLOB, not by re-reading the code.** The first drafts swept widths
+        but ran ONE config (forwarding on, no prediction, no cache). (i) `at width 4 a co-issue is
+        NEVER a pair` asserted the exact set `[3, 4]`; across the twelve configs a 2-instruction
+        co-issue happens on **24 cycles**, and when it does the derived gloss "2 instructions issued
+        together this cycle" is CORRECT — **so the assertion would have reddened on a cycle the code
+        handles perfectly.** Now asserts what the prose depends on (no size-1 `paired`, some co-issue
+        wider than two) with the histogram in the docblock. (ii) `slow-op-loop rises at EVERY
+        position` is **false under `static-taken`** (41 → 32 → 32 → 31, flat from 2 to 3, because a
+        bet ends its issue group so a betting scheme re-partitions the tail instead of widening it) —
+        step 6's _a betting scheme HIDES a width effect the base scheme exposes_, recurring in the
+        panel two steps later. The scheme is now in the title and the flattening is ASSERTED, so the
+        qualifier is watched rather than being unfalsifiable prose. (iii) The universal IPC half now
+        sweeps all twelve configs: zero violations. **The two halves keep DIFFERENT globs on purpose
+        — a claim that reads as config-general must be asked config-generally, and one glob covering
+        both would have to be the narrow one.** Step 4's _a measurement's glob is part of its claim_,
+        third step running.
       - **The tile now teaches something two positions could not, and it is the milestone's headline
         said with a number: the figure STOPS MOVING.** A reader who flips ISSUE from 3 to 4 and
         watches IPC sit still is reading the diminishing return that justifies the bound directly.
         It is the one place in the app that says so with an observation rather than with prose.
-      - **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE.** Break 1 (a gloss in
-        `PairingReadoutView.tsx`) reddened `datapath-superscalar.test.ts`'s `throughBox` litmus —
-        step 7's newest and slowest test, ~2 s alone but **6.4 s under a loaded full run**, against
-        vitest's 5 s default. A wall-clock red herring in the middle of a break measurement is worse
-        than a slow test; `testTimeout` is now 30 s. **The objection worth checking before raising a
-        timeout — does this weaken the liveness net? — is NO here**: non-termination is caught by
-        CYCLE bounds (`halt-shadow` at 500, `Recorder.runToEnd` at 1e6), so a hung machine still
-        fails as a hung machine. Only the machine-speed dependence goes.
+      - **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE — and the first diagnosis of it
+        was an INFERENCE dressed as a measurement.** Break 1 (a gloss in `PairingReadoutView.tsx`)
+        reddened `datapath-superscalar.test.ts`'s `throughBox` litmus. The break harness printed only
+        the `×` line, so "it failed as a TIMEOUT" was deduced from the duration crossing 5000 — the
+        exact prose defect M7 step 3 named (_saying "it hangs" of a layer that actually throws_), and
+        it had already been written into a commit body, the plan and memory as observed. **Re-provoked
+        rather than left standing**: five full runs at the 5 s default, **one failed (≈20%, not a
+        one-off)**, and the captured text is `Test timed out in 5000ms.` — now read, not deduced. Two
+        corrections came with it: it is **four** tests, not one (all width-4 geometry sweeps —
+        `throughBox` at **17.3 s** against a ~2 s median, the collinearity litmus at 9.0 s, two
+        `activation coherence` sweeps at 6.3 s and 8.0 s), and the single 6.4 s figure first recorded
+        was one observation of a wide distribution. `testTimeout` is **60 s**, ~3.5× the worst
+        measured; the 30 s first chosen would have left 1.7× headroom over a value already 8× its own
+        median. **The objection worth checking before raising a timeout — does this weaken the
+        liveness net? — is NO here**: non-termination is caught by CYCLE bounds (`halt-shadow` at
+        500, `Recorder.runToEnd` at 1e6), so a hung machine still fails as a hung machine.
+        Generalises: **a break harness that prints only which test went red cannot tell you WHY it
+        did — capture the failure block, or your break record will contain inferences.**
       - **Eight breaks watched; four isolate to exactly ONE test.** Static `paired` gloss → 2 (+1
         flake); static `refused` gloss → 3; `REASON_TEXT['mem-port']` back to "both" → **1**;
         `REFUSAL_TEXT` back to "its partner" → **1**; the refusal note singular again → **1**; the

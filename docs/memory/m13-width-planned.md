@@ -1,11 +1,11 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6/7/8 done, ONLY THE BROWSER PASS LEFT. Step 8 made the pairing readout speak in GROUPS: its glosses were not merely narrow but FALSE on the majority of the cycles they described (at width 4 all 26 co-issue cycles hold 3 or 4 instructions and NONE holds two). The wording is pinned as a PROPERTY, not as sentences — and its own non-vacuity clause was BLIND until a break exposed it, because it keyed off the pure fold rather than the render. The identity micro.idEx@N === EX@N+1, the panels entire licence for reading micro, had NEVER RUN ABOVE WIDTH 2. The IPC claim had to be NARROWED (9 of 11 programs are IPC-identical at widths 3 and 4) not swept wider. A break in a different package exposed a latent 5s-timeout flake in step 7s throughBox litmus. Step 7 made the DATAPATH a function of the width: geometryFor(w), and its segment-through-box litmus found TWO wire routes invisible to all 1533 tests AND to M7s browser pass. The palette record was WRONG: dE 41.3/42.6 does not reproduce (real 13.0/15.9); user pinned keep-lanes-0/1 + green/purple. A break harness using `git checkout --` destroyed the uncommitted tree — COMMIT BEFORE YOU BREAK. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH in engine-common), the derived width-3/4 timing matrix, conformance at 72 configs, the recorder/location proofs. INV-8 is a FALSE net here, proven by experiment. Read before touching engine/superscalar, engine/conformance, the datapath, the readout or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6/7/8 done, ONLY THE BROWSER PASS LEFT. Step 8 made the pairing readout speak in GROUPS: its glosses were not merely narrow but FALSE on the majority of the cycles they described (at width 4 co-issue group sizes are {2:24, 3:168, 4:30}). The wording is pinned as a PROPERTY, not as sentences — and its own non-vacuity clause was BLIND until a break exposed it, because it keyed off the pure fold rather than the render. The identity micro.idEx@N === EX@N+1, the panels entire licence for reading micro, had NEVER RUN ABOVE WIDTH 2. The IPC claim had to be NARROWED (9 of 11 programs are IPC-identical at widths 3 and 4) not swept wider. THREE of the steps OWN new claims were then found narrower than they read, and one FALSE, all by widening a CONFIG GLOB the drafts had left at one. A break in a different package exposed a latent 5s-timeout flake (~20%, FOUR width-4 geometry sweeps, worst 17.3s) — and its first diagnosis was an inference dressed as a measurement, because the break harness printed only WHICH test went red. Step 7 made the DATAPATH a function of the width: geometryFor(w), and its segment-through-box litmus found TWO wire routes invisible to all 1533 tests AND to M7s browser pass. The palette record was WRONG: dE 41.3/42.6 does not reproduce (real 13.0/15.9); user pinned keep-lanes-0/1 + green/purple. A break harness using `git checkout --` destroyed the uncommitted tree — COMMIT BEFORE YOU BREAK. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH in engine-common), the derived width-3/4 timing matrix, conformance at 72 configs, the recorder/location proofs. INV-8 is a FALSE net here, proven by experiment. Read before touching engine/superscalar, engine/conformance, the datapath, the readout or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T20:24:51.158Z
+  modified: 2026-07-28T20:35:41.343Z
 ---
 
 ## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / 6 / 7 / **8** done.
@@ -39,8 +39,9 @@ control since step 6. In descending order of what each cost:
   itself — so the clause pins the WIRING (which a rewrite must survive) and not the words (which are
   what a rewrite changes).** Same break now reddens 4 of 7 instead of 3.
 - **The vocabulary was WRONG on the MAJORITY of the cycles it described, and that took a measurement
-  to establish rather than an argument.** Corpus at width 4: all 26 `paired` cycles hold **three or
-  four instructions, none holds two** (22×3, 4×4); a refusal holds three back on 51 cycles vs one on 41. So "both issued together" / "the older issued; the younger waits" were FALSE on screen, not
+  to establish rather than an argument.** Corpus at width 4, base scheme: all 26 `paired` cycles hold
+  **three or four instructions, none holds two** (22×3, 4×4) — across all twelve configs it is
+  {2: 24, 3: 168, 4: 30}, still a large majority. A refusal holds three back on 51 cycles vs one on 41. So "both issued together" / "the older issued; the younger waits" were FALSE on screen, not
   merely narrow. Both glosses are now derived from the candidate counts — **a count is arithmetic a
   test can watch, where a vaguer adjective ("several issued") is prose that ships green whatever it
   says.** `paired`'s LABEL became `CO-ISSUED`; the verdict IDENTIFIER stayed `'paired'` (asserted by
@@ -67,16 +68,34 @@ control since step 6. In descending order of what each cost:
   Strict rise at every position is FALSE — **nine of eleven programs are IPC-identical at widths 3
   and 4**, and `add`/`paired-branches` are flat from 2 to 3. Relaxing `>` to `>=` corpus-wide is
   satisfied by an engine that ignores the toggle (step 6). Split into a UNIVERSAL half (ceiling
-  `ipc ≤ w`, monotone, retire count invariant, all four positions) and a STRICT rise pinned to
-  **`slow-op-loop` BY NAME** (.682 → .857 → .882 → .909) — the same name step 6 adopted for the seam
-  fixture. Flat set **enumerated, not characterised**. Product finding: **the tile now teaches the
+  `ipc ≤ w`, monotone, retire count invariant) and a STRICT rise pinned to
+  **`slow-op-loop` BY NAME, under the BASE SCHEME** (.682 → .857 → .882 → .909) — the same name step 6
+  adopted for the seam fixture. Flat set **enumerated, not characterised**. Product finding: **the tile now teaches the
   milestone's headline with a NUMBER — flip 3 → 4 and watch IPC sit still.**
-- **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE.** Break 1 (a gloss in the readout)
-  reddened `throughBox` — step 7's newest litmus, ~2 s alone but **6.4 s under a loaded full run**
-  against vitest's 5 s default. `testTimeout` is now 30 s in `vitest.config.ts`. **The objection to
-  check before raising a timeout — does it weaken the liveness net? — is NO here:** non-termination
-  is caught by CYCLE bounds (`halt-shadow` at 500, `Recorder.runToEnd` at 1e6), so a hung machine
-  still fails as a hung machine.
+- **⚠ THREE OF THE STEP'S OWN NEW CLAIMS WERE NARROWER THAN THEY READ, AND ONE WAS FALSE — all three
+  found by widening a GLOB, not by re-reading the code.** The drafts swept widths but ran ONE config.
+  (i) `at width 4 a co-issue is NEVER a pair` asserted the exact set `[3, 4]`; across twelve configs
+  a 2-instruction co-issue happens on **24 cycles**, where the derived gloss "2 instructions issued
+  together" is CORRECT — **the assertion would have reddened on a cycle the code handles perfectly.**
+  (ii) `slow-op-loop rises at EVERY position` is **false under `static-taken`** (41 → 32 → 32 → 31) —
+  step 6's _a betting scheme HIDES a width effect the base scheme exposes_, recurring two steps
+  later; the scheme is now in the title and the flattening ASSERTED. (iii) The universal IPC half now
+  sweeps all twelve configs, zero violations. **The two halves keep DIFFERENT globs on purpose — a
+  claim that reads as config-general must be ASKED config-generally, and one glob covering both would
+  have to be the narrow one.** Step 4's _a measurement's glob is part of its claim_, third step running.
+- **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE — and the first diagnosis was an
+  INFERENCE dressed as a measurement.** Break 1 (a gloss in the readout) reddened `throughBox`. The
+  harness printed only the `×` line, so "failed as a TIMEOUT" was deduced from the duration crossing
+  5000 — M7 step 3's own prose defect — and it reached a commit body, the plan and this file as
+  observed. **Re-provoked instead of left standing:** 5 full runs at the 5 s default, **1 failed
+  (≈20%)**, captured text `Test timed out in 5000ms.`. Two corrections came with it — it is **FOUR**
+  tests, not one (all width-4 geometry sweeps; `throughBox` at **17.3 s** vs a ~2 s median, plus
+  9.0/8.0/6.3 s), and the 6.4 s first recorded was one draw from a wide distribution. `testTimeout` is
+  **60 s** (~3.5× the worst); the 30 s first chosen left 1.7× over a value already 8× its own median.
+  **The objection to check before raising a timeout — does it weaken the liveness net? — is NO here:**
+  non-termination is caught by CYCLE bounds (`halt-shadow` at 500, `Recorder.runToEnd` at 1e6), so a
+  hung machine still fails as a hung machine. Generalises: **a break harness that prints only WHICH
+  test went red cannot tell you WHY — capture the failure block, or the break record holds inferences.**
 - **Eight breaks watched; four isolate to exactly ONE test.** `REASON_TEXT['mem-port']` → 1;
   `REFUSAL_TEXT` "its partner" → 1; the refusal note singular → 1; static `paired` gloss → 2;
   static `refused` gloss → 3; the panel rendering nothing at w4 → 4; two ID/EX latches → 5; the

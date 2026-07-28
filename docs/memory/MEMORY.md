@@ -69,11 +69,16 @@ left.** Six models ship, each with a lesson track. Repo **6186 tests**, five gat
     **derived** numeral 2; the identity `micro.idEx@N === EX@N+1`, the panel's entire licence for
     reading `micro`, **had never run above width 2**; the IPC claim had to be **NARROWED** (9 of 11
     programs are IPC-identical at 3 and 4, and relaxing `>` to `>=` is satisfied by an engine that
-    ignores the toggle) — so the strict rise is pinned to `slow-op-loop` BY NAME and the flat set is
-    enumerated; the ambiguous-reason worry was **MEASURED to zero** and the shape deliberately left
-    alone; and a break in a DIFFERENT package exposed a latent **5 s-timeout flake** in step 7's
-    `throughBox` litmus (~2 s alone, 6.4 s under load — `testTimeout` now 30 s, which does not weaken
-    the liveness net because non-termination is caught by CYCLE bounds). **Step 7's
+    ignores the toggle) — so the strict rise is pinned to `slow-op-loop` BY NAME **and by SCHEME**,
+    and the flat set is enumerated; the ambiguous-reason worry was **MEASURED to zero** and the shape
+    deliberately left alone. Then a closing review found **three of the step's own new claims were
+    narrower than they read and one was FALSE** — all three because the drafts swept widths but left
+    the CONFIG glob at one, and the false one would have reddened on a cycle the code handles
+    perfectly. And a break in a DIFFERENT package exposed a latent **5 s-timeout flake** (~20% of full
+    runs, FOUR width-4 geometry sweeps, worst **17.3 s**; `testTimeout` now 60 s, which does not
+    weaken the liveness net because non-termination is caught by CYCLE bounds) — whose **first
+    diagnosis was an inference dressed as a measurement**, because the break harness printed only
+    WHICH test went red, never why. **Step 7's
     new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible
     to all 1533 tests AND to M7's browser pass**; the per-width refactor MANUFACTURED a vacuous test
     (a filter over a narrowed set), the M7 refusal fixtures turned out NON-MONOTONE in width
