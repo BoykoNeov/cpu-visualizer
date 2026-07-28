@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 59aeef69-e62d-47ac-b3ef-06d496f12ca9
-  modified: 2026-07-27T16:38:13.176Z
+  modified: 2026-07-28T07:39:39.729Z
 ---
 
 **When deciding whether an engine change is behaviour-preserving in CPU Visualizer, compare the
@@ -18,8 +18,8 @@ hand-built ADVERSARIAL programs, not the corpus.**
 every adversarial cell too, including the ones where the machine was computing the wrong answer.**
 On `adv-flush-under-miss` the cycle count matched exactly while two `forward:MEM/WB->EX1` events
 went `1→0`. Checking cycles alone would have declared the cache mechanical and shipped a
-correctness bug ([[m11-miss-freeze-forward-loss]] — it was already shipped, in `engine/pipeline` and
-`engine/superscalar`). The repo has a precedent for this in the other direction too: M11 step 3
+correctness bug (write-up at `docs/reviews/m11-miss-freeze-forward-loss.md` — it was already shipped,
+in `engine/pipeline` and `engine/superscalar`). The repo has a precedent for this in the other direction too: M11 step 3
 found a stall on the deep machine that **costs zero cycles**, so "the count did not move" has been
 proven twice not to mean "nothing moved".
 
@@ -37,4 +37,5 @@ proven twice not to mean "nothing moved".
   single-alignment test passes against a fully broken machine.
 - Compare a model against its OWN cache-off run (INV-8-verified) rather than against another model —
   `eslint.config.js` denies model→model imports, so cross-model claims go in PROSE plus literals
-  duplicated in both suites ([[project-overview]]'s M11 notes).
+  duplicated in both suites ([[m11-deep-pipeline-planned]]'s notes — the milestone log in
+  [[project-overview]] stops at M10 and has no M11 content).

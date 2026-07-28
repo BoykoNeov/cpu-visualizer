@@ -4,11 +4,24 @@ A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap fi
 M10; M11/M12 came from the don't-foreclose flag). Six models ship, each with a lesson
 track. Repo **4498 tests**, five gates green.
 
-- [Project overview](project-overview.md) — what it is, the stack, and the FULL
-  step-by-step milestone log (M1–M10, incl. the condensed M2/M6/M7/M8 section). Read the
-  relevant milestone's section before touching that package.
-- [M11 deep pipeline](m11-deep-pipeline-planned.md) — the 7-stage machine, steps 0–8,
-  every finding and trap. Read before touching `engine/deep-pipeline` or its datapath.
+- [Project overview](project-overview.md) — what it is, the spec contract, the stack +
+  package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
+  242KB file until 2026-07-28; now one file per milestone, each recallable on its own
+  `description`. Read the relevant one before touching that package.
+  - [M1 engine + web shell](m1-engine-and-web-shell.md) — through the first datapath.
+  - [M2 multi-cycle](m2-multi-cycle.md) — incl. steps 5C/5D/5E.
+  - [Web visual layer](web-visual-layer.md) — theme, palette, `DatapathDiagram`, templates.
+  - [M3 pipeline](m3-pipeline-engine.md) + [web](m3-pipeline-web.md) — the 5-stage machine.
+  - [M4 branch prediction + ISA panel](m4-branch-prediction-and-isa-panel.md)
+  - [M5 ISA lesson track](m5-isa-lesson-track.md)
+  - [M6 caches](m6-caches-engine.md) + [corpus/web](m6-caches-corpus-and-web.md)
+  - [M7 superscalar](m7-superscalar-engine.md) + [web](m7-superscalar-web.md) — **INV-8 is
+    a FALSE net here.**
+  - [M9 out-of-order](m9-out-of-order.md) + [M10 lessons](m10-ooo-lesson-track.md)
+  - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
+- [M11 deep pipeline — plan + engine](m11-deep-pipeline-planned.md) — the 7-stage machine,
+  steps 0–5 + every pinned decision. Read before touching `engine/deep-pipeline`.
+  - [M11 cache, datapath, closing pass](m11-deep-pipeline-view-and-cache.md) — steps 6–8.
 - [M12 deep-pipeline lessons](m12-deep-pipeline-lessons.md) — the "deeper machine" track;
   the first lesson track whose subject is a DELTA against a machine already met. Read
   before authoring ANY lesson: the flush-`stages`-is-not-the-penalty trap, the
