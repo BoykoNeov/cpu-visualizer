@@ -9,12 +9,26 @@
  *
  * A faithful port of `@cpu-viz/engine-pipeline`'s `PipelineProcessor`, restructured so every latch
  * is SLOT-SHAPED, plus the ISSUE LOGIC that makes the second slot mean something. Width is a config
- * toggle, 1 ↔ 2, and BOTH positions are honest machines: the width-1 position is not a stub, it is
- * the pairing machine at its degenerate limit — it runs the same issue logic and simply never finds
- * a partner, which is the "pairing failure" picture held permanently. Step 2a proved that position
+ * toggle — **1 through {@link MAX_ISSUE_WIDTH}** as of M13 step 1, `1 ↔ 2` through M7–M12 — and
+ * EVERY position is an honest machine: the width-1 position is not a stub, it is the pairing
+ * machine at its degenerate limit — it runs the same issue logic and simply never finds a partner,
+ * which is the "pairing failure" picture held permanently. Step 2a proved that position
  * reproduces M3's closed form `cycles = N + 4 + S + P + M` over the whole corpus, cell for cell, and
  * `timing.test.ts` still asserts it against M3's own hand-derived numbers. That is the regression
  * net under everything here: pairing may not disturb the machine it degenerates to.
+ *
+ * ## What M13 step 1 did — and, decisively, what it did NOT have to do
+ *
+ * It widened the guard and nothing else. **The issue logic was already width-generic** and the
+ * milestone's step-0 dump is what established that rather than an argument: `stageId` loops
+ * `s < this.width`, `issueVerdict` asks each rule against the WHOLE group, `detectHazard` scans
+ * every slot of both older stages, and `stageIf`'s hand-over is a seat-filling loop with no arity
+ * in it. Widths 3 and 4 ran the entire corpus to correct architectural state with the guard as the
+ * only thing changed. So the vocabulary below is the part that was wrong: every "pair" that meant
+ * "group", and every "at width 2" that meant "at width ≥ 2", was a description of a two-slot
+ * machine written while two slots were all there were. The names that reach the TRACE — the
+ * `'intra-pair-raw'` refusal reason above all — are deliberately left alone: they are a contract
+ * three consumers read, and renaming one moves trace bytes for a spelling.
  *
  * Grouping is SLIDING / GREEDY — see {@link SuperscalarProcessor.stageId}, which is the soul of the
  * model. The consequence worth carrying to every other file: **a slot is a per-cycle issue position,
@@ -47,17 +61,18 @@
  * confine the widening: what genuinely doubles is fetch, the register-read ports, the ALU, the WB
  * write ports and the forwarding source set. Control and memory stay 1-wide BY THE RULES. So:
  *
- *  - **`memStall` is BROADCAST.** A miss freezes both slots of every younger stage — memory is
+ *  - **`memStall` is BROADCAST.** A miss freezes EVERY slot of every younger stage — memory is
  *    single-ported, so a stall there is a property of the machine, not of a lane.
  *  - **`squash` is LANE-AWARE**: it carries the resolving slot alongside the reason, because a
- *    slot-0 branch kills its slot-1 mate while a slot-1 branch spares the older slot-0. At width 1
- *    the resolving slot is always 0 and everything in a younger stage dies, which is M3 exactly.
- *  - **The load-use interlock** has a SINGLE-LANE producer, and at width 2 it no longer needs a
+ *    branch kills the group-mates YOUNGER than it and spares the ones older. At width 1 the
+ *    resolving slot is always 0 and everything in a younger stage dies, which is M3 exactly.
+ *  - **The load-use interlock** has a SINGLE-LANE producer, and at width ≥ 2 it no longer needs a
  *    broadcast signal at all: a refused instruction simply stays in IF/ID and leads the next group,
  *    so "the stage froze" is expressed by which seats ID left occupied rather than by a flag. M3's
  *    `stalled` boolean is gone for that reason — see {@link SuperscalarProcessor.stageIf}.
- *  - **`bet`** stays at most one per cycle — two transfers never pair — but it is no longer a bare
- *    boolean: it carries its slot, because at width 2 it kills the ID seat behind the branch.
+ *  - **`bet`** stays at most one per cycle — two transfers never co-issue — but it is no longer a
+ *    bare boolean: it carries its slot, because from width 2 it kills the ID seats behind the
+ *    branch, and at width N there may be up to `N - 1` of them.
  *
  * ## Everything else is M3, unchanged
  *
@@ -131,8 +146,8 @@ export interface IdExLatch extends IfIdLatch {
    *
    * Only a miss-freeze sets this. The capture exists because a producer reachable only by
    * forwarding right now can retire during the freeze (see {@link executeSlot}); the flag exists
-   * because at width ≥ 2 the opposite is also true. `stageMem`'s `frozen` walk re-presents an older
-   * pair-mate in `exMem` for the whole freeze INCLUDING the release cycle, so a producer that is
+   * because at width ≥ 2 the opposite is also true. `stageMem`'s `frozen` walk re-presents every
+   * older group-mate in `exMem` for the whole freeze INCLUDING the release cycle, so a producer
    * still standing there would be matched twice — once by the capture, once by the release cycle's
    * ordinary resolve — and `forward` would be emitted twice for one read of one value. The other
    * two engines never see this: what they hold in MEM across a freeze is the missing memory op
@@ -183,8 +198,8 @@ export interface MemWbLatch extends IfIdLatch {
  * The superscalar's `MachineState.micro` (the §5 per-model extension point): the four inter-stage
  * latches, each an ARRAY OF SLOTS — which is the one structural difference from `PipelineMicro`
  * and the whole reason this is a sibling package rather than a config of M3's. `null` in a slot is
- * a BUBBLE (a stall inserts one, a flush leaves one behind, and at width 2 an unpaired issue leaves
- * one in slot 1). Index 0 is the OLDEST occupant in program order.
+ * a BUBBLE (a stall inserts one, a flush leaves one behind, and at width > 1 a group that came up
+ * short leaves them in the HIGH slots). Index 0 is the OLDEST occupant in program order.
  *
  * Every latch object is IMMUTABLE and rebuilt from scratch each cycle, and the slot ARRAYS are
  * copied into each snapshot, never aliased. That is what satisfies the same independent-per-cycle
@@ -193,7 +208,12 @@ export interface MemWbLatch extends IfIdLatch {
  * time-travel can.
  */
 export interface SuperscalarMicro {
-  /** Issue width in force for this run — 1 or 2. Every array below has exactly this length. */
+  /**
+   * Issue width in force for this run — a whole number from 1 to {@link MAX_ISSUE_WIDTH}. Every
+   * array below has exactly this length, so a consumer that wants "how many slots" reads THIS and
+   * never `idEx.length` at some sampled cycle: the arrays are always full-length and null-padded,
+   * which is exactly why a bubble is distinguishable from the end of the stage.
+   */
   readonly width: number;
   readonly ifId: readonly (IfIdLatch | null)[];
   readonly idEx: readonly (IdExLatch | null)[];
@@ -210,9 +230,11 @@ export interface SuperscalarMicro {
 
 /**
  * The superscalar honors EVERY config knob in the family — it is the first model to do so, and the
- * fourth flag is what it exists for. `configurableIssueWidth: true` is the claim that flipping
- * 1 ↔ 2 changes the machine, and as of step 2b it is a claim both positions can cash: the corpus
- * runs strictly fewer cycles at width 2, with identical architectural results.
+ * fourth flag is what it exists for. `configurableIssueWidth: true` is the claim that MOVING THE
+ * WIDTH changes the machine, and as of step 2b it is a claim every position can cash: the corpus
+ * runs strictly fewer cycles at width 2 than at 1, with identical architectural results. M13's
+ * dump extends that to 3 and 4 — and finds the honest limit, which is that nine of eleven programs
+ * are cycle-identical at 3 and 4. The flag says the knob is real, not that every turn of it pays.
  *
  * The other three are honored exactly as the pipeline honors them, because this model is that
  * pipeline with slot-shaped latches: `'none'` and `'static-not-taken'` remain one machine (a
@@ -231,6 +253,19 @@ export const SUPERSCALAR_CAPABILITIES: ProcessorCapabilities = {
   // machine (a new package), not a wider stage walk. This is the axis M9 exists to break.
   configurableOutOfOrder: false,
 };
+
+/**
+ * The widest machine this model admits (M13 step 1, decision **W**). Exported so the web's width
+ * control and the conformance matrix read the bound from the engine that enforces it rather than
+ * re-typing a `4` each — one number, one owner.
+ *
+ * **Why 4 and not "any N".** It is exactly what the product offers, and a guard that admits more
+ * than the product offers is untested surface: widths 5+ have no derived timing cell, no dumped
+ * group-size histogram, and no adversarial net. 4 is also where the corpus shows widening STOP
+ * paying — nine of eleven programs are cycle-identical at 3 and 4 — so it is the last width with
+ * anything left to teach. Raising it is a measurement, not an edit.
+ */
+export const MAX_ISSUE_WIDTH = 4;
 
 const LOADS = new Set(['lb', 'lh', 'lw', 'lbu', 'lhu']);
 const STORES = new Set(['sb', 'sh', 'sw']);
@@ -304,8 +339,9 @@ interface SourceRegs {
  * is what makes it safe for the hazard unit to key off. Every stall, every forward, and every x0
  * exclusion is decided from this, so a class listed here that the reference does not actually read
  * from would stall on a dependency that does not exist (invisible to INV-8, which only sees final
- * state), and one missing would forward nothing where a forward was needed. At width 2 it will
- * additionally decide intra-pair RAW, so its fidelity gets MORE load-bearing, not less.
+ * state), and one missing would forward nothing where a forward was needed. From width 2 it also
+ * decides intra-GROUP RAW, so its fidelity gets MORE load-bearing with every slot, not less: at
+ * width N the oldest member of a group is checked against up to `N - 1` younger readers.
  */
 function sourceRegs(d: DecodedInstruction): SourceRegs {
   const kind = defForMnemonic(d.mnemonic)?.kind;
@@ -367,9 +403,11 @@ const anyOccupied = (slots: readonly (unknown | null)[]): boolean => slots.some(
 
 /**
  * Is any slot of this stage occupied by an instruction YOUNGER than `slot`? Index 0 is the oldest,
- * so "younger" is simply "a higher index" — which is the whole of lane-awareness. This is the
- * predicate that separates a slot-0 branch (kills its mate) from a slot-1 one (spares it), and at
- * width 1 it is constantly false, which is exactly why width 1 behaves as M3 did.
+ * so "younger" is simply "a higher index" — which is the whole of lane-awareness, and the whole
+ * reason it needed no widening at M13: "some slot above me" is arity-free. This is the predicate
+ * that separates a branch with group-mates behind it (it kills them) from one in the last occupied
+ * slot (it kills nobody in its own stage), and at width 1 it is constantly false, which is exactly
+ * why width 1 behaves as M3 did.
  */
 const younger = (slots: readonly (unknown | null)[], slot: number): boolean =>
   slots.some((s, i) => s !== null && i > slot);
@@ -393,10 +431,11 @@ function toLatch(f: Fetched): IfIdLatch {
 
 /**
  * Why everything younger than the deciding stage is being killed this cycle — and, unlike M3's bare
- * reason string, WHICH SLOT decided. That field is the lane-awareness the plan pins: a slot-0
- * branch kills its slot-1 mate as well as everything behind, while a slot-1 branch spares the older
- * slot-0 beside it. At width 1 `slot` is always 0 and every younger-stage occupant dies, which is
- * M3's rule exactly; step 2b is where the field starts discriminating.
+ * reason string, WHICH SLOT decided. That field is the lane-awareness the plan pins: a branch in
+ * slot `k` kills every group-mate in a slot above `k` as well as everything behind, and spares
+ * every slot below it. At width 1 `slot` is always 0 and every younger-stage occupant dies, which
+ * is M3's rule exactly; step 2b is where the field starts discriminating, and M13 needed nothing of
+ * it — "above me" was never a count.
  */
 interface Squash {
   readonly reason: 'branch' | 'halt';
@@ -422,9 +461,10 @@ function squashReason(resolver: IdExLatch | null): string {
  * fall-through IF just fetched but **every ID occupant younger than the branch**: those were fetched
  * sequentially behind it, so they are exactly the fall-through path the bet says we are not taking.
  *
- * It stays at most ONE bet per cycle at every width — two transfers never pair — so this is
- * nullable rather than an array. What it is NOT is a boolean any more: at width 2 a branch may sit
- * in either slot, and "did anything in ID die beside it" is answerable only from the slot.
+ * It stays at most ONE bet per cycle at every width — two transfers never co-issue — so this is
+ * nullable rather than an array. What it is NOT is a boolean any more: from width 2 a branch may
+ * sit in ANY slot of the group, and "did anything in ID die beside it" is answerable only from the
+ * slot.
  */
 interface Bet {
   /** The ID slot of the branch that placed it. */
@@ -483,11 +523,16 @@ interface CycleCtx {
    * predicting and sails on to EX. That difference IS the reason a correct prediction costs 1
    * instead of 2.
    *
-   * At width 2 the bet's casualty set grows by exactly one seat — the ID slot BEHIND the branch, if
-   * the branch paired with a younger instruction. That instruction is the fall-through too, and
-   * dies for the same reason as IF's. The branch itself and everything OLDER than it in the group
-   * are untouched, which is what keeps this a bet rather than a squash. There is still at most ONE
-   * bet per cycle at every width, because two transfers never pair.
+   * From width 2 the bet's casualty set grows by the ID slots BEHIND the branch — **up to
+   * `width - 1` of them**, not the one seat this comment claimed while two slots were all there
+   * were. Every one of them is a fall-through too, and dies for the same reason as IF's. The branch
+   * itself and everything OLDER than it in the group are untouched, which is what keeps this a bet
+   * rather than a squash. There is still at most ONE bet per cycle at every width, because two
+   * transfers never co-issue.
+   *
+   * The COUNT never reaches the trace, which is why the miscount was survivable: `flush.stages`
+   * names stage families, so N dead ID seats and one dead ID seat are both the single string
+   * `'ID'`. A consumer that wants the identity of the dead reads `instructions[]`.
    */
   bet: Bet | null;
 }
@@ -508,10 +553,12 @@ export class SuperscalarProcessor implements Processor {
   private seq = 0; // dynamic-instruction counter → stable ids (INV-4)
   private sourceMap: ReadonlyMap<number, number> = new Map();
   /**
-   * Slots per stage, from `ProcessorConfig.issueWidth` — 1 or 2, the toggle's two positions. Every
-   * array in this class has exactly this length. Nothing outside `reset()` branches on the value:
-   * the walks iterate `width` slots and the issue logic asks the pairing rules, so width 1 is the
-   * same code finding no partner rather than a separate path.
+   * Slots per stage, from `ProcessorConfig.issueWidth` — a whole number from 1 to
+   * {@link MAX_ISSUE_WIDTH}. Every array in this class has exactly this length. **Nothing outside
+   * `reset()` branches on the value**, and that sentence is the whole of M13 step 1: the walks
+   * iterate `width` slots and the issue logic asks the pairing rules against the whole group, so
+   * width 1 is the same code finding no partner rather than a separate path — and width 4 is the
+   * same code finding three. The guard was the only arity in the file.
    */
   private width = 1;
   private forwarding = false;
@@ -536,11 +583,18 @@ export class SuperscalarProcessor implements Processor {
     // so an absent value means "this caller has no opinion" and gets the machine's own degenerate
     // width — the same default the web toggle will start on.
     const width = config.issueWidth ?? 1;
-    if (width !== 1 && width !== 2) {
+    // `!Number.isInteger(w) || w < 1` rather than `w < 1`, which is the obvious spelling and is
+    // wrong in two directions the M9+M10 review already paid for: `NaN < 1` is false, so a NaN
+    // width would sail through and make every `s < this.width` loop body unreachable for ever; and
+    // `1.5 < 1` is false, so a fractional width would quietly floor to a machine nobody asked for.
+    // The upper bound is {@link MAX_ISSUE_WIDTH} — see there for why a bound exists at all.
+    if (!Number.isInteger(width) || width < 1 || width > MAX_ISSUE_WIDTH) {
       throw new Error(
-        `superscalar: issueWidth ${width} is not a width this machine has — the model ships the ` +
-          `1 ↔ 2 toggle (M7), and a wider machine would need pairing rules it does not have. ` +
-          `Refusing rather than silently running narrow.`,
+        `superscalar: issueWidth ${width} is not a width this machine has — it issues a whole ` +
+          `number of instructions per cycle, from 1 to ${MAX_ISSUE_WIDTH} (M13). Wider is not a ` +
+          `pairing-rule problem (the rules are per-GROUP and already arity-generic) but an ` +
+          `untested-surface one: past ${MAX_ISSUE_WIDTH} there is no derived timing cell and no ` +
+          `net. Refusing rather than silently running narrow.`,
       );
     }
     this.width = width;
@@ -686,9 +740,10 @@ export class SuperscalarProcessor implements Processor {
       // predicted taken branch costs 1, not 0". Emitting it only on misprediction would make the
       // cost invisible to every consumer that counts casualties.
       //
-      // At width 2 there may be a second casualty, and only one: the ID slot behind the branch, if
-      // it paired with a younger instruction. That is a fall-through too. Everything at or older
-      // than the betting slot lives — which is the whole difference between a bet and a squash.
+      // From width 2 there may be further casualties — the ID slots BEHIND the branch, up to
+      // `width - 1` of them, each a fall-through too. They collapse to the one string `'ID'` here,
+      // which is why the arity never mattered. Everything at or older than the betting slot lives
+      // — which is the whole difference between a bet and a squash.
       const stages: string[] = [];
       if (younger(inId, ctx.bet.slot)) stages.push('ID');
       if (anyOccupied(inIf)) stages.push('IF');
@@ -808,7 +863,7 @@ export class SuperscalarProcessor implements Processor {
    */
   private stageMem(ctx: CycleCtx): void {
     // Once a slot is held, every YOUNGER slot must be held with it. Without this a non-memory
-    // instruction paired behind a missing load would sail into WB and RETIRE AHEAD OF IT — an
+    // instruction issued behind a missing load would sail into WB and RETIRE AHEAD OF IT — an
     // out-of-order retirement in a machine whose entire premise is in-order retirement, and one
     // that final-state conformance would never see because both instructions do retire in the end.
     // The freeze only ever propagates DOWNWARD in age: an older slot beside a younger miss keeps
@@ -819,9 +874,16 @@ export class SuperscalarProcessor implements Processor {
       if (em === null) continue;
 
       if (frozen) {
-        // Not this slot's miss — its older pair-mate's. It holds where it stands, owing no penalty
+        // Not this slot's miss — an older group-mate's. It holds where it stands, owing no penalty
         // of its own, and re-arrives fresh on the release cycle (it is not a memory op, so the
-        // second `consultCache` there is a no-op: two memory ops never pair).
+        // second `consultCache` there is a no-op: every occupant of `exMem` came from ONE issue
+        // group, and no two memory ops are ever in one group, so the missing op is the only one).
+        //
+        // **This is the loop the widening actually stretches**, and it is the one place `frozen`
+        // meets more than a single follower: at width 4 a miss in slot 0 holds up to three. The
+        // rule is unchanged in kind — propagate DOWNWARD in age only — but "unchanged in kind" is
+        // an argument, and M7's one real bug lived exactly here. M13 step 2(b) is where it is
+        // provoked rather than asserted.
         this.holdInMem(ctx, em, s, 0);
         continue;
       }
@@ -1253,9 +1315,15 @@ export class SuperscalarProcessor implements Processor {
    * i.e. **youngest source first**, which is the same priority rule one stage up expressed within a
    * stage. At width 1 there is one slot per latch and this is M3's rule byte for byte.
    *
-   * Intra-pair forwarding (a source in the consumer's OWN stage) does not exist and never will: the
-   * pinned rule is that an intra-pair RAW never pairs, precisely because forwarding cannot fix a
-   * same-cycle dependency.
+   * Intra-group forwarding (a source in the consumer's OWN stage) does not exist and never will:
+   * the pinned rule is that an intra-group RAW never co-issues, precisely because forwarding cannot
+   * fix a same-cycle dependency.
+   *
+   * **The scan order is what step 2(a) has to provoke at N > 2.** Two independent instructions in
+   * one group may write the SAME `rd` — nothing refuses that pairing, since there is no RAW between
+   * them — and then a scan that took the first match ascending would forward the OLDER writer's
+   * value. Descending is the correct rule and is what is written here; that it is written correctly
+   * is not the same as its having been watched, and only a hand-built program can watch it.
    *
    * With the toggle OFF no forward paths exist at all: the register file is the only route, and the
    * ID interlock has already held the consumer until the value is there.
@@ -1476,9 +1544,14 @@ export class SuperscalarProcessor implements Processor {
    * The rules are a COORDINATED SIMPLIFICATION, not three independent tastes — together they are
    * what keeps the widening confined. No two memory ops ⇒ MEM stays single-ported and the cache and
    * its miss-freeze stay single-lane. No two transfers ⇒ EX resolves at most one control transfer a
-   * cycle, so `bet`/`squash`/`redirect` stay single-lane. No intra-pair RAW ⇒ forwarding never has
-   * to resolve a within-group dependency. What actually doubles is a short list: fetch, the
-   * register-read ports, the ALU, the WB write ports, and the forwarding SOURCE set.
+   * cycle, so `bet`/`squash`/`redirect` stay single-lane. No intra-group RAW ⇒ forwarding never has
+   * to resolve a within-group dependency. What actually REPLICATES with the width is a short list:
+   * fetch, the register-read ports, the ALU, the WB write ports, and the forwarding SOURCE set.
+   *
+   * **And this is why M13 was a guard rather than a rewrite.** Each rule is `for (const older of
+   * group)` — a question asked of every instruction already issued this cycle — so it was never
+   * arity-2 in the code, only in the prose. Relaxing any of them (a second memory port, a second
+   * branch unit, intra-group forwarding) un-confines the widening and is a different milestone.
    */
   private issueVerdict(
     ctx: CycleCtx,
@@ -1495,10 +1568,18 @@ export class SuperscalarProcessor implements Processor {
       // not-taken branch still occupied the unit, and at issue nobody knows the outcome anyway.
       if (TRANSFERS.has(d.mnemonic) && TRANSFERS.has(older.decoded.mnemonic)) return 'branch-slot';
 
-      // INTRA-PAIR RAW. This one holds at EVERY forwarding setting, which is itself the teachable
+      // INTRA-GROUP RAW. This one holds at EVERY forwarding setting, which is itself the teachable
       // fact: forwarding moves a value from a LATER stage back to EX, and there is no later stage
       // than "beside me, this very cycle". The producer's result does not exist yet. `rd !== 0`
       // excludes both "writes nothing" and a write to hardwired x0.
+      //
+      // **The reason string stays `'intra-pair-raw'`, and the name is HISTORICAL.** It was minted
+      // when a group was a pair; it has meant intra-GROUP since the loop above started walking one.
+      // It is not renamed here because `stall.reason` is a trace field three consumers read
+      // (`pairing.test.ts` asserts it, the readout glosses it, the curriculum can anchor on it), so
+      // a rename moves trace bytes for a spelling — and step 1's acceptance is that widths 1 and 2
+      // are byte-identical to their pre-M13 traces. If it is ever renamed, step 8's readout is
+      // where the cost belongs.
       const rd = destReg(older.decoded);
       if (rd !== 0 && (rd === src.rs1 || rd === src.rs2)) return 'intra-pair-raw';
     }
@@ -1609,10 +1690,10 @@ export class SuperscalarProcessor implements Processor {
     //   - ID stalled its oldest ⇒ it re-took its own seat ⇒ at width 1 no seat is free and IF holds
     //     everything, which is the classic stall picture, byte for byte what M3 does.
     //
-    // Note what the third case becomes at width 2 when ID holds only ONE stalled instruction: the
-    // seat behind it IS free, so a younger instruction moves into ID beside the stalled one and is
-    // ready to be grouped the moment the stall clears. That is correct and in-order — it is the
-    // decoupling a fetch buffer buys — and it is invisible at width 1, where the seat never exists.
+    // Note what the third case becomes at width ≥ 2 when ID holds only ONE stalled instruction:
+    // the seats behind it ARE free, so younger instructions move into ID beside the stalled one and
+    // are ready to be grouped the moment the stall clears. That is correct and in-order — it is the
+    // decoupling a fetch buffer buys — and it is invisible at width 1, where the seats never exist.
     const keep = emptySlots<Fetched>(this.width);
     let seat = ctx.next.ifId.findIndex((o) => o === null);
     let kept = 0;

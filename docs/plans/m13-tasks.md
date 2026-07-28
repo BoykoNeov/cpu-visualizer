@@ -1,12 +1,15 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: NOT STARTED. Step 0 (the dump) is DONE 2026-07-28 and its findings are below; they
+**Status: IN PROGRESS — steps 0, 0b and 1 DONE 2026-07-28. The guard now admits 1..4 and the
+engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
+the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
 uncovered is ALREADY FIXED AND PUSHED (`a9f1b70`, repo 4498 → 4502 tests) — it was live in shipped
 code at width 2 and did not belong inside an unpinned milestone. The two GATING decisions are PINNED
 (user, 2026-07-28): the UI offers widths 1/2/3/4, and the lane hue set EXTENDS to four validated
 tints. The second overrode its seed, and the seed was wrong for a reason worth keeping — see
-_Decision H_ at the bottom. The remaining rows are open and none of them gates step 1.**
+_Decision H_ at the bottom. A third row — the maximum width the guard admits — was answered by
+implication and is now implemented; the rest are open and none of them gates step 2.**
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12.4 (the superscalar tier) and the
 architectural invariants (§3). The model's ground truth is `docs/plans/m7-tasks.md`, whose pairing
@@ -98,13 +101,40 @@ against it — it was a missing UNDO, not a missing fourth rule.
 - [x] **0. The dump.** ✅ DONE 2026-07-28 — above.
 - [x] **0b. The halt-shadow fix.** ✅ DONE 2026-07-28, `a9f1b70`. Pre-milestone: a live width-2
       defect does not wait for a milestone the user has not pinned.
-- [ ] **1. The guard, and the width-genericity audit.** Replace the `1 ↔ 2` refusal with an N guard
-      (integer, ≥ 1, ≤ the pinned maximum), and audit every site that reads `this.width` or indexes
-      a slot array for an assumption of arity 2 — including `SuperscalarMicro.width`'s docblock ("1
-      or 2"), the `emptyLatches`/`emptySlots` helpers, `younger()`, and every docblock that says
-      "pair" where it now means "group". Acceptance: widths 1 and 2 produce **byte-identical traces
-      to today** (deep-compare, not cycle counts — a timing knob leaking is invisible to a count),
-      and `timing`/`pairing`/`differential` pass with **zero numbers touched**.
+- [x] **1. The guard, and the width-genericity audit.** ✅ DONE 2026-07-28 (repo 4503 → 4504 tests).
+      `MAX_ISSUE_WIDTH = 4` is now **exported from the superscalar package**, so steps 4/6/7 read the
+      bound from the engine that enforces it instead of re-typing a `4` in `models.ts`/`App.tsx`.
+      The guard is `!Number.isInteger(w) || w < 1 || w > MAX_ISSUE_WIDTH` — the M9+M10 review's
+      capacity shape, because `w < 1` alone is false for both `NaN` and `1.5`, and a NaN width makes
+      every `s < this.width` body unreachable (a processor that fetches nothing and never halts).
+      **The audit's code half came back EMPTY, and that is the finding worth recording:** a sweep
+      for literal slot indexing (`idEx[0|1]`, `exMem[…]`, `ifSlot[…]`, …) across all of `packages/`
+      matched exactly one line, in a test, deliberately about slot 0. So there was no arity-2 CODE
+      to fix — only prose. What did get fixed was ~20 docblocks and comments, and one of them was a
+      real defect rather than a stale phrasing: `CycleCtx.bet` claimed the bet's casualty set "grows
+      by exactly one seat", which is `width - 1` seats. It never reached the trace (`flush.stages`
+      names stage families, so N dead ID seats and one are both the string `'ID'`), which is exactly
+      why it survived. `'intra-pair-raw'` is **deliberately not renamed** — it is a trace field three
+      consumers read, so a rename moves bytes for a spelling; it now carries a line saying the name
+      is historical and means intra-GROUP, and step 8 owns the rename if it ever happens.
+      **Acceptance MET, and stated with what it does and does not prove.** 396 whole-trace sets
+      (11 programs × widths {1,2} × 18 configs: forwarding × 3 predictions × {no cache, small,
+      large}), 22 455 cycles, ~50 MB of serialized trace: **396/396 byte-equal** pre vs post.
+      Non-vacuity was checked first — `MachineState.memory` is a `SparseMemory` whose `Map` is
+      private, so a naive `JSON.stringify` emits `{}` and the compare would silently pass on memory
+      everywhere; the serializer enumerates `definedAddresses()`, and the goldens carry `array-sum`'s
+      `a0 = 120` and its 20 data words. The compare was falsified too (w1≠w2, fwd≠nofwd,
+      cache≠nocache on the same program), so it can see a machine change. But byte-identity here is
+      CHEAP information, and saying so is the honest report: since the audit changed no code outside
+      the guard, nothing could have moved. `timing` (606), `pairing` (21), `differential` (398) pass
+      with zero numbers touched. Harness: temp-only, deleted after the compare; goldens under
+      `M:\claud_projects\temp\m13-step1\{pre,post}\`.
+      **One thing borrowed from step 2, on purpose:** opening the guard makes 3/4 REACHABLE, and
+      `halt-shadow.test.ts`'s bounded sweep is the only net in the repo that converts a width-3/4
+      non-termination into a red test rather than a hung suite (every other runner loops
+      `while (!p.isHalted())` unbounded). Its `WIDTHS` is now derived from `MAX_ISSUE_WIDTH`, not
+      typed `[1, 2, 3, 4]`, so raising the bound cannot leave the widest machine the least tested.
+      Corpus × 4 widths × forwarding × prediction × cache all terminate.
 - [ ] **2. The adversarial engine nets — the three things the corpus CANNOT show.** Each hand-built,
       each **watched failing against a deliberately broken engine before being kept** (the M11+M12
       review's sharpest method lesson: one property sweep passed 8/8 on the bug it was written for).
@@ -132,7 +162,12 @@ against it — it was a missing UNDO, not a missing fourth rule.
       `location` is a plain string that already absorbed `"EX.1"`. Prove it rather than assume it,
       and state explicitly what is NOT re-proven.
 - [ ] **6. Web enablement — the ISSUE toggle gains positions.** `models.ts`, `session.ts`,
-      `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Note the M7 seam finding: deleting
+      `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Import `MAX_ISSUE_WIDTH` rather
+      than typing a `4`. **Carries one deliberate debt from step 1:** `SUPERSCALAR_MODEL_DESCRIPTION`
+      still reads "up to two instructions issue per cycle" and was left alone on purpose — it is the
+      model picker's user-facing copy and describes what the product OFFERS, not what the guard
+      admits, so widening it before the control would have promised a machine nobody could reach. It
+      moves here, with the control. Note the M7 seam finding: deleting
       `issueWidth` from `loadInto`'s config left all web tests green because the field is optional
       and the engine's `?? 1` runs every position at width 1 — **a dead toggle reads the same number
       twice**, so the seam test must be a MOVING number.
@@ -188,15 +223,15 @@ against it — it was a missing UNDO, not a missing fourth rule.
 
 ## Decisions to pin (seeded with recommended answers)
 
-| Decision                              | Recommendation (seed)                                                                                                                                                                                                                                                                                                       | Pinned answer                                                   |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **W** — which widths the UI offers    | **1 / 2 / 3 / 4.** The honest case for 4 is not speed — it is that 4 is where widening visibly STOPS paying (9 of 11 programs identical to w3), and that is the width axis's real lesson. Offering 1/2/3 hides the diminishing return that makes the tier worth teaching. Gates steps 1, 6, 7                               | **As seeded — 1 / 2 / 3 / 4** (user, 2026-07-28)                |
-| **H** — the lane hue channel at N > 2 | Seeded as "tint lanes 0/1, neutral beyond" on the grounds that inventing hues is barred. **That seed was WRONG about which rule applies, and the correction is recorded here rather than quietly dropped** — see the note below the table. Gates step 7                                                                     | **EXTEND THE LANE SET TO 4 VALIDATED TINTS** (user, 2026-07-28) |
-| Scope of the pairing rules            | **Unchanged in kind** — one mem port, one branch unit, no intra-group RAW, per group. Relaxing any is a different milestone (see Headline decision)                                                                                                                                                                         | _open_                                                          |
-| A new corpus program                  | **No.** The dump answers the question that would have forced one: the existing corpus reaches groups of 3 and 4 and shows the diminishing return. An addition pays the full INV-8 ripple across six models (M12's finding). The adversarial programs in step 2 are hand-built INSIDE their test files, not corpus additions | _open_                                                          |
-| A new trace event / field             | **No** — predicted, not assumed. `location` already absorbs `"EX.3"` as a plain string, `stall.reason` is free-form, and `micro.idEx` is arity-generic. House record: M4 +1 field of 5, M6 +0, M7 +0, M11 +0                                                                                                                | _open_                                                          |
-| A lesson track for the wider machine  | **Not in this milestone.** M7/M8 and M11/M12 both split model+view from track; the existing "The wide machine" track would gain a delta lesson, which is the M12 shape and its own milestone                                                                                                                                | _open_                                                          |
-| Maximum width the guard admits        | **4**, matching the UI. A guard that admits more than the product offers is untested surface; the error message should name the reason, as today's does                                                                                                                                                                     | _open_                                                          |
+| Decision                              | Recommendation (seed)                                                                                                                                                                                                                                                                                                       | Pinned answer                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **W** — which widths the UI offers    | **1 / 2 / 3 / 4.** The honest case for 4 is not speed — it is that 4 is where widening visibly STOPS paying (9 of 11 programs identical to w3), and that is the width axis's real lesson. Offering 1/2/3 hides the diminishing return that makes the tier worth teaching. Gates steps 1, 6, 7                               | **As seeded — 1 / 2 / 3 / 4** (user, 2026-07-28)                        |
+| **H** — the lane hue channel at N > 2 | Seeded as "tint lanes 0/1, neutral beyond" on the grounds that inventing hues is barred. **That seed was WRONG about which rule applies, and the correction is recorded here rather than quietly dropped** — see the note below the table. Gates step 7                                                                     | **EXTEND THE LANE SET TO 4 VALIDATED TINTS** (user, 2026-07-28)         |
+| Scope of the pairing rules            | **Unchanged in kind** — one mem port, one branch unit, no intra-group RAW, per group. Relaxing any is a different milestone (see Headline decision)                                                                                                                                                                         | _open_                                                                  |
+| A new corpus program                  | **No.** The dump answers the question that would have forced one: the existing corpus reaches groups of 3 and 4 and shows the diminishing return. An addition pays the full INV-8 ripple across six models (M12's finding). The adversarial programs in step 2 are hand-built INSIDE their test files, not corpus additions | _open_                                                                  |
+| A new trace event / field             | **No** — predicted, not assumed. `location` already absorbs `"EX.3"` as a plain string, `stall.reason` is free-form, and `micro.idEx` is arity-generic. House record: M4 +1 field of 5, M6 +0, M7 +0, M11 +0                                                                                                                | _open_                                                                  |
+| A lesson track for the wider machine  | **Not in this milestone.** M7/M8 and M11/M12 both split model+view from track; the existing "The wide machine" track would gain a delta lesson, which is the M12 shape and its own milestone                                                                                                                                | _open_                                                                  |
+| Maximum width the guard admits        | **4**, matching the UI. A guard that admits more than the product offers is untested surface; the error message should name the reason, as today's does                                                                                                                                                                     | **4 — follows W; IMPLEMENTED step 1** as the exported `MAX_ISSUE_WIDTH` |
 
 ### Decision H — the correction the seed needed
 

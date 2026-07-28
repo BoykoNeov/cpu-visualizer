@@ -9,7 +9,7 @@ import {
   type CycleTrace,
   type ProcessorConfig,
 } from '@cpu-viz/trace';
-import { SuperscalarProcessor } from './index';
+import { SuperscalarProcessor, MAX_ISSUE_WIDTH } from './index';
 
 /**
  * **A HALT IN A BRANCH'S SHADOW MUST NOT STOP FETCH FOREVER — the wedge, and the net that sees it.**
@@ -140,7 +140,20 @@ const cfg = (over: Partial<ProcessorConfig>): ProcessorConfig => ({
 });
 
 const SCHEMES: ProcessorConfig['branchPrediction'][] = ['none', 'static-not-taken', 'static-taken'];
-const WIDTHS = [1, 2] as const;
+
+/**
+ * **Every width the guard admits, read from the guard.** This list was `[1, 2]` until M13 step 1,
+ * for the good reason that 3 and 4 threw. Widening the guard in that step made them reachable —
+ * and this file is the ONLY net in the repo that turns a width-3/4 non-termination into a red test
+ * rather than a hung suite, because every other runner loops `while (!p.isHalted())` with no bound.
+ * So it is widened in the same commit as the guard, not left to step 2: the alternative is a window
+ * in which the model accepts a width nothing checks for liveness.
+ *
+ * Derived from `MAX_ISSUE_WIDTH` rather than typed as `[1, 2, 3, 4]` so that raising the bound
+ * cannot quietly leave this sweep behind — the failure mode that would leave the widest machine
+ * the least tested.
+ */
+const WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1);
 
 describe('a halt in a taken branch’s shadow', () => {
   it('does not wedge the machine — every width × prediction scheme terminates', () => {

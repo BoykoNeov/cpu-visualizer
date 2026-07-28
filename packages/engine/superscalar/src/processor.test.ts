@@ -4,15 +4,16 @@ import { describe, expect, it } from 'vitest';
 import { assemble } from '@cpu-viz/assembler';
 import { toProgramImage } from '@cpu-viz/engine-common';
 import { defaultConfig, type CycleTrace, type ProcessorConfig } from '@cpu-viz/trace';
-import { SuperscalarProcessor, SUPERSCALAR_CAPABILITIES } from './index';
+import { SuperscalarProcessor, SUPERSCALAR_CAPABILITIES, MAX_ISSUE_WIDTH } from './index';
 
 /**
  * The three surfaces M7 step 2a introduces that neither `differential.test.ts` (final state) nor
  * `timing.test.ts` (M3's cycle counts, transplanted) can see:
  *
  *  1. the `"<stage>.<slot>"` `location` encoding — a deliberate difference from M3, pinned here;
- *  2. `reset()`'s refusal of any width but 1 — the honest "not yet" that keeps the toggle from
- *     silently lying while the pairing logic is still unwritten;
+ *  2. `reset()`'s width guard — which through M7–M12 refused anything but 1 or 2, and as of M13
+ *     step 1 admits every whole number in `1..MAX_ISSUE_WIDTH`. What it must never do is accept a
+ *     width and then silently run narrower than the config asked for;
  *  3. the capabilities constant, enumerated exhaustively so a new knob cannot be added without this
  *     model stating its stance (the shape M7 step 1 pinned across the family).
  */
@@ -111,12 +112,36 @@ describe('issueWidth', () => {
     expect(p.isHalted()).toBe(false);
   });
 
-  it('still rejects widths the machine does not have', () => {
-    // 1 and 2 are the toggle; anything else would need pairing rules this model has not got, and
-    // running narrow while the config says otherwise is the one failure mode worth throwing over.
+  it('accepts every width up to MAX_ISSUE_WIDTH — M13 step 1 widened the guard, and only the guard', () => {
+    // The refusal at 3 lived here through M7–M12 and said a wider machine "would need pairing rules
+    // it does not have". **That was false about this code**, and M13's step-0 dump is what
+    // established it rather than an argument: `issueVerdict` asks each rule against the whole
+    // GROUP, `stageId`/`detectHazard`/`stageIf` all loop `this.width`, and widths 3 and 4 ran the
+    // entire corpus to correct architectural state with the guard as the only thing changed. The
+    // old message was a description of itself.
+    for (let w = 1; w <= MAX_ISSUE_WIDTH; w++) {
+      const p = new SuperscalarProcessor();
+      expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: w })).not.toThrow();
+      expect(p.isHalted()).toBe(false);
+      expect((p.getState().micro as { width: number }).width).toBe(w);
+    }
+  });
+
+  it('rejects a width that is not a whole count in 1..MAX_ISSUE_WIDTH', () => {
+    // The bound is real surface, not a formality: past MAX_ISSUE_WIDTH there is no derived timing
+    // cell and no adversarial net, so admitting 5 would ship a machine nothing checks.
+    //
+    // `0` and `MAX + 1` are the ends. `1.5` and `NaN` are here because `w < 1` — the obvious
+    // spelling, and the one this guard used to be a cousin of — is FALSE for both: the M9+M10
+    // review's own capacity fix shipped with exactly that hole. A fractional width would floor to
+    // a machine nobody asked for; a NaN width makes every `s < this.width` loop body unreachable,
+    // which is a processor that fetches nothing and never halts.
     const p = new SuperscalarProcessor();
-    expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 0 })).toThrow();
-    expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: 3 })).toThrow();
+    for (const bad of [0, -1, MAX_ISSUE_WIDTH + 1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: bad })).toThrow(
+        /is not a width this machine has/,
+      );
+    }
   });
 });
 
