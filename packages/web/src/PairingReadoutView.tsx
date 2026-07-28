@@ -105,9 +105,14 @@ export function PairingReadout(props: {
           Issue
         </h2>
         <span style={{ fontSize: '0.75rem', color: T.ink3 }}>
+          {/* The NUMBER is derived, not typed. It read a literal "up to 2" until M13 step 7, which
+              has been wrong on screen at widths 3 and 4 since step 6 opened the control — the same
+              class as step 6's model description and its `=== 2` tooltip ternary, and invisible for
+              the same reason: nothing in this repo asserts on a caption's wording. The VOCABULARY
+              is still pair-shaped and belongs to step 8; only the arithmetic is fixed here. */}
           {readout.width === 1
             ? 'this machine issues 1 instruction per cycle — nothing can pair'
-            : 'up to 2 instructions may issue together, if no rule forbids it'}
+            : `up to ${readout.width} instructions may issue together, if no rule forbids it`}
         </span>
         <span style={{ marginLeft: 'auto' }}>
           <IpcTile retired={ipc.retired} cycles={ipc.cycles} ipc={ipc.ipc} width={readout.width} />

@@ -11,10 +11,11 @@
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
-import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
+import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { geometryFor } from './datapath-superscalar';
 import { Datapath } from './DatapathView';
 import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
@@ -240,6 +241,9 @@ describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
   }
 
   const FILL = '  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4\n  addi x5, x0, 5\n  addi x6, x0, 6'; // prettier-ignore
+  /** Enough independent work to fill EVERY slot of the widest machine — `FILL` holds six and never
+   *  reaches four abreast, which is the "a width-4 test that measures width 3" trap. */
+  const WIDE_FILL = '  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4\n  addi x5, x0, 5\n  addi x6, x0, 6\n  addi x7, x0, 7\n  addi x8, x0, 8'; // prettier-ignore
   // Two stores back to back — the `mem-port` refusal, and the "one lane dark" picture.
   const REFUSE = '  addi x1, x0, 256\n  addi x2, x0, 7\n  sw x2, 0(x1)\n  sw x2, 4(x1)';
 
@@ -341,6 +345,47 @@ describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
     expect(on).toContain('ForwardA1');
     expect(off).not.toContain('ForwardA');
     expect(off).toContain('Hazard');
+  });
+
+  it('EVERY offered width reaches the markup — the clamp detector (M13 step 7)', () => {
+    // The seam no other suite can see. `datapath-superscalar.test.ts` builds `DatapathConfig`
+    // literally at every width, so it proves the GEOMETRY is right and proves nothing about the
+    // render path; and until M13 every render site in this file used width 1 or 2, so the wrapper
+    // had never executed on a four-lane canvas at all.
+    //
+    // The assertion is a COUNT rather than a presence check, because `geometryFor` clamps its
+    // argument into range: a width that arrives wrong renders a plausible NARROWER diagram instead
+    // of throwing. That is step 6's half-dead-toggle shape (widths 1 and 2 correct, 3 and 4
+    // collapsed onto 2) one layer up, and a `toContain('--lane-0')` would pass straight through it.
+    const seen: number[] = [];
+    for (let w = 1; w <= MAX_ISSUE_WIDTH; w++) {
+      const html = render(ssAt(WIDE_FILL, 4, w), 'expert', w);
+      const hues = new Set(html.match(/--dp-hue:var\(--lane-\d\)/g) ?? []);
+      seen.push(hues.size);
+      // The machine's own width, in the words the reader sees.
+      expect(html, `width ${w} title`).toContain(`${w}-wide`);
+      expect(html, `width ${w} aria`).toContain(`${w} instructions per cycle`);
+      // ...and the canvas that width needs actually reaches the DOM.
+      expect(html, `width ${w} viewBox`).toContain(`viewBox="0 0 ${geometryFor(w).canvas.width} ${geometryFor(w).canvas.height}"`); // prettier-ignore
+    }
+    // One distinct lane tint per lane, at every position — this is the line a clamp reddens.
+    expect(seen).toEqual(Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1));
+  });
+
+  it('the widest machine survives LABEL LAYOUT — the tall canvas, actually rendered', () => {
+    // `layoutLabels` de-collides value labels vertically and clamps them inside `canvas.height`.
+    // Before M13 it had never seen a canvas this tall or this many labels, because nothing rendered
+    // the wrapper above width 2. Rendering at `expert` with labels on is what executes it.
+    const html = render(ssAt(WIDE_FILL, 4, MAX_ISSUE_WIDTH), 'expert', MAX_ISSUE_WIDTH);
+    const canvas = geometryFor(MAX_ISSUE_WIDTH).canvas;
+    expect(html).toContain('dp-vlabel-box');
+    // Every label box the renderer placed sits inside the canvas it was given — the clamp is what
+    // this exercises, and a label pushed past a 1500px-tall canvas is invisible rather than wrong.
+    for (const m of html.matchAll(/<rect class="dp-vlabel-box"[^>]*?y="([-\d.]+)"/g)) {
+      const y = Number(m[1]);
+      expect(y, `label box at y=${y}`).toBeGreaterThanOrEqual(0);
+      expect(y, `label box at y=${y}`).toBeLessThan(canvas.height);
+    }
   });
 
   it('renders the idle diagram (no active classes) pre-run', () => {
