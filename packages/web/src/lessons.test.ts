@@ -845,6 +845,45 @@ describe('authored lessons (INV-6)', () => {
     ).toEqual(['deep-bet-pays-double', 'deep-bubble-survives', 'deep-drain']);
   });
 
+  /**
+   * `depthDefault` became LOAD-BEARING at M12 step 5, so it gets a guard.
+   *
+   * It was the third declared-and-ignored field on `Lesson`. `startLesson`'s own note records that
+   * `model` and `config` were "declared-and-ignored until M3 step 8"; this one stayed that way until
+   * the browser pass read the rendered prose and found the EXPERT paragraph under a lesson declaring
+   * `detailed`. The shell hardcoded `useState<DepthTier>('expert')` and nothing ever read the field.
+   *
+   * This test cannot see the wiring — no test here can see a click, which is exactly why the defect
+   * survived four milestones of lesson authoring. What it CAN do is stop the field going stale in the
+   * other direction now that something depends on it: every lesson declares a tier the renderer knows,
+   * and every lesson has narration AT that tier, so opening a lesson can never land a reader on a
+   * paragraph that does not exist. (`resolveNarration` falls back DOWNWARD, so a lesson declaring
+   * `expert` with only `essentials` authored is lawful — the unlawful case is the reverse, a declared
+   * tier with nothing at or below it, and that is what the second assertion excludes.)
+   */
+  it('every lesson declares a depth the shell can open it at, with narration there', () => {
+    const TIERS = ['essentials', 'detailed', 'expert'];
+    for (const lesson of LESSONS) {
+      expect(TIERS, `${lesson.id} declares an unknown depth`).toContain(lesson.depthDefault);
+      for (const [i, step] of lesson.steps.entries())
+        expect(
+          resolveNarration(step.narration, lesson.depthDefault),
+          `${lesson.id} step ${i} has nothing to say at its own declared depth`,
+        ).toBeTruthy();
+    }
+    // The library is UNIFORMLY `detailed`, which is worth stating because it measures the blast
+    // radius of the defect this field's neglect caused: not one lesson opened at the wrong tier, all
+    // twenty-two did. The wiring is generic, so a future lesson declaring another tier needs no code
+    // change — this assertion is a canary for that, not a rule against it.
+    expect(new Set(LESSONS.map((l) => l.depthDefault))).toEqual(new Set(['detailed']));
+    // Non-vacuity of the FIX rather than of the field: the tier a lesson declares must actually
+    // select different prose from the one the shell used to hardcode, or honoring it changes nothing
+    // a reader can see. Asserted on the thesis lesson, whose two tiers are deliberately different
+    // registers — `detailed` compares machines in sentences, `expert` states the coefficients.
+    const thesis = byId('deep-bubble-survives').steps[3]!.narration;
+    expect(resolveNarration(thesis, 'detailed')).not.toBe(resolveNarration(thesis, 'expert'));
+  });
+
   it('canonicalizes every declared cache to a shipped constant (M6 step 7 reconcile)', () => {
     // The reconcile's own guard. `lessons.ts` maps a lesson's JSON-declared `config.cache` back to
     // one of the shipped `CACHE_SMALL` / `CACHE_LARGE` constants at load, so the shell's cache toggle

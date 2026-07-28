@@ -222,8 +222,26 @@ export function App(): React.JSX.Element {
               onChange={(e) => {
                 const lesson = LESSONS.find((l) => l.id === e.target.value);
                 // "— none —" drops back to free-play on the same program.
-                if (lesson) sim.startLesson(lesson);
-                else if (sim.programName) sim.select(sim.programName);
+                if (lesson) {
+                  sim.startLesson(lesson);
+                  // ...and open it at the depth the lesson DECLARES. `depthDefault` is the third
+                  // declared-and-ignored field on `Lesson`: `startLesson`'s own note records that
+                  // `model` and `config` were "declared-and-ignored until M3 step 8", and this one
+                  // stayed that way — read by nothing, while all 22 lessons author it and the shell
+                  // hardcodes `expert`. So every lesson opened at expert prose, including the six
+                  // language tours whose whole audience is a reader who has not met a latch.
+                  //
+                  // Found by M12's browser pass and invisible to every headless test by
+                  // construction: those assert narration RESOLVES at a tier, which is a question
+                  // about the lesson. Which tier the SHELL picks is a question about the shell, and
+                  // no test in this repo can see a click.
+                  //
+                  // It belongs here rather than in `startLesson` because depth is a pure view
+                  // concern (INV-2) and `useSimulator` owns the machine, not the presentation — but
+                  // it is the same act: a lesson opens on the model, the config AND the depth it was
+                  // authored against. The user's dial is theirs again the moment they move it.
+                  setTier(lesson.depthDefault);
+                } else if (sim.programName) sim.select(sim.programName);
               }}
             >
               <option value="">— none —</option>
