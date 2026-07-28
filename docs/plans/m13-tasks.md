@@ -1,6 +1,6 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3 and 4 DONE 2026-07-28. The guard now admits 1..4 and the
+**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3, 4 and 5 DONE 2026-07-28. The guard now admits 1..4 and the
 engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
 the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
@@ -368,9 +368,100 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       naming a width the machine did not run. Unreachable today (every OoO config states its width),
       and deliberately left: step 6 is where a shared control makes it reachable. OoO `WIDTHS` stays
       `[1, 2]` for the same reason — that is step 6's pinned decision, not step 4's to pre-empt.
-- [ ] **5. Recorder and `location` at width ≥ 3.** Expected to be free — `follow()` keys on `id`, and
-      `location` is a plain string that already absorbed `"EX.1"`. Prove it rather than assume it,
-      and state explicitly what is NOT re-proven.
+- [x] **5. Recorder and `location` at width ≥ 3.** ✅ DONE 2026-07-28 (repo 5558 → **5575** tests).
+      It WAS free, and the acceptance is `git diff --stat`: **two test files, zero engine or recorder
+      lines.** `packages/trace/src/recorder.ts` is untouched — `TraceRecorder` has no width awareness
+      anywhere in it, `follow()` keys on `id`, `InstructionSighting.location` is a plain string. The
+      split follows the boundary `recorder.test.ts` already declares: the encoding's set claims went
+      into `processor.test.ts`, navigation / `follow()` / micro-tracking into `recorder.test.ts`,
+      both extended IN PLACE. Dumps at `M:\claud_projects\temp\m13-step5\dump.txt`.
+      **When a step is a proof, the failure mode is not a red test — it is a GREEN one that measures
+      width 2.** Everything below exists because of that, and the fixture was the first casualty.
+      **`TEN_INDEPENDENT` stops scaling at width 2, and no amount of care in the assertion would
+      have fixed it.** M7's headline was "ten ids, ten distinct locations, one cycle" = 5 stages × 2
+      seats. The width-4 analogue is 20 — and that fixture holds ELEVEN instructions, so at widths 3
+      and 4 it peaks at **11 in flight, not 15 or 20**: the whole program is in the pipe at once by
+      cycle 2. A parameterized `5 × width` assertion over it would have been red, and a
+      `toBeGreaterThan` would have been green and meaningless. `TWENTY_INDEPENDENT` (20 independent
+      `addi`s) makes the peak exactly **5 / 10 / 15 / 20 at cycle 4** at widths 1/2/3/4 — the one
+      fixture in the file whose peak moves with the width at all. Generalises: **a fixture sized for
+      the old width is not "still valid at the new one", it is a different measurement wearing the
+      same name** — dump its peak before parameterizing anything over it.
+      **SUBSET and SURJECTIVITY are different claims with different scopes, and conflating them is
+      this step's version of the plan's named lie.** "No location outside `STAGES × [0..w-1]`" holds
+      on every program at every width. "Every slot index appears" does NOT: measured, the surjective
+      set is all eleven programs at w1 and w2, **all but `add.s` at w3, and exactly
+      `branch-flavors` / `paired-branches` / `slow-op-loop` at w4** — the same three names
+      `timing.test.ts`'s `fillsFour` reaches from an issue-size histogram. Two independent
+      measurements landing on the same three is the cross-check worth having; asserting surjectivity
+      corpus-wide would have been a width-4 test measuring width 3.
+      **And the asymmetry that CAUSES it is the width axis's own lesson, now pinned: at width 4 TEN
+      programs emit `IF.3` and THREE emit `EX.3`.** Fetch is not gated by the pairing rules —
+      `stageIf` fills every seat it can reach — while issue is gated by all three, so the last seat
+      is fetched into routinely and issued from almost never. That gap is "the fourth slot is mostly
+      empty, and here is which rule keeps it empty", measured at the trace layer instead of argued.
+      **A genuinely new geometry at width ≥ 3: a slot can move by MORE THAN ONE in a single cycle.**
+      The width-2 spelling of "a slot is not a stable lane" is structurally weaker than it reads —
+      with seats {0, 1} the only possible move is by one, whatever the issue logic does. The existing
+      four-instruction `SLIDER` fixture builds the real thing at width 3 with no new program:
+      `IF.0 → ID.2`, a jump of two, while its two elders slide 1→0 and 2→1 in the same cycle — three
+      seats moving at once, in two directions. Measured across all widths the largest jump is
+      **[0, 1, 2, 1]**, and the `1` at the end is the point: **width 4 is NOT the extreme case** (all
+      four fit, so the group slides down uniformly and nothing jumps). Step 2's "ask which slot makes
+      the claim differ from its width-2 spelling, not which is extreme", arriving from the other side.
+      **Two breaks watched, and the interesting result is how CLEANLY they separate.**
+      _(1) Clamp the emitted slot to `min(s, 1)` in `place()`_ — step 4's `min(w, 2)` experiment one
+      layer down, a machine running wide and reporting narrow: **494 of 2157 package tests red, and
+      every one of them a width-3/4 cell.** Every new width-3/4 cell reddens.
+      The width-1/2 half of that sentence is **measured per-test across the whole package**, not
+      inferred from the count — a first pass ran the JSON reporter over only the two edited files and
+      would have shipped "every width-1/2 cell green" as an extrapolation from 2 of 8 files, which is
+      step 4's own "a measurement's glob is part of its claim" recurring in the step that cites it.
+      Measured: the 494 are `timing.test.ts`'s `widths 3 and 4 — the derived schedule` block (468),
+      `wide-groups.test.ts` in its entirety (14, a file whose whole subject is arity > 2), and the 12
+      new cells here. `timing.test.ts` keeps **772 green**; `pairing`, `differential`, `halt-shadow`,
+      `miss-freeze-forward` and every width-1 pin in `processor.test.ts` are untouched. **Zero**
+      failing tests are scoped to width 1 or 2; the only failure that names width 2 at all is
+      `paired-branches.s: w2 and w3 run 7 cycles with DIFFERENT partitions`, which spans widths by
+      construction.
+      _(2) Slice the `micro` snapshot to `min(width, 2)` while `width` is stored honestly_ — the
+      mirror, honest locations over a narrow recording: **exactly 3 of 2157 red** — step 1's shape
+      test plus the two new micro-tracking cells at w3/w4, and nothing else in the repo. So those two
+      cells are the only time-travel net for that hole, which is what step 2a's aliasing finding
+      predicted one width earlier.
+      **The subset test's own assertion turned out to be blind, and the break is how that was
+      learned rather than argued.** Under break (1) the clamp emits only LEGAL locations, so the
+      `legal.has(location)` loop never fires — what reddened was the **non-vacuity clause riding with
+      it** (`some program reaches ID.${w-1}`). The docblock had claimed the test "stays green through
+      it"; that was written before the break ran and is now corrected in place. **A test can be right
+      about what it cannot see and still wrong about which of its own lines does the work.**
+      **The mechanical sweep for arity-2 `location` consumers, run before believing "it's free" —
+      one hit, and it is not step 5's.** It took **two spellings**, and the second was run only
+      because step 3's own finding condemns the first: that blocker was a loop bound `s < 2` over a
+      TEMPLATE STRING, and this step's opening pattern
+      (`MAX_WIDTH|LANES\s*=|slot\s*[<>=]+\s*2|\[0,\s*1\]|width\s*===?\s*2`) could not have matched
+      it — `slot\s*[<>=]+\s*2` does not match a bound named `s`. **An arity sweep finds the arities
+      you spelled the way you searched, and the milestone had already paid for that once.** The
+      second pass (`(<\s*2|<=\s*1)\b`, and separately a literal `.1`) over every non-test file in
+      `packages/` came back with no new code: two `< 2` hits, both unrelated (a `6 * 12` comment and
+      the OoO `slowOpLatency` docblock), and four `.1` hits that are **all prose** — the width-1
+      "lane 1 is ABSENT, not dimmed" rule, restated in `datapath-superscalar.ts`, `App.tsx` and
+      `SuperscalarDatapathView.tsx`. That prose is pair-shaped and moves with step 7 (at width 3 the
+      hiding rule is "no `.2` occupant"), but it is documentation, not a defect.
+      The one CODE hit: `packages/web/src/datapath-superscalar.ts` hard-codes
+      `MAX_WIDTH = 2`; `parseLocation` returns `null` for any slot ≥ 2, so an `EX.2` occupant is
+      **silently dropped from the datapath's occupancy map — no crash, no red test.** Recorded in the
+      step-7 entry below and in `recorder.test.ts`'s NOT-re-proven list, deliberately not fixed here.
+      `pairing-readout.ts` is arity-GENERIC (it reads `ID.${s}` over a `width` parameter); only its
+      VOCABULARY is pair-shaped, which is step 8's. One false positive worth naming so the next sweep
+      does not re-chase it: `multi-cycle/processor.ts`'s `width === 2` is a store's byte width.
+      **Honesty notes.** `sum-loop`'s 43 and 43 are a **CROSS-CHECK, not a prediction** — both are in
+      the step-0 dump table above and derived by `timing.test.ts`; they appear here as fixtures the
+      way 56 and 44 always have. The widened `it.each` row list is a LITERAL (a config per row), which
+      is the one thing a derived `WIDTHS` does not protect, so it carries a completeness assertion
+      against `WIDTHS` — steps 1/3/4's guard, for the same reason. And the four-position toggle test
+      pins that **width 4 buys nothing at all on `sum-loop`**: the diminishing return is the pinned
+      product claim, not a disappointment to round away.
 - [ ] **6. Web enablement — the ISSUE toggle gains positions.** `models.ts`, `session.ts`,
       `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Import `MAX_ISSUE_WIDTH` rather
       than typing a `4`. **Decide the OUT-OF-ORDER model's bound here, before the control ships.**
@@ -402,10 +493,18 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       H_ below; it is re-validation work, not a color choice. The geometry itself is mechanical:
       `LANE_DY` is already a pitch and lane `n`'s block top is already `EX_TOP + n * LANE_DY`, and
       M7 step 7 derives every coordinate from its node via `at()`/`aUp()`/`aLo()` — which is exactly
-      what lets lanes be added without hand-typed endpoints silently detaching. Two things are NOT
-      mechanical and need watching: `LANES` is a hard-coded `[0, 1]`, and the forwarding rails are
+      what lets lanes be added without hand-typed endpoints silently detaching. **Three** things are
+      NOT mechanical and need watching: `LANES` is a hard-coded `[0, 1]`; the forwarding rails are
       built on "lane 0's returns ride the TOP rails, lane 1's the BOTTOM" — an outboard-side scheme
-      with exactly two sides, which four lanes do not have.
+      with exactly two sides, which four lanes do not have; and **the third was found by step 5's
+      sweep and is the one that fails silently.** `datapath-superscalar.ts` hard-codes
+      `MAX_WIDTH = 2`, and `parseLocation` returns `null` for any slot ≥ 2 — so at width 3 an `EX.2`
+      occupant is **dropped from the occupancy map with no crash and no red test**, and `byStage`
+      allocates its slot array at `MAX_WIDTH` besides. The trace is already correct here (step 5
+      proved it); the consumer is not. `MAX_WIDTH` should become `MAX_ISSUE_WIDTH` imported from the
+      engine, not a second `4`. The complement, also measured by that sweep: `pairing-readout.ts` is
+      arity-generic (it reads `ID.${s}` over a `width` parameter) and needs no geometry work — only
+      the step-8 vocabulary pass.
 - [ ] **8. The pairing readout and IPC at N lanes.** The panel's vocabulary is pair-shaped in the
       PROSE (`refused`/`blocked` are fine; "the pair in ID" is not). Keep the M7 step 8 rule that
       earned it: **read the RESULT (`micro.idEx`), never enumerate the REASONS** — the naive

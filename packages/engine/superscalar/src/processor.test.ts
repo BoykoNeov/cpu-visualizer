@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { assemble } from '@cpu-viz/assembler';
@@ -79,6 +79,118 @@ describe('the "<stage>.<slot>" location encoding', () => {
         if (e.type === 'forward') expect(['EX.rs1', 'EX.rs2']).toContain(e.to);
       }
     }
+  });
+});
+
+/**
+ * M13 step 5 — the same encoding, at every width the guard admits. `WIDTHS` is DERIVED from
+ * {@link MAX_ISSUE_WIDTH} (steps 1/3/4's precedent), so raising the bound cannot leave the widest
+ * machine's locations unpinned in silence.
+ *
+ * The two claims below are deliberately split, because **they do not have the same scope**:
+ *
+ *   - **SUBSET is universal.** No program at any width may emit a location outside
+ *     `STAGES × [0..w-1]`. This is the generalization of the width-1 pin above, and it holds on
+ *     every program in the corpus. It is also the WEAKER half, and the break record says exactly
+ *     how weak: clamping the emitted slot to `min(s, 1)` produces only LEGAL locations, so the
+ *     subset loop never fires — it was the **non-vacuity clause riding with it** that reddened, and
+ *     nothing else in this test could have. Subset alone cannot see a machine running narrow while
+ *     claiming wide, which is why the two tests after it exist and why that clause is not decoration.
+ *   - **SURJECTIVITY is program-specific, and must be MEASURED per width.** "Every slot index
+ *     appears" is false for `add.s` at width 3 and false for eight of eleven programs at width 4 —
+ *     which is not a defect, it is the width axis's own lesson (`docs/plans/m13-tasks.md` finding 3:
+ *     width 4 is where widening stops paying). Asserting it corpus-wide would have been the plan's
+ *     named lie — "a test that passes at width 4 because nothing ever filled four slots" — inverted.
+ *
+ * Every set below was DUMPED and read before it was asserted (`M:\claud_projects\temp\m13-step5\`),
+ * never reasoned from the pairing rules.
+ */
+describe('the "<stage>.<slot>" location encoding at every admitted width', () => {
+  const STAGES = ['IF', 'ID', 'EX', 'MEM', 'WB'] as const;
+  const WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH }, (_, n) => n + 1);
+  const CORPUS = readdirSync(PROGRAMS_DIR)
+    .filter((f) => f.endsWith('.s'))
+    .sort();
+
+  /**
+   * Forwarding ON / no prediction / no cache — the SAME cell `timing.test.ts`'s `fillsFour` uses,
+   * so the two measurements are comparable rather than merely similar. Both surjectivity results
+   * below are scoped to this config and claim nothing about the others.
+   */
+  const at = (w: number): ProcessorConfig => ({
+    ...defaultConfig(),
+    forwarding: true,
+    issueWidth: w,
+  });
+
+  const locationsOf = (file: string, w: number): Set<string> => {
+    const seen = new Set<string>();
+    for (const t of runFile(file, at(w))) for (const i of t.instructions) seen.add(i.location);
+    return seen;
+  };
+
+  const crossProduct = (w: number): string[] =>
+    STAGES.flatMap((s) => Array.from({ length: w }, (_, n) => `${s}.${n}`));
+
+  it.each(WIDTHS)(
+    'emits nothing outside STAGES × [0..w-1], over the whole corpus [width %i]',
+    (w) => {
+      const legal = new Set(crossProduct(w));
+      let total = 0;
+      for (const file of CORPUS) {
+        for (const location of locationsOf(file, w)) {
+          expect(legal.has(location), `${file} @ w${w} emitted ${location}`).toBe(true);
+          total += 1;
+        }
+      }
+      // Non-vacuity: the sweep really did read locations, and at least one program really did use
+      // the widest slot the config offers — otherwise "nothing illegal" is a claim about an empty
+      // set. (Which program does it is the NEXT test's business, and it is not all of them.)
+      expect(total).toBeGreaterThan(0);
+      expect(CORPUS.some((f) => locationsOf(f, w).has(`ID.${w - 1}`))).toBe(true);
+    },
+  );
+
+  it('names exactly which programs reach EVERY slot of every stage, per width', () => {
+    // MEASURED, then compared to the names — never read off a table, which would re-bless whatever
+    // the table says (`fillsFour`'s rule, applied one layer down).
+    const surjective = (w: number): string[] => {
+      const want = crossProduct(w).sort();
+      return CORPUS.filter((f) => [...locationsOf(f, w)].sort().join() === want.join());
+    };
+
+    // Widths 1 and 2: every program in the corpus fills the picture. This is the shipped machine,
+    // and it is why nobody had to think about the question before M13.
+    expect(surjective(1)).toEqual(CORPUS);
+    expect(surjective(2)).toEqual(CORPUS);
+
+    // Width 3: all but `add.s`, which is five instructions long and never gets three into EX.
+    expect(surjective(3)).toEqual(CORPUS.filter((f) => f !== 'add.s'));
+
+    // Width 4: THREE programs — the same three `timing.test.ts` measures as the only ones that ever
+    // dispatch a group of four. Two independent measurements (a location set here, an issue-size
+    // histogram there) landing on the same three names is the cross-check worth having.
+    expect(surjective(4)).toEqual(['branch-flavors.s', 'paired-branches.s', 'slow-op-loop.s']);
+  });
+
+  it('the LAST slot is fetched into far more often than it is issued from — 10 programs vs 3', () => {
+    // Why surjectivity fails on eight of eleven programs at width 4, stated as the asymmetry that
+    // causes it rather than left as a bare set difference. FETCH is not gated by the pairing rules:
+    // `stageIf` fills every seat it can reach, so `IF.3` is ordinary. ISSUE is gated — one memory
+    // port, one branch unit, no intra-group RAW — so `EX.3` requires a group of four to survive all
+    // three rules. The gap between these two numbers IS the "fourth slot is mostly empty, and here
+    // is which rule keeps it empty" lesson, measured at the trace layer.
+    const w = MAX_ISSUE_WIDTH;
+    const emits = (stage: string): string[] =>
+      CORPUS.filter((f) => locationsOf(f, w).has(`${stage}.${w - 1}`));
+
+    expect(emits('IF')).toEqual(CORPUS.filter((f) => f !== 'add.s'));
+    expect(emits('IF')).toHaveLength(10);
+    expect(emits('EX')).toEqual(['branch-flavors.s', 'paired-branches.s', 'slow-op-loop.s']);
+
+    // ...and the containment is the honest form of the claim: everything that ISSUES from the last
+    // slot must first have been FETCHED into it. A break that inverted these would show up here.
+    for (const f of emits('EX')) expect(emits('IF')).toContain(f);
   });
 });
 

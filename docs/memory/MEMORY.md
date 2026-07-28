@@ -2,9 +2,11 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3/4 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, the
-width-3/4 timing matrix is derived, and conformance runs all four widths (72 configs). Next: step 5
-(recorder + `location` at width ≥ 3). Six models ship, each with a lesson track. Repo **5558 tests**,
+steps 0/0b/1/2/3/4/5 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, the
+width-3/4 timing matrix is derived, conformance runs all four widths (72 configs), and the recorder +
+`location` encoding are proven free at widths 3/4. Next: step 6 (web enablement — the ISSUE toggle
+gains positions; **note step 5 found `datapath-superscalar.ts`'s `MAX_WIDTH = 2` silently dropping an
+`EX.2` occupant** — step 7's to fix). Six models ship, each with a lesson track. Repo **5575 tests**,
 five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
@@ -55,7 +57,15 @@ five gates green.
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/**4** done. **Step 4's finding
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/**5** done. **Step 5's
+    finding is in the VIEW, not the engine:** `datapath-superscalar.ts` hard-codes `MAX_WIDTH = 2`, so
+    `parseLocation` returns `null` for slot ≥ 2 and an `EX.2` occupant is **dropped from occupancy
+    with no crash and no red test** — handed to step 7. Its method lessons: a fixture sized for the
+    old width is a DIFFERENT measurement wearing the same name (`TEN_INDEPENDENT` peaks at 11, not
+    20, at width 4); SUBSET and SURJECTIVITY of the location set have different scopes; **width ≥ 3
+    is where a slot can move by more than one in a cycle, and width 4 is NOT the extreme case**
+    ([0,1,2,1]); and the subset test's own assertion was BLIND to the clamp break — only the
+    non-vacuity clause riding with it reddened. **Step 4's finding
     is in `engine/conformance`, not the engine:** `configLabel` compared optional knobs RAW and
     rendered them DEFAULTED, so `undefined` vs. explicit `1` printed `width 1` twice — the inverse of
     the injectivity invariant that file itself declares load-bearing. Its proof is an experiment:

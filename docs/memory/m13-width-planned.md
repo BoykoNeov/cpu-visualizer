@@ -1,18 +1,73 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts) and conformance now runs 72 configs with configLabel fixed (repo 5558 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts), conformance runs 72 configs with configLabel fixed, and the recorder + location encoding are PROVEN free at widths 3/4 (repo 5575 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted; step 5s fixture stopped scaling and found datapath-superscalar MAX_WIDTH=2 silently dropping EX.2. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T14:22:07.386Z
+  modified: 2026-07-28T14:56:43.311Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / **4** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / **5** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → 5157 → **5558** tests. See
+`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → 5157 → 5558 → **5575** tests. See
 [[project-overview]] for the index, [[m7-superscalar-engine]] for the machine this generalizes.
+
+### Step 5 SHIPPED — **the fixture stopped scaling, and the sweep found the view's silent hole**
+
+Recorder + `location` at widths 3/4, and it WAS free: acceptance is `git diff --stat` showing **two
+test files, zero engine or recorder lines**. `packages/trace/src/recorder.ts` is untouched.
+
+- **A fixture sized for the old width is a DIFFERENT MEASUREMENT wearing the same name.** M7's
+  headline (10 ids / 10 locations / 1 cycle = 5 stages × 2 seats) parameterizes to `5 × width` — but
+  `TEN_INDEPENDENT` holds ELEVEN instructions, so at w3 AND w4 it peaks at **11 in flight**, never 15
+  or 20; the whole program is in the pipe by cycle 2. A `5 × width` assertion over it is red; a
+  `toBeGreaterThan` is green and meaningless. `TWENTY_INDEPENDENT` gives 5/10/15/20 at cycle 4.
+  **Dump a fixture's peak before parameterizing anything over it.**
+- **SUBSET vs SURJECTIVITY are different claims with different scopes.** "Nothing outside
+  `STAGES × [0..w-1]`" is universal; "every slot appears" is program-specific — measured: all 11
+  programs at w1/w2, all but `add.s` at w3, and **exactly the three `timing.test.ts`'s `fillsFour`
+  names at w4**. Two independent measurements (location set vs. issue-size histogram) on the same
+  three names. Asserting surjectivity corpus-wide = a width-4 test measuring width 3.
+- **The asymmetry that causes it, and it is the tier's lesson: at w4 TEN programs emit `IF.3`, THREE
+  emit `EX.3`.** Fetch is not gated by the pairing rules, issue is by all three.
+- **Width ≥ 3 is where a slot can move by MORE THAN ONE in a cycle** — width 2's seats {0,1} cap the
+  move at one _whatever the issue logic does_, so the old claim was structurally weaker than it read.
+  The existing `SLIDER` builds it at w3 with no new program: `IF.0 → ID.2` while its elders slide
+  1→0 and 2→1. Largest jump per width = **[0, 1, 2, 1]** — **w4 is NOT the extreme case** (all four
+  fit, the group slides uniformly, nothing jumps).
+- **Two breaks, and the value is how cleanly they SEPARATE.** (1) clamp `place()`'s slot to
+  `min(s,1)`: **494/2157 red, every one a width-3/4 cell** (468 in `timing`'s wide block, 14 in
+  `wide-groups`, 12 new; `timing` keeps 772 green; ZERO failures scoped to width 1 or 2). (2) slice
+  the `micro` snapshot to `min(width,2)` with `width` honest: **exactly 3/2157 red** — step 1's shape
+  test plus the two new micro-tracking cells, and nothing else in the repo.
+  ⚠ **The width-1/2 half had to be re-measured PACKAGE-WIDE.** The first pass ran the JSON reporter
+  over only the two edited files, so "every width-1/2 cell green" was an extrapolation from 2 of 8 —
+  step 4's _a measurement's glob is part of its claim_, recurring in the step that cites it. **A
+  package-wide COUNT is not a package-wide per-test result.**
+- **The subset test's own assertion was BLIND, and only the break could teach that.** The clamp emits
+  only LEGAL locations, so `legal.has(location)` never fired — what reddened was the **non-vacuity
+  clause riding with it**. The docblock had claimed "stays green through it", written before the
+  break ran; corrected in place. **A test can be right about what it cannot see and wrong about which
+  of its own lines does the work.**
+- **⚠ THE SWEEP'S ONE HIT — a width-3 hole in the VIEW that fails silently. It took TWO SPELLINGS.**
+  The first pattern (`MAX_WIDTH|LANES\s*=|slot\s*[<>=]+\s*2|\[0,\s*1\]|width\s*===?\s*2`) **could not
+  have found step 3's own blocker** — a loop bound `s < 2` over a template string, where the bound is
+  named `s`, not `slot`. Second pass (`(<\s*2|<=\s*1)\b`, plus a literal `.1`) over all non-test
+  files: no new code — two unrelated `< 2` hits and four `.1` hits that are ALL PROSE (the width-1
+  "lane 1 is ABSENT, not dimmed" rule, in `datapath-superscalar.ts` / `App.tsx` /
+  `SuperscalarDatapathView.tsx`; pair-shaped, moves with step 7). **Run the second spelling before
+  reporting a sweep as empty — the milestone had already paid for this once.**
+  The one CODE hit: `web/src/datapath-superscalar.ts` hard-codes `MAX_WIDTH = 2`, `parseLocation` returns `null` for
+  slot ≥ 2, so an `EX.2` occupant is **dropped from the occupancy map with no crash and no red
+  test**. Handed to **step 7** (named in the plan + in `recorder.test.ts`'s NOT-re-proven list), not
+  fixed here. Complement: `pairing-readout.ts` is arity-GENERIC (`ID.${s}` over a `width` param) —
+  only its vocabulary is pair-shaped (step 8). False positive to not re-chase: `multi-cycle`'s
+  `width === 2` is a store's byte width.
+- A LITERAL `it.each` row list is the one thing a derived `WIDTHS` does not protect — it carries a
+  completeness assertion against `WIDTHS`. `sum-loop`'s 43/43 are a **cross-check, not a
+  prediction**. The four-position toggle test pins that **w4 buys nothing at all** on `sum-loop`.
 
 ### Step 4 SHIPPED — **the scoped question was boring; the bug was one axis sideways**
 

@@ -9,7 +9,7 @@ import {
   type CycleTrace,
   type ProcessorConfig,
 } from '@cpu-viz/trace';
-import { SuperscalarProcessor, type SuperscalarMicro } from './index';
+import { MAX_ISSUE_WIDTH, SuperscalarProcessor, type SuperscalarMicro } from './index';
 
 /**
  * Time-travel over the superscalar (M7 step 5). Like M3 step 4, this is a **PROOF, not a build**:
@@ -49,12 +49,53 @@ import { SuperscalarProcessor, type SuperscalarMicro } from './index';
  *     that fix, per slot, over a whole corpus recording.
  *  6. **The width toggle, through the shipped API** — the product's flagship A/B, asserted the way
  *     a user experiences it: same program, same answers, fewer cycles.
+ *
+ * ## M13 step 5 — the same proof, at every width the guard admits
+ *
+ * `packages/trace/src/recorder.ts` is **still untouched**, and this time that was the whole
+ * question rather than a happy observation: `TraceRecorder` has no width awareness anywhere in it,
+ * `follow()` keys on `id`, and `InstructionSighting.location` is a plain string. So the step is a
+ * PROOF, and its failure mode is not a red test — it is a green one that quietly measures width 2.
+ * Three things are done about that, and they are the reason the sections below look the way they do:
+ *
+ *  - **`TEN_INDEPENDENT` cannot carry the headline past width 2.** Five stages × four seats is 20,
+ *    and that fixture holds eleven instructions — at width 4 it peaks at ELEVEN in flight, not 20,
+ *    because the whole program fits in the pipe at once. {@link TWENTY_INDEPENDENT} exists to make
+ *    the number `5 × width` at every width, and the peak was dumped at each before it was asserted.
+ *  - **Every width-3/4 geometry below was DUMPED and read** (`M:\claud_projects\temp\m13-step5\`),
+ *    never derived from the pairing rules. The milestone has caught three reasoned-about slot
+ *    claims already.
+ *  - **The break watched** is the trace-layer spelling of step 4's experiment: clamp the emitted
+ *    slot to `min(s, 1)` in `step()`'s `place()`, so slots 2 and 3 wear slot 1's name. It is the
+ *    exact shape of a machine running wide and reporting narrow, and the cells here must redden
+ *    under it while every width-1/2 suite stays green.
+ *
+ * ### What step 5 does NOT re-prove, beyond the list above
+ *
+ * - **The encoding's SUBSET and SURJECTIVITY claims at widths 3/4** — `processor.test.ts` owns
+ *   both, per the boundary this file already declares. It also records why they are separate
+ *   claims: at width 4 only three corpus programs ever reach `EX.3`.
+ * - **Any VIEW's ability to draw a third or fourth slot.** `packages/web/src/datapath-superscalar.ts`
+ *   hard-codes `MAX_WIDTH = 2`, and its `parseLocation` returns `null` for any slot ≥ 2 — so an
+ *   `EX.2` occupant is silently DROPPED from the datapath's occupancy map, with no crash and no red
+ *   test. That is a real width-3 hole; it is **step 7's**, it is named in the plan's step-7 entry,
+ *   and it is deliberately not fixed here. The trace is correct; the consumer is not yet.
  */
 
 const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));
 
-const W1: ProcessorConfig = { ...defaultConfig(), forwarding: true, issueWidth: 1 };
-const W2: ProcessorConfig = { ...defaultConfig(), forwarding: true, issueWidth: 2 };
+/** Forwarding ON at width `w` — no prediction, no cache. */
+const at = (w: number): ProcessorConfig => ({
+  ...defaultConfig(),
+  forwarding: true,
+  issueWidth: w,
+});
+
+/** DERIVED from the guard's own bound (steps 1/3/4's precedent), never typed `[1, 2, 3, 4]`. */
+const WIDTHS = Array.from({ length: MAX_ISSUE_WIDTH }, (_, n) => n + 1);
+
+const W1: ProcessorConfig = at(1);
+const W2: ProcessorConfig = at(2);
 
 function asm(source: string): AssembledProgram {
   const { program, errors } = assemble(source);
@@ -94,10 +135,37 @@ function idAt(t: CycleTrace, location: string): string | undefined {
  *  i8,i9                              IF    ID    EX   MEM    WB
  *  i10 ecall                                IF    ID    EX   MEM    WB
  * ```
+ *
+ * **This fixture stops scaling at width 2, which is why {@link TWENTY_INDEPENDENT} exists.** Eleven
+ * instructions cannot fill 15 seats, let alone 20: at width 3 it peaks at 11 in flight and at width
+ * 4 at 11 again — the entire program is in the pipe at once by cycle 2. Everything asserted with it
+ * below is a width-2 claim and stays one.
  */
 const TEN_INDEPENDENT = [
   '.text',
   ...Array.from({ length: 10 }, (_, n) => `addi x${n + 1}, x0, ${n + 1}`),
+  'ecall',
+].join('\n');
+
+/**
+ * The same idea, sized so the pipe can actually be saturated at the WIDEST admitted width: twenty
+ * independent `addi`s (each reads only `x0`, each writes a different register) then `ecall`. Nothing
+ * stalls, nothing is refused, and the fetch stream never runs dry before every seat is occupied.
+ *
+ * OBSERVED peak occupancy, dumped at each width before anything here was written:
+ *
+ * ```
+ *  width:            1     2     3     4
+ *  in flight @ c4:   5    10    15    20      <- exactly 5 × width, the five stages fully seated
+ *  total cycles:    25    15    11    10
+ * ```
+ *
+ * The `5 × width` shape is what makes the headline a DERIVED number rather than a typed one, and it
+ * is the only fixture in this file whose peak moves with the width at all.
+ */
+const TWENTY_INDEPENDENT = [
+  '.text',
+  ...Array.from({ length: 20 }, (_, n) => `addi x${n + 1}, x0, ${n + 1}`),
   'ecall',
 ].join('\n');
 
@@ -356,46 +424,226 @@ describe('TraceRecorder × superscalar: a slot is NOT a stable lane', () => {
   });
 });
 
+describe('TraceRecorder × superscalar: N stages × N seats, followable one by one (M13 step 5)', () => {
+  /**
+   * The M7 headline (`ten ids, ten locations, one cycle`) generalized to `5 × width`, over a fixture
+   * long enough to actually reach it. `follow()` is still the only way to read such a cycle, and the
+   * point of parameterizing it is that at width 4 there are TWENTY simultaneously-in-flight
+   * instructions that a view must tell apart — a number no earlier model in this repo can produce.
+   */
+  it.each(WIDTHS)(
+    'resolves 5 × width ids to 5 × width distinct locations, one cycle [w%i]',
+    (w) => {
+      const rec = recorderFor(TWENTY_INDEPENDENT, at(w));
+      rec.runToEnd();
+      expect(rec.recordedCycles).toBe([25, 15, 11, 10][w - 1]);
+
+      rec.scrubTo(4); // DUMPED: the peak is at cycle 4 at every width, not merely at width 2
+      const inFlight = rec.current()!.instructions;
+      expect(inFlight).toHaveLength(5 * w);
+
+      // Read the ids FROM the recording — an id the test invented would prove nothing about it.
+      const ids = inFlight.map((i) => i.id);
+      expect(new Set(ids).size).toBe(5 * w);
+
+      // Every one of them resolves through `follow()`, and to a DISTINCT location. The ordering is
+      // the engine's pinned rule — stage by stage from WB back to IF, slot 0 (the older occupant)
+      // first within a stage — so this pins program order as well as the count.
+      const located = ids.map((id) => rec.follow(id).find((s) => s.cycle === 4)!.location);
+      expect(located).toEqual(
+        ['WB', 'MEM', 'EX', 'ID', 'IF'].flatMap((stage) =>
+          Array.from({ length: w }, (_, s) => `${stage}.${s}`),
+        ),
+      );
+      expect(new Set(located).size).toBe(5 * w);
+    },
+  );
+
+  it('follows the WIDEST seat across all five stages while 5 × width − 1 others are in flight', () => {
+    // The occupant no narrower machine has: the last seat of EX at the widest admitted width. At
+    // width 2 this test is the existing `EX.1` walk; the parameterization is what makes it a claim
+    // about the encoding rather than about the number 1.
+    const w = MAX_ISSUE_WIDTH;
+    const rec = recorderFor(TWENTY_INDEPENDENT, at(w));
+    rec.runToEnd();
+
+    const followed = idAt(rec.recorded[4]!, `EX.${w - 1}`)!;
+    expect(rec.follow(followed)).toEqual([
+      { cycle: 2, location: `IF.${w - 1}` },
+      { cycle: 3, location: `ID.${w - 1}` },
+      { cycle: 4, location: `EX.${w - 1}` },
+      { cycle: 5, location: `MEM.${w - 1}` },
+      { cycle: 6, location: `WB.${w - 1}` },
+    ]);
+
+    // ...and all w group-mates travel beside it, in their own seats, the whole way. At width 2 this
+    // was one mate; here it is three, and they are individually followable — which is the entire
+    // content of "a view can tell four co-issued instructions apart".
+    const mates = Array.from({ length: w }, (_, s) => idAt(rec.recorded[4]!, `EX.${s}`)!);
+    expect(new Set(mates).size).toBe(w);
+    for (const [s, id] of mates.entries()) {
+      expect(rec.follow(id).map((x) => x.location)).toEqual([
+        `IF.${s}`,
+        `ID.${s}`,
+        `EX.${s}`,
+        `MEM.${s}`,
+        `WB.${s}`,
+      ]);
+    }
+  });
+});
+
+describe('TraceRecorder × superscalar: at width ≥ 3 a slot can move by MORE THAN ONE (M13 step 5)', () => {
+  /**
+   * The width-2 spelling of "a slot is not a stable lane" is structurally weaker than it looks: with
+   * seats {0, 1} the only possible move is by one. **Width 3 is where an instruction can change seat
+   * by two in a single cycle**, and `SLIDER` — the four-instruction fixture already in this file —
+   * builds it without a new program.
+   *
+   * OBSERVED at width 3 (6 cycles), dumped in full before anything below was written:
+   *
+   * ```
+   *  cycle:      0       1       2       3       4       5
+   *  i0        IF.0    ID.0    EX.0    MEM.0   WB.0
+   *  i1        IF.1    ID.1    ID.0    EX.0    MEM.0   WB.0     <- refused, slides 1 -> 0
+   *  i2        IF.2    ID.2    ID.1    EX.1    MEM.1   WB.1     <- slides 2 -> 1
+   *  i3                IF.0    ID.2    EX.2    MEM.2   WB.2     <- IF.0 -> ID.2: a jump of TWO
+   * ```
+   *
+   * Three seats change in one cycle, in two directions, one of them by two — where the same program
+   * at width 2 produces one down-one and one up-one. Note also that width 4 is NOT the extreme case:
+   * with four seats the whole group slides down by one uniformly and nothing jumps at all, which is
+   * step 2's "ask which slot makes the claim differ from its width-2 spelling, not which is extreme"
+   * arriving from the other side.
+   */
+  it('an instruction fetched into slot 0 issues from slot 2 — one cycle, two seats', () => {
+    const rec = recorderFor(SLIDER, at(3));
+    rec.runToEnd();
+    expect(rec.recordedCycles).toBe(6);
+
+    // The refusal that causes the cascade, read from the recording rather than assumed.
+    const reasons = rec.recorded[1]!.events.flatMap((e) => (e.type === 'stall' ? [e.reason] : []));
+    expect(reasons).toEqual(['intra-pair-raw']);
+
+    const jumper = idAt(rec.recorded[1]!, 'IF.0')!;
+    expect(rec.follow(jumper)).toEqual([
+      { cycle: 1, location: 'IF.0' }, // fetched alone, into the leading seat...
+      { cycle: 2, location: 'ID.2' }, // ...and lands THIRD, behind two survivors of the refusal
+      { cycle: 3, location: 'EX.2' },
+      { cycle: 4, location: 'MEM.2' },
+      { cycle: 5, location: 'WB.2' },
+    ]);
+
+    // Its two elders slide the other way in the same cycle, each by one — three seats moving at
+    // once, which width 2 has nowhere to put.
+    expect(rec.follow(idAt(rec.recorded[0]!, 'IF.1')!).map((s) => s.location)).toEqual([
+      'IF.1',
+      'ID.1',
+      'ID.0',
+      'EX.0',
+      'MEM.0',
+      'WB.0',
+    ]);
+    expect(rec.follow(idAt(rec.recorded[0]!, 'IF.2')!).map((s) => s.location)).toEqual([
+      'IF.2',
+      'ID.2',
+      'ID.1',
+      'EX.1',
+      'MEM.1',
+      'WB.1',
+    ]);
+
+    // The architectural payoff is unchanged by any of it, exactly as at width 2.
+    expect(rec.currentState().registers[1]).toBe(1);
+    expect(rec.currentState().registers[2]).toBe(6);
+    expect(rec.currentState().registers[3]).toBe(3);
+  });
+
+  it('the largest single-cycle seat change, per width — 0, 1, TWO, 1', () => {
+    // The claim as a measurement rather than as one hand-picked walk, and the reason width 3 is the
+    // interesting one: the bound is `width - 1` by construction, so width 2 CANNOT exhibit a jump of
+    // two however the issue logic is written. A test that only ever ran at width 2 was not weakly
+    // pinning this — it was structurally incapable of it.
+    const biggestJump = (w: number): number => {
+      const rec = recorderFor(SLIDER, at(w));
+      rec.runToEnd();
+      const ids: string[] = [];
+      for (const t of rec.recorded)
+        for (const i of t.instructions) if (!ids.includes(i.id)) ids.push(i.id);
+      let worst = 0;
+      for (const id of ids) {
+        const slots = rec.follow(id).map((s) => Number(s.location.split('.')[1]));
+        for (let n = 1; n < slots.length; n++) {
+          worst = Math.max(worst, Math.abs((slots[n] as number) - (slots[n - 1] as number)));
+        }
+      }
+      return worst;
+    };
+    expect(WIDTHS.map(biggestJump)).toEqual([0, 1, 2, 1]);
+  });
+});
+
 describe('TraceRecorder × superscalar: the recorded `micro` tracks the timeline, per slot', () => {
   const sumLoop = readFileSync(`${PROGRAMS_DIR}sum-loop.s`, 'utf8');
 
-  it.each([
+  /**
+   * M13 step 5 widened this from two rows to `MAX_ISSUE_WIDTH` rows, and the honest note about the
+   * two new numbers: **43 and 43 are a CROSS-CHECK, not a prediction.** Both are published in the
+   * step-0 dump table in `docs/plans/m13-tasks.md` and pinned by `timing.test.ts`; they appear here
+   * as fixtures, the way 56 and 44 always have. What IS new at this layer is the per-slot equality
+   * below running over three and four seats.
+   */
+  const CASES: Array<[string, ProcessorConfig, number]> = [
     ['width 1', W1, 56],
     ['width 2', W2, 44],
-  ])('latch slot arrays name next cycle’s occupants [%s]', (_label, config, expected) => {
-    // The time-travel expression of step 2a's aliasing fix, one axis wider than M3's version: the
-    // latch contents recorded at the END of cycle i name exactly the instructions the recording
-    // places in ID/EX/MEM/WB at cycle i+1 — SLOT BY SLOT.
-    //
-    // Step 2a caught the engine aliasing these arrays instead of `.slice()`ing them, and named the
-    // consequence precisely: final-state conformance is structurally blind to aliasing, so it would
-    // have surfaced as a corrupt RECORDING, far from its cause. This is the test at the layer where
-    // that corruption would actually appear — every recorded cycle's `micro` would otherwise report
-    // the FINAL cycle's occupants, and this would fail at cycle 0.
-    const rec = recorderFor(sumLoop, config);
-    rec.runToEnd();
-    expect(rec.recordedCycles).toBe(expected);
+    ['width 3', at(3), 43],
+    ['width 4', at(4), 43],
+  ];
 
-    const width = config.issueWidth!;
-    for (let i = 0; i < rec.recordedCycles - 1; i++) {
-      const m = micro(rec.recorded[i]!);
-      const next = rec.recorded[i + 1]!;
-      expect(m.width).toBe(width);
-      for (let s = 0; s < width; s++) {
-        expect({
-          ifId: m.ifId[s]?.instr,
-          idEx: m.idEx[s]?.instr,
-          exMem: m.exMem[s]?.instr,
-          memWb: m.memWb[s]?.instr,
-        }).toEqual({
-          ifId: idAt(next, `ID.${s}`),
-          idEx: idAt(next, `EX.${s}`),
-          exMem: idAt(next, `MEM.${s}`),
-          memWb: idAt(next, `WB.${s}`),
-        });
-      }
-    }
+  it('covers every width the guard admits — the row list cannot fall behind the bound', () => {
+    // A literal row list is the one thing `WIDTHS` being derived does not protect: raising
+    // `MAX_ISSUE_WIDTH` would otherwise leave the widest machine the least tested, in silence. Same
+    // completeness guard steps 1/3/4 each added for the same reason.
+    expect(CASES.map(([, c]) => c.issueWidth)).toEqual(WIDTHS);
   });
+
+  it.each(CASES)(
+    'latch slot arrays name next cycle’s occupants [%s]',
+    (_label, config, expected) => {
+      // The time-travel expression of step 2a's aliasing fix, one axis wider than M3's version: the
+      // latch contents recorded at the END of cycle i name exactly the instructions the recording
+      // places in ID/EX/MEM/WB at cycle i+1 — SLOT BY SLOT.
+      //
+      // Step 2a caught the engine aliasing these arrays instead of `.slice()`ing them, and named the
+      // consequence precisely: final-state conformance is structurally blind to aliasing, so it would
+      // have surfaced as a corrupt RECORDING, far from its cause. This is the test at the layer where
+      // that corruption would actually appear — every recorded cycle's `micro` would otherwise report
+      // the FINAL cycle's occupants, and this would fail at cycle 0.
+      const rec = recorderFor(sumLoop, config);
+      rec.runToEnd();
+      expect(rec.recordedCycles).toBe(expected);
+
+      const width = config.issueWidth!;
+      for (let i = 0; i < rec.recordedCycles - 1; i++) {
+        const m = micro(rec.recorded[i]!);
+        const next = rec.recorded[i + 1]!;
+        expect(m.width).toBe(width);
+        for (let s = 0; s < width; s++) {
+          expect({
+            ifId: m.ifId[s]?.instr,
+            idEx: m.idEx[s]?.instr,
+            exMem: m.exMem[s]?.instr,
+            memWb: m.memWb[s]?.instr,
+          }).toEqual({
+            ifId: idAt(next, `ID.${s}`),
+            idEx: idAt(next, `EX.${s}`),
+            exMem: idAt(next, `MEM.${s}`),
+            memWb: idAt(next, `WB.${s}`),
+          });
+        }
+      }
+    },
+  );
 });
 
 describe('TraceRecorder × superscalar: the recorded cache is a per-cycle snapshot', () => {
@@ -479,5 +727,38 @@ describe('TraceRecorder × superscalar: the width toggle, through the shipped AP
       narrow.recorded.flatMap((t) => t.instructions.map((i) => i.location)),
     );
     expect([...narrowLocations].every((l) => l.endsWith('.0'))).toBe(true);
+  });
+
+  it('across ALL four positions: 56 → 44 → 43 → 43, same answers — and the last one buys nothing', () => {
+    // The toggle as the user will actually meet it once step 6 ships the extra positions: four
+    // recordings of one program, all agreeing on the answer. **The honest result is that the fourth
+    // position costs a cycle of nothing on this program**, and pinning it is the point — the width
+    // axis's pedagogical asset is the diminishing return, not the speedup (plan finding 3). The two
+    // new totals are a CROSS-CHECK against the step-0 dump table, not a prediction; `timing.test.ts`
+    // owns them as derived cells.
+    const recs = WIDTHS.map((w) => {
+      const r = recorderFor(sumLoop, at(w));
+      r.runToEnd();
+      return r;
+    });
+
+    expect(recs.map((r) => r.recordedCycles)).toEqual([56, 44, 43, 43]);
+    for (const r of recs) {
+      expect([...r.currentState().registers]).toEqual([...recs[0]!.currentState().registers]);
+      expect(r.currentState().registers[10]).toBe(55);
+    }
+
+    // The seats really are being used, per width — otherwise "43 at width 4" would be a width-3
+    // measurement wearing a width-4 label, which is this milestone's named lie. The set of slot
+    // SUFFIXES the recording emits is exactly `0..w-1` at every width: nothing is left unopened,
+    // and nothing leaks past the configured width.
+    for (const [n, r] of recs.entries()) {
+      const suffixes = new Set(
+        r.recorded.flatMap((t) => t.instructions.map((i) => i.location.split('.')[1]!)),
+      );
+      expect([...suffixes].sort()).toEqual(
+        Array.from({ length: n + 1 }, (_, s) => String(s)).sort(),
+      );
+    }
   });
 });
