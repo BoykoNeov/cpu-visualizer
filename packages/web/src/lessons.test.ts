@@ -628,6 +628,37 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     );
   });
 
+  it('teaches the MACHINE before the DEEPER MACHINE — the prose lies otherwise', () => {
+    // The deeper machine's track is the first whose subject is a DELTA: every lesson in it is about
+    // what changes relative to the five-stage pipeline, and it says so in sentences. `deep-bubble-
+    // survives` step 3 tells the reader that this exact stall "was the flagship" on the five-stage
+    // machine and that forwarding "turned the two-cycle wait into a wire" there — a sentence that is
+    // incomprehensible, and pedagogically false, to someone who has not met `forwarding-bubble`.
+    //
+    // That is the discriminator this project uses for order pins (the cache track's): a pin earns
+    // its place only if a prose sentence LIES when the tracks are reordered. It does here, so the
+    // claim is pinned — and the narration that makes it true is asserted alongside, so deleting the
+    // reference silently would take this test with it rather than leaving a rule nothing needs.
+    const names = LESSON_TRACKS.map((t) => t.track);
+    expect(names.indexOf('The machine')).toBeLessThan(names.indexOf('The deeper machine'));
+    expect(
+      resolveNarration(byId('deep-bubble-survives').steps[3]!.narration, 'detailed'),
+    ).toContain('five-stage');
+  });
+
+  /**
+   * What is NOT pinned, and why — the same judgement M10 step 7 recorded for the OoO track.
+   *
+   * There is no test that the deeper machine's three lessons are taught in their authored order.
+   * The cache track has one because its prose is genuinely chained: `cache-temporal` says "exactly
+   * as the last lesson showed" and `cache-conflict` spends "the reuse the last lesson made free",
+   * so reordering makes a sentence false. This track's three do not do that to each other. Each is
+   * a delta against the FIVE-STAGE machine, not against its neighbour — the thesis, the speculation
+   * penalty and the fixed toll are independently readable, and `deep-drain`'s only backward glance
+   * ("the one `ex-latency` bubble") is a term left unexplained by a reorder rather than a claim made
+   * false by one. Unexplained is not a lie, and a pin that fires on neither is a rule with nothing
+   * behind it.
+   */
   it('teaches the cache track in its authored SEQUENCE: spatial → temporal → conflict', () => {
     // The plan fixed this order BEFORE any lesson was written and asked for it to be reviewed as a
     // SEQUENCE — M5 step 4's finding (a track shipped in the wrong order because authoring a lesson
@@ -698,6 +729,19 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'racing-ahead-of-the-miss',
       'reservation-station-holds',
       'work-slides-ahead',
+    ]);
+
+    // The deeper machine's membership (M12), by name for the same reason — and here the temptation
+    // to derive it from `model` is at its strongest, because `deep-pipeline` is the only model these
+    // three run on and no other lesson runs on it. That coincidence is exactly the one step 0 and M5
+    // step 4 both refused: a lesson about the CACHE authored on the deep pipeline (its cache is
+    // configurable, M11 step 6) would be filed here by a derived rule and would be wrong. The track
+    // claims the thesis (`ex-latency`), the doubled speculation penalty, and the fixed cost of depth.
+    const deeper = LESSON_TRACKS.find((t) => t.track === 'The deeper machine');
+    expect([...(deeper?.lessons ?? [])].sort()).toEqual([
+      'deep-bet-pays-double',
+      'deep-bubble-survives',
+      'deep-drain',
     ]);
   });
 
