@@ -55,7 +55,7 @@ reading 49).
 | `paired-branches` | 9 → **11**          | 9 → **11**         | 13 → **19**    |
 | `byte-loads`      | 14 → **18**         | 10 → **14**        | 10 → **14**    |
 
-### The three findings that decide the track
+### The four findings that decide the track
 
 1. **`ex-latency` exists and no other model emits it.** Confirmed by grep (only
    `deep-pipeline/src/processor.ts`) and by recording: `add` at forwarding ON stalls once with
@@ -180,31 +180,46 @@ reached exactly where predicted). These are M12's, written so they can be caught
       positions; a narration oracle pinning 74 (and 51 from a `pipeline` recording); the
       "false-on-the-5-stage" discriminator applied and recorded.
 
-- [ ] **2. Lesson — "A wrong bet costs four".** The doubled speculation penalty, with prediction as the
-      independent variable. Anchored on `flush`. **The penalty is narrated as a TOTAL** — never as a
+- [ ] **2. Lesson — "The bet that pays double".** The doubled speculation penalty, with prediction as
+      the independent variable. Anchored on `flush`. **The penalty is narrated as a TOTAL** — never as a
       count of the dead, because `sum-loop`'s `[EX1,ID]` names two casualties for a four-cycle branch.
       Beats: a taken branch costs 4 (was 2); a correct bet still costs 2 because the bet is placed in
       ID and the correction lands at end of EX2; and the flip — the deep machine gains twice as much
-      from prediction as the 5-stage (`sum-loop` 87→73 vs 56→49). Acceptance: as step 1, plus an
+      from prediction as the 5-stage (`sum-loop` 87→73 vs 56→49). **The title tracks the program and
+      they must not come apart:** on `sum-loop` the bets are RIGHT (the loop is taken 9 of 10, so
+      prediction ON emits `branch-predicted-taken`×10 and the story is what a correct bet SAVES). The
+      wrong-bet story is `paired-branches`, the one program prediction makes worse — 11 → **19** here
+      against 13 → 9 there. Both are lawful lessons; they are not the same lesson, and the seeded one
+      is the good bet because a 2× gain restates the depth thesis. Acceptance: as step 1, plus an
       explicit assertion that the narrated penalty matches the recording's cycle delta rather than
       `stages.length`.
 
 - [ ] **3. Lesson (CONDITIONAL) — "The cost of depth when nothing goes wrong".** The `+6` drain, on
       `add` (3 instructions, 10 cycles, one literally empty cycle). Decide between the two lawful homes
-      in the un-anchorable-beat section above. Acceptance: either a lesson that anchors on a real event
-      with the drain in its prose, or a written drop with the same rigor as M10 step 6 — and in neither
-      case a new trace event.
+      in the un-anchorable-beat section above. **`add` has no `ecall`** — M11's timing docblock says so
+      outright ("it runs off the end of `.text`"), and the dump confirms it still records to 10 cycles.
+      That is a step-3 decision, not a step-5 surprise: if the beat lands on `add`, check in the browser
+      what the transport reads when a program ends without halting, because step 5's halted-marker rule
+      (M11's "assert the prefix AND the marker") assumed an `ecall` program and does not transfer. If it
+      does not terminate legibly, the vehicle becomes `array-sum`'s tail instead. Acceptance: either a
+      lesson that anchors on a real event with the drain in its prose, or a written drop with the same
+      rigor as M10 step 6 — and in neither case a new trace event.
 
 - [ ] **4. Wire the track.** `content/lessons/index.json` gains the group, seeded **"The deeper
       machine"** placed after _The cache_ and before _The wide machine_ (mirrors the picker's model
       order: pipeline → deep-pipeline → superscalar → out-of-order). **Name the churn up front, the way
-      M11 named `models.test.ts`'s:** this is an INSERTION into an ordered structure, so it hits
+      M11 named `models.test.ts`'s — and READ, not grepped, because one of them could have rejected
+      the seeded position:** this is an INSERTION into an ordered structure, so it hits
       `lessons.test.ts:517` ("LESSONS is exactly the index, in the index's order — exhaustive in BOTH
       directions"), `:624` ("files each lesson under the track its SUBJECT belongs to — asserted by
-      name"), `:718` (the exhaustive shipped-lesson list), and the teaching-order tests at `:572`/`:593`.
-      A new sequence test earns its place **only if a prose sentence lies when the track is reordered**
-      (the cache track's own discriminator, which M10 step 7 used to decline one). Acceptance: full
-      suite green; the picker shows six tracks in the authored order.
+      name"), `:718` (the exhaustive shipped-lesson list), and the two teaching-order tests, **which
+      are differently shaped**: `:572` is an exhaustive `toEqual` on the whole track-name list, so any
+      position is a hard edit of that assertion; `:593` is the pairwise
+      `indexOf('The machine') < indexOf('The cache')`, which the seeded position **passes** (checked
+      2026-07-28 — a track order shaped as "machine-axis tracks precede feature tracks" would have
+      rejected it). A new sequence test earns its place **only if a prose sentence lies when the track
+      is reordered** (the cache track's own discriminator, which M10 step 7 used to decline one).
+      Acceptance: full suite green; the picker shows six tracks in the authored order.
 
 - [ ] **5. Browser pass — the only net that sees this, and `startLesson` IS the path.** Drive the
       **shipped bundle** (`vite preview`) through every lesson in the new track via CDP. M11 step 8's
@@ -252,15 +267,16 @@ reached exactly where predicted). These are M12's, written so they can be caught
 
 ## Decisions to pin (seeded with recommended answers)
 
-| Decision                            | Recommendation (seed)                                                                                                                                                                                                                                  | Pinned answer |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| Track size                          | **Three lessons + one conditional**: thesis (`ex-latency`), the doubled bet, and the drain (conditional). M8 shipped 4, M10 shipped 4 with one dropped — gates step 1                                                                                  | _(open)_      |
-| L1's program                        | **`array-sum`** — it is `forwarding-bubble`'s own program, so "51 there, 74 here" is a literal comparison of one program rather than an analogy. Alternative `add` is minimal and shows the bubble in 10 cycles but supports thin prose — gates step 1 | _(open)_      |
-| L1's declared config                | **`forwarding: true`, `static-not-taken`, `cache: null`** — the inversion IS the lesson; opening at forwarding OFF would make it a second `forwarding-bubble` — gates step 1                                                                           | _(open)_      |
-| The load-use delta (1→2 cycles)     | **A beat inside L1, not its own lesson** — same program, same config, and a standalone lesson would re-teach what `forwarding-bubble` already teaches — gates step 1                                                                                   | _(open)_      |
-| L2's program / independent variable | **`sum-loop` with prediction as the variable** (87→73 here vs 56→49 there — the deep machine gains twice as much). Alternative `paired-branches` (11→19) teaches the same coefficient through a BAD bet — gates step 2                                 | _(open)_      |
-| The drain beat                      | **Ride the last `instr-retire`, or drop with proof** — never a new trace event — gates step 3                                                                                                                                                          | _(open)_      |
-| Track name and position             | **"The deeper machine"**, after _The cache_, before _The wide machine_ (mirrors the picker's model order; symmetric with "The wide machine") — gates step 4                                                                                            | _(open)_      |
-| An engine step                      | **No** — the dump found no inert knob, unlike M10. Stated falsifiably at step 0                                                                                                                                                                        | _(open)_      |
-| A new corpus program                | **No** — the dump shows the existing corpus covers every seeded beat; an addition pays the full INV-8 ripple across six models                                                                                                                         | _(open)_      |
-| `highlight` on lesson steps         | **Do not start using it.** The field exists on `LessonStep` and **zero shipped lessons use it**; the deep datapath is the most tempting place to start, and starting here would make this track the only consumer of an untested path — gates step 1   | _(open)_      |
+| Decision                            | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                     | Pinned answer |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Track size                          | **Three lessons + one conditional**: thesis (`ex-latency`), the doubled bet, and the drain (conditional). M8 shipped 4, M10 shipped 4 with one dropped — gates step 1                                                                                                                                                                                     | _(open)_      |
+| L1's program                        | **`array-sum`** — it is `forwarding-bubble`'s own program, so "51 there, 74 here" is a literal comparison of one program rather than an analogy. Alternative `add` is minimal and shows the bubble in 10 cycles but supports thin prose — gates step 1                                                                                                    | _(open)_      |
+| L1's declared config                | **`forwarding: true`, `static-not-taken`, `cache: null`** — the inversion IS the lesson; opening at forwarding OFF would make it a second `forwarding-bubble` — gates step 1                                                                                                                                                                              | _(open)_      |
+| The load-use delta (1→2 cycles)     | **A beat inside L1, not its own lesson** — same program, same config, and a standalone lesson would re-teach what `forwarding-bubble` already teaches — gates step 1                                                                                                                                                                                      | _(open)_      |
+| L2's program / independent variable | **`sum-loop` with prediction as the variable** (87→73 here vs 56→49 there — the deep machine gains twice as much), and the title says GOOD bet because on `sum-loop` the bets are right. Alternative `paired-branches` (11→19 here, 13→9 there) is the WRONG-bet story and needs the other title — gates step 2                                           | _(open)_      |
+| Lesson ids                          | **`deep-bubble-survives`, `deep-bet-pays-double`, `deep-drain`** (the third only if step 3 authors rather than drops). Pinned now rather than at authoring time: `content/lessons/index.json` names them and `lessons.test.ts:517` asserts index and library agree exhaustively in BOTH directions, so a later rename is a four-place edit — gates step 1 | _(open)_      |
+| The drain beat                      | **Ride the last `instr-retire`, or drop with proof** — never a new trace event — gates step 3                                                                                                                                                                                                                                                             | _(open)_      |
+| Track name and position             | **"The deeper machine"**, after _The cache_, before _The wide machine_ (mirrors the picker's model order; symmetric with "The wide machine") — gates step 4                                                                                                                                                                                               | _(open)_      |
+| An engine step                      | **No** — the dump found no inert knob, unlike M10. Stated falsifiably at step 0                                                                                                                                                                                                                                                                           | _(open)_      |
+| A new corpus program                | **No** — the dump shows the existing corpus covers every seeded beat; an addition pays the full INV-8 ripple across six models                                                                                                                                                                                                                            | _(open)_      |
+| `highlight` on lesson steps         | **Do not start using it.** The field exists on `LessonStep` and **zero shipped lessons use it**; the deep datapath is the most tempting place to start, and starting here would make this track the only consumer of an untested path — gates step 1                                                                                                      | _(open)_      |
