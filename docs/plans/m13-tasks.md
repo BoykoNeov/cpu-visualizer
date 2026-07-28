@@ -1,0 +1,185 @@
+# Milestone 13 — The wide machine, widened (issue width > 2)
+
+**Status: NOT STARTED. Step 0 (the dump) is DONE 2026-07-28 and its findings are below; they
+overturned two of the three things this milestone was expected to be. The pre-milestone defect it
+uncovered is ALREADY FIXED AND PUSHED (`a9f1b70`, repo 4498 → 4502 tests) — it was live in shipped
+code at width 2 and did not belong inside an unpinned milestone. Every decision in the table at the
+bottom is OPEN; two of them gate steps and are seeded for the user to pin.**
+
+Source of truth for scope: `cpu-visualizer-spec.md` §12.4 (the superscalar tier) and the
+architectural invariants (§3). The model's ground truth is `docs/plans/m7-tasks.md`, whose pairing
+rules this milestone generalizes **in place** rather than forking.
+
+## Why this milestone, and why now
+
+`future-microarchitectures.md` recorded a two-axis don't-foreclose flag from 2026-07-16: deeper
+pipelines and a wider machine. **M11 delivered the depth half** (the 7-stage), and its log closes
+with the other axis still open: `superscalar/processor.ts` refuses `issueWidth > 2` **by name**, so
+the shipped product's widest machine is two. Width is the last axis in that flag, and after it the
+roadmap's original §12 list plus both don't-foreclose items are all delivered.
+
+What is genuinely new: **nothing about the machine, and that is the finding.** See below.
+
+---
+
+## The dump (the design's factual ground) — RUN 2026-07-28
+
+`M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and `dump-postfix.txt` (post-fix, the one to
+read). Every corpus program × widths {1,2,3,4} × three representative configs: total cycles, the
+issue-group size histogram from `micro.idEx`, max group size, retire-id monotonicity, final register
+state, and the refusal-reason histogram. The guard was temporarily widened to run it and reverted
+after; the working tree is clean.
+
+### Cycles, forwarding ON / predict none / no cache
+
+| program         |  w1 |  w2 |  w3 |  w4 | w3→w4 | max group |
+| --------------- | --: | --: | --: | --: | ----: | --------: |
+| add             |   7 |   6 |   6 |   6 |     — |         2 |
+| array-sum       |  51 |  42 |  36 |  36 |     — |         3 |
+| array-sum-twice | 208 | 178 | 152 | 152 |     — |         3 |
+| branch-flavors  |  15 |  11 |  10 |  10 |     — |         4 |
+| byte-loads      |  10 |   9 |   8 |   8 |     — |         3 |
+| call-return     |  17 |  14 |  12 |  12 |     — |         3 |
+| paired-branches |   9 |   7 |   7 |   6 | **1** |         4 |
+| slow-op-loop    |  44 |  35 |  34 |  33 | **1** |         4 |
+| store-forward   |  11 |   9 |   8 |   8 |     — |         3 |
+| strided-sum     |  51 |  42 |  36 |  36 |     — |         3 |
+| sum-loop        |  56 |  44 |  43 |  43 |     — |         3 |
+
+Final architectural state is identical across all four widths on every program and every config, and
+retire-id order is strictly increasing everywhere. The other two config columns agree in shape.
+
+### What the dump established — three findings, two of which overturn the plan this milestone had
+
+**1. The issue logic is ALREADY width-generic. There is no "generalize the pairing rules" work.**
+The memory's "the rules are written for a pair" was a description of the guard's error MESSAGE, not
+of the code. `stageId` loops `s < this.width`; `issueVerdict` loops `for (const older of group)` and
+asks each rule against the whole group; `detectHazard` scans `this.width` slots of both older stages;
+`stageIf`'s hand-over is a seat-filling loop with no arity in it. Widths 3 and 4 produce correct
+architectural state on the entire corpus **with the guard as the only thing changed**. So the engine
+half of this milestone is a guard, an audit, and a net — not a rewrite. **Budget moves to the view
+and to the adversarial nets accordingly.**
+
+**2. The dump found a LIVE DEFECT in shipped code, and it was not a width-3 defect.** A halt
+(`ecall`) in an unresolved branch's shadow raised the sticky `haltFetch` at issue; when the branch
+resolved taken, the halt was wrong-path, but fetch never restarted — the pipe drained, `halted` was
+never raised, and every caller looping on `isHalted()` hung, including the web app. **Reachable at
+shipped width 2**: `bnez` immediately followed by `ecall`. The corpus was safe only by accident of
+its exit idiom (`li a7, 10` sits between the branch and the `ecall` in all eleven programs), which is
+why 4498 tests were green. Fixed in `a9f1b70` ahead of this milestone, with the fix chosen as the one
+of three candidates that cannot move a pinned cycle count; `timing` (606) and `pairing` (21) confirmed
+unmoved. **The general lesson for the table below: the corpus's uniformity is itself a blind spot,
+and every program in it shares an exit idiom.**
+
+**3. Width 4 is where widening stops paying, and the corpus can show it.** Nine of eleven programs
+are cycle-identical at w3 and w4; only `paired-branches` (7→6) and `slow-op-loop` (34→33) gain, one
+cycle each. Max group size reaches 4 on just three programs and only for a cycle or two. The binding
+constraint is `intra-pair-raw` (it roughly doubles from w2 to w4 — `sum-loop` 0 → 11, `array-sum`
+11 → 18), joined at w4 by `branch-slot` appearing where it never fired at w2 (`array-sum-twice` 0 →
+24). **This is a pedagogical asset, not a disappointment** — "the fourth slot is mostly empty, and
+here is which rule keeps it empty" is the honest lesson of the width axis, and it is the argument for
+offering 4 in the UI rather than against it. It is seeded as such below.
+
+---
+
+## Headline decision — N-wide IN PLACE, with the three pairing rules unchanged in kind
+
+One data-memory port, one branch unit, no intra-group RAW — per GROUP, not per pair. Finding 1 says
+the code already reads them that way. **Relaxing any of them (multiple memory ports, a second branch
+unit, intra-group forwarding) is a different milestone** and would un-confine the widening exactly as
+M7's log warns: those three rules are what keep the doubling down to fetch, register-read ports, the
+ALU, the write ports and the forwarding source set. The wedge is evidence FOR this scope, not
+against it — it was a missing UNDO, not a missing fourth rule.
+
+## Build order (each step testable before the next)
+
+- [x] **0. The dump.** ✅ DONE 2026-07-28 — above.
+- [x] **0b. The halt-shadow fix.** ✅ DONE 2026-07-28, `a9f1b70`. Pre-milestone: a live width-2
+      defect does not wait for a milestone the user has not pinned.
+- [ ] **1. The guard, and the width-genericity audit.** Replace the `1 ↔ 2` refusal with an N guard
+      (integer, ≥ 1, ≤ the pinned maximum), and audit every site that reads `this.width` or indexes
+      a slot array for an assumption of arity 2 — including `SuperscalarMicro.width`'s docblock ("1
+      or 2"), the `emptyLatches`/`emptySlots` helpers, `younger()`, and every docblock that says
+      "pair" where it now means "group". Acceptance: widths 1 and 2 produce **byte-identical traces
+      to today** (deep-compare, not cycle counts — a timing knob leaking is invisible to a count),
+      and `timing`/`pairing`/`differential` pass with **zero numbers touched**.
+- [ ] **2. The adversarial engine nets — the three things the corpus CANNOT show.** Each hand-built,
+      each **watched failing against a deliberately broken engine before being kept** (the M11+M12
+      review's sharpest method lesson: one property sweep passed 8/8 on the bug it was written for).
+      (a) **Same-`rd` co-issue** — two independent instructions in one group writing the same
+      register (no RAW between them, so nothing refuses the pairing); a forwarding scan that walks
+      slots ascending and takes the first match forwards the OLDER writer. Assert on the event
+      MULTISET, not cycles (`cycles-cannot-see-a-lost-forward`). (b) **The MEM freeze at arity > 2**
+      — a miss in `MEM.0` with non-memory instructions behind it in `MEM.2`/`MEM.3`; M7's one real
+      bug lived exactly here and the freeze's "propagate downward in age only" rule has never been
+      run against more than one follower. Retire-id monotonicity is the assertion. (c) **A transfer
+      in the last slot of a full group** — `branch-slot` and the bet/squash slot arithmetic have only
+      ever been exercised at slot ≤ 1. Acceptance: three provocations, each confirmed to BITE.
+- [ ] **3. The timing matrix at widths 3 and 4 — DERIVED, never copied.** `cycles = G + L + P + M +
+  4`. M7 step 2b shipped six of seven counts pinned from the engine's own output and step 4 had
+      to redo them; this step does not repeat that. Predict each new cell from the closed form
+      BEFORE running the engine, as M7 step 4 did for its seven forwarding-OFF counts. Acceptance:
+      every width-3/4 cell derived and asserted term by term (G, L, P, M separately — `L` counted
+      DIRECTLY as "stall fired AND nothing issued", never as a residual, or the assertion is
+      `0 === 0`).
+- [ ] **4. Conformance and `configLabel` at N widths.** The matrix gains two width columns.
+      `configLabel` already knows `issueWidth` (M7 step 3) — verify it does not collide at 3 and 4,
+      and remember why that guard exists: **both new columns are green by construction, so a
+      duplicated title is indistinguishable from a correct one, permanently.**
+- [ ] **5. Recorder and `location` at width ≥ 3.** Expected to be free — `follow()` keys on `id`, and
+      `location` is a plain string that already absorbed `"EX.1"`. Prove it rather than assume it,
+      and state explicitly what is NOT re-proven.
+- [ ] **6. Web enablement — the ISSUE toggle gains positions.** `models.ts`, `session.ts`,
+      `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Note the M7 seam finding: deleting
+      `issueWidth` from `loadInto`'s config left all web tests green because the field is optional
+      and the engine's `?? 1` runs every position at width 1 — **a dead toggle reads the same number
+      twice**, so the seam test must be a MOVING number.
+- [ ] **7. The datapath at N lanes.** GATED BY DECISION **H** — the lane hue channel does not scale
+      past two, and no answer to that is available from the trace. Everything else about the geometry
+      is mechanical: M7 step 7 already derives every coordinate from the node via `at()`/`aUp()`/
+      `aLo()`, which is what lets lanes be added without hand-typed endpoints detaching.
+- [ ] **8. The pairing readout and IPC at N lanes.** The panel's vocabulary is pair-shaped in the
+      PROSE (`refused`/`blocked` are fine; "the pair in ID" is not). Keep the M7 step 8 rule that
+      earned it: **read the RESULT (`micro.idEx`), never enumerate the REASONS** — the naive
+      "no `stall` event ⇒ they issued together" rule is a lie a miss-freeze tells.
+- [ ] **9. The browser pass.** Non-negotiable — `browser-is-the-only-net`: 9 of 10 view steps in
+      project history shipped a defect only the browser caught, and no test here can see a click.
+
+## Acceptance criteria
+
+- [ ] `array-sum.s` at forwarding ON, flipping ISSUE across its positions **without reloading**,
+      moves 51 → 42 → 36 live, matching the derived matrix.
+- [ ] The datapath draws N execute lanes with the shared front end and single memory port intact;
+      lane hiding at narrower widths stays TESTED, not argued (M7's rule: if a narrow width ever
+      emits a `.N` location, the honest fix is an idle lane, not more hiding).
+- [ ] All five gates green; INV-8 differential passes at every offered width.
+- [ ] Widths 1 and 2 are byte-identical to their pre-milestone traces.
+
+## How this milestone can lie to itself
+
+- **The green that means nothing.** INV-8 is a FALSE net here and M7's log says so in capitals: an
+  in-order machine retires in order, so final state is width-invariant **by construction**. The
+  conformance matrix would pass with the issue logic completely wrong. The closed form is the net.
+- **A test that passes at width 4 because nothing ever filled four slots.** Nine of eleven corpus
+  programs never reach a group of 4. A width-4 assertion that does not first CHECK the group size it
+  claims to exercise is measuring width 3. This is the `sum-loop`-does-not-slide lesson at the next
+  width: **every expected group size must be dumped and read, never reasoned.**
+- **A slot is not a stable lane, and at width 4 there are more ways to slide.** M7 pinned that
+  sliding is neither monotone nor one-directional at width 2. Any test naming a slot must have been
+  watched.
+- **Assuming the corpus's shape is the language's shape.** Finding 2 is exactly this: eleven
+  programs, one exit idiom, one hidden hang. Before trusting any corpus-wide sweep in this
+  milestone, ask what all eleven programs happen to share.
+- **Copying width-3/4 counts out of the engine.** The M7 step 2b trap, already paid for once.
+
+## Decisions to pin (seeded with recommended answers)
+
+| Decision                              | Recommendation (seed)                                                                                                                                                                                                                                                                                                           | Pinned answer |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| **W** — which widths the UI offers    | **1 / 2 / 3 / 4.** The honest case for 4 is not speed — it is that 4 is where widening visibly STOPS paying (9 of 11 programs identical to w3), and that is the width axis's real lesson. Offering 1/2/3 hides the diminishing return that makes the tier worth teaching. Gates steps 1, 6, 7                                   | _open_        |
+| **H** — the lane hue channel at N > 2 | **Tint only lanes 0 and 1; lanes 2+ share a single neutral "further lanes" tint, with the slot number in the node label.** The 5-hue palette is machine-validated and M7 spent stroke=STAGE, tint=LANE, ring=IDENTITY; there is no lane-FAMILY analogue to M11's stage-family trick, and inventing hues is barred. Gates step 7 | _open_        |
+| Scope of the pairing rules            | **Unchanged in kind** — one mem port, one branch unit, no intra-group RAW, per group. Relaxing any is a different milestone (see Headline decision)                                                                                                                                                                             | _open_        |
+| A new corpus program                  | **No.** The dump answers the question that would have forced one: the existing corpus reaches groups of 3 and 4 and shows the diminishing return. An addition pays the full INV-8 ripple across six models (M12's finding). The adversarial programs in step 2 are hand-built INSIDE their test files, not corpus additions     | _open_        |
+| A new trace event / field             | **No** — predicted, not assumed. `location` already absorbs `"EX.3"` as a plain string, `stall.reason` is free-form, and `micro.idEx` is arity-generic. House record: M4 +1 field of 5, M6 +0, M7 +0, M11 +0                                                                                                                    | _open_        |
+| A lesson track for the wider machine  | **Not in this milestone.** M7/M8 and M11/M12 both split model+view from track; the existing "The wide machine" track would gain a delta lesson, which is the M12 shape and its own milestone                                                                                                                                    | _open_        |
+| Maximum width the guard admits        | **4**, matching the UI. A guard that admits more than the product offers is untested surface; the error message should name the reason, as today's does                                                                                                                                                                         | _open_        |
