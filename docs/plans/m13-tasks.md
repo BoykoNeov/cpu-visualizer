@@ -330,14 +330,26 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       dumps of all seven `runConformance` call sites plus the harness's own suite, before and after:
       1140 → 1541, **0 removed**, 401 added and all 401 confined to the two edited files, all 1541
       distinct. The five other differential suites read byte-identically.
-      **What the 396 new cells buy, stated for what it is worth.** Two things: the step-0 dump had
-      MEASURED final-state agreement at widths 3/4, but measuring in a temp script and holding it in
-      a suite are different things and nothing in the repo held it; plus a second bounded-liveness
-      sweep at the widths `a9f1b70` made safe (`checkProgram` caps at 100 000 steps and throws). They
-      buy **nothing** on the mis-copied-ISA-idiom class the width-1 column exists for — that bug is
-      width-invariant, so it was already caught, and 396 more green cells do not catch it harder. And
-      they cannot see out-of-order retirement: M7 step 2b's bug ran green through a matrix of exactly
-      this shape.
+      **What the 396 new cells buy, stated for what it is worth — and one claim walked back.** The
+      step-0 dump had MEASURED final-state agreement at widths 3/4, but measuring in a temp script
+      and holding it in a suite are different things and nothing in the repo held it. That pin is
+      the honest answer, and very nearly the whole of it. They buy **nothing** on the
+      mis-copied-ISA-idiom class the width-1 column exists for — that bug is width-invariant, so it
+      was already caught, and 396 more green cells do not catch it harder. They cannot see
+      out-of-order retirement: M7 step 2b's bug ran green through a matrix of exactly this shape.
+      And the first draft of this entry called them **"a second bounded-liveness sweep"**, which is
+      an overclaim: `checkProgram` does cap at 100 000 steps and throw, but `halt-shadow.test.ts`
+      already sweeps these same cells under a **500-cycle** bound. A weaker bound over ground already
+      swept is not an independent net. Corrected here rather than left standing, because "say which
+      of your green checks was cheap" is this milestone's own rule and the failure mode it names is
+      exactly a number stated more confidently than what it measures.
+      **One consumer checked before the invariance claim was allowed to generalise.** The title dump
+      covered the seven `runConformance` call sites; `packages/web/src/lessons.test.ts` also mentions
+      `configLabel` and sat outside that glob. It turns out to be prose only — two citations of the
+      M4 collision as precedent — and it cannot be otherwise: `configLabel` is module-private (the
+      package exports only `runConformance`) and that file imports nothing from
+      `engine-conformance`. So the claim is "titles unchanged across every consumer", checked rather
+      than assumed.
       **The DAG decided where each half of the claim lives.** `engine-conformance` is model-agnostic
       by eslint rule and sits below every model, and `engine-superscalar` imports it — so importing
       `MAX_ISSUE_WIDTH` back would be a package cycle. The harness file therefore owns the SHAPE claim

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T14:19:25.388Z
+  modified: 2026-07-28T14:22:07.386Z
 ---
 
 ## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / **4** done.
@@ -48,10 +48,19 @@ Conformance at 4 widths (superscalar matrix 36 → 72 configs, `WIDTHS` derived 
 - **Handed to step 6, not fixed:** `configLabel` renders `?? 1` — the SUPERSCALAR's default. The OoO
   model defaults absent width to **2**. Unreachable today (every OoO config states its width); a
   shared control makes it reachable. OoO `WIDTHS` deliberately left `[1, 2]`.
-- **What 396 green cells buy, said honestly:** the step-0 dump had already measured width-3/4 final
-  state, so this holds it in a suite; plus a second bounded-liveness sweep. They buy **nothing** on
-  the mis-copied-ISA-idiom class (width-invariant, already caught) and cannot see out-of-order
-  retirement (M7 step 2b ran green through a matrix this exact shape).
+- **What 396 green cells buy, said honestly — and a claim walked back in review.** The step-0 dump
+  had already measured width-3/4 final state, so this holds it in a suite. That is nearly all of it:
+  they buy **nothing** on the mis-copied-ISA-idiom class (width-invariant, already caught) and cannot
+  see out-of-order retirement (M7 step 2b ran green through a matrix this exact shape). The draft
+  called them "a second bounded-liveness sweep" — **overclaim**: `checkProgram` caps at 100 000 steps,
+  but `halt-shadow.test.ts` already sweeps THE SAME CELLS at a **500-cycle** bound. _A weaker bound
+  over ground already swept is not an independent net._ Generalises: when claiming a new net, name
+  the existing one covering those cells and say which bound is tighter.
+- **A consumer outside the measurement glob had to be cleared before "titles unchanged" could
+  generalise.** `web/src/lessons.test.ts` mentions `configLabel` and was not in the dump — prose
+  only (citing the M4 collision), and structurally incapable of more: `configLabel` is module-private
+  and that file imports nothing from `engine-conformance`. **A measurement's glob is part of its
+  claim** — enumerate the consumers, don't infer them from where you happened to look.
 
 ### Step 3 SHIPPED `ba14b43` — **the ruler measured 2, and no audit could have found it**
 

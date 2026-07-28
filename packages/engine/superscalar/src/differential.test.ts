@@ -32,11 +32,15 @@ import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from './index';
  * **What M13 step 4 added, stated for what it is worth.** Widths 3 and 4 join the cross product, so
  * the matrix goes 36 → 72 configs. The step-0 dump had already MEASURED final-state agreement at
  * those widths, but measuring it in a temp script and holding it in a suite are different things,
- * and nothing in the repo held it. These columns are worth two things and no more: that pin, and a
- * second bounded-liveness sweep over the corpus at the widths `a9f1b70` made safe (`checkProgram`
- * caps at 100 000 steps and throws, where a bare `while (!isHalted())` would hang). They buy
- * NOTHING on the mis-copied-ISA-idiom class the width-1 column is here for — that bug is
- * width-invariant, so it is already caught, and 396 more green cells do not catch it harder.
+ * and nothing in the repo held it. That pin is worth having, and it is very nearly the whole of
+ * what these columns are worth. They buy NOTHING on the mis-copied-ISA-idiom class the width-1
+ * column is here for — that bug is width-invariant, so it is already caught, and 396 more green
+ * cells do not catch it harder. Nor are they a second liveness net: `checkProgram` does cap at
+ * 100 000 steps and throw where a bare `while (!isHalted())` would hang, but `halt-shadow.test.ts`
+ * already sweeps these same cells (corpus × 1..MAX_ISSUE_WIDTH × forwarding × prediction × cache)
+ * under a **500-cycle** bound. A weaker bound over ground already swept is not an independent net,
+ * and calling it one would be this milestone's own `CycleCtx.bet` defect — a number stated with
+ * more confidence than the thing it measures.
  *
  * The width-1 column is the stronger half and keeps its own job: `timing.test.ts` asserts the
  * pipeline's own pinned cycle counts against this engine, so a faithful port must reproduce them to
