@@ -38,3 +38,12 @@ silently choosing.
 standing instruction here IS that authorization — retry the push; if it's still gated, ask
 the user to run `! git push origin main` or to add a `git push` Bash permission rule. Never
 silently skip the push. See [[project-overview]].
+
+## Commit BEFORE a deliberate-break pass
+
+A break pass (apply a broken edit, run the suite, restore) is a **destructive operation on the
+working tree**, and any harness that restores with `git checkout -- <path>` will happily revert the
+uncommitted work the break sits on top of. It did exactly that during M13 step 7 and took the whole
+step's edits with it. **Commit first; then the breaks are free** — `git checkout` becomes a safe
+undo instead of an unrecoverable one. If the work genuinely cannot be committed yet, restore from a
+file copy taken before the break, never from git.

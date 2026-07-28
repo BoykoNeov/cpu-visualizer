@@ -1,33 +1,38 @@
 /**
- * The IN-ORDER SUPERSCALAR datapath (M7 step 7) — the fourth bespoke geometry, in the same
- * two-halves shape as `datapath.ts` (M1), `datapath-multi.ts` (M2) and `datapath-pipeline.ts` (M3):
+ * The IN-ORDER SUPERSCALAR datapath (M7 step 7; widened to N lanes at M13 step 7) — the fourth
+ * bespoke geometry, in the same two-halves shape as `datapath.ts` (M1), `datapath-multi.ts` (M2)
+ * and `datapath-pipeline.ts` (M3):
  *
- *  1. GEOMETRY — fixed {@link DatapathNode}s / {@link DatapathWire}s with hand-placed SVG
- *     coordinates: a SHARED front-end (next-pc selector, PC, the instruction memory fetching a
- *     PAIR, the issue/pairing unit, one register file) feeding **two replicated execute lanes**,
- *     which then re-converge on a SINGLE data memory and a shared writeback bus.
+ *  1. GEOMETRY — {@link DatapathNode}s / {@link DatapathWire}s with DERIVED SVG coordinates: a
+ *     SHARED front-end (next-pc selector, PC, the instruction memory fetching a GROUP, the
+ *     issue/pairing unit, one register file) feeding **N replicated execute lanes**, which then
+ *     re-converge on a SINGLE data memory and a shared writeback bus. Built per width by
+ *     {@link geometryFor}, because the lane count is what sets the height.
  *  2. ACTIVATION — {@link activate}, a pure `CycleTrace → DatapathActivation`.
  *
  * ## What is new here, and what is deliberately NOT
  *
  * M3 broke "one instruction per diagram"; this breaks **"one instruction per stage."** A cycle can
- * light TEN stage slices for ten different instructions — two per stage — so a lit wire has to say
+ * light `5 × width` stage slices for that many different instructions, so a lit wire has to say
  * which instruction, which stage, AND which issue SLOT lit it.
  *
  * **What actually widens is a short list, and the pinned pairing rules are why.** The three refusal
- * verdicts are a coordinated simplification, not three independent tastes: no two memory ops pair
- * ⇒ MEM does ≤1 access per cycle, so the data memory stays SINGLE; no two transfers pair ⇒ EX
- * resolves ≤1 control transfer per cycle, so the redirect stays SINGLE. What doubles is exactly:
- * fetch, the register-read ports, the sign-extenders, the forwarding network, the ALUs, the
- * dedicated pc/immediate adders, and the writeback write ports. The geometry says so literally —
- * every node carrying a `lane` is one of those, and everything else is drawn once.
+ * verdicts are a coordinated simplification, not three independent tastes: no two memory ops
+ * co-issue ⇒ MEM does ≤1 access per cycle, so the data memory stays SINGLE; no two transfers
+ * co-issue ⇒ EX resolves ≤1 control transfer per cycle, so the redirect stays SINGLE. What
+ * replicates is exactly: fetch, the register-read ports, the sign-extenders, the forwarding
+ * network, the ALUs, the dedicated pc/immediate adders, and the writeback write ports. The geometry
+ * says so literally — every node carrying a `lane` is one of those, and everything else is drawn
+ * once. The register file is the sharpest case and it did NOT replicate at M13: it grew PORTS. Its
+ * edge carries `2n` reads and `n` writes, spread rather than hand-placed, which is what let the box
+ * stay one box at four lanes.
  *
- * Two of those replications were settled by DUMPING A REAL WIDTH-2 TRACE, not by reasoning, because
- * both looked shared at first glance and are not:
- *   - **`pcarith` replicates.** Two `lui`s pair happily (they are neither memory ops, nor transfers,
+ * Two of those replications were settled by DUMPING A REAL TRACE, not by reasoning, because both
+ * looked shared at first glance and are not:
+ *   - **`pcarith` replicates.** `lui`s co-issue happily (they are neither memory ops, nor transfers,
  *     nor RAW-dependent), and U/J-format producers emit no `alu-op` at all — so a cycle really can
- *     hold `EX.0=lui` and `EX.1=lui`, each needing the dedicated pc/immediate adder at once.
- *   - **The MEM→WB bypass replicates.** Two non-memory instructions in `MEM.0`/`MEM.1` both carry
+ *     hold four `lui`s, each needing the dedicated pc/immediate adder at once.
+ *   - **The MEM→WB bypass replicates.** Non-memory instructions in several `MEM.n` slots all carry
  *     their value straight past the data memory in the same cycle. One shared wire could only name
  *     one of them, and the follow-ring would silently point at the wrong instruction.
  *
@@ -38,32 +43,35 @@
  * validated `PHASE_COLORS` set the pipeline map directly above the diagram uses. Re-pointing it at
  * "lane" would put two color grammars on one screen — the map saying blue = IF while the datapath
  * says blue = lane 0 — and would make `EX.0` and `EX.1` DIFFERENT colors, destroying the one
- * reading this whole tier exists to produce: *two instructions in EX at once.*
+ * reading this whole tier exists to produce: *several instructions in EX at once.*
  *
  * So the three channels are split by what can honestly carry each (user-pinned, 2026-07-20):
  *   - **wire stroke = STAGE** (`PHASE_COLORS`), exactly as M3.
- *   - **node tint = LANE** (`--lane-0` / `--lane-1`). M3 keeps boxes hue-neutral because a box is
+ *   - **node tint = LANE** (`--lane-0` … `--lane-3`). M3 keeps boxes hue-neutral because a box is
  *     SHARED — the register file is read by ID and written by WB in one cycle — and that reason
  *     still holds for every shared box here, which is why only `lane`-carrying nodes are tinted.
  *     `ALU 1` does slot 1's work and nothing else, so it can wear a lane hue without lying.
  *   - **follow ring = IDENTITY** (a hue-free dashed halo), composing with both.
- * The relief rule is mandatory and satisfied structurally: light magenta is 2.62:1 against the
- * surface, so every lane-tinted node carries its lane in its TEXT label (`ALU 1`, `Sign ext 1`),
- * and the legend swatches sit beside the words "Lane 0" / "Lane 1".
+ * The relief rule is mandatory and satisfied structurally: the set ships one tint below 3:1 against
+ * its surface, so every lane-tinted node carries its lane in its TEXT label (`ALU 1`, `Sign
+ * Extend 3`), and the legend swatches sit beside the words "Lane 0" … "Lane 3".
  *
- * ## THREE visibility axes (M3 had two)
+ * ## THREE visibility axes (M3 had two), and the third one is not like the others
  *
- * `tier` and `forwarding`/`predictTaken` behave exactly as in M3. The new one is **`issueWidth`**,
- * and it follows the same law rather than a new one: with `issueWidth: 1` the trace NEVER emits a
- * `.1` location, no pairing refusal can fire, and the machine genuinely has no second lane — so
- * lane 1 and the issue unit are **ABSENT, not dimmed** (drawing an idle second ALU would contradict
- * the trace, INV-5). That is also what makes the width toggle *restructure* the picture, which is
- * the flagship 1↔2 A/B this milestone exists for.
+ * `tier` and `forwarding`/`predictTaken` behave exactly as in M3: they REMOVE interior detail from
+ * a drawing whose outline does not move, so they can be filters over a fixed geometry. **`issueWidth`
+ * cannot be**, and that is the M13 finding. It follows the same LAW — with `issueWidth: n` the
+ * trace never emits a `.n` location, no pairing refusal can fire at width 1, and the machine
+ * genuinely has no further lane, so the lanes past it are **ABSENT, not dimmed** (drawing an idle
+ * ALU would contradict the trace, INV-5). But an absent lane also takes its height with it: the
+ * latch bars span the lane stack and the rail bands sit outside it, so the CANVAS is a function of
+ * the width and the geometry is built per width rather than filtered. That is what makes the width
+ * toggle *restructure* the picture, which is the flagship A/B this tier exists for.
  *
  * The issue unit hiding at width 1 deserves its own line, because it is the one that looks
  * arguable: a 1-wide superscalar is an honest machine that DOES run issue logic (that is the pinned
  * answer to "is width 1 distinct from M3"). But this box draws the PAIRING verdict specifically —
- * "may these two go together" — and with one candidate there is no such question, which is why the
+ * "may these go together" — and with one candidate there is no such question, which is why the
  * three pairing reasons cannot appear at width 1. That claim is not asserted here on reasoning; the
  * test suite proves it over the whole corpus (`no pairing refusal is possible at width 1`). The
  * ORDINARY hazard check that width 1 still runs is drawn by the separate `hazard` unit, which is

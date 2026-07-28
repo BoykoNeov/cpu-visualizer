@@ -3,31 +3,33 @@
  * renderer, the fourth sibling of the single-cycle, multi-cycle and pipeline wrappers. This module
  * owns POLICY only; all drawing lives in the renderer.
  *
- * The defining difference from M3: a cycle lights up to TEN stage slices for TEN different
- * instructions — two per stage. That is one identity channel more than the pipeline needed, so this
- * is the first view in the project to spend all three at once:
+ * The defining difference from M3: a cycle lights up to `5 × width` stage slices for that many
+ * different instructions. That is one identity channel more than the pipeline needed, so this is
+ * the first view in the project to spend all three at once:
  *
  *   - **wire stroke = STAGE** (`PHASE_COLORS`), exactly as the pipeline view and the pipeline map.
- *     Two EX-hued clusters side by side is precisely the reading this tier exists to produce:
- *     *two instructions in EX*. Hue-ing wires by lane instead would have made `EX.0` and `EX.1`
+ *     Several EX-hued clusters stacked is precisely the reading this tier exists to produce:
+ *     *N instructions in EX*. Hue-ing wires by lane instead would have made `EX.0` and `EX.1`
  *     different colors and destroyed it — see `datapath-superscalar.ts` for the full argument and
  *     why it overrides `superscalar-visuals.md`'s original proposal.
- *   - **node tint = ISSUE LANE** (`--lane-0` / `--lane-1`), on replicated boxes ONLY. A shared box
+ *   - **node tint = ISSUE LANE** (`--lane-0` … `--lane-3`), on replicated boxes ONLY. A shared box
  *     stays hue-neutral for M3's pinned reason (the register file is read by ID and written by WB
  *     in one cycle, so it belongs to no single anything); a replicated box does not have that
  *     problem, which is exactly what makes it the one thing that can carry the lane.
  *   - **follow ring = IDENTITY**, hue-free, composing with both.
  *
- * THREE VISIBILITY AXES (M3 had two):
+ * THREE VISIBILITY AXES (M3 had two), and only two of them are filters:
  *   - `tier` selects structure and representation, as before.
- *   - `forwarding` / `predictTaken` decide what EXISTS, as before.
- *   - **`issueWidth`** decides how many lanes exist. At width 1 the second lane and the issue unit
- *     are ABSENT, not dimmed — the trace has no `.1` occupant and no pairing refusal to put there,
- *     so drawing an idle lane would contradict it (INV-5). This is what makes the width toggle
- *     visibly restructure the diagram, which is the flagship 1↔2 A/B of the whole milestone.
+ *   - `forwarding` / `predictTaken` decide what EXISTS inside a fixed outline, as before.
+ *   - **`issueWidth`** decides how many lanes exist, and therefore how TALL the machine is. Lanes
+ *     past the width are ABSENT, not dimmed — the trace has no occupant and no refusal to put
+ *     there, so drawing an idle lane would contradict it (INV-5) — and their height goes with them,
+ *     which is why this axis selects a whole geometry (`geometryFor`) rather than filtering one.
+ *     This is what makes the width toggle visibly restructure the diagram, and at M13 it does so
+ *     across four positions rather than two.
  *
  * {@link activate} is oblivious to all three (INV-2): it always lights the full expert path and its
- * contractions, at either width. This wrapper chooses what to hand the renderer.
+ * contractions, at every width. This wrapper chooses what to hand the renderer.
  */
 
 import type { DepthTier } from '@cpu-viz/curriculum';

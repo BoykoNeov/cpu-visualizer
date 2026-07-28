@@ -1,6 +1,6 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6 done, the ISSUE control now offers 1/2/3/4 and MAX_ISSUE_WIDTH lives in engine-common so the OUT-OF-ORDER model shares the bound and is netted at it (180 transplanted timing cells; repo 6157 tests). Step 6 proved INV-8 is a false net by experiment: an engine running narrow reddens 147 timing cells and ZERO of 807 conformance cells. Its other traps: the old seam fixtures are blind to the 3-to-4 flip, and the loadInto wiring gap is now a HALF-dead toggle (widths 1/2 correct, 3/4 collapse) invisible to all 1518 web tests. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts), conformance runs 72 configs with configLabel fixed, and the recorder + location encoding are PROVEN free at widths 3/4 (repo 5575 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted; step 5s fixture stopped scaling and found datapath-superscalar MAX_WIDTH=2 silently dropping EX.2. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6/7 done. Step 7 made the DATAPATH a function of the width: geometryFor(w), because N lanes plus a rail band is what sets the height, so a constant canvas would draw width 1 as one lane in a mostly-empty box. Its new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible to all 1533 tests AND to M7s browser pass. The refactor MANUFACTURED a vacuous test (a filter over a narrowed set) — caught before writing, fixed by asking the claim of BOTH sets. The M7 refusal fixtures were non-monotone in width (BRANCH_SLOT refuses at 2 and 4 but NOT at 3). The palette record was WRONG: dE 41.3/42.6 does not reproduce (real: 13.0/15.9) and no 4-set can match a 2-set minimum; user pinned keep-lanes-0/1 + green/purple. A break harness using `git checkout --` destroyed the uncommitted tree — COMMIT BEFORE YOU BREAK. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH in engine-common), arity->2 nets, the derived width-3/4 timing matrix, conformance at 72 configs, and the recorder/location proofs. INV-8 is a FALSE net here, proven by experiment. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
 metadata:
   node_type: memory
   type: project
@@ -8,13 +8,84 @@ metadata:
   modified: 2026-07-28T15:57:40.048Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / **6** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / 6 / **7** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
 `dump-postfix.txt` (the one to read); step 6's at `M:\claud_projects\temp\m13-step6\`. Repo 4498 →
-4504 → 4523 → 5157 → 5558 → 5575 → **6157** tests. See [[project-overview]] for the index,
+4504 → 4523 → 5157 → 5558 → 5575 → 6157 → **6171** tests. See [[project-overview]] for the index,
 [[m7-superscalar-engine]] for the machine this generalizes, [[m9-out-of-order]] for the model step 6
 widened.
+
+### Step 7 SHIPPED `88bbb4d` — **the geometry stopped being a constant, and the new litmus found two M7 defects**
+
+The datapath at N lanes. `MAX_WIDTH = 2` is gone (step 5's silent `EX.2` drop, fixed); `geometryFor(w)`
+replaces one drawing with four; the lane tint set is four. In descending order of what each cost:
+
+- **⚠ COMMIT BEFORE YOU BREAK — this cost the entire working tree.** The deliberate-break harness
+  restored itself with `git checkout -- packages/web/src/`, which reverted every UNCOMMITTED step-7
+  edit (geometry, tests, view, stylesheet). Recovered in full only because every edit was a script or
+  a temp file. **A break pass is a destructive operation on the working tree**, and `git checkout`
+  cannot tell the break from the work under it. Commit first, then break — the breaks are then free.
+- **THE GEOMETRY IS A FUNCTION OF THE WIDTH, and the plan was wrong to call it mechanical.** `LANE_DY`
+  being a pitch makes the LANES mechanical, not the DRAWING: N lanes plus an outboard rail band sets
+  the height, so **the height IS the width**. A canvas sized for four draws width 1 as one lane at the
+  top of a box two-thirds empty with bars spanning three absent lanes — the same "draw hardware the
+  machine does not have" the absent-lane rule forbids, one level up. Bars' `h` and rails' `y` are WIRE
+  COORDINATES, so wires are width-dependent too; there is no smaller change.
+- **⚠ THE REFACTOR MANUFACTURED THE MILESTONE'S SIGNATURE DEFECT — 7th instance, and the first the
+  refactor itself creates.** `'lane 1 ABSENT at width 1'` = `NODES.filter(lane === 1)` + an assertion.
+  Point it at a per-width geometry: filter EMPTY, loop body never runs, green and measuring nothing.
+  Fix = ask the claim of BOTH sets — the full universe (which CONTAINS the lanes it calls hidden) for
+  VISIBILITY, `geometryFor(w)` for STRUCTURE. **A refactor that narrows a set narrows every test that
+  filters it — audit the filters, not just the call sites.**
+- **⚠ A NEW LITMUS (`throughBox`) FOUND TWO ROUTES THAT SHIPPED AT M7 AND WERE INVISIBLE TO EVERYTHING.**
+  Nothing checked whether a wire segment runs THROUGH a box it is not connected to: endpoints-on-
+  perimeter, collinear-overlap and no-dangling all pass such a wire. Found: `memwb-fwdunit` crossing
+  the EX/MEM bar (fixed by an outboard route, which cost a FIFTH rail per lane), and `hazard-pc`
+  running the length of the ISSUE box directly above it. **Neither was caught by M7's browser pass** —
+  the sharpest evidence yet that a browser pass is not a superset of a geometric litmus. Each break
+  reddens **exactly 1 of 1533**.
+- **The rail scheme generalises by SPLITTING lanes across the two bands, not by inventing sides.** Top
+  `ceil(n/2)` lanes forward on top, the rest below — reproduces M7's assignment at widths 1/2 and keeps
+  the file's own y-disjointness argument. What does NOT survive: lanes on the SAME side overlap in y, so
+  each needs its own channel (`fwdmuxX` is DERIVED from the channel count, so a wider machine moves the
+  hardware instead of overrunning the corridor) **and its own stub on the bar they both leave from** —
+  two lanes leaving one offset for different rails run collinearly from bar to nearer rail. Width 2
+  could not build that: its two lanes were on opposite sides.
+- **⚠ THE REFUSAL FIXTURES WERE NON-MONOTONE IN WIDTH — step 5's trap, third occurrence.** A program
+  provokes a refusal only if the conflict lands in ONE group, and group boundaries MOVE with width.
+  Measured: M7's `BRANCH_SLOT` emits **NO pairing refusal at width 3** while refusing at 2 and at 4
+  (its branches straddle a boundary at exactly 3) — `firstRefusal` would have THROWN. M7's `MEM_PORT`
+  hits `intra-pair-raw` a cycle before its own subject at w3/w4, so "the first pairing refusal" stopped
+  naming the rule under test (now selected BY REASON). New fixtures are dense; **that they provoke
+  their own rule at every width is a TEST**, not a comment.
+- **The litmuses were checking a drawing that is never rendered.** Filtering the width-4 geometry to two
+  lanes gives a machine `geometryFor(2)` never builds (at w4 lanes 0+1 are both top-side; at w2 lane 1
+  is bottom-side). Structural checks moved to `geometryFor(cfg.issueWidth)`; coherence stays on the full
+  universe because `activate` is width-oblivious. **Which SET a litmus reads is part of its claim.**
+- **A SECOND arity-2 consumer, live since step 6 and missed by step 5's sweep.** `PairingReadoutView`
+  did `LANE_COLORS[c.slot as 0 | 1]` → `undefined` at slot 2/3 → `color: undefined`. **A cast silences
+  the very check that would catch it**, and neither of step 5's two sweep spellings could match it.
+  Third time this milestone: _an arity sweep finds the arities you spelled the way you searched._
+- **⚠ THE PALETTE RECORD WAS WRONG AND THE ACCEPTANCE WAS UNACHIEVABLE.** `styles.css`/the plan cited
+  "CVD dE 41.3 light / 42.6 dark"; the dataviz validator measures the shipped pair at **13.0 / 15.9**
+  and reports nothing near 41. And "at least match the 2-slot dE" can never hold for a 4-set — the
+  shipped pair survives into it, so adding hues only LOWERS the worst pair; the sweep puts the dark
+  ceiling at ~14.6 even allowing lane 1 to move. Taken to the user with both options measured; pinned:
+  keep lanes 0/1, add green + purple. **Light unchanged at 13.0** (free, because the shipped pair was
+  already the worst); dark **15.9 → 10.1** vs a target of 8. Two structural notes: **no teal/cyan
+  survives at all** (collapses against blue under CVD — which is why the answer is green+purple, not
+  the obvious next hues), and the validator scores sub-3:1 as `relief`, NOT `fail`, so `ok === true`
+  hid a second relief warning until filtered for explicitly — **a pass/fail API can carry a third
+  state.** Generalises: _reproduce a recorded measurement before treating it as an acceptance bar._
+- **Eight breaks watched; six isolate to exactly ONE test.** Clamp the slot to 2 → 13 red **and the
+  suite SHRINKS 1533 → 1527** (the width-parameterized cases stop existing — a break that DELETES
+  tests, so the totals must be compared, not just the failures); stop filtering lanes → 5; constant
+  canvas → 1; shared channel → 1; shared stub → 1; M7's crossing route → 1; a tint dropped from ONE
+  dark block → 1 (nothing else in the repo can see a drifted dark block); M7's fixture → 2.
+- **Handed to step 8, named so it cannot be lost:** `PairingReadoutView`'s caption is a literal
+  **"up to 2 instructions may issue together"** — WRONG at widths 3/4 since step 6 shipped the control —
+  and `REFUSAL_TEXT`'s "its partner" is pair-shaped. `pairing-readout.ts` itself stays arity-generic.
 
 ### Step 6 SHIPPED — **the control gained positions, and so did a SECOND engine**
 
@@ -436,13 +507,12 @@ required one (can the corpus fill 3 slots?) is answered yes.
   tight once blue and magenta are also spoken for. New tints go in the base block AND both dark
   blocks — `styles.css` asks for identical dark blocks and no headless test can check that.
 
-### What step 7 must not assume is mechanical
+### What step 7 assumed was mechanical — ANSWERED, and the assumption was half wrong
 
-`LANES` is a hard-coded `[0, 1]`, and the forwarding rails ride "lane 0's returns on the TOP rails,
-lane 1's on the BOTTOM" — an outboard-side scheme with exactly **two** sides, which four lanes do
-not have. Everything else is: `LANE_DY` is already a pitch, and M7 step 7 derives every coordinate
-from its node via `at()`/`aUp()`/`aLo()` (see [[m7-superscalar-web]]), so lanes can be added without
-hand-typed endpoints detaching.
+The note here predicted `LANES = [0, 1]` and the two-sided rail scheme, and both were real. It also
+said "everything else is mechanical because `LANE_DY` is a pitch". **That was wrong about the
+DRAWING**: the canvas, the bars' height and every rail's y are functions of the lane count, so the
+geometry had to become `geometryFor(w)` rather than a constant with a filter. See step 7 above.
 
 ### Still unrun, and named as steps rather than cleared
 

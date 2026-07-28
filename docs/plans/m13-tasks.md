@@ -1,10 +1,11 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3, 4, 5 and 6 DONE 2026-07-28. The ISSUE control now offers
+**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3, 4, 5, 6 and 7 DONE 2026-07-28. The ISSUE control now offers
 widths 1/2/3/4 and the engine half is finished for BOTH wide models: step 6 moved `MAX_ISSUE_WIDTH`
 down to `engine-common` so the out-of-order core shares the bound, and netted it there in the same
-commit (180 transplanted timing cells; repo 6157 tests). What remains is the VIEW — steps 7, 8 and the
-browser pass. The guard admits 1..4 and the superscalar half went exactly as the dump predicted: step 1
+commit (180 transplanted timing cells; repo 6157 tests), and step 7 made the DATAPATH a function of the
+width rather than a drawing sized for two (repo 6171 tests). What remains is the readout (step 8)
+and the browser pass. The guard admits 1..4 and the superscalar half went exactly as the dump predicted: step 1
 changed the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
 uncovered is ALREADY FIXED AND PUSHED (`a9f1b70`, repo 4498 → 4502 tests) — it was live in shipped
@@ -587,7 +588,117 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
 
       </details>
 
-- [ ] **7. The datapath at N lanes.** Decision **H** is PINNED: the lane set extends to four
+- [x] **7. The datapath at N lanes.** ✅ DONE 2026-07-28 (repo 6157 → **6171** tests), commit
+      `88bbb4d`. All five gates green. In descending order of what each cost to learn:
+      **THE GEOMETRY STOPPED BEING A CONSTANT, and that was not on this step's list.** The plan
+      called the geometry "mechanical" because `LANE_DY` is a pitch — true of the LANES and false of
+      the DRAWING. N lanes plus an outboard rail band is what sets the height, so the height IS the
+      width; a single canvas sized for four would draw the width-1 machine as one lane at the top of
+      a box two thirds empty, with latch bars spanning three lanes it does not have — the same "draw
+      hardware the machine does not have" the absent-lane rule forbids, one level up. The bars' `h`
+      and the rails' `y` are WIRE COORDINATES, so the wires are width-dependent too and no smaller
+      change works. `geometryFor(w)` is memoized over the four values.
+      **The refactor MANUFACTURED this milestone's signature defect, and it was caught before a line
+      was written rather than after.** `'lane 1 is ABSENT at width 1'` was `NODES.filter(lane === 1)`
+      plus a visibility assertion. Point that at a per-width geometry and the filter returns EMPTY,
+      the loop body never runs, and the check passes while measuring nothing — the seventh instance
+      of the shape (after M12's `depthDefault`, step 2's string tautology, step 3's dead
+      `taken.doomed`, step 4's collapse assertion and its fifth-check catch, step 5's blind subset
+      clause). The fix is to ask the claim TWICE, of the two sets that can each falsify one half:
+      of the full universe (`NODES`, which CONTAINS the lanes it says are hidden) for the VISIBILITY
+      rule, and of `geometryFor(w)` for the STRUCTURAL one. Generalises: **a refactor that narrows a
+      set narrows every test that filters it — audit the filters, not just the call sites.**
+      **⚠ THE NEW LITMUS FOUND TWO DEFECTS THAT HAD SHIPPED SINCE M7, and each is invisible to
+      everything else in 1533 tests.** Nothing in the suite could see a wire segment running THROUGH
+      a box it is not connected to: endpoints are checked against the perimeter, overlaps against
+      other wires, dangling against visibility, and a rail crossing a latch bar passes all three.
+      `throughBox` closes it, and on its first run it reddened (i) `memwb-fwdunit`, whose MEM/WB
+      input ran straight through the EX/MEM bar — the unit sits left of that bar and its source
+      right of it, and a bar spans every lane, so the only route that does not cross a box is
+      outboard, which cost a FIFTH rail per lane; and (ii) `hazard-pc`, which climbed out of the
+      hazard unit's top edge and ran the full length of the ISSUE box sitting directly above it in
+      the same column. **Neither was caught by M7's browser pass**, which is the sharpest available
+      argument that a browser pass is not a superset of a geometric litmus. Both reroutes are
+      watched: each break reddens **exactly 1 test of 1533**.
+      **The rail scheme generalises by SPLITTING the lanes across the two bands it already had.**
+      The top `ceil(n/2)` lanes forward on the top side, the rest on the bottom — which reproduces
+      M7's assignment exactly at widths 1 and 2, and keeps the file's own safety argument (the two
+      sides' vertical runs are y-disjoint, so they may share channels) instead of replacing it with
+      a new one. What does NOT survive is per-side uniqueness: lanes on the same side overlap in y,
+      so each needs its own channel (`4 · ceil(n/2)` of them, and `fwdmuxX` is DERIVED from that
+      count so the corridor can never be overrun by a wider machine) **and its own stub on the bar
+      they both leave from.** That last one is a genuinely new failure mode: two lanes leaving one
+      edge at one offset and climbing to different rails run COLLINEARLY from the bar to the nearer
+      rail — two wires drawn as one, which the width-2 picture could not build because its two lanes
+      sat on opposite sides.
+      **⚠ THE FIXTURES HAD TO BE REWRITTEN, and the reason is step 5's trap arriving a third time.**
+      A program provokes a refusal only if the conflict lands in ONE issue group, and group
+      boundaries MOVE with the width. Measured: M7's `BRANCH_SLOT` emits **no pairing refusal at all
+      at width 3** while still refusing at 2 and at 4 — non-monotone, because its two branches
+      straddle a group boundary at exactly 3 — so `firstRefusal` would have THROWN. And M7's
+      `MEM_PORT` reaches `intra-pair-raw` a cycle BEFORE its own subject at widths 3 and 4, because
+      a third slot pulls the address setup into the same group as the store, so "the first pairing
+      refusal" stopped naming the rule under test (`firstRefusal` now selects BY REASON). The
+      replacements are dense enough that the conflict cannot fall between groups at any width, and
+      **that property is now a test** rather than a comment: restoring M7's fixture reddens the
+      width-3 case and the health check, 2 of 1533.
+      **The money shot needed a width-N spelling.** At width 2 "one lane lit, one dark" and "not
+      every lane lit" are the same sentence; past two they are not, and only the second is true — a
+      refusal narrows the issue point by at least one slot, it does not empty the machine down to
+      one lane. Measured: at width 4 `BRANCH_SLOT` reaches a 3-of-4 cycle, never a 1-of-4.
+      **The litmuses were checking a drawing that is never rendered.** Filtering the width-4
+      geometry down to two lanes yields a machine `geometryFor(2)` never builds — at width 4 lanes 0
+      and 1 both forward on the TOP side, at width 2 lane 1 forwards on the bottom. So the
+      structural checks moved to `geometryFor(cfg.issueWidth)`, while coherence stays on the full
+      universe because `activate` is width-oblivious and may name any wire. **Which SET a litmus
+      reads is part of its claim**, the same shape as step 4's "a measurement's glob is part of its
+      claim" and step 5's package-wide re-measure.
+      **A SECOND arity-2 consumer, missed by step 5's sweep and live since step 6.**
+      `PairingReadoutView` looked its lane hue up as `LANE_COLORS[c.slot as 0 | 1]`, which at slot 2
+      or 3 resolves to `undefined` and emits `color: undefined` — a cast that silences the very
+      check that would have caught it. Step 5's two sweep spellings could not match it (`as 0 | 1`
+      is neither a `MAX_WIDTH`, a `< 2`, nor a `.1`). **An arity sweep finds the arities you spelled
+      the way you searched — for the third time in this milestone.**
+      **THE PALETTE: the recorded number does not reproduce, and the pinned acceptance was
+      unachievable for any 4-set.** `styles.css` and this plan both cited "CVD separation dE 41.3
+      light / 42.6 dark"; the dataviz skill's `validate_palette.js` measures the shipped pair at
+      **13.0 light / 15.9 dark** (OKLab ΔE×100, worst all-pairs) and nothing it reports is near 41.
+      Worse, "at least match the 2-slot separation" can never hold: the shipped pair remains a pair
+      in the 4-set, so adding hues can only LOWER the worst one — a full sweep of the legal hue
+      space (no red, no amber, ≥40° apart, ≥3:1 so no SECOND relief warning) puts the dark ceiling
+      at ~14.6 even when lane 1 is allowed to move. **Taken to the user rather than quietly
+      shipped**, with both options measured; pinned (2026-07-28): keep lanes 0 and 1 exactly as
+      shipped and add green + purple. Light is **unchanged at 13.0** — the extension is free there,
+      because the shipped pair was already the worst. Dark drops **15.9 → 10.1** against a target of
+      8, with normal-vision 16.4 against a hard floor of 15. All of it is on the record in
+      `styles.css`, including the loss. Two structural notes worth keeping: **no teal or cyan
+      survives at all** (it collapses against blue under CVD, which is why the answer is green and
+      purple rather than the obvious next two hues), and the validator scores a sub-3:1 tint as
+      `relief`, NOT `fail`, so `ok === true` hid a second relief warning until it was filtered for
+      explicitly — **a pass/fail API can carry a third state, and the one here is exactly the
+      obligation the plan pinned.**
+      **⚠ A PROCESS FINDING, and it cost the whole working tree.** The break harness restored itself
+      with `git checkout -- packages/web/src/`, which reverted every UNCOMMITTED step-7 edit — the
+      geometry, the tests, the view, the stylesheet. Recovered in full (every edit was scripted or
+      in a temp file), but the lesson is cheap to state and expensive to learn: **commit before you
+      break.** A deliberate-break pass is a destructive operation on the working tree, and `git
+  checkout` cannot distinguish the break from the work it sits on.
+      **Eight breaks watched, and six isolate to exactly ONE test** — clamp the slot back to 2 (13
+      red, and the suite SHRINKS 1533 → 1527, because the width-parameterized cases stop existing:
+      a break that deletes tests); stop filtering lanes (5); pin the canvas to a constant (1);
+      hand two lanes the same channel (1); the same stub (1); restore M7's crossing route (1); drop
+      a tint from ONE dark block (1 — nothing else in the repo can see a drifted dark block); restore
+      M7's fixture (2).
+      **Handed to step 8, explicitly rather than silently.** `REFUSAL_TEXT`'s `'it reads what its
+  partner writes'` is pair-shaped, and — sharper — `PairingReadoutView`'s caption is a literal
+      **"up to 2 instructions may issue together"**, which has been WRONG at widths 3 and 4 since
+      step 6 shipped the control. It is user-facing copy in step 8's file, so it moves with step 8's
+      vocabulary pass; it is named here so it cannot be lost. The complement still holds:
+      `pairing-readout.ts` itself is arity-generic.
+      <details><summary><em>The scope as planned, kept for the record — it called the geometry
+      mechanical, and it was not.</em></summary>
+
+      Decision **H** is PINNED: the lane set extends to four
       validated tints (`--lane-2`, `--lane-3` join `--lane-0`/`--lane-1`, in the base block and BOTH
       dark blocks — `styles.css` says "keep the two blocks identical" and a tint added to only one
       is a defect no headless test can see). The palette acceptance is spelled out under _Decision
@@ -606,6 +717,9 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       engine, not a second `4`. The complement, also measured by that sweep: `pairing-readout.ts` is
       arity-generic (it reads `ID.${s}` over a `width` parameter) and needs no geometry work — only
       the step-8 vocabulary pass.
+
+      </details>
+
 - [ ] **8. The pairing readout and IPC at N lanes.** The panel's vocabulary is pair-shaped in the
       PROSE (`refused`/`blocked` are fine; "the pair in ID" is not). Keep the M7 step 8 rule that
       earned it: **read the RESULT (`micro.idEx`), never enumerate the REASONS** — the naive
@@ -617,9 +731,11 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
 
 - [ ] `array-sum.s` at forwarding ON, flipping ISSUE across its positions **without reloading**,
       moves 51 → 42 → 36 live, matching the derived matrix.
-- [ ] The datapath draws N execute lanes with the shared front end and single memory port intact;
+- [x] The datapath draws N execute lanes with the shared front end and single memory port intact;
       lane hiding at narrower widths stays TESTED, not argued (M7's rule: if a narrow width ever
-      emits a `.N` location, the honest fix is an idle lane, not more hiding).
+      emits a `.N` location, the honest fix is an idle lane, not more hiding). ✅ step 7 — and the
+      hiding claim is asked of the FULL lane universe as well as of the per-width geometry, because
+      asked only of the latter it is vacuous.
 - [ ] All five gates green; INV-8 differential passes at every offered width.
 - [ ] Widths 1 and 2 are byte-identical to their pre-milestone traces.
 
@@ -677,9 +793,13 @@ a different reason. Nothing fixes the lane set at two.
 So extending it is lawful, and the work it creates is **re-validation, not invention**. Step 7's
 palette acceptance, from the constraints the existing block already states:
 
-- **CVD separation across all four tints**, on both surfaces, at least matching the recorded 2-slot
-  dE — and measured, not eyeballed (the M7 step 7 precedent: "it looks tight" is exactly the
-  judgement an eyeball is worst at, so the overlap check was run in SVG space instead).
+- ~~**CVD separation across all four tints**, on both surfaces, at least matching the recorded
+  2-slot dE~~ — **THIS CRITERION WAS UNMEETABLE AND ITS NUMBER WAS WRONG; see step 7.** The recorded
+  "dE 41.3 / 42.6" does not reproduce (the shipped pair measures 13.0 light / 15.9 dark), and no
+  4-slot set can match a 2-slot minimum, since the shipped pair survives into it. Replaced by: every
+  check of the validator PASSES on both surfaces, the light figure does not regress, and the dark
+  figure is reported for what it is. Measured, not eyeballed — that half of the criterion stands, and
+  it is what caught both errors.
 - **No red and no amber**, at any slot — red is the danger/flush family and amber the warn wash, so
   a lane in either would impersonate a status. This is the real constraint on the two new hues, and
   it is tighter than it sounds once blue and magenta are also spoken for.

@@ -2,12 +2,12 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3/4/5/**6** done; the ISSUE control now offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
+steps 0/0b/1/2/3/4/5/6/**7** done; the ISSUE control offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
 in `engine-common` so the **out-of-order model shares the bound and is netted at it**, and the
-arity->2 nets, derived width-3/4 timing matrix and recorder/`location` proofs are all in. Next: step 7
-(the datapath at N lanes — **step 5 found `datapath-superscalar.ts`'s `MAX_WIDTH = 2` silently
-dropping an `EX.2` occupant**, and the lane set extends to four validated tints). Six models ship,
-each with a lesson track. Repo **6157 tests**, five gates green.
+**datapath now draws N lanes** — its geometry became a FUNCTION of the width (`geometryFor`), since
+N lanes plus a rail band is what sets the height. Next: step 8 (the pairing readout at N lanes —
+its caption still says a literal **"up to 2 instructions"**, wrong at widths 3/4 since step 6), then
+the browser pass. Six models ship, each with a lesson track. Repo **6171 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -57,7 +57,13 @@ each with a lesson track. Repo **6157 tests**, five gates green.
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/**6** done. **Step 6
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/6/**7** done. **Step 7's
+    new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible
+    to all 1533 tests AND to M7's browser pass**; the per-width refactor MANUFACTURED a vacuous test
+    (a filter over a narrowed set), the M7 refusal fixtures turned out NON-MONOTONE in width
+    (`BRANCH_SLOT` refuses at 2 and 4 but not at 3), the palette's recorded dE did not reproduce and
+    its acceptance was unachievable for any 4-set, and **a break harness using `git checkout --`
+    destroyed the uncommitted tree — commit before you break.** **Step 6
     proved INV-8 is a FALSE net by EXPERIMENT rather than assertion:** an engine running narrow
     (`Math.min(width, 2)`) reddens 147 of the 180 new out-of-order timing cells and **zero of 807
     conformance cells.** It also found that two "lawful answers" were not symmetric (eslint forbids
