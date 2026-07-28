@@ -3,7 +3,7 @@ name: ''
 metadata:
   node_type: memory
   originSessionId: a815d42f-90e2-43a9-a50b-4b0639ffaef7
-  modified: 2026-07-24T07:01:06.500Z
+  modified: 2026-07-28T07:23:23.191Z
 ---
 
 **CPU Visualizer** — a pedagogical RISC-V (RV32I) processor simulator. Load/run programs
@@ -1027,7 +1027,7 @@ carry the RAW tier id** (`essentials`) — they only READ capitalized via CSS `t
 driver matching the on-screen spelling finds nothing. Both present as product defects; neither is
 one. All 3 TIERS then rendered in-browser (not just `detailed`, the only tier the validator
 resolves — the other two are authored-but-unproven until something looks). See
-[[browser-is-the-only-net]], whose `taskkill //IM chrome.exe` advice **closed the user's real
+[[browser-rig-chrome-cleanup]], whose `taskkill //IM chrome.exe` advice **closed the user's real
 browser** and is now corrected (fresh `--user-data-dir` per run is the actual fix for the
 stale-profile lock it was working around).
 
@@ -1081,7 +1081,7 @@ reach the defect is not a check — this project's recurring shape, now one laye
 And **the transport disassembles to `xN` while the corpus writes ABI names**: the reader sees `lb x6,
 0(x5)` above prose saying `t1`. The mirror of step 1's `ra`/`sp` find and much milder (the register
 panel lists both spellings side by side), so step 1 bridges it in one clause. See
-[[browser-is-the-only-net]], now corrected on the theme trick and the profile-dir advice.
+[[browser-rig-cdp-recipe]], now corrected on the theme trick and the profile-dir advice.
 
 ## M5 STEP 3 DONE — `which-is-smaller` on the new `branch-flavors.s` (2026-07-17, 950 tests, `c9d7682`)
 

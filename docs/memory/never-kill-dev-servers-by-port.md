@@ -5,6 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 9cbba965-141a-4163-92a2-8f7e527ea664
+  modified: 2026-07-28T07:23:28.369Z
 ---
 
 The user runs **several vite projects at once**, and vite climbs ports when 5173 is
@@ -34,4 +35,6 @@ Two Windows facts found the same day, both of which fail _silently_: vite here b
 (cmd.exe mis-parses `for /f` and `if (...)` blocks under LF). Details live in
 `tools/find-dev-server.mjs` and `.gitattributes`.
 
-See [[browser-is-the-only-net]] for how to drive the real app here.
+See [[browser-is-the-only-net]] for why the real app must be driven here,
+[[browser-rig-cdp-recipe]] for how, and [[browser-rig-chrome-cleanup]] for killing what it spawned —
+the same "never by port, always by identity" rule, one layer down.

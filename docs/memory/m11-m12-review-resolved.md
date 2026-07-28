@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: b644c234-7252-4e02-ab6e-5621fc38117a
-  modified: 2026-07-28T07:07:43.822Z
+  modified: 2026-07-28T07:23:25.964Z
 ---
 
 `/code-review high b391dc1..HEAD` (2026-07-28, 63 files ~11.7k ins) over the M9+M10
@@ -46,7 +46,7 @@ with config-exclusive steps.
   passed 8/8 against the BROKEN machine until the geometry that keeps a producer alive
   across the freeze was added to the loop. **Run every new net against the broken code
   before trusting it** — a green new test proves nothing about what it can see. Same
-  family as the one-directional vacuity in [[browser-is-the-only-net]].
+  family as the one-directional vacuity in [[browser-rig-vacuity-traps]].
 - **Ask what a docblock's stated REASON would be if it were false today.** Findings 4
   and 5 are one failure at two severities: a comment justifying a practice, whose
   justification expired when a scope lever moved. In 5 the stale reasoning was
