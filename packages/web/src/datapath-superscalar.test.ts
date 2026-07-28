@@ -1,34 +1,51 @@
 /**
- * **M7 step 7 — the widened datapath.** The standing litmuses (coherence, contraction lawfulness,
- * no-dangling-wires, orthogonality, on-perimeter anchoring, no collinear overlap) are ported from
- * `datapath-pipeline.test.ts` and now sweep a THREE-axis config space: tier × forwarding ×
- * prediction × **issue width**.
+ * **M7 step 7 — the widened datapath. M13 step 7 — the datapath at N lanes.** The standing
+ * litmuses (coherence, contraction lawfulness, no-dangling-wires, orthogonality, on-perimeter
+ * anchoring, no collinear overlap) sweep a THREE-axis config space: tier × forwarding × prediction
+ * × **issue width**, and the width arm now runs to {@link MAX_WIDTH} rather than to two.
  *
- * What is genuinely new, and what this file is really for:
+ * What this file is really for:
  *
- *  - **"One lane lit, one dark" is the tier's money shot**, so it is asserted off a REAL refused
- *    cycle rather than described. `sum-loop.s` pairs cleanly and never shows one — the programs
- *    below were written to provoke each of the three refusal verdicts, and every expected slot in
- *    this file was DUMPED AND READ before it was written down. That is house policy earned the hard
- *    way three times over in this milestone (steps 2b(e), 4(e) and 5(b) each caught a test that
- *    passed while demonstrating the opposite of its name), and the reason is structural: sliding
+ *  - **"Some lanes lit, some dark" is the tier's money shot**, so it is asserted off a REAL refused
+ *    cycle rather than described. Every expected slot here was DUMPED AND READ before it was
+ *    written down. That is house policy earned the hard way, and the reason is structural: sliding
  *    issue means **a slot is not a stable lane**, so any claim naming a slot must have been watched.
- *  - **The width axis is proven lawful, not asserted.** Hiding lane 1 and the issue unit at width 1
- *    is only honest if the trace genuinely cannot light them there, so that is tested directly over
- *    the whole corpus rather than argued in a comment.
+ *  - **The width axis is proven lawful, not asserted.** Hiding a lane is only honest if the trace
+ *    genuinely cannot light it, so that is tested directly over the whole corpus.
  *  - **Replication is proven necessary.** Three units looked shared and are not (`pcarith`, the
  *    MEM→WB bypass, the fetch path); each has a test that fails if they were drawn once.
+ *
+ * ## Two things M13 changed about how the litmuses are ASKED, and both are the point
+ *
+ * **1. The geometry became a function of the width, so a litmus over one drawing became a litmus
+ * over four.** A structural check now runs over `geometryFor(w).wires` — the drawing that is
+ * actually rendered at width `w` — rather than over the full lane universe filtered by `w`. Those
+ * two are NOT the same picture, and believing they were is how the first draft of this file passed
+ * while checking a drawing no reader ever sees: at width 4 lanes 0 and 1 both forward on the top
+ * side, but at width 2 lane 1 forwards on the bottom, so filtering the width-4 drawing down to two
+ * lanes yields a machine `geometryFor(2)` never builds.
+ *
+ * **2. The claims about what is HIDDEN had to move, or they would have evaporated.** "Lane 1 is
+ * absent at width 1" used to be `NODES.filter(lane === 1)` + `nodeVisibleAt(..., W1) === false`.
+ * Point that at a per-width geometry and the filter returns EMPTY and the loop body never runs — a
+ * green test measuring nothing, which is the shape this milestone has now met six times. So the
+ * claim is asked twice, of the two sets that can each falsify one half: of the full universe
+ * ({@link NODES}, which contains the lanes it says are hidden) for the VISIBILITY rule, and of
+ * `geometryFor(w)` for the STRUCTURAL one.
  */
 
-import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
-import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
+import { DEPTH_TIERS } from '@cpu-viz/curriculum';
+import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   activate,
   CANVAS,
+  geometryFor,
   LANES,
   laneId,
+  MAX_WIDTH,
   NODES,
   nodeVisibleAt,
   PAIRING_REASONS,
@@ -40,6 +57,8 @@ import {
   WIRES,
   wireVisibleAt,
   type DatapathConfig,
+  type DatapathNode,
+  type DatapathWire,
 } from './datapath-superscalar';
 import { shapePolygon } from './DatapathDiagram';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -48,8 +67,13 @@ import { loadSource } from './simulator';
 /** True when `pt` lies (within `eps`) on any edge of node `id`'s drawn outline — hit-tested against
  *  {@link shapePolygon}, the real perimeter, because a bounding-box check would pass points sitting
  *  in a mux/adder's slanted-corner blank space. */
-function onPerimeter(pt: readonly [number, number], id: string, eps = 0.5): boolean {
-  const n = NODES.get(id)!;
+function onPerimeter(
+  nodes: ReadonlyMap<string, DatapathNode>,
+  pt: readonly [number, number],
+  id: string,
+  eps = 0.5,
+): boolean {
+  const n = nodes.get(id)!;
   const poly = shapePolygon(n);
   const [px, py] = pt;
   for (let i = 0; i < poly.length; i++) {
@@ -96,13 +120,37 @@ function collinearOverlap(a: Seg, b: Seg, eps = 0.5): number {
   }
   return 0;
 }
+/** How far an axis-aligned segment runs through a node box's INTERIOR (0 if it only touches an
+ *  edge or clips a corner). The gap no litmus covered before M13: a wire passing straight through
+ *  a box it is not connected to is drawn as a line over a rectangle, and every existing check —
+ *  endpoints on the perimeter, no collinear overlap, no dangling — is blind to it. It is also the
+ *  exact failure mode of an N-lane rail scheme, where a forwarding return that used to leave the
+ *  diagram above the bars now has to get past bars spanning four lanes. */
+function throughBox(seg: Seg, n: DatapathNode, eps = 0.5): number {
+  const [x0, y0, x1, y1] = seg;
+  const [lx, hx] = [n.x + eps, n.x + n.w - eps];
+  const [ly, hy] = [n.y + eps, n.y + n.h - eps];
+  if (Math.abs(y0 - y1) < eps) {
+    if (y0 <= ly || y0 >= hy) return 0;
+    return Math.max(0, Math.min(Math.max(x0, x1), hx) - Math.max(Math.min(x0, x1), lx));
+  }
+  if (Math.abs(x0 - x1) < eps) {
+    if (x0 <= lx || x0 >= hx) return 0;
+    return Math.max(0, Math.min(Math.max(y0, y1), hy) - Math.max(Math.min(y0, y1), ly));
+  }
+  return 0;
+}
 
 /**
- * The EIGHT MACHINES this diagram can be asked to draw — M3's four, doubled by the width axis.
- * Width belongs here for the same reason forwarding does: it decides what hardware EXISTS, not how
- * much detail is shown, so every structural litmus has to hold in both positions independently.
+ * The machines this diagram can be asked to draw — M3's four, multiplied by the width axis.
+ *
+ * `WIDTHS` is DERIVED from the engine's bound, never typed, so raising the guard cannot leave the
+ * widest machine the least tested (steps 1/3/4/6's standing precedent in this milestone). Width
+ * belongs here for the same reason forwarding does: it decides what hardware EXISTS, not how much
+ * detail is shown, so every structural litmus has to hold in every position independently.
  */
-const CONFIGS: readonly DatapathConfig[] = [1, 2].flatMap((issueWidth) => [
+const WIDTHS: readonly number[] = Array.from({ length: MAX_WIDTH }, (_, i) => i + 1);
+const CONFIGS: readonly DatapathConfig[] = WIDTHS.flatMap((issueWidth) => [
   { forwarding: false, predictTaken: false, issueWidth },
   { forwarding: true, predictTaken: false, issueWidth },
   { forwarding: false, predictTaken: true, issueWidth },
@@ -112,10 +160,13 @@ const label = (c: DatapathConfig): string =>
   `${c.issueWidth}-wide / forwarding ${c.forwarding ? 'on' : 'off'} / predict ${c.predictTaken ? 'taken' : 'not-taken'}`; // prettier-ignore
 
 /** The positions individual tests name directly, when the subject is one axis at a time. */
-const W2: DatapathConfig = { forwarding: true, predictTaken: false, issueWidth: 2 };
 const W1: DatapathConfig = { forwarding: true, predictTaken: false, issueWidth: 1 };
-const W2_NOFWD: DatapathConfig = { forwarding: false, predictTaken: false, issueWidth: 2 };
+const W2: DatapathConfig = { forwarding: true, predictTaken: false, issueWidth: 2 };
+const WMAX: DatapathConfig = { forwarding: true, predictTaken: false, issueWidth: MAX_WIDTH };
 const W2_BET: DatapathConfig = { forwarding: true, predictTaken: true, issueWidth: 2 };
+/** Every width at which pairing is a question at all — the machine has a second candidate. */
+const PAIRING_WIDTHS = WIDTHS.filter((w) => w >= 2);
+const atWidth = (w: number): DatapathConfig => ({ ...W1, issueWidth: w });
 
 /** Record a whole run under one machine and return every cycle's trace. Litmus programs for the
  *  VIEW are written inline, exactly as the multi-cycle and pipeline datapath suites do — INV-7
@@ -152,31 +203,65 @@ function locationsOf(trace: CycleTrace): Map<string, string> {
   return m;
 }
 
-/** The first cycle whose events include a `stall` with one of the three PAIRING reasons. */
-function firstRefusal(traces: readonly CycleTrace[]): CycleTrace {
-  const t = traces.find((c) =>
-    c.events.some((e) => e.type === 'stall' && PAIRING_REASONS.has(e.reason)),
-  );
-  if (!t) throw new Error('no pairing refusal in this run — the program did not provoke one');
+/** The first cycle refusing for `reason`. Selecting BY REASON is a M13 correction, not a
+ *  convenience: at widths 3 and 4 the old `MEM_PORT` program refuses for `intra-pair-raw` a cycle
+ *  BEFORE it reaches its own subject, because a third slot pulls the address setup into the same
+ *  group as the store — so "the first pairing refusal" stopped naming the rule under test. */
+function firstRefusal(traces: readonly CycleTrace[], reason: string): CycleTrace {
+  const t = traces.find((c) => c.events.some((e) => e.type === 'stall' && e.reason === reason));
+  if (!t) throw new Error(`no ${reason} refusal in this run — the program did not provoke one`);
   return t;
 }
 
-// The three refusal provokers. Each was run and its trace read before anything below was asserted.
+/** Which EX slots are occupied this cycle. */
+function exSlots(trace: CycleTrace): Set<number> {
+  const s = new Set<number>();
+  for (const inst of trace.instructions) {
+    const loc = parseLocation(inst.location);
+    if (loc?.stage === 'EX') s.add(loc.slot);
+  }
+  return s;
+}
+
+// The three refusal provokers — REWRITTEN at M13 step 7, and the reason is this milestone's own
+// recurring trap rather than a preference. A program provokes a refusal only if the conflicting
+// instructions land in ONE issue group, and group boundaries MOVE with the width: the M7 fixtures
+// were spaced for pairs, so `BRANCH_SLOT`'s two branches straddled a group boundary at width 3 and
+// it emitted NO refusal there at all — while still refusing at 2 and at 4. A fixture is not "still
+// valid at the new width", it is a different measurement wearing the same name. These are dense
+// enough that the conflict cannot fall between groups at any width, and THAT IS ASSERTED below
+// rather than assumed.
 const MEM_PORT = `  addi x1, x0, 256
   addi x2, x0, 7
+  addi x5, x0, 5
+  addi x6, x0, 6
   sw x2, 0(x1)
-  sw x2, 4(x1)`;
+  sw x2, 4(x1)
+  sw x2, 8(x1)
+  sw x2, 12(x1)`;
 const INTRA_PAIR_RAW = `  addi x1, x0, 5
   addi x2, x1, 6
   add x3, x1, x2
   addi x4, x0, 1`;
-const BRANCH_SLOT = `  addi x1, x0, 1
-  addi x2, x0, 2
-  beq x0, x0, one
-one:
-  beq x0, x0, two
-two:
+const BRANCH_SLOT = `  beq x0, x0, a
+a:
+  beq x0, x0, b
+b:
+  beq x0, x0, c
+c:
+  beq x0, x0, d
+d:
   addi x3, x0, 3`;
+/** Enough independent work to fill EVERY slot of the widest machine — the fixture the "all lanes
+ *  lit" claims need, since only three CORPUS programs ever reach a group of four. */
+const WIDE_INDEPENDENT = `  addi x1, x0, 1
+  addi x2, x0, 2
+  addi x3, x0, 3
+  addi x4, x0, 4
+  addi x5, x0, 5
+  addi x6, x0, 6
+  addi x7, x0, 7
+  addi x8, x0, 8`;
 
 // =================================================================================================
 // Activation is MULTI-INSTRUCTION *and* MULTI-LANE — the break from M3
@@ -204,10 +289,45 @@ describe('activation is multi-LANE (the break from the 5-stage pipeline)', () =>
     expect(a0.instr).not.toBe(a1.instr);
   });
 
-  it('occupancy is keyed by "<stage>.<slot>" and matches the trace exactly', () => {
-    for (const t of record(`  addi x1, x0, 1\n  addi x2, x0, 2\n  add x3, x1, x2`, W2)) {
-      expect(new Map(activate(t).occupancy)).toEqual(locationsOf(t));
+  it('lights EVERY lane of the widest machine at once — dumped, and it needed its own program', () => {
+    // The width-4 version of the claim above, and it is a separate test because the width-2 fixture
+    // cannot make it: three instructions never fill four slots. The group size is ASSERTED rather
+    // than implied, which is this milestone's named trap ("a test that passes at width 4 because
+    // nothing ever filled four slots"). Dumped first: `WIDE_INDEPENDENT` fills all four at cycle 3.
+    const traces = record(WIDE_INDEPENDENT, WMAX);
+    const full = traces.find((t) => exSlots(t).size === MAX_WIDTH);
+    expect(full, `no cycle filled all ${MAX_WIDTH} EX slots`).toBeDefined();
+    const act = activate(full!);
+    const instrs = new Set<string>();
+    for (const lane of LANES) {
+      expect(act.components.has(laneId('alu', lane)), `lane ${lane} dark on a full cycle`).toBe(true); // prettier-ignore
+      instrs.add(act.wires.get(laneId('alu-exmem', lane))!.instr);
     }
+    // Four lanes, four DIFFERENT instructions — the thing a shared ALU could not draw.
+    expect(instrs.size).toBe(MAX_WIDTH);
+  });
+
+  it('occupancy is keyed by "<stage>.<slot>" and matches the trace exactly, at EVERY width', () => {
+    // The step-5 hole this step closes, cashed at the layer that had it: `parseLocation` bounded
+    // the slot at 2, so an `EX.2` occupant was dropped from occupancy with no crash and no red
+    // test. Sweeping the widths is what turns that back into a measurement.
+    for (const w of WIDTHS) {
+      for (const t of record(WIDE_INDEPENDENT, atWidth(w))) {
+        expect(new Map(activate(t).occupancy), `width ${w}`).toEqual(locationsOf(t));
+      }
+    }
+  });
+
+  it('parses every slot the ENGINE can emit, and nothing beyond it', () => {
+    for (const stage of STAGES) {
+      for (let s = 0; s < MAX_WIDTH; s++)
+        expect(parseLocation(`${stage}.${s}`), `${stage}.${s}`).toEqual({ stage, slot: s });
+      expect(parseLocation(`${stage}.${MAX_WIDTH}`), `${stage}.${MAX_WIDTH}`).toBeNull();
+      expect(parseLocation(stage)).toBeNull();
+    }
+    // The lane union and the engine's bound are one fact, checked rather than kept in step by hand.
+    expect(LANES.length).toBe(MAX_ISSUE_WIDTH);
+    expect(MAX_WIDTH).toBe(MAX_ISSUE_WIDTH);
   });
 
   it('reads occupancy from `instructions[].location`, never from the one-cycle-ahead `micro`', () => {
@@ -228,71 +348,95 @@ describe('activation is multi-LANE (the break from the 5-stage pipeline)', () =>
   });
 
   it('a slot is NOT a stable lane — the datapath draws the seat, and follow keys on the id', () => {
-    // The milestone's headline finding (step 5), cashed at the view layer. An instruction refused
-    // for `intra-pair-raw` in slot 1 SLIDES to slot 0 and finishes there. The datapath must not
-    // care: lane N draws whoever sits in slot N right now, and identity is the follow ring's job.
-    const traces = record(INTRA_PAIR_RAW, W2);
-    const seats = new Map<string, Set<number>>();
-    for (const t of traces) {
-      for (const [loc, id] of activate(t).occupancy) {
-        const slot = parseLocation(loc)!.slot;
-        (seats.get(id) ?? seats.set(id, new Set()).get(id)!).add(slot);
+    // The milestone's headline finding (M13 step 5), cashed at the view layer. An instruction
+    // refused in a younger slot SLIDES and finishes elsewhere. The datapath must not care: lane N
+    // draws whoever sits in slot N right now, and identity is the follow ring's job.
+    for (const w of PAIRING_WIDTHS) {
+      const seats = new Map<string, Set<number>>();
+      for (const t of record(INTRA_PAIR_RAW, atWidth(w))) {
+        for (const [loc, id] of activate(t).occupancy) {
+          const slot = parseLocation(loc)!.slot;
+          (seats.get(id) ?? seats.set(id, new Set()).get(id)!).add(slot);
+        }
       }
+      const slider = [...seats.values()].some((s) => s.size > 1);
+      expect(slider, `width ${w}: no instruction changed slot`).toBe(true);
     }
-    const slider = [...seats.values()].some((s) => s.size > 1);
-    expect(slider, 'no instruction changed slot — this program no longer provokes a slide').toBe(true); // prettier-ignore
   });
 });
 
 // =================================================================================================
-// The money shot: one lane lit, one dark — asserted off REAL refused cycles
+// The money shot: some lanes lit, some dark — asserted off REAL refused cycles, at EVERY width
 // =================================================================================================
 
-describe('the pairing-failure picture — one lane lit, one dark', () => {
+describe('the pairing-failure picture — some lanes lit, some dark', () => {
   const cases: readonly [string, string, string][] = [
     ['mem-port', MEM_PORT, 'two memory ops, one data-memory port'],
-    ['intra-pair-raw', INTRA_PAIR_RAW, 'the second reads what the first writes'],
+    ['intra-pair-raw', INTRA_PAIR_RAW, 'one reads what a group-mate writes'],
     ['branch-slot', BRANCH_SLOT, 'two control transfers, one branch unit'],
   ];
 
   for (const [reason, source, why] of cases) {
-    it(`${reason}: the refused cycle lights lane 0 and leaves lane 1 DARK (${why})`, () => {
-      const traces = record(source, W2);
-      const refusedCycle = firstRefusal(traces);
-      const stall = refusedCycle.events.find((e) => e.type === 'stall')!;
-      expect(stall.type === 'stall' && stall.reason).toBe(reason);
+    for (const w of PAIRING_WIDTHS) {
+      it(`${reason} @ width ${w}: the refusal narrows the machine (${why})`, () => {
+        const cfg = atWidth(w);
+        const traces = record(source, cfg);
+        const refusedCycle = firstRefusal(traces, reason);
 
-      // The refusal is reported to the view (step 8's readout reads exactly this).
-      const act = activate(refusedCycle);
-      expect(act.refusal).toEqual({ reason, instr: stall.type === 'stall' ? stall.instr : '' });
-      // ...and the ISSUE unit is the drawn cause. The hazard unit is NOT lit: these two are told
-      // apart only by the stall's reason, so a reason leaking from one set to the other would light
-      // the wrong box with everything else still green.
-      expect(act.components.has('issue'), 'the issue unit is the drawn cause').toBe(true);
-      expect(act.components.has('hazard'), 'a pairing refusal is not a hazard').toBe(false);
+        // The refusal is reported to the view (the pairing readout reads exactly this).
+        const act = activate(refusedCycle);
+        expect(act.refusal?.reason).toBe(reason);
+        // ...and the ISSUE unit is the drawn cause. The hazard unit is NOT lit: these two are told
+        // apart only by the stall's reason, so a reason leaking from one set to the other would
+        // light the wrong box with everything else still green.
+        expect(act.components.has('issue'), 'the issue unit is the drawn cause').toBe(true);
+        expect(act.components.has('hazard'), 'a pairing refusal is not a hazard').toBe(false);
 
-      // THE PICTURE. The cycle AFTER the refusal is the single-issue one: the refused instruction
-      // went alone. Verified by reading the trace, not by reasoning about which cycle it lands on.
-      const solo = traces.find(
-        (t) =>
-          t.instructions.some((i) => i.location === 'EX.0') &&
-          !t.instructions.some((i) => i.location === 'EX.1'),
-      );
-      expect(solo, 'no single-issue EX cycle — the refusal did not narrow the machine').toBeDefined(); // prettier-ignore
-      const soloAct = activate(solo!);
-      expect(soloAct.components.has(laneId('alu', 0)), 'lane 0 works').toBe(true);
-      expect(soloAct.components.has(laneId('alu', 1)), 'lane 1 is dark').toBe(false);
-      // "One lane dark" is a claim about the EXECUTE band, not about the whole diagram — and that
-      // distinction is a finding, not a technicality. The first draft of this test asserted no
-      // lane-1 wire anywhere was lit and FAILED, because a machine that refused a pair in ID is
-      // still happily fetching two instructions into `IF.0`/`IF.1` behind it. That is the machine
-      // working: the refusal narrows the ISSUE point, and the front-end keeps running wide. An
-      // assertion over the whole diagram would have demanded a picture the engine never draws.
-      for (const [id, a] of soloAct.wires) {
-        if (a.stage === 'EX') expect(a.slot, `EX lane 1 lit via ${id} on a solo cycle`).toBe(0);
-      }
-    });
+        // THE PICTURE, and its width-N spelling. At width 2 "one lane lit, one dark" and "not every
+        // lane lit" are the same sentence; past two they are not, and the honest claim is the
+        // second — a refusal narrows the ISSUE point by at least one slot, it does not empty the
+        // machine down to one lane. Verified by reading the trace, not by reasoning about which
+        // cycle it lands on.
+        const narrowed = traces.find((t) => {
+          const s = exSlots(t);
+          return s.size > 0 && s.size < w;
+        });
+        expect(narrowed, `width ${w}: no narrowed EX cycle — the refusal did not narrow anything`).toBeDefined(); // prettier-ignore
+        const act2 = activate(narrowed!);
+        const live = exSlots(narrowed!);
+        for (const lane of LANES) {
+          if (lane >= w) continue;
+          expect(act2.components.has(laneId('alu', lane)), `lane ${lane}`).toBe(live.has(lane));
+        }
+        // "Some lanes dark" is a claim about the EXECUTE band, not about the whole diagram — and
+        // that distinction is a finding, not a technicality. The first draft of this test asserted
+        // that no wire of an idle lane was lit anywhere and FAILED, because a machine that refused
+        // a group in ID is still happily fetching a full group behind it. That is the machine
+        // working: the refusal narrows the ISSUE point, and the front end keeps running wide.
+        for (const [id, a] of act2.wires) {
+          if (a.stage === 'EX')
+            expect(live.has(a.slot), `EX lane ${a.slot} lit via ${id} on a narrowed cycle`).toBe(true); // prettier-ignore
+        }
+      });
+    }
   }
+
+  it('each provoker still provokes ITS OWN rule at every width — the fixture health check', () => {
+    // The assertion the M7 fixtures would have failed, and the reason they were rewritten. It is a
+    // test rather than a comment because "this program provokes X" is a MEASUREMENT whose truth
+    // moves with the width, exactly as the corpus's exit-idiom spacer did at step 1.
+    for (const [reason, source] of cases) {
+      for (const w of PAIRING_WIDTHS) {
+        const reasons = new Set(
+          record(source, atWidth(w)).flatMap(
+            (t) =>
+            t.events.filter((e) => e.type === 'stall').map((e) => (e.type === 'stall' ? e.reason : '')), // prettier-ignore
+          ),
+        );
+        expect(reasons.has(reason), `${reason} not provoked at width ${w}`).toBe(true);
+      }
+    }
+  });
 
   it('an ORDINARY hazard lights the hazard unit and NOT the issue unit', () => {
     // The mirror of the above, and the reason the two boxes are separate. A load-use bubble is not
@@ -311,13 +455,12 @@ describe('the pairing-failure picture — one lane lit, one dark', () => {
   it('at most ONE stall fires per cycle — a refusal ends the issue group', () => {
     // `activate` reads a SINGLE stall per cycle rather than one per lane. That is only correct
     // because `stageId` breaks out of the group on a refusal (M7 step 4 finding (d): the `break` is
-    // the load-bearing part). Pinned here rather than assumed, across every provoker and the corpus.
-    const sources = [MEM_PORT, INTRA_PAIR_RAW, BRANCH_SLOT];
-    for (const src of sources) {
-      for (const cfg of [W2, W2_NOFWD, W2_BET]) {
+    // the load-bearing part). Pinned here rather than assumed, across every provoker and width.
+    for (const src of [MEM_PORT, INTRA_PAIR_RAW, BRANCH_SLOT]) {
+      for (const cfg of CONFIGS) {
         for (const t of record(src, cfg)) {
           const stalls = t.events.filter((e) => e.type === 'stall');
-          expect(stalls.length, `${stalls.length} stalls in one cycle`).toBeLessThanOrEqual(1);
+          expect(stalls.length, `${stalls.length} stalls in one cycle at ${label(cfg)}`).toBeLessThanOrEqual(1); // prettier-ignore
         }
       }
     }
@@ -325,34 +468,69 @@ describe('the pairing-failure picture — one lane lit, one dark', () => {
 });
 
 // =================================================================================================
-// The width axis — the third visibility axis, and its lawfulness
+// The width axis — the third visibility axis, its lawfulness, and (M13) its GEOMETRY
 // =================================================================================================
 
 describe('issue width is a structural axis (INV-5: absent, never idle)', () => {
-  it('lane 1 and the issue unit are ABSENT at width 1, and present at width 2', () => {
-    const lane1 = [...NODES.values()].filter((n) => n.lane === 1);
-    expect(lane1.length, 'lane 1 has replicated hardware').toBeGreaterThan(4);
-    for (const n of lane1) {
-      expect(nodeVisibleAt(n, 'expert', W1), `${n.id} drawn at width 1`).toBe(false);
-      expect(nodeVisibleAt(n, 'expert', W2), `${n.id} missing at width 2`).toBe(true);
+  it('every lane beyond the width is ABSENT, and every lane within it is present', () => {
+    // Asked of the FULL universe on purpose: `NODES` contains all four lanes, so the filter finds
+    // the nodes whose absence is being claimed. Asked of a per-width geometry this loop would run
+    // zero times and pass while measuring nothing.
+    for (const w of WIDTHS) {
+      const cfg = atWidth(w);
+      for (const lane of LANES) {
+        const laneNodes = [...NODES.values()].filter((n) => n.lane === lane);
+        expect(laneNodes.length, `lane ${lane} has replicated hardware`).toBeGreaterThan(4);
+        for (const n of laneNodes)
+          expect(nodeVisibleAt(n, 'expert', cfg), `${n.id} at width ${w}`).toBe(lane < w);
+      }
+      // The issue unit is the one width-gated node that is not a lane's copy: pairing is a
+      // question about two candidates, and at width 1 there is never a second one.
+      expect(nodeVisibleAt(NODES.get('issue')!, 'expert', cfg)).toBe(w >= 2);
     }
-    expect(nodeVisibleAt(NODES.get('issue')!, 'expert', W1)).toBe(false);
-    expect(nodeVisibleAt(NODES.get('issue')!, 'essentials', W2)).toBe(true);
   });
 
-  it('the SHARED spine is width-independent — a superscalar grows lanes, not register files', () => {
-    // The other half of the claim, and the one that would be easy to over-apply: widening must not
-    // quietly duplicate the register file, the data memory or a latch bar.
-    for (const id of ['pc', 'imem', 'regfile', 'dmem', 'ifid', 'idex', 'exmem', 'memwb', 'pcmux']) {
-      const n = NODES.get(id)!;
-      expect(n.lane, `${id} is shared`).toBeUndefined();
-      expect(nodeVisibleAt(n, 'essentials', W1), `${id} missing at width 1`).toBe(true);
+  it('GEOMETRY: `geometryFor(w)` builds exactly the lanes that exist, and nothing beyond', () => {
+    // The structural half of the same claim, and the one the visibility rule cannot make: a lane
+    // that is only filtered out is still drawn into the canvas budget, and the canvas is what the
+    // reader sees. This is what reddens if `buildGeometry` stops filtering.
+    for (const w of WIDTHS) {
+      const g = geometryFor(w);
+      const lanes = new Set(
+        [...g.nodes.values()].map((n) => n.lane).filter((l) => l !== undefined),
+      );
+      expect([...lanes].sort(), `width ${w} lanes`).toEqual(LANES.filter((l) => l < w));
+      for (const wire of g.wires)
+        expect(wire.lane === undefined || wire.lane < w, `${wire.id} at width ${w}`).toBe(true);
+      // ...and the shared spine is width-INDEPENDENT: a superscalar grows lanes, not register files.
+      for (const id of ['pc', 'imem', 'regfile', 'dmem', 'ifid', 'idex', 'exmem', 'memwb', 'pcmux'])
+        expect(g.nodes.get(id)?.lane, `${id} is shared at width ${w}`).toBeUndefined();
+      const ids = [...g.nodes.keys()];
+      expect(ids.filter((i) => i.startsWith('dmem'))).toEqual(['dmem']);
+      expect(ids.filter((i) => i.startsWith('regfile'))).toEqual(['regfile']);
     }
-    // Exactly one data memory and one register file exist, at either width — the mem-port rule
-    // is what buys that, and drawing a second would draw hardware the pairing rules forbid.
-    const ids = [...NODES.keys()];
-    expect(ids.filter((i) => i.startsWith('dmem'))).toEqual(['dmem']);
-    expect(ids.filter((i) => i.startsWith('regfile'))).toEqual(['regfile']);
+  });
+
+  it('GEOMETRY: the canvas GROWS with the width — the reason it is not a constant', () => {
+    // A single canvas sized for four lanes would draw the width-1 machine as one lane at the top of
+    // a box two thirds empty, with latch bars spanning three lanes that do not exist. That is not a
+    // rendering nicety: it is the same "draw hardware the machine does not have" the absent-lane
+    // rule forbids, one level up. Strict growth is what says the canvas tracks the machine.
+    const heights = WIDTHS.map((w) => geometryFor(w).canvas.height);
+    for (let i = 1; i < heights.length; i++)
+      expect(heights[i]!, `width ${i + 1} is no taller than width ${i}`).toBeGreaterThan(heights[i - 1]!); // prettier-ignore
+    // The bars span the lane stack rather than a fixed height, which is what makes them grow too.
+    for (const w of WIDTHS) {
+      const g = geometryFor(w);
+      const bars = ['ifid', 'idex', 'exmem', 'memwb'].map((id) => g.nodes.get(id)!);
+      const lowest = Math.max(...[...g.nodes.values()].filter((n) => n.lane !== undefined).map((n) => n.y + n.h)); // prettier-ignore
+      for (const b of bars) {
+        expect(b.y + b.h, `${b.id} at width ${w} stops above the last lane`).toBeGreaterThan(lowest - 200); // prettier-ignore
+        expect(b.y + b.h, `${b.id} at width ${w} runs past the canvas`).toBeLessThan(g.canvas.height); // prettier-ignore
+      }
+    }
+    // The exported universe IS the widest machine — the two must not drift apart.
+    expect(CANVAS).toEqual(geometryFor(MAX_WIDTH).canvas);
   });
 
   it('LAWFULNESS: a width-1 trace can never light lane 1 or the issue unit — over the CORPUS', () => {
@@ -380,14 +558,27 @@ describe('issue width is a structural axis (INV-5: absent, never idle)', () => {
     }
   });
 
-  it('activation is WIDTH-oblivious (INV-2) — it lights lane 1 whenever the trace has one', () => {
+  it('LAWFULNESS generalized: no corpus program at width `w` occupies a slot at or beyond `w`', () => {
+    // The N-lane spelling of the same permission. Hiding lane 3 at width 3 is honest for exactly
+    // the reason hiding lane 1 at width 1 is, and neither is honest by assertion.
+    for (const { name, source } of EXAMPLE_PROGRAMS) {
+      for (const w of WIDTHS) {
+        for (const t of record(source, atWidth(w), false))
+          for (const inst of t.instructions)
+            expect(parseLocation(inst.location)!.slot, `${name}: ${inst.location} at width ${w}`).toBeLessThan(w); // prettier-ignore
+      }
+    }
+  });
+
+  it('activation is WIDTH-oblivious (INV-2) — it lights the lanes the TRACE has, not the drawn ones', () => {
     // The engine emits full expert state and the view filters; `activate` itself has no width
-    // parameter and no special case. The proof is that the same function, on a width-2 trace,
-    // lights lane-1 wires it would never see at width 1.
-    const traces = record(`  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3`, W2);
+    // parameter and no special case. The proof is that the same function lights lane-3 wires on a
+    // width-4 trace that it would never see at width 1 — and that it can NAME them, which is the
+    // half that was broken until this step: a wire id `activate` cannot look up throws.
     const lit = new Set<string>();
-    for (const t of traces) for (const id of activate(t).wires.keys()) lit.add(id);
-    expect([...lit].some((id) => id.endsWith('-l1'))).toBe(true);
+    for (const t of record(WIDE_INDEPENDENT, WMAX)) for (const id of activate(t).wires.keys()) lit.add(id); // prettier-ignore
+    for (const lane of LANES)
+      expect([...lit].some((id) => id.endsWith(`-l${lane}`)), `nothing lit for lane ${lane}`).toBe(true); // prettier-ignore
   });
 });
 
@@ -396,57 +587,53 @@ describe('issue width is a structural axis (INV-5: absent, never idle)', () => {
 // =================================================================================================
 
 describe('what genuinely replicates (dumped, not reasoned)', () => {
-  it('`pcarith` replicates: two `lui`s pair, and neither emits an `alu-op`', () => {
+  it('`pcarith` replicates: `lui`s co-issue, and none of them emits an `alu-op`', () => {
     // U/J producers get their writeback value from the dedicated pc/immediate adder, and nothing in
-    // the pairing rules forbids two of them going together — so one shared adder could not draw the
-    // cycle. This is the test that fails if `pcarith` were drawn once.
-    const traces = record(`  lui x1, 1\n  lui x2, 2\n  auipc x3, 3`, W2);
+    // the pairing rules forbids several of them going together — so one shared adder could not draw
+    // the cycle. This is the test that fails if `pcarith` were drawn once.
+    const traces = record(`  lui x1, 1\n  lui x2, 2\n  lui x3, 3\n  lui x4, 4\n  auipc x5, 3`, WMAX); // prettier-ignore
     const both = traces.find((t) => {
       const a = activate(t);
-      return a.components.has(laneId('pcarith', 0)) && a.components.has(laneId('pcarith', 1));
+      return LANES.every((lane) => a.components.has(laneId('pcarith', lane)));
     });
-    expect(both, 'no cycle needed both pc/immediate adders').toBeDefined();
+    expect(both, `no cycle needed all ${MAX_WIDTH} pc/immediate adders`).toBeDefined();
     const act = activate(both!);
-    expect(act.wires.get(laneId('idex-pcarith-pc', 0))!.instr).not.toBe(
-      act.wires.get(laneId('idex-pcarith-pc', 1))!.instr,
-    );
+    const instrs = new Set(LANES.map((l) => act.wires.get(laneId('idex-pcarith-pc', l))!.instr));
+    expect(instrs.size).toBe(MAX_WIDTH);
   });
 
-  it('the MEM→WB bypass replicates: two non-memory instructions ride past the memory together', () => {
-    const traces = record(`  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3\n  addi x4, x0, 4`, W2); // prettier-ignore
+  it('the MEM→WB bypass replicates: non-memory instructions ride past the memory together', () => {
+    const traces = record(WIDE_INDEPENDENT, WMAX);
     const both = traces.find((t) => {
       const a = activate(t);
-      return a.wires.has(laneId('exmem-memwb', 0)) && a.wires.has(laneId('exmem-memwb', 1));
+      return LANES.every((lane) => a.wires.has(laneId('exmem-memwb', lane)));
     });
-    expect(both, 'no cycle bypassed the data memory in both slots').toBeDefined();
+    expect(both, 'no cycle bypassed the data memory in every slot').toBeDefined();
     const act = activate(both!);
-    expect(act.wires.get(laneId('exmem-memwb', 0))!.instr).not.toBe(
-      act.wires.get(laneId('exmem-memwb', 1))!.instr,
-    );
+    const instrs = new Set(LANES.map((l) => act.wires.get(laneId('exmem-memwb', l))!.instr));
+    expect(instrs.size).toBe(MAX_WIDTH);
   });
 
-  it('fetch replicates: one memory, one address, a PAIR of words out', () => {
-    const traces = record(`  addi x1, x0, 1\n  addi x2, x0, 2\n  addi x3, x0, 3`, W2);
-    const pair = traces.find((t) => {
+  it('fetch replicates: one memory, one address, a GROUP of words out', () => {
+    const traces = record(WIDE_INDEPENDENT, WMAX);
+    const group = traces.find((t) => {
       const a = activate(t);
-      return a.wires.has(laneId('imem-ifid', 0)) && a.wires.has(laneId('imem-ifid', 1));
+      return LANES.every((lane) => a.wires.has(laneId('imem-ifid', lane)));
     });
-    expect(pair, 'no cycle fetched a pair').toBeDefined();
-    const act = activate(pair!);
-    const w0 = act.wires.get(laneId('imem-ifid', 0))!;
-    const w1 = act.wires.get(laneId('imem-ifid', 1))!;
-    expect(w0.instr).not.toBe(w1.instr);
-    // ...but ONE address wire and ONE adder: the pair comes from `pc` and `pc + 4`.
-    expect(act.wires.get('pc-imem')!.value).toBe(
-      pair!.instructions.find((i) => i.location === 'IF.0')!.pc,
-    );
-    // The adder advances by 4 PER INSTRUCTION FETCHED, so on a paired cycle it reaches pc + 8 —
+    expect(group, 'no cycle fetched a full group').toBeDefined();
+    const act = activate(group!);
+    const instrs = new Set(LANES.map((l) => act.wires.get(laneId('imem-ifid', l))!.instr));
+    expect(instrs.size).toBe(MAX_WIDTH);
+    // ...but ONE address wire and ONE adder: the group comes from `pc`, `pc + 4`, ...
+    const base = group!.instructions.find((i) => i.location === 'IF.0')!.pc;
+    expect(act.wires.get('pc-imem')!.value).toBe(base);
+    // The adder advances by 4 PER INSTRUCTION FETCHED, so on a full cycle it reaches `pc + 4n` —
     // which is why it is drawn as `+4n` and its label comes from the trace rather than a constant.
-    const base = pair!.instructions.find((i) => i.location === 'IF.0')!.pc;
-    expect(act.wires.get('addn-pcmux')!.value).toBe(base + 8);
+    // At width 4 a fixed `+8` would be wrong on most cycles rather than on the interesting ones.
+    expect(act.wires.get('addn-pcmux')!.value).toBe(base + 4 * MAX_WIDTH);
   });
 
-  it('the fetch adder reads +4 when only ONE slot was free — the case a fixed `+8` gets wrong', () => {
+  it('the fetch adder reads +4 when only ONE slot was free — the case a fixed `+4n` gets wrong', () => {
     const found = [MEM_PORT, INTRA_PAIR_RAW, BRANCH_SLOT]
       .flatMap((src) => record(src, W2))
       .find((t) => {
@@ -459,13 +646,17 @@ describe('what genuinely replicates (dumped, not reasoned)', () => {
     expect(act.wires.get('addn-pcmux')!.value).toBe(base + 4);
   });
 
-  it('the data memory does NOT replicate — the mem-port rule keeps MEM single-lane', () => {
-    // The converse guard. If two memory ops could ever pair, this diagram would be drawing a lie;
-    // the rule that forbids it is what lets `dmem` and its wires stay unslotted.
+  it('the data memory does NOT replicate — the mem-port rule keeps MEM single-lane at EVERY width', () => {
+    // The converse guard, and it is what the whole single-memory geometry rests on. If two memory
+    // ops could ever co-issue, this diagram would be drawing a lie — and "the rule holds at width
+    // 2" is not the same measurement as "the rule holds at width 4", where a group is twice as
+    // likely to contain two of anything.
     for (const { source } of EXAMPLE_PROGRAMS) {
-      for (const t of record(source, W2, false)) {
-        const mem = t.events.filter((e) => e.type === 'mem-read' || e.type === 'mem-write');
-        expect(mem.length, 'two memory accesses in one cycle').toBeLessThanOrEqual(1);
+      for (const w of WIDTHS) {
+        for (const t of record(source, atWidth(w), false)) {
+          const mem = t.events.filter((e) => e.type === 'mem-read' || e.type === 'mem-write');
+          expect(mem.length, `two memory accesses in one cycle at width ${w}`).toBeLessThanOrEqual(1); // prettier-ignore
+        }
       }
     }
   });
@@ -475,7 +666,7 @@ describe('what genuinely replicates (dumped, not reasoned)', () => {
 // Forwarding — a change of path, and a SOURCE the trace does not slot
 // =================================================================================================
 
-describe('forwarding at width 2', () => {
+describe('forwarding across the lanes', () => {
   it('a forward lights the latch-BAR path and darkens the register-file path into the same mux', () => {
     const traces = record(`  addi x1, x0, 5\n  addi x2, x0, 6\n  add x3, x1, x2`, W2);
     const fwd = traces.find((t) => t.events.some((e) => e.type === 'forward'));
@@ -516,13 +707,16 @@ describe('forwarding at width 2', () => {
 
 describe('activation coherence: every lit wire is a real wire with both endpoints lit', () => {
   it('holds at every cycle of a representative spread, in every config', () => {
-    const sources = [MEM_PORT, INTRA_PAIR_RAW, BRANCH_SLOT, `  addi x1, x0, 64\n  lw x2, 0(x1)\n  add x3, x2, x2`]; // prettier-ignore
+    // Read against the FULL wire universe, not the drawn geometry — `activate` is width-oblivious
+    // by design, so "the wire it lit exists" is a claim about every wire it could ever name.
+    const sources = [MEM_PORT, INTRA_PAIR_RAW, BRANCH_SLOT, WIDE_INDEPENDENT, `  addi x1, x0, 64\n  lw x2, 0(x1)\n  add x3, x2, x2`]; // prettier-ignore
+    const byId = new Map(WIRES.map((w) => [w.id, w]));
     for (const src of sources) {
       for (const cfg of CONFIGS) {
         for (const t of record(src, cfg)) {
           const act = activate(t);
           for (const [id, a] of act.wires) {
-            const wire = WIRES.find((w) => w.id === id);
+            const wire = byId.get(id);
             expect(wire, `lit wire ${id} is not real geometry`).toBeDefined();
             for (const end of wire!.ends)
               expect(act.components.has(end), `${id} lit into dim ${end}`).toBe(true);
@@ -533,42 +727,50 @@ describe('activation coherence: every lit wire is a real wire with both endpoint
     }
   });
 
-  it('never lights a wire whose lane the trace does not have', () => {
-    // A lane-1 wire lit from a width-1 trace would be a wire the view has already hidden — the
-    // classic "lit but not drawn" incoherence, which at width 1 would silently vanish instead.
-    for (const t of record(INTRA_PAIR_RAW, W1)) {
-      for (const [id, a] of activate(t).wires) {
-        const wire = WIRES.find((w) => w.id === id)!;
-        expect(wire.lane ?? 0, `${id} is lane ${wire.lane} at width 1`).toBe(0);
-        expect(a.slot).toBe(0);
+  it('never lights a wire whose lane the trace does not have, at any width', () => {
+    // A wire lit for a lane the machine does not have would be a wire the view has already hidden —
+    // the classic "lit but not drawn" incoherence, which vanishes silently instead of failing.
+    const byId = new Map(WIRES.map((w) => [w.id, w]));
+    for (const w of WIDTHS) {
+      for (const t of record(INTRA_PAIR_RAW, atWidth(w))) {
+        for (const [id, a] of activate(t).wires) {
+          expect(byId.get(id)!.lane ?? 0, `${id} at width ${w}`).toBeLessThan(w);
+          expect(a.slot, `${id} slot at width ${w}`).toBeLessThan(w);
+        }
       }
     }
   });
 });
 
 describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
-  const visibleNodes = (tier: DepthTier, cfg: DatapathConfig): Set<string> =>
-    new Set([...NODES.values()].filter((n) => nodeVisibleAt(n, tier, cfg)).map((n) => n.id));
+  it('the config space is COMPLETE over the widths the engine admits', () => {
+    // A literal config list is the one thing a derived `WIDTHS` does not protect (steps 1/3/4/5's
+    // standing guard): raising the engine's bound must widen this sweep, not leave it behind.
+    expect(WIDTHS).toEqual(Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1));
+    expect(new Set(CONFIGS.map((c) => c.issueWidth))).toEqual(new Set(WIDTHS));
+    expect(CONFIGS.length).toBe(4 * MAX_ISSUE_WIDTH);
+  });
 
   it('tierVisible: an element shows once the selected tier reaches its minTier', () => {
     expect(DEPTH_TIERS.map((t) => tierVisible('expert', t))).toEqual([false, false, true]);
     expect(DEPTH_TIERS.map((t) => tierVisible(undefined, t))).toEqual([true, true, true]);
   });
 
-  it('hides the forwarding structure below expert and reveals it there, in BOTH lanes', () => {
+  it('hides the forwarding structure below expert and reveals it there, in EVERY lane', () => {
     for (const lane of LANES) {
       for (const base of ['fwdunit', 'fwdmuxa', 'fwdmuxb']) {
         const n = NODES.get(laneId(base, lane))!;
-        expect(nodeVisibleAt(n, 'detailed', W2), `${n.id} shown below expert`).toBe(false);
-        expect(nodeVisibleAt(n, 'expert', W2), `${n.id} hidden at expert`).toBe(true);
+        expect(nodeVisibleAt(n, 'detailed', WMAX), `${n.id} shown below expert`).toBe(false);
+        expect(nodeVisibleAt(n, 'expert', WMAX), `${n.id} hidden at expert`).toBe(true);
       }
     }
   });
 
-  it('the forwarding network is ABSENT when forwarding is off — even at expert, in both lanes', () => {
+  it('the forwarding network is ABSENT when forwarding is off — even at expert, in every lane', () => {
     for (const lane of LANES) {
       for (const base of ['fwdunit', 'fwdmuxa', 'fwdmuxb']) {
-        expect(nodeVisibleAt(NODES.get(laneId(base, lane))!, 'expert', W2_NOFWD)).toBe(false);
+        const n = NODES.get(laneId(base, lane))!;
+        expect(nodeVisibleAt(n, 'expert', { ...WMAX, forwarding: false })).toBe(false);
       }
     }
   });
@@ -587,14 +789,13 @@ describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
   it('swaps contraction wires for through-mux wires, on ALL THREE axes', () => {
     for (const tier of DEPTH_TIERS) {
       for (const cfg of CONFIGS) {
-        for (const w of WIRES) {
+        for (const w of geometryFor(cfg.issueWidth).wires) {
           if (!w.contracts) continue;
           const unit = NODES.get(w.contracts)!;
-          const unitShown = nodeVisibleAt(unit, tier, cfg);
-          const wireShown = wireVisibleAt(w, tier, cfg);
           // The contraction and its unit are mutually exclusive whenever the contraction is
           // otherwise eligible — that exclusivity is what lets them share a routing rail.
-          if (unitShown) expect(wireShown, `${w.id} co-visible with ${unit.id}`).toBe(false);
+          if (nodeVisibleAt(unit, tier, cfg))
+            expect(wireVisibleAt(w, tier, cfg), `${w.id} co-visible with ${unit.id}`).toBe(false);
         }
       }
     }
@@ -603,8 +804,9 @@ describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
   it('never draws a wire whose endpoint node is hidden (no dangling — PER TIER × PER CONFIG)', () => {
     for (const tier of DEPTH_TIERS) {
       for (const cfg of CONFIGS) {
-        const nodes = visibleNodes(tier, cfg);
-        for (const wire of WIRES) {
+        const g = geometryFor(cfg.issueWidth);
+        const nodes = new Set([...g.nodes.values()].filter((n) => nodeVisibleAt(n, tier, cfg)).map((n) => n.id)); // prettier-ignore
+        for (const wire of g.wires) {
           if (!wireVisibleAt(wire, tier, cfg)) continue;
           for (const end of wire.ends) {
             expect(nodes.has(end), `wire ${wire.id} shown at ${tier} ${label(cfg)} but ${end} hidden`).toBe(true); // prettier-ignore
@@ -617,8 +819,8 @@ describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
   it('each contraction is LAWFUL: it collapses exactly its unit (same source, same sink)', () => {
     // The INV-5 correctness condition: a contraction `S → T` bypassing unit M must equal the expert
     // path `S → M → T`. A contraction routing somewhere the expert path does not would be a lower
-    // tier CONTRADICTING a higher one. Now doubled — it must hold per lane, independently.
-    const touches = (w: (typeof WIRES)[number], node: string): boolean => w.ends.includes(node);
+    // tier CONTRADICTING a higher one. It must hold per lane, independently.
+    const touches = (w: DatapathWire, node: string): boolean => w.ends.includes(node);
     let checked = 0;
     for (const w of WIRES) {
       if (!w.contracts) continue;
@@ -630,8 +832,9 @@ describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
       expect(inLeg, `${w.id}: no through-wire ${src}→${unit}`).toBe(true);
       expect(outLeg, `${w.id}: no through-wire ${unit}→${sink}`).toBe(true);
     }
-    // Both lanes' worth — a lane whose contractions were never authored would pass vacuously.
-    expect(checked, 'contraction count').toBeGreaterThanOrEqual(14);
+    expect(checked, 'contraction count').toBeGreaterThanOrEqual(7 * MAX_WIDTH);
+    // EVERY lane's worth — a lane whose contractions were never authored would pass vacuously, and
+    // that is a live risk now that lanes are generated rather than hand-written twice.
     for (const lane of LANES)
       expect(WIRES.some((w) => w.contracts && w.lane === lane), `lane ${lane} contractions`).toBe(true); // prettier-ignore
   });
@@ -643,68 +846,83 @@ describe('depth tiers × forwarding × prediction × WIDTH (INV-5)', () => {
 });
 
 // =================================================================================================
-// Geometry — the automatable slice of visual acceptance
+// Geometry — the automatable slice of visual acceptance, now over FOUR drawings
 // =================================================================================================
 
-describe('geometry: node boxes are sane', () => {
-  const nodes = [...NODES.values()];
-
-  it('every node box lies within the canvas', () => {
-    for (const n of nodes) {
-      expect(n.x >= 0 && n.x + n.w <= CANVAS.width, `${n.id} out of width`).toBe(true);
-      expect(n.y >= 0 && n.y + n.h <= CANVAS.height, `${n.id} out of height`).toBe(true);
+describe('geometry: node boxes are sane, at every width', () => {
+  it('every node box lies within its own canvas', () => {
+    for (const w of WIDTHS) {
+      const g = geometryFor(w);
+      for (const n of g.nodes.values()) {
+        expect(n.x >= 0 && n.x + n.w <= g.canvas.width, `${n.id} out of width at ${w}`).toBe(true);
+        expect(n.y >= 0 && n.y + n.h <= g.canvas.height, `${n.id} out of height at ${w}`).toBe(
+          true,
+        );
+      }
     }
   });
 
   it('no two node boxes overlap', () => {
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i]!;
-        const b = nodes[j]!;
-        const disjoint =
-          a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
-        expect(disjoint, `${a.id} overlaps ${b.id}`).toBe(true);
+    for (const w of WIDTHS) {
+      const nodes = [...geometryFor(w).nodes.values()];
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i]!;
+          const b = nodes[j]!;
+          const disjoint =
+            a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+          expect(disjoint, `${a.id} overlaps ${b.id} at width ${w}`).toBe(true);
+        }
       }
     }
   });
 
   it('the four latch bars divide the five stage bands, in left-to-right pipeline order', () => {
-    const bars = ['ifid', 'idex', 'exmem', 'memwb'].map((id) => NODES.get(id)!);
-    for (let i = 1; i < bars.length; i++) {
-      expect(bars[i - 1]!.x, `${bars[i - 1]!.id} left of ${bars[i]!.id}`).toBeLessThan(bars[i]!.x);
-    }
-    for (const b of bars) expect(b.h, `${b.id} spans the diagram`).toBeGreaterThan(300);
-    const between = (id: string, l: string, r: string): void => {
-      const n = NODES.get(id)!;
-      expect(n.x, `${id} right of ${l}`).toBeGreaterThan(NODES.get(l)!.x);
-      expect(n.x, `${id} left of ${r}`).toBeLessThan(NODES.get(r)!.x);
-    };
-    between('imem', 'pc', 'ifid');
-    between('regfile', 'ifid', 'idex');
-    between('dmem', 'exmem', 'memwb');
-    for (const lane of LANES) {
-      between(laneId('alu', lane), 'idex', 'exmem');
-      expect(NODES.get(laneId('wbmux', lane))!.x).toBeGreaterThan(NODES.get('memwb')!.x);
+    for (const w of WIDTHS) {
+      const g = geometryFor(w);
+      const bars = ['ifid', 'idex', 'exmem', 'memwb'].map((id) => g.nodes.get(id)!);
+      for (let i = 1; i < bars.length; i++) {
+        expect(bars[i - 1]!.x, `${bars[i - 1]!.id} left of ${bars[i]!.id} at ${w}`).toBeLessThan(bars[i]!.x); // prettier-ignore
+      }
+      const between = (id: string, l: string, r: string): void => {
+        const n = g.nodes.get(id)!;
+        expect(n.x, `${id} right of ${l} at ${w}`).toBeGreaterThan(g.nodes.get(l)!.x);
+        expect(n.x, `${id} left of ${r} at ${w}`).toBeLessThan(g.nodes.get(r)!.x);
+      };
+      between('imem', 'pc', 'ifid');
+      between('regfile', 'ifid', 'idex');
+      between('dmem', 'exmem', 'memwb');
+      for (const lane of LANES.filter((l) => l < w)) {
+        between(laneId('alu', lane), 'idex', 'exmem');
+        expect(g.nodes.get(laneId('wbmux', lane))!.x).toBeGreaterThan(g.nodes.get('memwb')!.x);
+      }
     }
   });
 
-  it('the two lanes are a translation of each other — symmetry is structural, not eyeballed', () => {
-    // Lane 1 is lane 0 moved straight down in the EX/WB bands. Asserting it here is what keeps a
-    // later hand-tweak to one lane from silently making the picture asymmetric.
-    for (const base of ['fwdunit', 'fwdmuxa', 'fwdmuxb', 'alu', 'pcarith', 'wbmux']) {
-      const a = NODES.get(laneId(base, 0))!;
-      const b = NODES.get(laneId(base, 1))!;
-      expect(b.x, `${base} x differs between lanes`).toBe(a.x);
-      expect(b.w).toBe(a.w);
-      expect(b.h).toBe(a.h);
-      expect(b.y - a.y, `${base} lane pitch`).toBe(NODES.get(laneId('alu', 1))!.y - NODES.get(laneId('alu', 0))!.y); // prettier-ignore
+  it('the lanes are TRANSLATIONS of each other — symmetry is structural, not eyeballed', () => {
+    // Lane `n` is lane 0 moved straight down by `n` pitches, in the ID band as well as the EX one.
+    // The sign-extender joins that claim at M13: it used to be hand-placed to straddle the register
+    // file, which made it the one replicated unit exempt from the symmetry the rest of the file
+    // rests on — and an exemption is where an asymmetry hides.
+    const g = geometryFor(MAX_WIDTH);
+    const pitch = g.nodes.get(laneId('alu', 1))!.y - g.nodes.get(laneId('alu', 0))!.y;
+    for (const base of ['fwdunit', 'fwdmuxa', 'fwdmuxb', 'alu', 'pcarith', 'wbmux', 'signext']) {
+      const a = g.nodes.get(laneId(base, 0))!;
+      for (const lane of LANES) {
+        const b = g.nodes.get(laneId(base, lane))!;
+        expect(b.x, `${base} x differs at lane ${lane}`).toBe(a.x);
+        expect(b.w, `${base} w differs at lane ${lane}`).toBe(a.w);
+        expect(b.h, `${base} h differs at lane ${lane}`).toBe(a.h);
+        expect(b.y - a.y, `${base} lane ${lane} pitch`).toBe(pitch * lane);
+      }
     }
   });
 
   it('every lane-tinted node carries its lane in its TEXT label (the relief rule)', () => {
-    // Light magenta is 2.62:1 against the surface, so a lane hue may never be the sole carrier. A
-    // mux has no room for text and carries its lane in its `expert` control label instead — which
-    // is checked here rather than trusted, since a mux with neither would be hue-only.
+    // A lane hue may never be the sole carrier — the set ships one sub-3:1 tint, so this is an
+    // obligation rather than a nicety, and it holds for all four slots or for none. A mux has no
+    // room for text and carries its lane in its `expert` control label instead, which is checked
+    // here rather than trusted, since a mux with neither would be hue-only.
     for (const n of NODES.values()) {
       if (n.lane === undefined) continue;
       const carrier = n.label || n.controlLabel || '';
@@ -712,46 +930,103 @@ describe('geometry: node boxes are sane', () => {
       expect(carrier.includes(String(n.lane)), `${n.id} label omits its lane`).toBe(true);
     }
   });
+
+  it('the lane hue set covers every lane, in the base block AND both dark blocks', () => {
+    // `styles.css` asks for the two dark blocks to be identical and NO headless test could see a
+    // tint added to only one of them — which is an invitation to make one see it rather than a
+    // reason to trust care. Parsed from the stylesheet, so a hue that exists only in the TSX token
+    // reference (or only in light mode) is a failure rather than a silent fallback to nothing.
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    const blocks = [
+      css.slice(0, css.indexOf('@media (prefers-color-scheme: dark)')),
+      css.slice(css.indexOf('@media (prefers-color-scheme: dark)'), css.indexOf(":root[data-theme='dark']")), // prettier-ignore
+      css.slice(css.indexOf(":root[data-theme='dark']")),
+    ];
+    const hues = blocks.map((b) =>
+      LANES.map((lane) => new RegExp(`--lane-${lane}:\\s*(#[0-9a-f]{6})`).exec(b)?.[1] ?? null),
+    );
+    for (const [i, set] of hues.entries()) {
+      expect(set.filter(Boolean).length, `block ${i} is missing a lane hue`).toBe(MAX_WIDTH);
+      expect(new Set(set).size, `block ${i} reuses a hue across lanes`).toBe(MAX_WIDTH);
+    }
+    // The two dark blocks are the ones that drift, because only one of them is ever looked at.
+    expect(hues[1]).toEqual(hues[2]);
+    // ...and dark is a SELECTED set, not an automatic flip of light.
+    expect(hues[0]).not.toEqual(hues[1]);
+  });
 });
 
-describe('geometry: wires are orthogonal and anchored on real edges', () => {
+describe('geometry: wires are orthogonal, anchored on real edges, and clear of the boxes', () => {
   it('every wire segment is axis-aligned (no diagonals)', () => {
     const eps = 0.01;
-    for (const wire of WIRES) {
-      for (let i = 1; i < wire.points.length; i++) {
-        const [ax, ay] = wire.points[i - 1]!;
-        const [bx, by] = wire.points[i]!;
-        const axisAligned = Math.abs(ax - bx) < eps || Math.abs(ay - by) < eps;
-        expect.soft(axisAligned, `${wire.id} seg ${i} diagonal (${ax},${ay})→(${bx},${by})`).toBe(true); // prettier-ignore
+    for (const w of WIDTHS) {
+      for (const wire of geometryFor(w).wires) {
+        for (let i = 1; i < wire.points.length; i++) {
+          const [ax, ay] = wire.points[i - 1]!;
+          const [bx, by] = wire.points[i]!;
+          const axisAligned = Math.abs(ax - bx) < eps || Math.abs(ay - by) < eps;
+          expect.soft(axisAligned, `${wire.id} seg ${i} diagonal at width ${w} (${ax},${ay})→(${bx},${by})`).toBe(true); // prettier-ignore
+        }
       }
     }
   });
 
   it('every wire endpoint sits on its node’s drawn edge', () => {
-    for (const wire of WIRES) {
-      const first = wire.points[0]!;
-      const last = wire.points[wire.points.length - 1]!;
-      expect.soft(onPerimeter(first, wire.ends[0]), `${wire.id} start off ${wire.ends[0]}`).toBe(true); // prettier-ignore
-      expect.soft(onPerimeter(last, wire.ends[1]), `${wire.id} end off ${wire.ends[1]}`).toBe(true);
+    for (const w of WIDTHS) {
+      const g = geometryFor(w);
+      for (const wire of g.wires) {
+        const first = wire.points[0]!;
+        const last = wire.points[wire.points.length - 1]!;
+        expect.soft(onPerimeter(g.nodes, first, wire.ends[0]), `${wire.id} start off ${wire.ends[0]} at width ${w}`).toBe(true); // prettier-ignore
+        expect.soft(onPerimeter(g.nodes, last, wire.ends[1]), `${wire.id} end off ${wire.ends[1]} at width ${w}`).toBe(true); // prettier-ignore
+      }
+    }
+  });
+
+  it('no wire segment runs THROUGH a box it is not connected to', () => {
+    // NEW at M13, and it exists because nothing else in this suite could see it: endpoints are
+    // checked against the perimeter, overlaps against other wires, dangling against visibility —
+    // and a rail crossing straight through a latch bar passes all three. That crossing is the exact
+    // failure mode of an N-lane rail scheme, and running it found TWO routes that had shipped since
+    // M7: the forwarding unit's MEM/WB input crossed the EX/MEM bar, and the hazard unit's pc-hold
+    // ran the length of the issue box directly above it. Both are rerouted; neither was visible to
+    // any test, and neither was caught by M7's browser pass.
+    for (const tier of DEPTH_TIERS) {
+      for (const cfg of CONFIGS) {
+        const g = geometryFor(cfg.issueWidth);
+        const boxes = [...g.nodes.values()].filter((n) => nodeVisibleAt(n, tier, cfg));
+        for (const wire of g.wires) {
+          if (!wireVisibleAt(wire, tier, cfg)) continue;
+          for (const seg of segmentsOf(wire.points)) {
+            for (const box of boxes) {
+              if (wire.ends.includes(box.id)) continue;
+              expect.soft(throughBox(seg, box), `${wire.id} runs through ${box.id} at ${tier} ${label(cfg)}`).toBeLessThan(2); // prettier-ignore
+            }
+          }
+        }
+      }
     }
   });
 
   it('no two simultaneously-drawn wires run collinearly on top of each other', () => {
     // A collinear overlap is a permanent "two lines as one", invisible to the eye. Bucketed by all
     // THREE axes: a contraction and its through-mux wire are intentionally collinear (they share a
-    // routing rail on purpose) but never co-visible, and neither are lane 1's wires at width 1.
+    // routing rail on purpose) but never co-visible, and neither are a hidden lane's wires.
+    //
+    // This is also the litmus that catches a CHANNEL COLLISION, which is what the N-lane rail
+    // scheme risks: two lanes on the same outboard side climb through the same corridor, and if
+    // they were handed the same channel — or the same stub on the bar they both leave from — their
+    // runs would coincide. Segments are hoisted out of the inner loop: the check is quadratic in
+    // the wire count, and the wire count grew with N.
     for (const tier of DEPTH_TIERS) {
       for (const cfg of CONFIGS) {
-        const vis = WIRES.filter((w) => wireVisibleAt(w, tier, cfg));
+        const vis = geometryFor(cfg.issueWidth).wires.filter((w) => wireVisibleAt(w, tier, cfg));
+        const segs = vis.map((w) => segmentsOf(w.points));
         for (let i = 0; i < vis.length; i++) {
           for (let j = i + 1; j < vis.length; j++) {
-            const wi = vis[i]!;
-            const wj = vis[j]!;
             let worst = 0;
-            for (const sa of segmentsOf(wi.points))
-              for (const sb of segmentsOf(wj.points))
-                worst = Math.max(worst, collinearOverlap(sa, sb));
-            expect.soft(worst, `${wi.id} overlaps ${wj.id} at ${tier} ${label(cfg)} for ${worst.toFixed(0)}px`).toBeLessThan(2); // prettier-ignore
+            for (const sa of segs[i]!) for (const sb of segs[j]!) worst = Math.max(worst, collinearOverlap(sa, sb)); // prettier-ignore
+            expect.soft(worst, `${vis[i]!.id} overlaps ${vis[j]!.id} at ${tier} ${label(cfg)} for ${worst.toFixed(0)}px`).toBeLessThan(2); // prettier-ignore
           }
         }
       }

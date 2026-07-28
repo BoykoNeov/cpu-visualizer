@@ -70,13 +70,36 @@
      these mean ISSUE SLOT and tint only replicated hardware BOXES, which is the one thing a stage
      hue cannot claim (a shared box belongs to no single stage). Lane 0 aliases the accent on
      purpose: a single-issue machine's lane 0 is today's picture, which is the right degenerate
-     case. Machine-validated 2026-07-14 against both surfaces — CVD separation dE 41.3 light /
-     42.6 dark — with one WARN: light magenta is 2.62:1 against the surface, so the RELIEF RULE is
-     mandatory and a lane hue never appears without a text label (every lane-tinted node carries
-     its lane number in its own label; pinned by test). No red or amber lane: red is the
-     danger/flush family and amber the warn wash, so a lane in either would impersonate a status. */
+     case. One WARN: light magenta is 2.62:1 against the surface, so the RELIEF RULE is mandatory
+     and a lane hue never appears without a text label (every lane-tinted node carries its lane
+     number in its own label; pinned by test). No red or amber lane: red is the danger/flush family
+     and amber the warn wash, so a lane in either would impersonate a status.
+
+     EXTENDED TO FOUR SLOTS at M13 step 7, and the numbers below are the measured record — including
+     the one that got WORSE, because rounding that away is the failure mode this milestone is most
+     prone to. Re-measured 2026-07-28 with the dataviz skill's `validate_palette.js` (OKLab dE x100,
+     worst ALL-PAIRS, min over protan/deutan; target >= 8, normal-vision hard floor 15):
+
+                       worst all-pairs CVD dE      normal-vision dE
+       light  2-slot            13.0                    27.5
+       light  4-slot            13.0   (no loss)        22.6
+       dark   2-slot            15.9                    26.5
+       dark   4-slot            10.1   (a LOSS)         16.4
+
+     Two corrections to the record this block used to carry. First, the figure it stated — "CVD
+     separation dE 41.3 light / 42.6 dark" — does NOT reproduce on any check the validator makes;
+     the 2-slot set measures 13.0 / 15.9. Second, "at least match the 2-slot separation" was never
+     an achievable acceptance for ANY 4-slot set: the shipped pair stays a pair, so adding hues can
+     only lower the worst one. A sweep of the whole legal hue space puts the dark ceiling at ~14.6,
+     still below the 2-slot 15.9. The trade was put to the user and pinned (2026-07-28): keep lanes
+     0 and 1 exactly as shipped — so widths 1 and 2 keep their colours — and accept the dark loss,
+     which clears the target with margin and is carried by the relief rule anyway, since a lane hue
+     is never the sole carrier of a lane's identity. Both new tints clear 3:1 on their own surface,
+     so the set still ships exactly ONE relief warning and not two. */
   --lane-0: #2a78d6;
   --lane-1: #e87ba4;
+  --lane-2: #2e782e;
+  --lane-3: #742e78;
 }
 
 /* Dark tokens, twice: once for the OS preference (unless the toggle pinned light), once for the
@@ -113,6 +136,8 @@
     --phase-wb: #9085e9;
     --lane-0: #3987e5;
     --lane-1: #d55181;
+    --lane-2: #517c3c;
+    --lane-3: #8b49ab;
   }
 }
 :root[data-theme='dark'] {
@@ -146,6 +171,8 @@
   --phase-wb: #9085e9;
   --lane-0: #3987e5;
   --lane-1: #d55181;
+  --lane-2: #517c3c;
+  --lane-3: #8b49ab;
 }
 
 /* ---- 2. Base ------------------------------------------------------------------------ */

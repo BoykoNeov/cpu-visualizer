@@ -35,15 +35,13 @@ import type { CycleTrace } from '@cpu-viz/trace';
 import { useMemo } from 'react';
 import {
   activate,
-  CANVAS,
+  geometryFor,
   LANES,
-  NODES,
   nodeVisibleAt,
   showControlLabels,
   showValueLabels,
   STAGE_LABELS,
   STAGES,
-  WIRES,
   wireVisibleAt,
   type DatapathConfig,
   type Lane,
@@ -51,8 +49,18 @@ import {
 import { DatapathDiagram, fmtValue, type LegendItem, type NodeVM, type WireVM } from './DatapathDiagram'; // prettier-ignore
 import { PHASE_COLORS, T } from './theme';
 
-/** The lane hues, as token references — never a hex in TSX (that is what makes light/dark free). */
-export const LANE_COLORS: Readonly<Record<Lane, string>> = { 0: 'var(--lane-0)', 1: 'var(--lane-1)' }; // prettier-ignore
+/**
+ * The lane hues, as token references — never a hex in TSX (that is what makes light/dark free).
+ *
+ * FOUR tints since M13 step 7, and the extension was RE-VALIDATION rather than invention: the lane
+ * channel is a second categorical set, separate from `PHASE_COLORS`, so nothing fixed it at two.
+ * Lanes 2 and 3 are green and purple, chosen by sweeping the legal hue space rather than by eye —
+ * no red and no amber at any slot (red is the danger/flush family, amber the warn wash, so a lane
+ * in either would impersonate a status), and no tint below 3:1 against its own surface, since the
+ * set already ships one relief WARN and a second would be a new obligation rather than a colour
+ * choice. The measured cost is on the record in `styles.css`, including where it is a LOSS.
+ */
+export const LANE_COLORS: Readonly<Record<Lane, string>> = { 0: 'var(--lane-0)', 1: 'var(--lane-1)', 2: 'var(--lane-2)', 3: 'var(--lane-3)' }; // prettier-ignore
 
 /** How a pairing refusal reads in the legend caption — the three verdicts, in plain words. The
  *  full readout is step 8's job; this is the one-line version the diagram can carry today, and it
@@ -79,24 +87,29 @@ export function SuperscalarDatapath(props: {
   const act = useMemo(() => activate(trace), [trace]);
   const labels = showValueLabels(tier);
   const controls = showControlLabels(tier);
+  // The WIDTH picks a whole geometry, where the other two axes only filter one. `activate` still
+  // lights the full lane universe (INV-2); this is where the machine's own size is chosen.
+  const geom = useMemo(() => geometryFor(config.issueWidth), [config.issueWidth]);
 
-  const wires: WireVM[] = WIRES.filter((wire) => wireVisibleAt(wire, tier, config)).map((wire) => {
-    const a = act.wires.get(wire.id);
-    return {
-      id: wire.id,
-      points: wire.points,
-      active: a !== undefined,
-      // The hue is the STAGE's, not the lane's: ten instructions, five colors, one cycle.
-      color: a ? PHASE_COLORS[a.stage] : undefined,
-      label: a && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
-      // Ring the followed instruction's own work. Only WIRES can carry this — a component box is
-      // shared (the register file is read and written in one cycle), which is the same reason a
-      // shared box carries no hue.
-      followed: a !== undefined && followed !== null && a.instr === followed,
-    };
-  });
+  const wires: WireVM[] = geom.wires
+    .filter((wire) => wireVisibleAt(wire, tier, config))
+    .map((wire) => {
+      const a = act.wires.get(wire.id);
+      return {
+        id: wire.id,
+        points: wire.points,
+        active: a !== undefined,
+        // The hue is the STAGE's, not the lane's: ten instructions, five colors, one cycle.
+        color: a ? PHASE_COLORS[a.stage] : undefined,
+        label: a && labels && a.value !== undefined ? fmtValue(a.value, a.fmt) : undefined,
+        // Ring the followed instruction's own work. Only WIRES can carry this — a component box is
+        // shared (the register file is read and written in one cycle), which is the same reason a
+        // shared box carries no hue.
+        followed: a !== undefined && followed !== null && a.instr === followed,
+      };
+    });
 
-  const nodes: NodeVM[] = Array.from(NODES.values())
+  const nodes: NodeVM[] = Array.from(geom.nodes.values())
     .filter((node) => nodeVisibleAt(node, tier, config))
     .map((node) => ({
       ...node,
@@ -125,7 +138,7 @@ export function SuperscalarDatapath(props: {
     <DatapathDiagram
       title={`Superscalar datapath — ${config.issueWidth}-wide`}
       ariaLabel={`In-order superscalar datapath, ${config.issueWidth} instructions per cycle`}
-      canvas={CANVAS}
+      canvas={geom.canvas}
       wires={wires}
       nodes={nodes}
       markerPrefix="ss"

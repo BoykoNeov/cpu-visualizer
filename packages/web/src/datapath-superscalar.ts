@@ -86,7 +86,7 @@
  */
 
 import { DEPTH_TIERS, type DepthTier } from '@cpu-viz/curriculum';
-import type { Stage } from '@cpu-viz/engine-superscalar';
+import { MAX_ISSUE_WIDTH, type Stage } from '@cpu-viz/engine-superscalar';
 import type { CycleTrace, InstructionInstance } from '@cpu-viz/trace';
 
 export type { Stage };
@@ -101,16 +101,30 @@ export const STAGE_LABELS: Record<Stage, string> = {
   WB: 'Writeback',
 };
 
-/** An issue slot — the lane a replicated unit belongs to. Index 0 is the OLDEST in program order. */
-export type Lane = 0 | 1;
-export const LANES: readonly Lane[] = [0, 1];
-/** The widest machine this geometry draws. Width is a config toggle (1 ↔ 2), never a third value. */
-export const MAX_WIDTH = 2;
+/**
+ * An issue slot — the lane a replicated unit belongs to. Index 0 is the OLDEST in program order.
+ * This names every lane the geometry CAN draw; how many it DOES draw is {@link geometryFor}'s
+ * argument. The union is pinned to {@link MAX_WIDTH} by test rather than by comment.
+ */
+export type Lane = 0 | 1 | 2 | 3;
+export const LANES: readonly Lane[] = [0, 1, 2, 3];
+/**
+ * The widest machine this geometry draws — the ENGINE's bound, imported rather than re-typed.
+ * Until M13 step 7 this was a local `2`, and `parseLocation` returned `null` for every slot beyond
+ * it: at width 3 an `EX.2` occupant was dropped from the occupancy map with no crash and no red
+ * test (found by step 5's sweep, fixed here). A view that clamps a slot the trace can emit is not
+ * simplifying — it is disagreeing with the trace, which no depth tier is allowed to do (INV-5).
+ */
+export const MAX_WIDTH = MAX_ISSUE_WIDTH;
 
 /**
  * Split a superscalar `location` into its stage and issue slot. This model's locations are ALWAYS
  * `"<stage>.<slot>"` — never a bare `"EX"`, even at width 1 (pinned at M7 step 2a, proven over a
  * real recording at step 5), so a bare stage name is not ours to draw and returns `null`.
+ *
+ * The slot bound is the ENGINE's maximum, not the drawn width. Bounding it by the drawn width
+ * would re-create the step-5 hole one level up: a trace recorded wide and viewed narrow would lose
+ * occupants silently instead of showing a mismatch.
  */
 export function parseLocation(location: string): { stage: Stage; slot: number } | null {
   const dot = location.indexOf('.');
@@ -128,24 +142,48 @@ export function laneId(base: string, lane: number): string {
 }
 
 // --- Geometry -----------------------------------------------------------------------------
-
-// WIDTH IS SET BY THE LABELS, HEIGHT BY THE LANES. The first half is M3's finding, inherited: the
-// shared renderer de-collides a value label by nudging it VERTICALLY, which fails beside a latch
-// bar (a 588px-tall bar leaves a label no clear y to escape to), so every gap where a 32-bit hex
-// label lands beside a bar is sized to hold it. The second half is this model's: two execute lanes
-// plus the shared spine BETWEEN them, plus a rail band above and below for each lane's forwarding
-// returns, is what sets the height. Lane 0's returns ride the TOP rails and lane 1's the BOTTOM —
-// each lane's network on its own outboard side, which is both the picture ("each lane forwards for
-// itself") and the thing that keeps eight long return wires from having to share one 22px channel.
-export const CANVAS = { width: 1300, height: 830 } as const;
-
-/** Vertical pitch between the two execute lanes — lane 1 is lane 0 translated down by this. */
+//
+// WIDTH IS SET BY THE LABELS, HEIGHT BY THE LANES — and at M13 step 7 both became FUNCTIONS OF THE
+// ISSUE WIDTH rather than constants. The first half is M3's finding, inherited: the shared renderer
+// de-collides a value label by nudging it VERTICALLY, which fails beside a latch bar (a tall bar
+// leaves a label no clear y to escape to), so every gap where a 32-bit hex label lands beside a bar
+// is sized to hold it. The second half is this model's, and it is why the geometry could not stay a
+// constant: N execute lanes plus the shared spine BETWEEN them, plus a rail band for each lane's
+// forwarding returns, is what sets the height — so the height IS the width. A single geometry sized
+// for four lanes would draw a width-1 machine as one lane at the top of a canvas two thirds empty,
+// and the latch bars would span three lanes that do not exist. The bars' height and the rails' y are
+// wire coordinates, so the wires are width-dependent too; there is no smaller change that works.
+//
+// THE RAIL SCHEME, AND THE ONE PREMISE IT RESTS ON. Until M13 lane 0's forwarding returns rode the
+// band ABOVE the diagram and lane 1's the band BELOW — an outboard-side scheme with exactly two
+// sides, which four lanes do not have. The generalization keeps the two bands and splits the lanes
+// between them: the TOP half of the lanes forward on the top side, the BOTTOM half on the bottom.
+// That is `ceil(n/2)` on top, which reproduces the old assignment exactly at widths 1 and 2, and it
+// preserves the file's original safety argument rather than replacing it — the vertical channels
+// between the ID/EX bar and the forwarding muxes are REUSED by the two sides, which is sound only
+// because a top-side lane's runs and a bottom-side lane's runs are disjoint in y. Lanes on the SAME
+// side do overlap in y, so each of them needs its own channel: the channel count is
+// `4 * ceil(n/2)`, not 4, and the corridor is widened to hold them by pushing the execute cluster
+// right (`fwdmuxX` is derived FROM the channel count, so the two can never disagree).
 const LANE_DY = 310;
-/** Top of lane 0's execute block. Lane `n`'s block top is `EX_TOP + n * LANE_DY`. */
-const EX_TOP = 118;
-/** Top / bottom of the four latch bars — the columns that divide the five stage bands. */
-const BAR_TOP = 112;
-const BAR_H = 588;
+/** A lane block's own height — its forwarding unit's top to its pc/immediate adder's bottom. */
+const LANE_H = 260;
+/** A lane's sign-extender sits this far below its block top, in the shared ID band. */
+const SEXT_DY = 114;
+const ALU_W = 84;
+
+/** How many lanes forward on each outboard side. Reproduces M7's assignment at widths 1 and 2. */
+function sideSplit(width: number): { top: number; bottom: number } {
+  const top = Math.ceil(width / 2);
+  return { top, bottom: width - top };
+}
+
+/** `count` anchors spread evenly across a node edge, as offsets from that edge's midpoint. The
+ *  register file is the only node that needs this: it is the one shared box whose PORT COUNT grows
+ *  with the width (two read ports and one write port per lane), while the box itself must not. */
+function spread(count: number, i: number, span: number): number {
+  return count <= 1 ? 0 : (i - (count - 1) / 2) * (span / count);
+}
 
 export interface DatapathNode {
   readonly id: string;
@@ -174,10 +212,11 @@ export interface DatapathNode {
   readonly predictTakenOnly?: boolean;
   /**
    * Lowest `issueWidth` at which this unit is drawn. Absent ⇒ 1 (always). Set to 2 on the ISSUE
-   * unit, which is the one width-gated node that is not simply "lane 1's copy": pairing is a
-   * question about two candidates, and at width 1 there is never a second one — so the trace cannot
-   * carry a pairing refusal there, and a unit that could never light would be drawing a decision
-   * the machine never makes. A `lane` implies its own minimum (`lane + 1`) and needs no duplicate.
+   * unit, which is the one width-gated node that is not simply "another lane's copy": pairing is a
+   * question about two or more candidates, and at width 1 there is never a second one — so the
+   * trace cannot carry a pairing refusal there, and a unit that could never light would be drawing
+   * a decision the machine never makes. A `lane` implies its own minimum (`lane + 1`) and needs no
+   * duplicate.
    */
   readonly minWidth?: number;
   /** The control signal this unit drives — shown only at `expert` tier. */
@@ -185,118 +224,17 @@ export interface DatapathNode {
 }
 
 /** The narrowest machine that draws `node` — from its explicit `minWidth` and its lane, whichever
- *  is stricter. Lane `n` needs width `n + 1` by definition, so the two never have to agree by hand. */
+ *  is stricter. Lane `n` needs width `n + 1` by definition, so the two never have to agree by hand.
+ *
+ *  This survives the move to per-width geometry ON PURPOSE. `geometryFor(w)` already omits every
+ *  lane at or beyond `w`, so for a lane node this check is redundant — but it is the only thing
+ *  that gates the ISSUE unit, and keeping it means the "absent, never idle" claim can still be
+ *  asked of the full lane universe ({@link NODES}) rather than only of a geometry that has already
+ *  answered it by construction. A claim you can only test against a set that cannot falsify it is
+ *  not a tested claim. */
 function requiredWidth(el: { lane?: Lane; minWidth?: number }): number {
   return Math.max(el.minWidth ?? 1, (el.lane ?? 0) + 1);
 }
-
-// LAYOUT CONTRACT (checked by the geometry tests): five stage bands divided by four latch BARS,
-// exactly as M3 — the bars are SHARED and undoubled, because a latch bar already holds every slot
-// (`SuperscalarMicro`'s latches are arrays; the bar is the array, not one element of it). Between
-// them the canvas is banded HORIZONTALLY: lane 0's execute block on top, the shared spine
-// (PC/instruction memory, register file, data memory) through the middle, lane 1's block below.
-// Control units ride the clear top band; each lane's forwarding returns ride its own outboard rail
-// band; the writeback bus and the four pc redirects ride the lowest rails, each on its own y.
-const SHARED_NODES: readonly DatapathNode[] = [
-  // --- IF (shared): the next-pc selector, the PC, the pair-fetch adder, the instruction memory ---
-  // Six sources meet at `pcmux`, which is the honest count for this machine: the sequential next
-  // pc, the ID bet, and a pc-relative or `jalr` correction from EITHER lane. The last pair is why
-  // there are four redirects and not two — the branch-slot rule caps EX at ONE resolved transfer
-  // per cycle, but it does NOT say which lane it sits in (observed: a `jal` issuing from slot 1
-  // beside an `auipc` in slot 0), so both lanes must be able to steer and at most one ever does.
-  { id: 'pcmux', label: '', x: 32, y: 342, w: 18, h: 76, shape: 'mux', controlLabel: 'PCSrc' },
-  { id: 'pc', label: 'PC', x: 68, y: 358, w: 40, h: 44 },
-  // "+4n", not "+4": this machine advances the fetch pointer by four bytes PER INSTRUCTION FETCHED,
-  // and that count is 1 or 2 depending on how many IF slots were free — so a hard "+8" would be
-  // wrong on exactly the cycles a stall makes interesting. The wire out of it carries the real
-  // number from the trace, which is where a reader gets the actual value.
-  { id: 'addn', label: '+4n', x: 150, y: 248, w: 58, h: 48, shape: 'adder' },
-  { id: 'imem', label: 'Instr\nMem', x: 150, y: 340, w: 76, h: 80 },
-  { id: 'ifid', label: 'IF\n/\nID', x: 284, y: BAR_TOP, w: 16, h: BAR_H },
-  // --- ID (shared): issue/pairing, hazard detection, the register file, the bet adder -----------
-  // THE MODEL'S SOUL, drawn. It answers "may these two go together?" and its refusal reason is what
-  // step 8's readout will name. No `minTier`: like the bet adder and unlike the forwarding unit,
-  // this is not an optimization detail the skeleton may omit — it is the machine.
-  { id: 'issue', label: 'Issue\n/ pair', x: 330, y: 112, w: 112, h: 44, minWidth: 2, controlLabel: 'IssueSlots' }, // prettier-ignore
-  { id: 'hazard', label: 'Hazard\ndetect', x: 330, y: 170, w: 112, h: 44, minTier: 'expert', controlLabel: 'PCWrite / IF-ID-Write' }, // prettier-ignore
-  // ONE register file, with twice the ports. The box is shared and hue-neutral (it is read by both
-  // lanes' ID and written by both lanes' WB in the same cycle); the PORTS are the wires, and those
-  // are lane-tagged. That is the honest split — a superscalar does not grow a second register file.
-  { id: 'regfile', label: 'Registers', x: 330, y: 300, w: 112, h: 140 },
-  // The BET's adder — single-lane by the branch-slot rule (EX resolves at most one transfer a
-  // cycle), but fed from EITHER lane's sign-extender, since the betting branch may sit in either
-  // slot. Proportioned near-square so the P&H notch reads as an adder (M4 step 5's browser finding).
-  { id: 'btarget', label: 'Branch\ntarget', x: 330, y: 456, w: 80, h: 54, shape: 'adder', predictTakenOnly: true }, // prettier-ignore
-  { id: 'idex', label: 'ID\n/\nEX', x: 520, y: BAR_TOP, w: 16, h: BAR_H },
-  { id: 'exmem', label: 'EX\n/\nMEM', x: 784, y: BAR_TOP, w: 16, h: BAR_H },
-  // --- MEM (shared, and single by RULE): one data memory, one port --------------------------
-  // The mem-port refusal is what keeps this box single, and it pays for itself several times over:
-  // one memory means one cache, one miss-freeze, and one address stream, so nothing about width can
-  // reorder memory. Drawing a second data memory would draw hardware the pairing rules forbid.
-  { id: 'dmem', label: 'Data\nMem', x: 862, y: 334, w: 92, h: 92 },
-  { id: 'memwb', label: 'MEM\n/\nWB', x: 1040, y: BAR_TOP, w: 16, h: BAR_H },
-] as const;
-
-/** Lane `n`'s replicated hardware. Everything in the EX band sits on a fixed pitch (`LANE_DY`);
- *  the two ID-band units do NOT, because the shared register file sits between them — so a lane's
- *  sign-extender is placed against its own band rather than by the formula. */
-function laneNodes(lane: Lane): DatapathNode[] {
-  const ly = EX_TOP + lane * LANE_DY;
-  const n = String(lane);
-  // The sign-extenders straddle the register file: lane 0 above it, lane 1 below.
-  const sextY = lane === 0 ? 232 : 534;
-  return [
-    { id: laneId('signext', lane), label: `Sign\nExtend ${n}`, x: 330, y: sextY, w: 100, h: 38, lane }, // prettier-ignore
-    { id: laneId('fwdunit', lane), label: `Forwarding\nunit ${n}`, x: 590, y: ly, w: 118, h: 38, lane, minTier: 'expert', forwardingOnly: true }, // prettier-ignore
-    { id: laneId('fwdmuxa', lane), label: '', x: 580, y: ly + 58, w: 18, h: 56, shape: 'mux', lane, minTier: 'expert', forwardingOnly: true, controlLabel: `ForwardA${n}` }, // prettier-ignore
-    { id: laneId('fwdmuxb', lane), label: '', x: 580, y: ly + 126, w: 18, h: 56, shape: 'mux', lane, minTier: 'expert', forwardingOnly: true, controlLabel: `ForwardB${n}` }, // prettier-ignore
-    { id: laneId('alu', lane), label: `ALU ${n}`, x: 624, y: ly + 54, w: 84, h: 132, shape: 'adder', lane }, // prettier-ignore
-    // The dedicated pc/immediate adder, REPLICATED — settled by dumping a trace, not by reasoning:
-    // two `lui`s pair, and U/J producers emit no `alu-op`, so both lanes can need it in one cycle.
-    { id: laneId('pcarith', lane), label: `PC\narith ${n}`, x: 624, y: ly + 212, w: 68, h: 48, shape: 'adder', lane }, // prettier-ignore
-    { id: laneId('wbmux', lane), label: '', x: 1150, y: ly + 64, w: 18, h: 100, shape: 'mux', lane, minTier: 'detailed', controlLabel: `MemtoReg${n}` }, // prettier-ignore
-  ];
-}
-
-const NODE_LIST: readonly DatapathNode[] = [...SHARED_NODES, ...LANES.flatMap(laneNodes)];
-
-export const NODES: ReadonlyMap<string, DatapathNode> = new Map(NODE_LIST.map((n) => [n.id, n]));
-
-type Pt = readonly [number, number];
-
-/** Anchor a point on a node's edge. l/r = side midpoints + `off`; t/b = top/bottom edge + `off`
- *  along it. For adders use {@link aUp}/{@link aLo} (left operand stubs) and `r` (output). */
-function at(id: string, side: 'l' | 'r' | 't' | 'b', off = 0): Pt {
-  const n = NODES.get(id)!;
-  switch (side) {
-    case 'l':
-      return [n.x, n.y + n.h / 2 + off];
-    case 'r':
-      return [n.x + n.w, n.y + n.h / 2 + off];
-    case 't':
-      return [n.x + n.w / 2 + off, n.y];
-    case 'b':
-      return [n.x + n.w / 2 + off, n.y + n.h];
-  }
-}
-/** A point on a latch BAR's left/right edge at an absolute `y`. The bars are 588px tall, so
- *  centre-relative offsets would be unreadable; the y is the honest coordinate. */
-function bar(id: string, side: 'l' | 'r', y: number): Pt {
-  const n = NODES.get(id)!;
-  return [side === 'l' ? n.x : n.x + n.w, y];
-}
-/** An adder's upper / lower left operand stub; `off` slides along that stub's vertical edge. */
-function aUp(id: string, off = 0): Pt {
-  const n = NODES.get(id)!;
-  return [n.x, n.y + n.h * 0.16 + off];
-}
-function aLo(id: string, off = 0): Pt {
-  const n = NODES.get(id)!;
-  return [n.x, n.y + n.h * 0.84 + off];
-}
-/** The y of an adder stub, for routing an elbow into it. */
-const upY = (id: string, off = 0): number => aUp(id, off)[1];
-const loY = (id: string, off = 0): number => aLo(id, off)[1];
 
 export interface DatapathWire {
   readonly id: string;
@@ -306,7 +244,7 @@ export interface DatapathWire {
   readonly ends: readonly [string, string];
   readonly points: readonly Pt[];
   /** The issue slot whose work this wire carries. Set on every replicated wire — including ones
-   *  whose ENDPOINTS are both shared (the two `imem → IF/ID` fetch wires, the two `EX/MEM → MEM/WB`
+   *  whose ENDPOINTS are both shared (the `imem → IF/ID` fetch wires, the `EX/MEM → MEM/WB`
    *  bypasses), which is exactly why this cannot be derived from `ends`. */
   readonly lane?: Lane;
   readonly minTier?: DepthTier;
@@ -320,169 +258,489 @@ export interface DatapathWire {
   readonly contracts?: string;
 }
 
-// The rail allocation, written down because it is the thing a later edit will silently break.
-// TOP rails (lane 0's forwarding returns) and BOTTOM rails (lane 1's) are the outboard bands; the
-// lowest rails carry the four pc redirects and the two writeback buses. A contraction wire SHARES
-// its through-wire's rail on purpose — the two are never co-visible (one stands in for the other),
-// which is what keeps the rail count at fourteen instead of twenty-four.
-const RAIL = {
-  bet: 18, // ID's bet, home to the selector on the top rail
-  seq: 32, // the sequential +4n, likewise
-  issuePc: 46, // the issue unit holding the PC
-  hazardPc: 60, // the hazard unit holding the PC
-  fwd: [
-    [74, 82, 90, 98], // lane 0 — above the diagram
-    [712, 720, 728, 736], // lane 1 — below it
-  ],
-  redirect: [744, 752, 760, 768], // pcarith-l0, pcarith-l1, alu-l0, alu-l1
-  wb: [786, 798], // the two writeback buses home to the register file
-} as const;
+type Pt = readonly [number, number];
 
-/** Vertical channels between the ID/EX bar and the forwarding muxes — reused by BOTH lanes, which
- *  is safe because lane 0 climbs to the top rails and lane 1 drops to the bottom ones, so no two
- *  runs ever overlap in y. */
-const FWD_CH = [542, 550, 558, 566] as const;
-/** Vertical channels for the forwarding CONTRACTIONS, which bypass the muxes and land straight on
- *  an ALU operand stub. They cross the forwarding unit's box — harmless, because a contraction is
- *  drawn only when that unit is hidden. */
-const CON_CH = [600, 606, 612, 618] as const;
-/** The channel a forwarding mux's output elbows through on its way to the ALU. */
-const MUX_OUT_CH = 610;
-/** Vertical channels in the narrow gap between the IF/ID bar and the ID band's boxes, indexed
- *  `[bet-immediate lane 0, bet-immediate lane 1, writeback bus lane 0, writeback bus lane 1]`. The
- *  two short bet runs take the tightest slots and the two long writeback buses the outer ones. */
-const ID_CH = [306, 312, 318, 324] as const;
+/** One machine's drawn geometry: the canvas it needs, its nodes and its wires. */
+export interface Geometry {
+  readonly canvas: { readonly width: number; readonly height: number };
+  readonly nodes: ReadonlyMap<string, DatapathNode>;
+  readonly wires: readonly DatapathWire[];
+}
 
-const SHARED_WIRES: readonly DatapathWire[] = [
-  // --- IF: the selected pc addresses the instruction memory ---------------------------------
-  { id: 'pcmux-pc', ends: ['pcmux', 'pc'], points: [at('pcmux', 'r'), at('pc', 'l')] }, // prettier-ignore
-  { id: 'pc-imem', ends: ['pc', 'imem'], points: [at('pc', 'r'), at('imem', 'l')] }, // prettier-ignore
-  { id: 'pc-addn', ends: ['pc', 'addn'], points: [at('pc', 't', -10), [78, loY('addn')], aLo('addn')] }, // prettier-ignore
-  { id: 'addn-pcmux', ends: ['addn', 'pcmux'], points: [at('addn', 'r'), [232, 272], [232, RAIL.seq], [18, RAIL.seq], [18, 350], at('pcmux', 'l', -30)] }, // prettier-ignore
-  // --- ID: the ISSUE unit — the pairing verdict, and the machine's soul ----------------------
-  // It reads both candidates out of IF/ID and answers by holding the ones it refused, which is what
-  // a refusal LOOKS like: the younger instruction sits in ID for a second cycle and leads the next
-  // group. Width-2 only (see the node's `minWidth`).
-  { id: 'ifid-issue', ends: ['ifid', 'issue'], points: [bar('ifid', 'r', at('issue', 'l')[1]), at('issue', 'l')], minWidth: 2 }, // prettier-ignore
-  { id: 'issue-ifid', ends: ['issue', 'ifid'], points: [at('issue', 'l', 14), bar('ifid', 'r', at('issue', 'l', 14)[1])], minWidth: 2 }, // prettier-ignore
-  { id: 'issue-pc', ends: ['issue', 'pc'], points: [at('issue', 't', -20), [at('issue', 't', -20)[0], RAIL.issuePc], [at('pc', 't', 10)[0], RAIL.issuePc], at('pc', 't', 10)], minWidth: 2 }, // prettier-ignore
-  // --- ID: the hazard unit — width-INDEPENDENT, because a RAW against an older stage is the same
-  // question however many instructions travel abreast. It scans every SLOT of the two older stages,
-  // which at width 1 is M3's pair of singleton tests.
-  { id: 'ifid-hazard', ends: ['ifid', 'hazard'], points: [bar('ifid', 'r', at('hazard', 'l')[1]), at('hazard', 'l')] }, // prettier-ignore
-  { id: 'idex-hazard', ends: ['idex', 'hazard'], points: [bar('idex', 'l', at('hazard', 'r', -16)[1]), at('hazard', 'r', -16)] }, // prettier-ignore
-  { id: 'hazard-ifid', ends: ['hazard', 'ifid'], points: [at('hazard', 'l', 14), bar('ifid', 'r', at('hazard', 'l', 14)[1])] }, // prettier-ignore
-  { id: 'hazard-pc', ends: ['hazard', 'pc'], points: [at('hazard', 't', 20), [at('hazard', 't', 20)[0], RAIL.hazardPc], [at('pc', 't', 18)[0], RAIL.hazardPc], at('pc', 't', 18)] }, // prettier-ignore
-  // --- ID: the BET — single-lane by the branch-slot rule, fed from either lane's sign-extender ---
-  { id: 'ifid-btarget', ends: ['ifid', 'btarget'], points: [bar('ifid', 'r', upY('btarget')), aUp('btarget')], predictTakenOnly: true }, // prettier-ignore
-  { id: 'btarget-pcmux', ends: ['btarget', 'pcmux'], points: [at('btarget', 'r'), [486, 483], [486, RAIL.bet], [28, RAIL.bet], [28, 362], at('pcmux', 'l', -18)], predictTakenOnly: true }, // prettier-ignore
-  // --- MEM: EX/MEM addresses the ONE data memory; a load's datum returns to MEM/WB -------------
-  // Shared and unslotted, and that is the mem-port rule paying out: at most one instruction per
-  // cycle can be here, so there is nothing to disambiguate. Whichever lane's instruction it is
-  // lights these wires, and the follow-ring resolves it by id.
-  { id: 'exmem-dmem-addr', ends: ['exmem', 'dmem'], points: [bar('exmem', 'r', 360), at('dmem', 'l', -20)] }, // prettier-ignore
-  { id: 'exmem-dmem-data', ends: ['exmem', 'dmem'], points: [bar('exmem', 'r', 400), at('dmem', 'l', 20)] }, // prettier-ignore
-  { id: 'dmem-memwb', ends: ['dmem', 'memwb'], points: [at('dmem', 'r'), bar('memwb', 'l', 380)] }, // prettier-ignore
-] as const;
+/**
+ * Every derived coordinate for an `n`-lane machine, in one place and in dependency order.
+ *
+ * The chain is the point: nothing below is a hand-typed endpoint. `fwdmuxX` comes from how many
+ * forwarding channels the corridor must hold, `aluX` from how many contraction channels sit past
+ * the muxes, and the whole execute cluster and canvas width follow from `aluX`. So widening the
+ * machine cannot silently overrun a corridor — the corridor moves the hardware instead.
+ */
+function layout(n: number) {
+  const { top: topLanes, bottom: botLanes } = sideSplit(n);
 
-/** Lane `n`'s replicated wiring. */
-function laneWires(lane: Lane): DatapathWire[] {
+  // --- the two outboard rail bands -----------------------------------------------------------
+  // Four control rails, then four forwarding rails for each lane that forwards on the top side.
+  const bet = 18, seq = 32, issuePc = 46, hazardPc = 60; // prettier-ignore
+  // FIVE rails per lane, not four. The fifth carries the MEM/WB -> forwarding-unit comparison,
+  // which until M13 ran STRAIGHT THROUGH the EX/MEM latch bar: the unit sits left of that bar and
+  // its source right of it, and a bar spans every lane, so the only route that does not cross a box
+  // is outboard. That crossing shipped at M7 and no litmus in the suite could see it.
+  const topFwd = Array.from({ length: 5 * topLanes }, (_, k) => 74 + 8 * k);
+  const barTop = 74 + 40 * topLanes + 6;
+  const exTop = barTop + 6;
+  const laneTop = (lane: number): number => exTop + lane * LANE_DY;
+  const spineY = barTop + 268;
+  const btargetY = barTop + 344;
+  // The bars span whatever the machine is TALLEST at - the lane stack once there are two lanes, but
+  // the ID column at width 1, where four boxes stacked in one band reach further down than a single
+  // execute lane does. Deriving this from the lane stack alone left the width-1 bars ending ABOVE
+  // the bet adder's own input, so a wire anchored on the bar hung in space.
+  const stackBottom = Math.max(laneTop(n - 1) + LANE_H, btargetY + 54, spineY + 46);
+  const barH = stackBottom + 12 - barTop;
+
+  const bandStart = barTop + barH + 12;
+  const botFwd = Array.from({ length: 5 * botLanes }, (_, k) => bandStart + 8 * k);
+  const redirectStart = bandStart + 40 * botLanes;
+  // Two pc redirects per lane (its pc adder and its ALU), then one writeback bus per lane.
+  const redirect = Array.from({ length: 2 * n }, (_, k) => redirectStart + 8 * k);
+  const wbStart = redirectStart + 16 * n + 10;
+  const wb = Array.from({ length: n }, (_, k) => wbStart + 12 * k);
+
+  // --- the vertical corridors, left to right -------------------------------------------------
+  // The left margin carries one channel per pc redirect. The sequential-pc and bet returns REUSE
+  // the first two: they descend from the top rails to an anchor above the selector's midpoint,
+  // while a redirect climbs from the bottom rails to an anchor below it, so the two never share a
+  // stretch of y. That reuse is what keeps the margin from having to hold `2n + 2` channels.
+  const leftCh = Array.from({ length: 2 * n }, (_, k) => 4 + 6 * k);
+  const pcmuxX = 10 + 12 * n;
+  const pcX = pcmuxX + 36;
+  const imemX = pcmuxX + 118;
+  const seqCh = imemX + 78;
+
+  // The ID band's channels: one bet-immediate run and one writeback bus per lane, in the gap
+  // between the IF/ID bar and the ID column. The column stays at x = 330 and the BAR moves left as
+  // the machine widens, which is what keeps the ID band's own boxes where the reader learned them.
+  const idCh = Array.from({ length: 2 * n }, (_, k) => 330 - 12 * n + 6 * k);
+  const ifidX = 308 - 12 * n;
+  const idX = 330;
+
+  // Between the register file and the ID/EX bar: two read-port channels per lane, one bet-corner
+  // channel per lane, and one return for the bet adder's own output.
+  const midCh = Array.from({ length: 3 * n + 2 }, (_, k) => 448 + 5 * k);
+  const portCh = (lane: number, port: number): number => midCh[2 * lane + port]!;
+  const cornerX = (lane: number): number => midCh[2 * n + lane]!;
+  const betCh = midCh[3 * n]!;
+  // The hazard unit's pc-hold climbs on the RIGHT, not straight up out of its own top edge. The
+  // issue unit sits directly above it in the same column and over the same x range, so the old
+  // route ran the length of that box - a second M7 crossing the new litmus found. Nothing sits
+  // between the register file and the ID/EX bar above the file, so the climb is clear there.
+  const ctrlCh = midCh[3 * n + 1]!;
+
+  // Between the ID/EX bar and the execute cluster: four forwarding channels per top-side lane
+  // (reused by the bottom side, y-disjointly), then four contraction channels per top-side lane.
+  // A contraction and a through-mux wire are never co-visible, so those two families may overlap
+  // each other's x freely — but never within a family.
+  const fwdCh = Array.from({ length: 5 * topLanes }, (_, k) => 542 + 8 * k);
+  const fwdmuxX = fwdCh[fwdCh.length - 1]! + 14;
+  const conCh = Array.from({ length: 4 * topLanes }, (_, k) => fwdmuxX + 20 + 6 * k);
+  const muxOutCh = fwdmuxX + 30;
+  const aluX = conCh[conCh.length - 1]! + 6;
+  const fwdunitX = fwdmuxX + 10;
+  const aluR = aluX + ALU_W;
+  const fwdunitW = aluR - fwdunitX;
+  const fwdunitCh = aluR + 4;
+  // The pc-adder redirects take the first `n` channels right of the execute cluster and the ALU
+  // redirects the next `n`, so a wider machine never folds one family into the other.
+  const pcarithCh = (lane: number): number => aluR + 8 + 6 * lane;
+  const aluCh = (lane: number): number => aluR + 8 + 6 * n + 6 * lane;
+
+  const exmemX = aluX + 160;
+  const dmemX = exmemX + 78;
+  const memwbX = exmemX + 256;
+  const wbmuxX = memwbX + 110;
+  const width = wbmuxX + 150;
+  const wbCh = (lane: number): number => width - 100 + 12 * lane;
+  const wbConCh = (lane: number): number => width - 112 + 12 * lane;
+
+  // --- the shared spine's y, and the ID column's ----------------------------------------------
+  const issueY = barTop;
+  const hazardY = barTop + 58;
+  const regfileY = barTop + 188;
+  const sextY = (lane: number): number => laneTop(lane) + SEXT_DY;
+  /** The y a lane's bet-immediate run turns left on, below the bet adder and above every lane's
+   *  sign-extender — the one horizontal band in the ID column that is clear at every width. */
+  const cornerY = (lane: number): number => btargetY + 60 + 6 * lane;
+  /** The selector's left edge carries the sequential pc, the bet, and both redirects per lane. */
+  const pcmuxH = 12 * (2 * n + 2) + 4;
+  const pcmuxOff = (k: number): number => -6 * (2 * n + 1) + 12 * k;
+
+  const height = wb[wb.length - 1]! + 32;
+
+  return {
+    n,
+    topLanes,
+    botLanes,
+    rail: { bet, seq, issuePc, hazardPc, topFwd, botFwd, redirect, wb },
+    laneTop,
+    barTop,
+    barH,
+    exTop,
+    spineY,
+    leftCh,
+    pcmuxX,
+    pcX,
+    imemX,
+    seqCh,
+    idCh,
+    ifidX,
+    idX,
+    portCh,
+    cornerX,
+    betCh,
+    ctrlCh,
+    cornerY,
+    fwdCh,
+    conCh,
+    muxOutCh,
+    fwdmuxX,
+    fwdunitX,
+    fwdunitW,
+    fwdunitCh,
+    aluX,
+    aluR,
+    pcarithCh,
+    aluCh,
+    exmemX,
+    dmemX,
+    memwbX,
+    wbmuxX,
+    wbCh,
+    wbConCh,
+    issueY,
+    hazardY,
+    regfileY,
+    btargetY,
+    sextY,
+    pcmuxH,
+    pcmuxOff,
+    canvas: { width, height },
+  };
+}
+type Layout = ReturnType<typeof layout>;
+
+/** Which outboard band a lane's forwarding returns ride, and which five rails of it. */
+function fwdRails(L: Layout, lane: number): { side: 't' | 'b'; rails: number[] } {
+  const onTop = lane < L.topLanes;
+  const band = onTop ? L.rail.topFwd : L.rail.botFwd;
+  const base = 5 * (onTop ? lane : lane - L.topLanes);
+  return { side: onTop ? 't' : 'b', rails: band.slice(base, base + 5) };
+}
+
+// LAYOUT CONTRACT (checked by the geometry tests): five stage bands divided by four latch BARS,
+// exactly as M3 — the bars are SHARED and undoubled, because a latch bar already holds every slot
+// (`SuperscalarMicro`'s latches are arrays; the bar is the array, not one element of it). Between
+// them the canvas is banded HORIZONTALLY: the execute lanes stacked on a fixed pitch, with the
+// shared spine (PC/instruction memory, register file, data memory) running through at its own y.
+// Control units ride the clear top band; each lane's forwarding returns ride its side's rail band;
+// the writeback buses and the pc redirects ride the lowest rails, each on its own y.
+function sharedNodes(L: Layout): DatapathNode[] {
+  return [
+    // --- IF (shared): the next-pc selector, the PC, the group-fetch adder, the instruction memory
+    // The selector's source count is the honest one for this machine: the sequential next pc, the
+    // ID bet, and a pc-relative or `jalr` correction from EVERY lane. That last family is why there
+    // are `2n` redirects and not two — the branch-slot rule caps EX at ONE resolved transfer per
+    // cycle, but it does NOT say which lane it sits in (observed: a `jal` issuing from slot 1
+    // beside an `auipc` in slot 0), so every lane must be able to steer and at most one ever does.
+    { id: 'pcmux', label: '', x: L.pcmuxX, y: L.spineY - L.pcmuxH / 2, w: 18, h: L.pcmuxH, shape: 'mux', controlLabel: 'PCSrc' }, // prettier-ignore
+    { id: 'pc', label: 'PC', x: L.pcX, y: L.spineY - 22, w: 40, h: 44 },
+    // "+4n", not "+4": this machine advances the fetch pointer by four bytes PER INSTRUCTION
+    // FETCHED, and that count runs from 1 to the issue width depending on how many IF slots were
+    // free — so a hard "+8" would be wrong on exactly the cycles a stall makes interesting, and at
+    // width 4 it would be wrong most of the time. The wire out of it carries the real number from
+    // the trace, which is where a reader gets the actual value.
+    { id: 'addn', label: '+4n', x: L.imemX, y: L.spineY - 132, w: 58, h: 48, shape: 'adder' },
+    { id: 'imem', label: 'Instr\nMem', x: L.imemX, y: L.spineY - 40, w: 76, h: 80 },
+    { id: 'ifid', label: 'IF\n/\nID', x: L.ifidX, y: L.barTop, w: 16, h: L.barH },
+    // --- ID (shared): issue/pairing, hazard detection, the register file, the bet adder ---------
+    // THE MODEL'S SOUL, drawn. It answers "may these go together?" and its refusal reason is what
+    // the pairing readout names. No `minTier`: like the bet adder and unlike the forwarding unit,
+    // this is not an optimization detail the skeleton may omit — it is the machine.
+    { id: 'issue', label: 'Issue\n/ pair', x: L.idX, y: L.issueY, w: 112, h: 44, minWidth: 2, controlLabel: 'IssueSlots' }, // prettier-ignore
+    { id: 'hazard', label: 'Hazard\ndetect', x: L.idX, y: L.hazardY, w: 112, h: 44, minTier: 'expert', controlLabel: 'PCWrite / IF-ID-Write' }, // prettier-ignore
+    // ONE register file, with `2n` read ports and `n` write ports. The box is shared and
+    // hue-neutral (it is read by every lane's ID and written by every lane's WB in the same cycle);
+    // the PORTS are the wires, and those are lane-tagged. That is the honest split — a superscalar
+    // does not grow a second register file, however wide it gets. Its EDGE is what has to carry the
+    // widening, which is why the anchors are spread rather than hand-placed.
+    { id: 'regfile', label: 'Registers', x: L.idX, y: L.regfileY, w: 112, h: 140 },
+    // The BET's adder — single by the branch-slot rule (EX resolves at most one transfer a cycle),
+    // but fed from EVERY lane's sign-extender, since the betting branch may sit in any slot.
+    // Proportioned near-square so the P&H notch reads as an adder (M4 step 5's browser finding).
+    { id: 'btarget', label: 'Branch\ntarget', x: L.idX, y: L.btargetY, w: 80, h: 54, shape: 'adder', predictTakenOnly: true }, // prettier-ignore
+    { id: 'idex', label: 'ID\n/\nEX', x: 520, y: L.barTop, w: 16, h: L.barH },
+    { id: 'exmem', label: 'EX\n/\nMEM', x: L.exmemX, y: L.barTop, w: 16, h: L.barH },
+    // --- MEM (shared, and single by RULE): one data memory, one port --------------------------
+    // The mem-port refusal is what keeps this box single, and it pays for itself several times
+    // over: one memory means one cache, one miss-freeze and one address stream, so nothing about
+    // width can reorder memory. Drawing a second data memory would draw hardware the rules forbid.
+    { id: 'dmem', label: 'Data\nMem', x: L.dmemX, y: L.spineY - 46, w: 92, h: 92 },
+    { id: 'memwb', label: 'MEM\n/\nWB', x: L.memwbX, y: L.barTop, w: 16, h: L.barH },
+  ];
+}
+
+/** Lane `n`'s replicated hardware. Everything in the EX band sits on a fixed pitch (`LANE_DY`);
+ *  the sign-extender sits in the shared ID band, on the same pitch, which is what lets the
+ *  translation litmus cover the ID band too rather than exempting it as a hand-placed exception. */
+function laneNodes(L: Layout, lane: Lane): DatapathNode[] {
+  const ly = L.laneTop(lane);
+  const s = String(lane);
+  return [
+    { id: laneId('signext', lane), label: `Sign\nExtend ${s}`, x: L.idX, y: L.sextY(lane), w: 100, h: 38, lane }, // prettier-ignore
+    { id: laneId('fwdunit', lane), label: `Forwarding\nunit ${s}`, x: L.fwdunitX, y: ly, w: L.fwdunitW, h: 38, lane, minTier: 'expert', forwardingOnly: true }, // prettier-ignore
+    { id: laneId('fwdmuxa', lane), label: '', x: L.fwdmuxX, y: ly + 58, w: 18, h: 56, shape: 'mux', lane, minTier: 'expert', forwardingOnly: true, controlLabel: `ForwardA${s}` }, // prettier-ignore
+    { id: laneId('fwdmuxb', lane), label: '', x: L.fwdmuxX, y: ly + 126, w: 18, h: 56, shape: 'mux', lane, minTier: 'expert', forwardingOnly: true, controlLabel: `ForwardB${s}` }, // prettier-ignore
+    { id: laneId('alu', lane), label: `ALU ${s}`, x: L.aluX, y: ly + 54, w: ALU_W, h: 132, shape: 'adder', lane }, // prettier-ignore
+    // The dedicated pc/immediate adder, REPLICATED — settled by dumping a trace, not by reasoning:
+    // two `lui`s pair, and U/J producers emit no `alu-op`, so both lanes can need it in one cycle.
+    { id: laneId('pcarith', lane), label: `PC\narith ${s}`, x: L.aluX, y: ly + 212, w: 68, h: 48, shape: 'adder', lane }, // prettier-ignore
+    { id: laneId('wbmux', lane), label: '', x: L.wbmuxX, y: ly + 64, w: 18, h: 100, shape: 'mux', lane, minTier: 'detailed', controlLabel: `MemtoReg${s}` }, // prettier-ignore
+  ];
+}
+
+/** Anchor helpers, bound to ONE geometry's node map. They were module-level constants until M13;
+ *  binding them to a map is what lets four differently-sized machines share one derivation. */
+function anchors(nodes: ReadonlyMap<string, DatapathNode>) {
+  /** Anchor a point on a node's edge. l/r = side midpoints + `off`; t/b = top/bottom edge + `off`
+   *  along it. For adders use `aUp`/`aLo` (left operand stubs) and `r` (output). */
+  const at = (id: string, side: 'l' | 'r' | 't' | 'b', off = 0): Pt => {
+    const nd = nodes.get(id)!;
+    switch (side) {
+      case 'l':
+        return [nd.x, nd.y + nd.h / 2 + off];
+      case 'r':
+        return [nd.x + nd.w, nd.y + nd.h / 2 + off];
+      case 't':
+        return [nd.x + nd.w / 2 + off, nd.y];
+      case 'b':
+        return [nd.x + nd.w / 2 + off, nd.y + nd.h];
+    }
+  };
+  /** A point on a latch BAR's left/right edge at an absolute `y`. The bars span the whole lane
+   *  stack, so centre-relative offsets would be unreadable; the y is the honest coordinate. */
+  const bar = (id: string, side: 'l' | 'r', y: number): Pt => {
+    const nd = nodes.get(id)!;
+    return [side === 'l' ? nd.x : nd.x + nd.w, y];
+  };
+  /** An adder's upper / lower left operand stub; `off` slides along that stub's vertical edge. */
+  const aUp = (id: string, off = 0): Pt => {
+    const nd = nodes.get(id)!;
+    return [nd.x, nd.y + nd.h * 0.16 + off];
+  };
+  const aLo = (id: string, off = 0): Pt => {
+    const nd = nodes.get(id)!;
+    return [nd.x, nd.y + nd.h * 0.84 + off];
+  };
+  const upY = (id: string, off = 0): number => aUp(id, off)[1];
+  const loY = (id: string, off = 0): number => aLo(id, off)[1];
+  return { at, bar, aUp, aLo, upY, loY };
+}
+
+function sharedWires(L: Layout, A: ReturnType<typeof anchors>): DatapathWire[] {
+  const { at, bar, aUp, aLo, upY } = A;
+  return [
+    // --- IF: the selected pc addresses the instruction memory ---------------------------------
+    { id: 'pcmux-pc', ends: ['pcmux', 'pc'], points: [at('pcmux', 'r'), at('pc', 'l')] }, // prettier-ignore
+    { id: 'pc-imem', ends: ['pc', 'imem'], points: [at('pc', 'r'), at('imem', 'l')] }, // prettier-ignore
+    { id: 'pc-addn', ends: ['pc', 'addn'], points: [at('pc', 't', -10), [L.pcX + 10, A.loY('addn')], aLo('addn')] }, // prettier-ignore
+    { id: 'addn-pcmux', ends: ['addn', 'pcmux'], points: [at('addn', 'r'), [L.seqCh, at('addn', 'r')[1]], [L.seqCh, L.rail.seq], [L.leftCh[0]!, L.rail.seq], [L.leftCh[0]!, L.spineY + L.pcmuxOff(0)], at('pcmux', 'l', L.pcmuxOff(0))] }, // prettier-ignore
+    // --- ID: the ISSUE unit — the pairing verdict, and the machine's soul ----------------------
+    // It reads the fetch group out of IF/ID and answers by holding the ones it refused, which is
+    // what a refusal LOOKS like: the younger instruction sits in ID for a second cycle and leads
+    // the next group. Width-2-and-up only (see the node's `minWidth`).
+    { id: 'ifid-issue', ends: ['ifid', 'issue'], points: [bar('ifid', 'r', at('issue', 'l')[1]), at('issue', 'l')], minWidth: 2 }, // prettier-ignore
+    { id: 'issue-ifid', ends: ['issue', 'ifid'], points: [at('issue', 'l', 14), bar('ifid', 'r', at('issue', 'l', 14)[1])], minWidth: 2 }, // prettier-ignore
+    { id: 'issue-pc', ends: ['issue', 'pc'], points: [at('issue', 't', -20), [at('issue', 't', -20)[0], L.rail.issuePc], [at('pc', 't', 10)[0], L.rail.issuePc], at('pc', 't', 10)], minWidth: 2 }, // prettier-ignore
+    // --- ID: the hazard unit — width-INDEPENDENT, because a RAW against an older stage is the
+    // same question however many instructions travel abreast. It scans every SLOT of the two older
+    // stages, which at width 1 is M3's pair of singleton tests.
+    { id: 'ifid-hazard', ends: ['ifid', 'hazard'], points: [bar('ifid', 'r', at('hazard', 'l')[1]), at('hazard', 'l')] }, // prettier-ignore
+    { id: 'idex-hazard', ends: ['idex', 'hazard'], points: [bar('idex', 'l', at('hazard', 'r', -16)[1]), at('hazard', 'r', -16)] }, // prettier-ignore
+    { id: 'hazard-ifid', ends: ['hazard', 'ifid'], points: [at('hazard', 'l', 14), bar('ifid', 'r', at('hazard', 'l', 14)[1])] }, // prettier-ignore
+    { id: 'hazard-pc', ends: ['hazard', 'pc'], points: [at('hazard', 'r', -4), [L.ctrlCh, at('hazard', 'r', -4)[1]], [L.ctrlCh, L.rail.hazardPc], [at('pc', 't', 18)[0], L.rail.hazardPc], at('pc', 't', 18)] }, // prettier-ignore
+    // --- ID: the BET — single by the branch-slot rule, fed from any lane's sign-extender --------
+    { id: 'ifid-btarget', ends: ['ifid', 'btarget'], points: [bar('ifid', 'r', upY('btarget')), aUp('btarget')], predictTakenOnly: true }, // prettier-ignore
+    { id: 'btarget-pcmux', ends: ['btarget', 'pcmux'], points: [at('btarget', 'r'), [L.betCh, at('btarget', 'r')[1]], [L.betCh, L.rail.bet], [L.leftCh[1]!, L.rail.bet], [L.leftCh[1]!, L.spineY + L.pcmuxOff(1)], at('pcmux', 'l', L.pcmuxOff(1))], predictTakenOnly: true }, // prettier-ignore
+    // --- MEM: EX/MEM addresses the ONE data memory; a load's datum returns to MEM/WB -----------
+    // Shared and unslotted, and that is the mem-port rule paying out: at most one instruction per
+    // cycle can be here, so there is nothing to disambiguate. Whichever lane's instruction it is
+    // lights these wires, and the follow-ring resolves it by id.
+    { id: 'exmem-dmem-addr', ends: ['exmem', 'dmem'], points: [bar('exmem', 'r', L.spineY - 20), at('dmem', 'l', -20)] }, // prettier-ignore
+    { id: 'exmem-dmem-data', ends: ['exmem', 'dmem'], points: [bar('exmem', 'r', L.spineY + 20), at('dmem', 'l', 20)] }, // prettier-ignore
+    { id: 'dmem-memwb', ends: ['dmem', 'memwb'], points: [at('dmem', 'r'), bar('memwb', 'l', L.spineY)] }, // prettier-ignore
+  ];
+}
+
+/** Lane `lane`'s replicated wiring. */
+function laneWires(L: Layout, A: ReturnType<typeof anchors>, lane: Lane): DatapathWire[] {
+  const { at, bar, aUp, aLo, upY, loY } = A;
   // Every coordinate below is derived from the NODES this lane already placed (via `at`/`aUp`/
   // `aLo`), never from the lane pitch again — so a node that moves drags its wires with it instead
   // of silently detaching, which is the failure the "endpoint sits on its node's drawn edge" litmus
   // exists to catch and the reason the first draft of this file failed it twelve times.
-  const L = (base: string): string => laneId(base, lane);
-  const rail = RAIL.fwd[lane]!;
-  const [r0, r1, r2, r3] = [rail[0]!, rail[1]!, rail[2]!, rail[3]!];
-  const [ch0, ch1, ch2, ch3] = FWD_CH;
-  const [con0, con1, con2, con3] = CON_CH;
-  // Lane 0's returns leave the bars at the TOP edge and climb; lane 1's leave at the BOTTOM and
-  // drop. One `side` flips the whole network, which is what makes the two lanes structurally
-  // identical rather than two hand-drawn variants that merely look alike.
-  const side = lane === 0 ? 't' : 'b';
-  const fwdmuxa = L('fwdmuxa');
-  const fwdmuxb = L('fwdmuxb');
-  const alu = L('alu');
-  const pcarith = L('pcarith');
-  const wbmux = L('wbmux');
-  // Register-file read ports climb (lane 0) or drop (lane 1) out of the shared file into the lane's
-  // own band, each on its own channel so four ports never share a vertical run.
-  const portCh = lane === 0 ? [452, 460] : [468, 476];
-  const portY = lane === 0 ? [208, 228] : [512, 532];
-  const regOff = lane === 0 ? [-40, -26] : [26, 40];
-  /** Where this lane's writeback bus lands on the register file's write port. */
-  const regWriteY = at('regfile', 'l', lane === 0 ? 48 : 62)[1];
+  const Lx = (base: string): string => laneId(base, lane);
+  const n = L.n;
+  const { side, rails } = fwdRails(L, lane);
+  const [r0, r1, r2, r3, r4] = [rails[0]!, rails[1]!, rails[2]!, rails[3]!, rails[4]!];
+  // A lane's four channels within its side's block. The two sides REUSE these x values, which is
+  // sound only because a top-side lane's runs and a bottom-side lane's never overlap in y.
+  const onSide = side === 't' ? lane : lane - L.topLanes;
+  const base = 5 * onSide;
+  const conBase = 4 * onSide;
+  // Where this lane's returns LEAVE the latch bar's outboard edge. Per-lane, and that is a M13
+  // finding rather than tidiness: until four lanes existed the two lanes sat on opposite sides of
+  // the diagram, so both could leave at the same offset and never meet. Two lanes sharing a side
+  // leave from the same edge and climb to DIFFERENT rails - so with one offset their stubs run
+  // collinearly from the bar to the nearer rail, which is two wires drawn as one. Three families
+  // now (the `a` operand, the `b` operand, and the forwarding unit's own MEM/WB comparison), so the
+  // offsets are spread across the bar's 16px rather than picked.
+  const perSide = Math.max(L.topLanes, 1);
+  const stubOf = (family: number): number =>
+    perSide * 3 <= 1 ? 0 : -7 + (14 * (3 * onSide + family)) / (perSide * 3 - 1);
+  const stubA = stubOf(0);
+  const stubB = stubOf(1);
+  const stubC = stubOf(2);
+  const [ch0, ch1, ch2, ch3, ch4] = [L.fwdCh[base]!, L.fwdCh[base + 1]!, L.fwdCh[base + 2]!, L.fwdCh[base + 3]!, L.fwdCh[base + 4]!]; // prettier-ignore
+  const [con0, con1, con2, con3] = [L.conCh[conBase]!, L.conCh[conBase + 1]!, L.conCh[conBase + 2]!, L.conCh[conBase + 3]!]; // prettier-ignore
+  const fwdmuxa = Lx('fwdmuxa');
+  const fwdmuxb = Lx('fwdmuxb');
+  const alu = Lx('alu');
+  const pcarith = Lx('pcarith');
+  const wbmux = Lx('wbmux');
+  const signext = Lx('signext');
+  // Register-file read ports climb (top side) or drop (bottom side) out of the shared file into the
+  // lane's own band, each on its own channel so no two ports ever share a vertical run.
+  const portY = (port: number): number => L.laneTop(lane) + 90 + 20 * port;
+  const readOff = (port: number): number => spread(2 * n, 2 * lane + port, 120);
+  const reqOff = spread(2 * n, lane, 120);
+  const writeOff = spread(2 * n, n + lane, 120);
+  const regWriteY = at('regfile', 'l', writeOff)[1];
+  // Each lane's bet-immediate lands on its own point along the adder's lower stub, so `n` runs
+  // arrive at `n` places rather than stacking on one.
+  const betOff = (lane - (n - 1) / 2) * 5;
 
   return [
-    // --- IF: the pair of fetched words, one per slot -----------------------------------------
-    // Two wires out of ONE instruction memory: a superscalar fetches a pair from consecutive
+    // --- IF: the fetched group, one word per slot --------------------------------------------
+    // `n` wires out of ONE instruction memory: a superscalar fetches a group from consecutive
     // addresses in a cycle. Both endpoints are shared nodes, which is precisely why the LANE has to
-    // be declared on the wire — `ends` cannot say which of the two words this is.
-    { id: L('imem-ifid'), ends: ['imem', 'ifid'], points: [at('imem', 'r', lane === 0 ? -16 : 16), bar('ifid', 'l', lane === 0 ? 364 : 396)], lane }, // prettier-ignore
+    // be declared on the wire — `ends` cannot say which word of the group this is.
+    { id: Lx('imem-ifid'), ends: ['imem', 'ifid'], points: [at('imem', 'r', spread(n, lane, 56)), bar('ifid', 'l', L.spineY + spread(n, lane, 56))], lane }, // prettier-ignore
 
     // --- ID: this lane's decode — register reads and its own sign-extender --------------------
-    { id: L('ifid-regfile'), ends: ['ifid', 'regfile'], points: [bar('ifid', 'r', at('regfile', 'l', lane === 0 ? -40 : 40)[1]), at('regfile', 'l', lane === 0 ? -40 : 40)], lane }, // prettier-ignore
-    { id: L('ifid-signext'), ends: ['ifid', L('signext')], points: [bar('ifid', 'r', at(L('signext'), 'l')[1]), at(L('signext'), 'l')], lane }, // prettier-ignore
-    { id: L('signext-idex'), ends: [L('signext'), 'idex'], points: [at(L('signext'), 'r'), bar('idex', 'l', at(L('signext'), 'r')[1])], lane }, // prettier-ignore
-    { id: L('regfile-idex-a'), ends: ['regfile', 'idex'], points: [at('regfile', 'r', regOff[0]!), [portCh[0]!, at('regfile', 'r', regOff[0]!)[1]], [portCh[0]!, portY[0]!], bar('idex', 'l', portY[0]!)], lane }, // prettier-ignore
-    { id: L('regfile-idex-b'), ends: ['regfile', 'idex'], points: [at('regfile', 'r', regOff[1]!), [portCh[1]!, at('regfile', 'r', regOff[1]!)[1]], [portCh[1]!, portY[1]!], bar('idex', 'l', portY[1]!)], lane }, // prettier-ignore
-    // Either lane's immediate can feed the single bet adder — the betting branch may sit in either
-    // slot (observed, not assumed: `branch-flavors.s` bets from slot 1 throughout). At most one is
-    // ever lit, because the branch-slot rule caps the cycle at one transfer.
-    { id: L('signext-btarget'), ends: [L('signext'), 'btarget'], points: [at(L('signext'), 'r', -12), [lane === 0 ? 494 : 500, at(L('signext'), 'r', -12)[1]], [lane === 0 ? 494 : 500, lane === 0 ? 528 : 520], [ID_CH[lane], lane === 0 ? 528 : 520], [ID_CH[lane], loY('btarget', lane === 0 ? -5 : 5)], aLo('btarget', lane === 0 ? -5 : 5)], lane, predictTakenOnly: true }, // prettier-ignore
+    { id: Lx('ifid-regfile'), ends: ['ifid', 'regfile'], points: [bar('ifid', 'r', at('regfile', 'l', reqOff)[1]), at('regfile', 'l', reqOff)], lane }, // prettier-ignore
+    { id: Lx('ifid-signext'), ends: ['ifid', signext], points: [bar('ifid', 'r', at(signext, 'l')[1]), at(signext, 'l')], lane }, // prettier-ignore
+    { id: Lx('signext-idex'), ends: [signext, 'idex'], points: [at(signext, 'r'), bar('idex', 'l', at(signext, 'r')[1])], lane }, // prettier-ignore
+    { id: Lx('regfile-idex-a'), ends: ['regfile', 'idex'], points: [at('regfile', 'r', readOff(0)), [L.portCh(lane, 0), at('regfile', 'r', readOff(0))[1]], [L.portCh(lane, 0), portY(0)], bar('idex', 'l', portY(0))], lane }, // prettier-ignore
+    { id: Lx('regfile-idex-b'), ends: ['regfile', 'idex'], points: [at('regfile', 'r', readOff(1)), [L.portCh(lane, 1), at('regfile', 'r', readOff(1))[1]], [L.portCh(lane, 1), portY(1)], bar('idex', 'l', portY(1))], lane }, // prettier-ignore
+    // Any lane's immediate can feed the single bet adder — the betting branch may sit in any slot
+    // (observed, not assumed: `branch-flavors.s` bets from slot 1 throughout). At most one is ever
+    // lit, because the branch-slot rule caps the cycle at one transfer.
+    { id: Lx('signext-btarget'), ends: [signext, 'btarget'], points: [at(signext, 'r', -12), [L.cornerX(lane), at(signext, 'r', -12)[1]], [L.cornerX(lane), L.cornerY(lane)], [L.idCh[lane]!, L.cornerY(lane)], [L.idCh[lane]!, loY('btarget', betOff)], aLo('btarget', betOff)], lane, predictTakenOnly: true }, // prettier-ignore
 
     // --- EX: this lane's forwarding network, ALU and pc/immediate adder -----------------------
-    { id: L('idex-fwdmuxa'), ends: ['idex', fwdmuxa], points: [bar('idex', 'r', at(fwdmuxa, 'l')[1]), at(fwdmuxa, 'l')], lane }, // prettier-ignore
-    { id: L('idex-fwdmuxb'), ends: ['idex', fwdmuxb], points: [bar('idex', 'r', at(fwdmuxb, 'l')[1]), at(fwdmuxb, 'l')], lane }, // prettier-ignore
-    { id: L('exmem-fwdmuxa'), ends: ['exmem', fwdmuxa], points: [at('exmem', side, -4), [at('exmem', side, -4)[0], r0], [ch0, r0], [ch0, at(fwdmuxa, 'l', 22)[1]], at(fwdmuxa, 'l', 22)], lane }, // prettier-ignore
-    { id: L('memwb-fwdmuxa'), ends: ['memwb', fwdmuxa], points: [at('memwb', side, -4), [at('memwb', side, -4)[0], r1], [ch1, r1], [ch1, at(fwdmuxa, 'l', -22)[1]], at(fwdmuxa, 'l', -22)], lane }, // prettier-ignore
-    { id: L('exmem-fwdmuxb'), ends: ['exmem', fwdmuxb], points: [at('exmem', side, 4), [at('exmem', side, 4)[0], r2], [ch2, r2], [ch2, at(fwdmuxb, 'l', 22)[1]], at(fwdmuxb, 'l', 22)], lane }, // prettier-ignore
-    { id: L('memwb-fwdmuxb'), ends: ['memwb', fwdmuxb], points: [at('memwb', side, 4), [at('memwb', side, 4)[0], r3], [ch3, r3], [ch3, at(fwdmuxb, 'l', -22)[1]], at(fwdmuxb, 'l', -22)], lane }, // prettier-ignore
-    { id: L('fwdmuxa-alu'), ends: [fwdmuxa, alu], points: [at(fwdmuxa, 'r'), [MUX_OUT_CH, at(fwdmuxa, 'r')[1]], [MUX_OUT_CH, upY(alu)], aUp(alu)], lane }, // prettier-ignore
-    { id: L('fwdmuxb-alu'), ends: [fwdmuxb, alu], points: [at(fwdmuxb, 'r'), [MUX_OUT_CH, at(fwdmuxb, 'r')[1]], [MUX_OUT_CH, loY(alu)], aLo(alu)], lane }, // prettier-ignore
+    { id: Lx('idex-fwdmuxa'), ends: ['idex', fwdmuxa], points: [bar('idex', 'r', at(fwdmuxa, 'l')[1]), at(fwdmuxa, 'l')], lane }, // prettier-ignore
+    { id: Lx('idex-fwdmuxb'), ends: ['idex', fwdmuxb], points: [bar('idex', 'r', at(fwdmuxb, 'l')[1]), at(fwdmuxb, 'l')], lane }, // prettier-ignore
+    { id: Lx('exmem-fwdmuxa'), ends: ['exmem', fwdmuxa], points: [at('exmem', side, stubA), [at('exmem', side, stubA)[0], r0], [ch0, r0], [ch0, at(fwdmuxa, 'l', 22)[1]], at(fwdmuxa, 'l', 22)], lane }, // prettier-ignore
+    { id: Lx('memwb-fwdmuxa'), ends: ['memwb', fwdmuxa], points: [at('memwb', side, stubA), [at('memwb', side, stubA)[0], r1], [ch1, r1], [ch1, at(fwdmuxa, 'l', -22)[1]], at(fwdmuxa, 'l', -22)], lane }, // prettier-ignore
+    { id: Lx('exmem-fwdmuxb'), ends: ['exmem', fwdmuxb], points: [at('exmem', side, stubB), [at('exmem', side, stubB)[0], r2], [ch2, r2], [ch2, at(fwdmuxb, 'l', 22)[1]], at(fwdmuxb, 'l', 22)], lane }, // prettier-ignore
+    { id: Lx('memwb-fwdmuxb'), ends: ['memwb', fwdmuxb], points: [at('memwb', side, stubB), [at('memwb', side, stubB)[0], r3], [ch3, r3], [ch3, at(fwdmuxb, 'l', -22)[1]], at(fwdmuxb, 'l', -22)], lane }, // prettier-ignore
+    { id: Lx('fwdmuxa-alu'), ends: [fwdmuxa, alu], points: [at(fwdmuxa, 'r'), [L.muxOutCh, at(fwdmuxa, 'r')[1]], [L.muxOutCh, upY(alu)], aUp(alu)], lane }, // prettier-ignore
+    { id: Lx('fwdmuxb-alu'), ends: [fwdmuxb, alu], points: [at(fwdmuxb, 'r'), [L.muxOutCh, at(fwdmuxb, 'r')[1]], [L.muxOutCh, loY(alu)], aLo(alu)], lane }, // prettier-ignore
     // The forwarding unit compares this lane's sources against EVERY slot of the two latches ahead
-    // of it — the source set is what genuinely doubles, and the unit is per-lane because each lane
-    // asks the question about its own operands.
-    { id: L('idex-fwdunit'), ends: ['idex', L('fwdunit')], points: [bar('idex', 'r', at(L('fwdunit'), 'l')[1]), at(L('fwdunit'), 'l')], lane }, // prettier-ignore
-    { id: L('exmem-fwdunit'), ends: ['exmem', L('fwdunit')], points: [bar('exmem', 'l', at(L('fwdunit'), 'r')[1]), at(L('fwdunit'), 'r')], lane }, // prettier-ignore
-    { id: L('memwb-fwdunit'), ends: ['memwb', L('fwdunit')], points: [bar('memwb', 'l', at(L('fwdunit'), 'r')[1] - 10), [740, at(L('fwdunit'), 'r')[1] - 10], [740, at(L('fwdunit'), 'r', -10)[1]], at(L('fwdunit'), 'r', -10)], lane }, // prettier-ignore
+    // of it — the source set is what genuinely grows with the width, and the unit is per-lane
+    // because each lane asks the question about its own operands.
+    { id: Lx('idex-fwdunit'), ends: ['idex', Lx('fwdunit')], points: [bar('idex', 'r', at(Lx('fwdunit'), 'l')[1]), at(Lx('fwdunit'), 'l')], lane }, // prettier-ignore
+    { id: Lx('exmem-fwdunit'), ends: ['exmem', Lx('fwdunit')], points: [bar('exmem', 'l', at(Lx('fwdunit'), 'r')[1]), at(Lx('fwdunit'), 'r')], lane }, // prettier-ignore
+    { id: Lx('memwb-fwdunit'), ends: ['memwb', Lx('fwdunit')], points: [at('memwb', side, stubC), [at('memwb', side, stubC)[0], r4], [ch4, r4], [ch4, at(Lx('fwdunit'), 'l', 10)[1]], at(Lx('fwdunit'), 'l', 10)], lane }, // prettier-ignore
     // The three CONTRACTIONS per operand port — one per source, sharing their through-wire's rail
     // because the two are never co-visible. Each lands on its own y along the ALU's operand stub.
-    { id: L('idex-alu-a'), ends: ['idex', alu], points: [bar('idex', 'r', upY(alu)), aUp(alu)], lane, contracts: fwdmuxa }, // prettier-ignore
-    { id: L('exmem-alu-a'), ends: ['exmem', alu], points: [at('exmem', side, -4), [at('exmem', side, -4)[0], r0], [con0, r0], [con0, upY(alu, -12)], aUp(alu, -12)], lane, contracts: fwdmuxa, forwardingOnly: true }, // prettier-ignore
-    { id: L('memwb-alu-a'), ends: ['memwb', alu], points: [at('memwb', side, -4), [at('memwb', side, -4)[0], r1], [con1, r1], [con1, upY(alu, 12)], aUp(alu, 12)], lane, contracts: fwdmuxa, forwardingOnly: true }, // prettier-ignore
-    { id: L('idex-alu-b'), ends: ['idex', alu], points: [bar('idex', 'r', loY(alu)), aLo(alu)], lane, contracts: fwdmuxb }, // prettier-ignore
-    { id: L('exmem-alu-b'), ends: ['exmem', alu], points: [at('exmem', side, 4), [at('exmem', side, 4)[0], r2], [con2, r2], [con2, loY(alu, -12)], aLo(alu, -12)], lane, contracts: fwdmuxb, forwardingOnly: true }, // prettier-ignore
-    { id: L('memwb-alu-b'), ends: ['memwb', alu], points: [at('memwb', side, 4), [at('memwb', side, 4)[0], r3], [con3, r3], [con3, loY(alu, 12)], aLo(alu, 12)], lane, contracts: fwdmuxb, forwardingOnly: true }, // prettier-ignore
-    { id: L('alu-exmem'), ends: [alu, 'exmem'], points: [at(alu, 'r'), bar('exmem', 'l', at(alu, 'r')[1])], lane }, // prettier-ignore
-    { id: L('idex-pcarith-pc'), ends: ['idex', pcarith], points: [bar('idex', 'r', upY(pcarith)), aUp(pcarith)], lane }, // prettier-ignore
-    { id: L('idex-pcarith-imm'), ends: ['idex', pcarith], points: [bar('idex', 'r', loY(pcarith)), aLo(pcarith)], lane }, // prettier-ignore
-    { id: L('pcarith-exmem'), ends: [pcarith, 'exmem'], points: [at(pcarith, 'r'), bar('exmem', 'l', at(pcarith, 'r')[1])], lane }, // prettier-ignore
+    { id: Lx('idex-alu-a'), ends: ['idex', alu], points: [bar('idex', 'r', upY(alu)), aUp(alu)], lane, contracts: fwdmuxa }, // prettier-ignore
+    { id: Lx('exmem-alu-a'), ends: ['exmem', alu], points: [at('exmem', side, stubA), [at('exmem', side, stubA)[0], r0], [con0, r0], [con0, upY(alu, -12)], aUp(alu, -12)], lane, contracts: fwdmuxa, forwardingOnly: true }, // prettier-ignore
+    { id: Lx('memwb-alu-a'), ends: ['memwb', alu], points: [at('memwb', side, stubA), [at('memwb', side, stubA)[0], r1], [con1, r1], [con1, upY(alu, 12)], aUp(alu, 12)], lane, contracts: fwdmuxa, forwardingOnly: true }, // prettier-ignore
+    { id: Lx('idex-alu-b'), ends: ['idex', alu], points: [bar('idex', 'r', loY(alu)), aLo(alu)], lane, contracts: fwdmuxb }, // prettier-ignore
+    { id: Lx('exmem-alu-b'), ends: ['exmem', alu], points: [at('exmem', side, stubB), [at('exmem', side, stubB)[0], r2], [con2, r2], [con2, loY(alu, -12)], aLo(alu, -12)], lane, contracts: fwdmuxb, forwardingOnly: true }, // prettier-ignore
+    { id: Lx('memwb-alu-b'), ends: ['memwb', alu], points: [at('memwb', side, stubB), [at('memwb', side, stubB)[0], r3], [con3, r3], [con3, loY(alu, 12)], aLo(alu, 12)], lane, contracts: fwdmuxb, forwardingOnly: true }, // prettier-ignore
+    { id: Lx('alu-exmem'), ends: [alu, 'exmem'], points: [at(alu, 'r'), bar('exmem', 'l', at(alu, 'r')[1])], lane }, // prettier-ignore
+    { id: Lx('idex-pcarith-pc'), ends: ['idex', pcarith], points: [bar('idex', 'r', upY(pcarith)), aUp(pcarith)], lane }, // prettier-ignore
+    { id: Lx('idex-pcarith-imm'), ends: ['idex', pcarith], points: [bar('idex', 'r', loY(pcarith)), aLo(pcarith)], lane }, // prettier-ignore
+    { id: Lx('pcarith-exmem'), ends: [pcarith, 'exmem'], points: [at(pcarith, 'r'), bar('exmem', 'l', at(pcarith, 'r')[1])], lane }, // prettier-ignore
     // The two EX corrections, per lane. A pc-relative transfer redirects from this lane's pc adder;
-    // `jalr` alone from its ALU, because a REGISTER supplies the target. At most one of the four is
+    // `jalr` alone from its ALU, because a REGISTER supplies the target. At most one of the `2n` is
     // ever lit — the branch-slot rule — but which lane it is is not knowable from the geometry.
-    { id: L('pcarith-pcmux'), ends: [pcarith, 'pcmux'], points: [at(pcarith, 'r', 8), [716 + lane * 6, at(pcarith, 'r', 8)[1]], [716 + lane * 6, RAIL.redirect[lane]!], [16 + lane * 6, RAIL.redirect[lane]!], [16 + lane * 6, 374 + lane * 12], at('pcmux', 'l', -6 + lane * 12)], lane }, // prettier-ignore
-    { id: L('alu-pcmux'), ends: [alu, 'pcmux'], points: [at(alu, 'r', 20), [728 + lane * 6, at(alu, 'r', 20)[1]], [728 + lane * 6, RAIL.redirect[2 + lane]!], [28 - lane * 16, RAIL.redirect[2 + lane]!], [28 - lane * 16, 398 + lane * 12], at('pcmux', 'l', 18 + lane * 12)], lane }, // prettier-ignore
+    { id: Lx('pcarith-pcmux'), ends: [pcarith, 'pcmux'], points: [at(pcarith, 'r', 8), [L.pcarithCh(lane), at(pcarith, 'r', 8)[1]], [L.pcarithCh(lane), L.rail.redirect[lane]!], [L.leftCh[lane]!, L.rail.redirect[lane]!], [L.leftCh[lane]!, L.spineY + L.pcmuxOff(2 + lane)], at('pcmux', 'l', L.pcmuxOff(2 + lane))], lane }, // prettier-ignore
+    { id: Lx('alu-pcmux'), ends: [alu, 'pcmux'], points: [at(alu, 'r', 20), [L.aluCh(lane), at(alu, 'r', 20)[1]], [L.aluCh(lane), L.rail.redirect[n + lane]!], [L.leftCh[n + lane]!, L.rail.redirect[n + lane]!], [L.leftCh[n + lane]!, L.spineY + L.pcmuxOff(2 + n + lane)], at('pcmux', 'l', L.pcmuxOff(2 + n + lane))], lane }, // prettier-ignore
 
     // --- MEM: everything that is not a load rides PAST the memory, one bypass per slot ---------
     // Replicated after dumping a trace: two non-memory instructions really do sit in `MEM.0`/`MEM.1`
     // and bypass together. Unlabelled by necessity — the value was computed while the instruction
     // was in EX a cycle ago, so no event in THIS trace holds it.
-    { id: L('exmem-memwb'), ends: ['exmem', 'memwb'], points: [bar('exmem', 'r', lane === 0 ? 200 : 640), bar('memwb', 'l', lane === 0 ? 200 : 640)], lane }, // prettier-ignore
+    { id: Lx('exmem-memwb'), ends: ['exmem', 'memwb'], points: [bar('exmem', 'r', L.laneTop(lane) + 82), bar('memwb', 'l', L.laneTop(lane) + 82)], lane }, // prettier-ignore
 
     // --- WB: this lane's write port, and the bus home to the shared register file --------------
-    { id: L('memwb-wbmux-val'), ends: ['memwb', wbmux], points: [bar('memwb', 'r', at(wbmux, 'l', -24)[1]), at(wbmux, 'l', -24)], lane }, // prettier-ignore
-    { id: L('memwb-wbmux-mdr'), ends: ['memwb', wbmux], points: [bar('memwb', 'r', at(wbmux, 'l', 24)[1]), at(wbmux, 'l', 24)], lane }, // prettier-ignore
-    { id: L('wbmux-regfile'), ends: [wbmux, 'regfile'], points: [at(wbmux, 'r'), [1200 + lane * 12, at(wbmux, 'r')[1]], [1200 + lane * 12, RAIL.wb[lane]!], [ID_CH[2 + lane]!, RAIL.wb[lane]!], [ID_CH[2 + lane]!, regWriteY], at('regfile', 'l', lane === 0 ? 48 : 62)], lane }, // prettier-ignore
-    { id: L('memwb-regfile'), ends: ['memwb', 'regfile'], points: [bar('memwb', 'r', at(wbmux, 'l', 24)[1]), [1188 + lane * 12, at(wbmux, 'l', 24)[1]], [1188 + lane * 12, RAIL.wb[lane]!], [ID_CH[2 + lane]!, RAIL.wb[lane]!], [ID_CH[2 + lane]!, regWriteY], at('regfile', 'l', lane === 0 ? 48 : 62)], lane, contracts: wbmux }, // prettier-ignore
+    { id: Lx('memwb-wbmux-val'), ends: ['memwb', wbmux], points: [bar('memwb', 'r', at(wbmux, 'l', -24)[1]), at(wbmux, 'l', -24)], lane }, // prettier-ignore
+    { id: Lx('memwb-wbmux-mdr'), ends: ['memwb', wbmux], points: [bar('memwb', 'r', at(wbmux, 'l', 24)[1]), at(wbmux, 'l', 24)], lane }, // prettier-ignore
+    { id: Lx('wbmux-regfile'), ends: [wbmux, 'regfile'], points: [at(wbmux, 'r'), [L.wbCh(lane), at(wbmux, 'r')[1]], [L.wbCh(lane), L.rail.wb[lane]!], [L.idCh[n + lane]!, L.rail.wb[lane]!], [L.idCh[n + lane]!, regWriteY], at('regfile', 'l', writeOff)], lane }, // prettier-ignore
+    { id: Lx('memwb-regfile'), ends: ['memwb', 'regfile'], points: [bar('memwb', 'r', at(wbmux, 'l', 24)[1]), [L.wbConCh(lane), at(wbmux, 'l', 24)[1]], [L.wbConCh(lane), L.rail.wb[lane]!], [L.idCh[n + lane]!, L.rail.wb[lane]!], [L.idCh[n + lane]!, regWriteY], at('regfile', 'l', writeOff)], lane, contracts: wbmux }, // prettier-ignore
   ];
 }
 
-const WIRE_LIST: readonly DatapathWire[] = [...SHARED_WIRES, ...LANES.flatMap(laneWires)];
+/** Build the geometry for an `n`-lane machine. */
+function buildGeometry(n: number): Geometry {
+  const L = layout(n);
+  const lanes = LANES.filter((lane) => lane < n);
+  const nodeList = [...sharedNodes(L), ...lanes.flatMap((lane) => laneNodes(L, lane))];
+  const nodes = new Map(nodeList.map((nd) => [nd.id, nd]));
+  const A = anchors(nodes);
+  const wires = [...sharedWires(L, A), ...lanes.flatMap((lane) => laneWires(L, A, lane))];
+  return { canvas: L.canvas, nodes, wires };
+}
 
-export const WIRES: readonly DatapathWire[] = WIRE_LIST;
+const GEOMETRIES = new Map<number, Geometry>();
 
-const WIRE_BY_ID: ReadonlyMap<string, DatapathWire> = new Map(WIRE_LIST.map((w) => [w.id, w]));
+/**
+ * The geometry of an `issueWidth`-lane machine — memoized, since there are only
+ * {@link MAX_WIDTH} of them and each is a pure function of its width.
+ *
+ * Width is the one visibility axis that changes the CANVAS, which is why it is a parameter here
+ * rather than a filter in {@link nodeVisibleAt}. Tier, forwarding and prediction only ever REMOVE
+ * interior detail, so they can be filtered out of a fixed drawing; lanes change how tall the
+ * machine is, and a fixed drawing would have to be sized for the widest — leaving a width-1
+ * machine as one lane at the top of a canvas that is mostly empty, with latch bars spanning three
+ * lanes it does not have.
+ */
+export function geometryFor(issueWidth: number): Geometry {
+  const n = Math.max(1, Math.min(MAX_WIDTH, Math.trunc(issueWidth)));
+  let g = GEOMETRIES.get(n);
+  if (!g) {
+    g = buildGeometry(n);
+    GEOMETRIES.set(n, g);
+  }
+  return g;
+}
+
+/**
+ * The FULL lane universe — the widest machine's geometry. Two different jobs need it, and neither
+ * is "what to draw":
+ *   - {@link activate} is width-oblivious (INV-2) and lights wires for whatever the trace holds, so
+ *     the wire id it looks up must exist at every width or it throws.
+ *   - the "absent, never idle" litmus has to be asked of a set that CONTAINS the lanes it claims
+ *     are hidden. Asking it of `geometryFor(1)` would be vacuous — the filter would return nothing
+ *     and the loop body would never run.
+ */
+export const CANVAS = geometryFor(MAX_WIDTH).canvas;
+export const NODES: ReadonlyMap<string, DatapathNode> = geometryFor(MAX_WIDTH).nodes;
+export const WIRES: readonly DatapathWire[] = geometryFor(MAX_WIDTH).wires;
+
+const WIRE_BY_ID: ReadonlyMap<string, DatapathWire> = new Map(WIRES.map((w) => [w.id, w]));
 
 // --- Depth tiers × config -------------------------------------------------------------------
 
@@ -504,9 +762,9 @@ export function tierVisible(minTier: DepthTier | undefined, current: DepthTier):
 export interface DatapathConfig {
   readonly forwarding: boolean;
   readonly predictTaken: boolean;
-  /** 1 or 2 — the third structural axis, and the only one that adds hardware rather than removing
-   *  detail. `ProcessorConfig.issueWidth` is optional (`?: number`) for every pre-M7 model, so the
-   *  shell resolves it to 1 before it reaches here. */
+  /** 1 to {@link MAX_WIDTH} — the third structural axis, and the only one that adds hardware rather
+   *  than removing detail. `ProcessorConfig.issueWidth` is optional (`?: number`) for every pre-M7
+   *  model, so the shell resolves it to 1 before it reaches here. */
   readonly issueWidth: number;
 }
 
@@ -528,6 +786,9 @@ export function nodeVisibleAt(node: DatapathNode, tier: DepthTier, cfg: Datapath
  * The contraction rule is the load-bearing one and it is DERIVED rather than declared: a
  * contraction stands in for its unit exactly when that unit is not drawn. That now covers THREE
  * axes at once without a second hand-maintained field having to agree with this one.
+ *
+ * The endpoint lookup goes through the FULL node universe rather than the drawn geometry, so this
+ * answers the same question whether it is asked of `geometryFor(w)`'s wires or of all of them.
  */
 export function wireVisibleAt(wire: DatapathWire, tier: DepthTier, cfg: DatapathConfig): boolean {
   if (!tierVisible(wire.minTier, tier)) return false;

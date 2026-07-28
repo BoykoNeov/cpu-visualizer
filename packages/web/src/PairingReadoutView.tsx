@@ -39,8 +39,16 @@ import {
   type IssueVerdict,
   type PairingReadoutView as Readout,
 } from './pairing-readout';
+import type { Lane } from './datapath-superscalar';
 import { LANE_COLORS } from './SuperscalarDatapathView';
 import { MONO, T } from './theme';
+
+/** This slot's lane hue, TOTAL over the slot range the trace can emit. A slot the lane set does not
+ *  reach falls back to the neutral ink rather than to `undefined`, which is what a CSS property
+ *  swallows in silence — and silence is exactly how the arity-2 version of this lookup survived. */
+function laneColor(slot: number): string {
+  return LANE_COLORS[slot as Lane] ?? T.ink2;
+}
 
 /**
  * The badge for each verdict. `refused` and `blocked` are deliberately given DIFFERENT words and
@@ -179,11 +187,15 @@ function Candidates({
               background: followed === c.id ? T.highlight : undefined,
             }}
           >
-            {/* Lane-tinted, and carrying its slot number as TEXT — the relief rule, structurally. */}
+            {/* Lane-tinted, and carrying its slot number as TEXT — the relief rule, structurally.
+                The lookup is TOTAL over the lane set rather than cast to it: this read
+                `c.slot as 0 | 1` until M13 step 7, which at slot 2 or 3 silently resolved to
+                `undefined` and emitted `color: undefined` — a second consumer of the arity-2 lane
+                set, live from the moment step 6 opened the control and invisible to every test. */}
             <span
               style={{
-                color: LANE_COLORS[c.slot as 0 | 1],
-                border: `1px solid ${LANE_COLORS[c.slot as 0 | 1]}`,
+                color: laneColor(c.slot),
+                border: `1px solid ${laneColor(c.slot)}`,
                 borderRadius: '3px',
                 padding: '0 0.3rem',
                 fontSize: '0.7rem',
