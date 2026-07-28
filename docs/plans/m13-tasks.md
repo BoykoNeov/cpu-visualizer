@@ -1,8 +1,11 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3, 4 and 5 DONE 2026-07-28. The guard now admits 1..4 and the
-engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
-the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
+**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3, 4, 5 and 6 DONE 2026-07-28. The ISSUE control now offers
+widths 1/2/3/4 and the engine half is finished for BOTH wide models: step 6 moved `MAX_ISSUE_WIDTH`
+down to `engine-common` so the out-of-order core shares the bound, and netted it there in the same
+commit (180 transplanted timing cells; repo 6157 tests). What remains is the VIEW — steps 7, 8 and the
+browser pass. The guard admits 1..4 and the superscalar half went exactly as the dump predicted: step 1
+changed the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
 uncovered is ALREADY FIXED AND PUSHED (`a9f1b70`, repo 4498 → 4502 tests) — it was live in shipped
 code at width 2 and did not belong inside an unpinned milestone. The two GATING decisions are PINNED
