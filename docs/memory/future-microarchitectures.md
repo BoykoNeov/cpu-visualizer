@@ -1,6 +1,6 @@
 ---
 name: future-microarchitectures
-description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design. DEPTH IS DELIVERED (M11, the 7-stage); WIDTH (issueWidth > 2) is the open axis and is now PLANNED as M13 — but this file's claim that the pairing rules are pair-shaped was FALSE and is corrected below"
+description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design. DEPTH IS DELIVERED (M11, the 7-stage); WIDTH is now IN PROGRESS as M13 — its guard opened to widths 1..4 on 2026-07-28, so BOTH axes of the flag are now under construction. This file's claim that the pairing rules are pair-shaped was FALSE and is corrected below"
 metadata:
   node_type: memory
   type: project
@@ -16,8 +16,11 @@ CPU** visualized in future milestones.
 M11 shipped `engine/deep-pipeline` (a 7-stage `IF1 IF2 ID EX1 EX2 MEM WB` with its timing matrix,
 cache, recorder, web enablement and bespoke datapath) — see [[m11-deep-pipeline-planned]]. Every
 prediction in this file held: the map needed **no change at all**, the trace schema needed none,
-`location` absorbed `"IF1"`/`"EX2"` as a plain string, and the hues went by stage FAMILY. **What
-remains open is WIDTH**, now planned as M13 — see [[m13-width-planned]] before doing any of it.
+`location` absorbed `"IF1"`/`"EX2"` as a plain string, and the hues went by stage FAMILY. **What remained open was WIDTH — and as of 2026-07-28 it is IN PROGRESS, not merely planned.** M13
+step 1 opened the superscalar guard to `MAX_ISSUE_WIDTH = 4`; the engine half is essentially done
+and the view half (steps 6-9) is where the budget went. See [[m13-width-planned]] before doing any
+of it. **This paragraph is the second thing in this file to go stale, after the correction below —
+which is the point: a status line in a memory ages faster than the lesson beside it.**
 
 **⚠ CORRECTION 2026-07-28. This file used to say `superscalar/processor.ts` refuses `issueWidth > 2`
 BY NAME "because `intra-pair-raw` / `mem-port` / `branch-slot` are written for a pair". The second

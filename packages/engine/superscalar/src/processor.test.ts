@@ -88,13 +88,43 @@ describe('issueWidth', () => {
     return toProgramImage(program!);
   };
 
+  /**
+   * The slot arrays are always FULL LENGTH and null-padded — that is what makes a bubble
+   * distinguishable from the end of the stage, and what `SuperscalarMicro.width`'s docblock
+   * promises ("every array below has exactly this length"). Asserting the stored `width` alone
+   * would only check that `reset()` remembered its argument.
+   */
+  const shapeOf = (p: SuperscalarProcessor) => {
+    const micro = p.getState().micro as {
+      width: number;
+      ifId: unknown[];
+      idEx: unknown[];
+      exMem: unknown[];
+      memWb: unknown[];
+    };
+    return [
+      micro.width,
+      micro.ifId.length,
+      micro.idEx.length,
+      micro.exMem.length,
+      micro.memWb.length,
+    ];
+  };
+
   it('defaults to 1 when the config omits it', () => {
     // `issueWidth` is OPTIONAL in `ProcessorConfig` (it follows `seed`'s precedent, not `cache`'s),
     // so an absent value means "no opinion" and must not throw — every existing config literal in
     // the repo omits it, including `defaultConfig()`.
+    //
+    // The DEFAULT is asserted, not just the absence of a throw. `not.toThrow()` alone would pass
+    // just as happily on a `?? 2` slip — and the out-of-order model, built from this one's config
+    // precedent, really does default to 2, so the two numbers are one edit apart. This is also the
+    // one config shape M13 step 1's byte-identity goldens never exercised: that harness always
+    // passed `issueWidth` explicitly, so the absent-field path had no net at all.
     const p = new SuperscalarProcessor();
     expect(() => p.reset(image(), defaultConfig())).not.toThrow();
     expect(p.isHalted()).toBe(false);
+    expect(shapeOf(p)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it('accepts an explicit 1', () => {
@@ -123,7 +153,8 @@ describe('issueWidth', () => {
       const p = new SuperscalarProcessor();
       expect(() => p.reset(image(), { ...defaultConfig(), issueWidth: w })).not.toThrow();
       expect(p.isHalted()).toBe(false);
-      expect((p.getState().micro as { width: number }).width).toBe(w);
+      // The MACHINE's shape, not just the verdict: all four latches must be `w` slots wide.
+      expect(shapeOf(p), `width ${w}`).toEqual([w, w, w, w, w]);
     }
   });
 

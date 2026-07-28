@@ -165,27 +165,47 @@ describe('a halt in a taken branch’s shadow', () => {
   });
 
   /**
-   * The provocation, pinned as its own case. Before the fix this was the ONLY position of the six
-   * above that hung — `static-taken` escapes because the branch BETS, which ends the issue group
-   * and keeps the `ecall` out of it, and width 1 escapes structurally. A future change that
-   * re-broke the general case while leaving this one working would be a strange bug; a change that
-   * re-broke exactly this cell is the bug this file is about.
+   * The provocation, pinned as its own case — and **generalized at M13 step 1, because the version
+   * written at the fix said "width 2" where it meant "width ≥ 2".** It read: "before the fix this
+   * was the ONLY position of the six above that hung". That was true of the six positions the
+   * guard then admitted, and it is a claim about the GUARD, not about the machine: the wedge needs
+   * a halt co-issuing with an unresolved branch, which is possible at every width ≥ 2, so widths 3
+   * and 4 would have hung in exactly the same two schemes had they been reachable. Leaving the
+   * sentence as it stood would have repeated, in the file that sweeps four widths, the very defect
+   * this step's commit was about — prose written while two was all there was.
+   *
+   * `static-taken` escapes at EVERY width, and structurally rather than by luck: the branch BETS,
+   * which ends the issue group (`killedRest`) and keeps the `ecall` out of it. Width 1 escapes
+   * structurally too — `stageId`'s `ctx.squash` early-return always beats a halt that reaches ID a
+   * whole cycle after the branch reached EX.
+   *
+   * So the honest shape is a sweep over the no-bet schemes at every width ≥ 2, each checked for the
+   * SIGNATURE rather than merely for termination: a taken-branch flush, and then fetching that
+   * RESUMED after it. Termination alone is the outer sweep's job; this is the one that says the
+   * flag was actually cleared rather than the program having got lucky.
    */
-  it('is a width-2, no-bet phenomenon — the exact cell that used to hang', () => {
-    const ts = run(NO_SPACER, cfg({ issueWidth: 2, branchPrediction: 'none' }));
-    expect(ts.length).toBeGreaterThan(0);
-    // The wedge signature: a taken-branch flush, then cycles that fetch nothing and never halt.
-    const flushes = ts.flatMap((t) => t.events.filter((e) => e.type === 'flush'));
-    expect(flushes.length).toBeGreaterThan(0);
-    // Fetching RESUMED after the last flush — the thing the sticky flag used to prevent.
-    let lastFlush = -1;
-    for (let c = 0; c < ts.length; c++) {
-      if (ts[c]!.events.some((e) => e.type === 'flush')) lastFlush = c;
+  const NO_BET: ProcessorConfig['branchPrediction'][] = ['none', 'static-not-taken'];
+
+  it('is a width-≥-2, no-bet phenomenon — every cell that used to hang, or would have', () => {
+    for (const issueWidth of WIDTHS.filter((w) => w >= 2)) {
+      for (const branchPrediction of NO_BET) {
+        const where = `w${issueWidth}/${branchPrediction}`;
+        const ts = run(NO_SPACER, cfg({ issueWidth, branchPrediction }));
+        expect(ts.length, where).toBeGreaterThan(0);
+        // The wedge signature: a taken-branch flush, then cycles that fetch nothing and never halt.
+        const flushes = ts.flatMap((t) => t.events.filter((e) => e.type === 'flush'));
+        expect(flushes.length, where).toBeGreaterThan(0);
+        // Fetching RESUMED after the last flush — the thing the sticky flag used to prevent.
+        let lastFlush = -1;
+        for (let c = 0; c < ts.length; c++) {
+          if (ts[c]!.events.some((e) => e.type === 'flush')) lastFlush = c;
+        }
+        const fetchedAfter = ts
+          .slice(lastFlush + 1)
+          .some((t) => t.events.some((e) => e.type === 'instr-fetch'));
+        expect(fetchedAfter, where).toBe(true);
+      }
     }
-    const fetchedAfter = ts
-      .slice(lastFlush + 1)
-      .some((t) => t.events.some((e) => e.type === 'instr-fetch'));
-    expect(fetchedAfter).toBe(true);
   });
 
   /**
@@ -264,6 +284,22 @@ describe('a halt in a taken branch’s shadow', () => {
    * change that makes "empty pipe, no fetch, not halted" reachable again. That state was previously
    * unobservable anywhere in the repo, because every runner loops on `isHalted()`, so the failure
    * mode is a hung suite rather than a red test. The bound is what converts a hang into a failure.
+   *
+   * **M13 step 1 turned "what it is for is the next one" into the present tense, and the number is
+   * worth writing down.** Widening `WIDTHS` to `1..MAX_ISSUE_WIDTH` and re-running this sweep
+   * against the pre-fix engine wedges **72 corpus cells** — 36 at width 3 and 36 at width 4, in
+   * `array-sum-twice.s`, `slow-op-loop.s` and `sum-loop.s`, in each of the 12 no-bet configs per
+   * program per width (`static-taken` escapes at every width, exactly as the bet rule predicts).
+   * The reason is precise: **the `li a7, 10` spacer buys exactly ONE slot of protection.** At width
+   * 2 it sits between the branch and the `ecall` and keeps them out of one group; at width 3 a
+   * single group swallows all three.
+   *
+   * So `a9f1b70` was not a courtesy cleanup done ahead of the milestone — it was a HARD
+   * PREREQUISITE for opening the guard. Without it, step 1 would have shipped a machine on which
+   * three of eleven shipped corpus programs hang the web app at width 3, and the sweep that would
+   * have said so is this one, only because its width list is derived from the guard's own bound
+   * rather than typed out. **An idiom that makes a whole corpus safe is buying a fixed number of
+   * slots, and widening spends them.**
    *
    * The bound is generous on purpose — it is a LIVENESS net, not a timing one. `timing.test.ts`
    * owns the exact counts, and a bound tight enough to double as a timing assertion would have to

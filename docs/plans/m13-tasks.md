@@ -135,6 +135,25 @@ against it — it was a missing UNDO, not a missing fourth rule.
       `while (!p.isHalted())` unbounded). Its `WIDTHS` is now derived from `MAX_ISSUE_WIDTH`, not
       typed `[1, 2, 3, 4]`, so raising the bound cannot leave the widest machine the least tested.
       Corpus × 4 widths × forwarding × prediction × cache all terminate.
+      **And that borrowed net immediately paid, with the step's real finding.** Run against the
+      PRE-`a9f1b70` engine, the widened sweep wedges **72 corpus cells** — 36 at width 3, 36 at
+      width 4, in `array-sum-twice.s`, `slow-op-loop.s` and `sum-loop.s`, in each of the 12 no-bet
+      configs per program per width (`static-taken` escapes at every width, exactly as the bet rule
+      predicts). The reason is exact: **the `li a7, 10` spacer buys precisely ONE slot of
+      protection**; at width 3 a single issue group swallows branch, spacer and `ecall` together.
+      So `a9f1b70` was a HARD PREREQUISITE for opening the guard, not a courtesy cleanup — without
+      it this step would have shipped a machine on which three of eleven shipped corpus programs
+      hang the web app at width 3. Generalizes past this repo: **an idiom that makes a whole corpus
+      safe is buying a fixed number of slots, and widening spends them.** It also corrected the
+      wedge test's own prose, which said "width 2" where it meant "width ≥ 2" and called its cell
+      "the only position of the six" — a claim about the GUARD wearing the clothes of a claim about
+      the machine, i.e. the same defect class as the `CycleCtx.bet` miscount, in the file that now
+      sweeps four widths.
+      Both new assertions were **watched failing against deliberately broken engines** before being
+      kept (the M11+M12 method lesson): `?? 1` → `?? 2` reddens the default test; latches allocated
+      at `min(width, 2)` while `width` is stored honestly reddens the shape test — and that is
+      precisely the bug the obvious `expect(micro.width).toBe(w)` cannot see, since it only checks
+      that `reset()` remembered its argument.
 - [ ] **2. The adversarial engine nets — the three things the corpus CANNOT show.** Each hand-built,
       each **watched failing against a deliberately broken engine before being kept** (the M11+M12
       review's sharpest method lesson: one property sweep passed 8/8 on the bug it was written for).
@@ -163,7 +182,13 @@ against it — it was a missing UNDO, not a missing fourth rule.
       and state explicitly what is NOT re-proven.
 - [ ] **6. Web enablement — the ISSUE toggle gains positions.** `models.ts`, `session.ts`,
       `useSimulator.ts`, `App.tsx`. Gated by decision **W** below. Import `MAX_ISSUE_WIDTH` rather
-      than typing a `4`. **Carries one deliberate debt from step 1:** `SUPERSCALAR_MODEL_DESCRIPTION`
+      than typing a `4`. **Decide the OUT-OF-ORDER model's bound here, before the control ships.**
+      `out-of-order/processor.ts` runs `positiveCapacity('issueWidth', width)` with **no upper
+      bound**, and it shares this control: the moment positions 3/4 exist, a user on
+      `model: out-of-order` hands that engine a width nothing in the repo tests. Two lawful answers
+      — cap it at `MAX_ISSUE_WIDTH` too, or gate the control's positions per model — and the choice
+      must be made rather than discovered in the browser pass. **Carries one deliberate debt from
+      step 1:** `SUPERSCALAR_MODEL_DESCRIPTION`
       still reads "up to two instructions issue per cycle" and was left alone on purpose — it is the
       model picker's user-facing copy and describes what the product OFFERS, not what the guard
       admits, so widening it before the control would have promised a machine nobody could reach. It

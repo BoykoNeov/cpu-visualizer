@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T11:08:15.092Z
+  modified: 2026-07-28T11:17:08.863Z
 ---
 
 ## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / **1** done.
@@ -53,6 +53,24 @@ nothing and never halts.
   `WIDTHS` is now DERIVED from `MAX_ISSUE_WIDTH`, not typed `[1,2,3,4]`, so raising the bound cannot
   leave the widest machine the least tested. **Never open a guard in one commit and net it in the
   next.**
+- **⚠ THE SPACER BUYS EXACTLY ONE SLOT — the step's real finding, and it came from the provocation,
+  not the plan.** Run against the PRE-`a9f1b70` engine, the widened sweep wedges **72 corpus cells**:
+  36 at w3 + 36 at w4, in `array-sum-twice`, `slow-op-loop`, `sum-loop`, in each of the 12 no-bet
+  configs per program per width (`static-taken` escapes at every width, exactly as the bet rule
+  predicts). At width 2 the corpus's `li a7, 10` exit spacer separates the branch from the `ecall`;
+  **at width 3 one issue group swallows all three.** So `a9f1b70` was a HARD PREREQUISITE for opening
+  the guard, not a courtesy pre-milestone cleanup — without it, step 1 ships a machine where 3 of 11
+  shipped corpus programs hang the web app at width 3. Generalises: **an idiom that makes a whole
+  corpus safe is buying a FIXED NUMBER OF SLOTS, and widening spends them** — so "the corpus is safe
+  by accident of one idiom" is not a static fact, it has a width at which it expires. Extends
+  [[cycles-cannot-see-a-lost-forward]] and the corpus-uniformity blind spot above.
+- **Watch every new assertion fail first — twice here, and one of the two mattered.** `?? 1` → `?? 2`
+  reddens the default test; latches allocated at `min(width, 2)` while `width` is stored HONESTLY
+  reddens the shape test. That second one is the point: `expect(micro.width).toBe(w)` only checks
+  that `reset()` remembered its argument, so **assert the machine's SHAPE (`idEx.length` &c.), not
+  the guard's verdict.** The absent-`issueWidth` path also had no net at all — the byte-identity
+  goldens always passed the field explicitly, so the one config shape every repo literal actually
+  uses was the one shape 396 trace sets never exercised.
 
 **The step-0 dump overturned two of the three things this milestone was scoped as. That is the
 milestone's first lesson: it cost one measurement pass and it saved the whole plan.**
