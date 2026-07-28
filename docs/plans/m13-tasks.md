@@ -1,6 +1,6 @@
 # Milestone 13 — The wide machine, widened (issue width > 2)
 
-**Status: IN PROGRESS — steps 0, 0b, 1, 2 and 3 DONE 2026-07-28. The guard now admits 1..4 and the
+**Status: IN PROGRESS — steps 0, 0b, 1, 2, 3 and 4 DONE 2026-07-28. The guard now admits 1..4 and the
 engine half of the milestone is essentially finished, exactly as the dump predicted: step 1 changed
 the guard and roughly twenty docblocks, and NOTHING else. Step 0's findings are below; they
 overturned two of the three things this milestone was expected to be. The pre-milestone defect it
@@ -293,10 +293,69 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       OFF `L` derivation carried a visible false start and called a difference of one "two"), which is
       the `CycleCtx.bet` class in the step that cites it. Repo 5113 → **5157** tests.
       **All five gates run** — test, typecheck, lint, format, and `build`.
-- [ ] **4. Conformance and `configLabel` at N widths.** The matrix gains two width columns.
-      `configLabel` already knows `issueWidth` (M7 step 3) — verify it does not collide at 3 and 4,
-      and remember why that guard exists: **both new columns are green by construction, so a
-      duplicated title is indistinguishable from a correct one, permanently.**
+- [x] **4. Conformance and `configLabel` at N widths.** ✅ DONE 2026-07-28 (repo 5157 → **5558**
+      tests). The superscalar matrix goes 36 → **72 configs** (`WIDTHS` now DERIVED from
+      `MAX_ISSUE_WIDTH`, step 1/3's precedent), `conformance.test.ts`'s `FOUR_AXIS` guard goes from
+      two widths to four, and `configLabel` gained a fix the step went looking for a different bug
+      and found instead.
+      **The scoped question has a boring answer, and saying so is the point.** `width ${w}` is
+      injective over distinct integers, so there is **no collision at 3 and 4** — there was never
+      going to be. What the step is worth is that the claim is now MECHANICAL rather than eyeballed,
+      on the one axis where eyeballing is all anyone would ever do.
+      **The hole that does exist is not about width 3 or 4 — it is `undefined` vs. the default.**
+      Every optional knob was compared RAW (`c.issueWidth !== first.issueWidth`) and rendered
+      DEFAULTED (`?? 1`). So a list holding an unset config beside an explicit `issueWidth: 1` calls
+      them distinct, fires the clause, and prints `width 1` **twice** — the exact inverse of the
+      `cacheEquals`/`cacheLabel` invariant this same file declares load-bearing ("the label renders
+      exactly the fields the equality distinguishes"), sitting on the one axis with no failing column
+      to expose it. Same shape in `outOfOrderIssue` (`undefined`/`false` both render `in-order`) and
+      `robSize` (`undefined`/`16` both render `rob 16`) — and `robSize` was the closest to being
+      reached, since the OoO cross-product leaves it unset and only `ROB_SIZE_PROBE` states one. All
+      three now default BOTH sides. The correct outcome is **silence, not two names**: absent and the
+      explicit default are the same machine. The rejected alternative — render absent as
+      `width unset` — was rejected because it MOVES TITLES (it would rename every out-of-order case).
+      **The break record, and the second break is the step's whole thesis measured.** Four watched:
+      (1) revert the defaulted compare → the new guard reddens alone, message `add.s [width 1]`, the
+      duplicate title printed in the failure; (2) **collapse the render to `min(w, 2)` → three
+      conformance guards redden and the superscalar's 797-test matrix stays ENTIRELY GREEN** (835 of
+      838 passing, every failure in the guard file). That is step 4's own warning as an experiment:
+      72 configs running under 54 distinct titles, widths 3 and 4 wearing width 2's name, and not one
+      cell red. Nothing but the guard can see it. (3) cap `WIDTHS` at 2 → both completeness
+      assertions redden and NAME which end was lost (`[1,2]` vs `[1,2,3,4]`; 36 vs 72) while all 396
+      surviving cells stay green; (4) move the engine's guard to `MAX_ISSUE_WIDTH - 1` while the
+      constant stays 4 → the guard/constant cross-check reddens, the only edit that can separate them.
+      **Title invariance MEASURED, not argued** — the constraint that would otherwise have been
+      invisible, since nothing in this repo asserts on pre-existing `it()` titles, so a `configLabel`
+      edit that renamed five other suites would leave the run green and teach nothing. Full JSON title
+      dumps of all seven `runConformance` call sites plus the harness's own suite, before and after:
+      1140 → 1541, **0 removed**, 401 added and all 401 confined to the two edited files, all 1541
+      distinct. The five other differential suites read byte-identically.
+      **What the 396 new cells buy, stated for what it is worth.** Two things: the step-0 dump had
+      MEASURED final-state agreement at widths 3/4, but measuring in a temp script and holding it in
+      a suite are different things and nothing in the repo held it; plus a second bounded-liveness
+      sweep at the widths `a9f1b70` made safe (`checkProgram` caps at 100 000 steps and throws). They
+      buy **nothing** on the mis-copied-ISA-idiom class the width-1 column exists for — that bug is
+      width-invariant, so it was already caught, and 396 more green cells do not catch it harder. And
+      they cannot see out-of-order retirement: M7 step 2b's bug ran green through a matrix of exactly
+      this shape.
+      **The DAG decided where each half of the claim lives.** `engine-conformance` is model-agnostic
+      by eslint rule and sits below every model, and `engine-superscalar` imports it — so importing
+      `MAX_ISSUE_WIDTH` back would be a package cycle. The harness file therefore owns the SHAPE claim
+      (N distinct widths ⇒ N distinct labels, widths literal) and the superscalar's own file owns the
+      COMPLETENESS claim (the matrix reaches every width the guard admits, derived). Checked before
+      writing rather than discovered by a lint failure.
+      **A fifth unfailable check caught before it shipped** — after M12's `Lesson.depthDefault`, step
+      2's string tautology, and step 3's dead `taken.doomed` pin. The absent-vs-default guard's first
+      draft asserted the duplicate titles COLLAPSE (`distinct === cases.length / 2`) — but under the
+      raw compare both configs still render `width 1`, so that count holds identically in both worlds
+      and could never redden. Replaced by set-equality against the titles a lone neutral config
+      produces, which does. **In the file whose subject is unfailable green checks.**
+      **One finding handed to step 6 rather than fixed here:** `configLabel` renders `?? 1`, which is
+      the SUPERSCALAR's default — `ProcessorConfig.issueWidth`'s own docblock records that the
+      out-of-order model defaults absent width to **2**. In a model-agnostic harness that is a label
+      naming a width the machine did not run. Unreachable today (every OoO config states its width),
+      and deliberately left: step 6 is where a shared control makes it reachable. OoO `WIDTHS` stays
+      `[1, 2]` for the same reason — that is step 6's pinned decision, not step 4's to pre-empt.
 - [ ] **5. Recorder and `location` at width ≥ 3.** Expected to be free — `follow()` keys on `id`, and
       `location` is a plain string that already absorbed `"EX.1"`. Prove it rather than assume it,
       and state explicitly what is NOT re-proven.
@@ -307,7 +366,15 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       bound**, and it shares this control: the moment positions 3/4 exist, a user on
       `model: out-of-order` hands that engine a width nothing in the repo tests. Two lawful answers
       — cap it at `MAX_ISSUE_WIDTH` too, or gate the control's positions per model — and the choice
-      must be made rather than discovered in the browser pass. **Carries one deliberate debt from
+      must be made rather than discovered in the browser pass. **Step 4 adds a third input to that
+      decision, and it is a live inconsistency rather than a preference:** `configLabel` renders an
+      absent width as `width 1`, which is the SUPERSCALAR's default — the out-of-order model defaults
+      absent width to **2** (`ProcessorConfig.issueWidth`'s docblock says so). Today no OoO config
+      leaves the field unset, so the label never lies; a shared control that can produce one is
+      exactly what makes it reachable. Whatever is decided about the bound, the model-agnostic
+      harness cannot keep rendering one model's default for all of them. **Step 4 also left the OoO
+      differential's `WIDTHS` at `[1, 2]` on purpose** — widening it is this step's call, not step
+      4's, and it should follow the bound decision rather than precede it. **Carries one deliberate debt from
       step 1:** `SUPERSCALAR_MODEL_DESCRIPTION`
       still reads "up to two instructions issue per cycle" and was left alone on purpose — it is the
       model picker's user-facing copy and describes what the product OFFERS, not what the guard

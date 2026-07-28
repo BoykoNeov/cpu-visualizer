@@ -313,8 +313,17 @@ describe('the matrix enumerates the corpus once per config', () => {
    *
    * The list varies width against a knob that is CONSTANT (cache is off throughout) precisely so
    * that a `configLabel` naming everything unconditionally cannot pass by accident.
+   *
+   * **M13 step 4 widened it from `[1, 2]` to all four widths the superscalar guard now admits.** The
+   * widths are LITERAL here and derived from `MAX_ISSUE_WIDTH` in the superscalar's own
+   * `differential.test.ts`, and the split is a DAG fact rather than an oversight: this package is
+   * model-agnostic by eslint rule (it drives any model through an injected factory and imports no
+   * engine-under-test), and since `engine-superscalar` imports `engine-conformance`, importing the
+   * constant back would be a package cycle. What lives here is the SHAPE claim — N distinct widths
+   * must yield N distinct labels — which needs no engine to state; what lives in the superscalar's
+   * file is the COMPLETENESS claim, that the matrix reaches every width its own guard admits.
    */
-  const FOUR_AXIS: ProcessorConfig[] = [1, 2].flatMap((issueWidth) =>
+  const FOUR_AXIS: ProcessorConfig[] = [1, 2, 3, 4].flatMap((issueWidth) =>
     [false, true].flatMap((forwarding) =>
       (['none', 'static-not-taken', 'static-taken'] as const).map((branchPrediction) => ({
         ...defaultConfig(),
@@ -327,10 +336,76 @@ describe('the matrix enumerates the corpus once per config', () => {
 
   it('keeps every case distinct when the matrix varies the ISSUE WIDTH too', () => {
     const cases = conformanceCases(FOUR_AXIS);
-    // 2 widths × 2 forwarding × 3 predict = 12 configs.
-    expect(cases).toHaveLength(12 * corpusSize);
-    // The claim that fails if `configLabel` ignores `issueWidth`: 12 configs, 12 labels.
+    // 4 widths × 2 forwarding × 3 predict = 24 configs.
+    expect(cases).toHaveLength(24 * corpusSize);
+    // The claim that fails if `configLabel` ignores `issueWidth`: 24 configs, 24 labels.
     expect(new Set(cases.map((c) => c.title)).size).toBe(cases.length);
+  });
+
+  /**
+   * M13 step 4's own question, asked mechanically rather than by eye: **do the two NEW widths get
+   * their own names?** `width ${w}` is injective over distinct integers, so the answer was never in
+   * doubt — the point is that nothing else in the repo would ever ask. Both new columns pass by
+   * construction (an in-order superscalar retires in order), so a `configLabel` that rendered, say,
+   * `width ${Math.min(w, 2)}` would produce two pairs of identical green titles and no failing cell
+   * to send anyone looking. The guard above catches that in aggregate; this one names the widths, so
+   * a break says WHICH width lost its name.
+   */
+  it('names each of the four widths distinctly, including the two M13 added', () => {
+    const seen = new Map<number, string>();
+    for (const c of conformanceCases(FOUR_AXIS)) {
+      expect(c.title).toContain(`width ${c.config.issueWidth}`);
+      seen.set(c.config.issueWidth!, `width ${c.config.issueWidth}`);
+    }
+    expect([...seen.keys()].sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+    expect(new Set(seen.values()).size).toBe(4);
+  });
+
+  /**
+   * **The hole the widening pass actually found, and it is not about width 3 or 4.** Every optional
+   * knob is compared RAW (`c.issueWidth !== first.issueWidth`) and rendered DEFAULTED
+   * (`?? 1`) — so a list holding an unset config beside an explicit `issueWidth: 1` calls them
+   * distinct, fires the clause, and prints `width 1` twice. That is the exact inverse of the
+   * `cacheEquals`/`cacheLabel` invariant the harness declares load-bearing ("the label renders
+   * exactly the fields the equality distinguishes"), sitting on the one axis with no failing column
+   * to expose it. `configLabel` now defaults both sides of every optional comparison; these are the
+   * three lists that redden if any of them reverts to the raw compare.
+   *
+   * The right answer is SILENCE, not two names: absent and the explicit default are the same
+   * machine, so there is nothing to tell apart. Unreached by any shipped config list today, which is
+   * why it would have kept indefinitely.
+   */
+  it('stays silent about an optional knob whose configs differ only by ABSENT vs. its default', () => {
+    const widthCases = conformanceCases([
+      { ...defaultConfig(), issueWidth: 1 },
+      { ...defaultConfig() },
+    ]);
+    for (const c of widthCases) expect(c.title).not.toContain('width');
+
+    const orderCases = conformanceCases([
+      { ...defaultConfig(), outOfOrderIssue: false },
+      { ...defaultConfig() },
+    ]);
+    for (const c of orderCases) expect(c.title).not.toContain('order');
+
+    const robCases = conformanceCases([
+      { ...defaultConfig(), outOfOrderIssue: true, robSize: 16 },
+      { ...defaultConfig(), outOfOrderIssue: true },
+    ]);
+    for (const c of robCases) expect(c.title).not.toContain('rob');
+
+    // ...and the same claim positively, because the negative form alone invites a weaker one. The
+    // titles must be EXACTLY what a lone neutral config produces — the knob is not merely unnamed,
+    // the list reads as the unconfigured corpus it is.
+    //
+    // Deliberately not phrased as "the duplicate pairs collapse": under the RAW compare the two
+    // configs still share a title (both render `width 1`), so a distinct-count assertion holds
+    // identically in both worlds and could never redden. That version was written first and
+    // discarded — an unfailable green check, in the file whose subject is unfailable green checks.
+    const neutral = new Set(conformanceCases([defaultConfig()]).map((c) => c.title));
+    for (const cases of [widthCases, orderCases, robCases]) {
+      expect(new Set(cases.map((c) => c.title))).toEqual(neutral);
+    }
   });
 
   it('names the varying width in every title, so a failure says which WIDTH broke', () => {

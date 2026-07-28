@@ -1,18 +1,57 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts) and the width-3/4 timing matrix is DERIVED (timing.test.ts, repo 5113 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots and no audit could have found it. Both gating decisions pinned. Read before touching engine/superscalar or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4 done, the guard admits 1..4 (MAX_ISSUE_WIDTH), the arity->2 nets are in (wide-groups.test.ts), the width-3/4 timing matrix is DERIVED (timing.test.ts) and conformance now runs 72 configs with configLabel fixed (repo 5558 tests). The pairing rules were already width-generic; the dump found a LIVE width-2 hang in shipped code (fixed a9f1b70); width 4 is where widening stops paying. Step 3s ruler measured 2 slots; step 4s label compared raw and rendered defaulted. Both gating decisions pinned. Read before touching engine/superscalar, engine/conformance or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T13:38:41.023Z
+  modified: 2026-07-28T14:19:25.388Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / **3** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / **4** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → **5113** tests. See
+`dump-postfix.txt` (the one to read). Repo 4498 → 4504 → 4523 → 5157 → **5558** tests. See
 [[project-overview]] for the index, [[m7-superscalar-engine]] for the machine this generalizes.
+
+### Step 4 SHIPPED — **the scoped question was boring; the bug was one axis sideways**
+
+Conformance at 4 widths (superscalar matrix 36 → 72 configs, `WIDTHS` derived from
+`MAX_ISSUE_WIDTH`), `FOUR_AXIS` widened, `configLabel` fixed. In order of what they cost:
+
+- **`configLabel` compared RAW and rendered DEFAULTED**, on all three optional knobs. `c.issueWidth
+!== first.issueWidth` fires for `undefined` vs. explicit `1`, and both render `width 1` — a
+  duplicated title. Exact inverse of the `cacheEquals`/`cacheLabel` invariant **the same file
+  declares load-bearing** ("the label renders exactly the fields the equality distinguishes"). Same
+  in `outOfOrderIssue` and `robSize`. Fix = default BOTH sides; correct outcome is **silence, not
+  two names** (absent and the default are the same machine). Rejected alternative: render
+  `width unset` — it MOVES TITLES. Generalises: **when a knob has a default, the varies-test and
+  the render must apply it at the same place, or "varies" and "named differently" come apart.**
+- **The step's thesis, run as an experiment.** Break: collapse the render to `min(w, 2)`. Result:
+  **3 conformance guards red, the superscalar's 797-test matrix ENTIRELY GREEN** (835/838). 72
+  configs under 54 titles, widths 3/4 wearing width 2's name, no cell red. That is what "a
+  duplicated title is indistinguishable from a correct one" looks like when you actually build it.
+- **Title invariance had to be MEASURED — nothing in the repo asserts on `it()` titles**, so a
+  `configLabel` edit renaming five other suites leaves the run green and teaches nothing. JSON title
+  dumps of all 7 `runConformance` call sites, before/after: 1140 → 1541, **0 removed**, 401 added
+  and all confined to the two edited files. **A green run is not evidence of title-invariance.**
+- **The DAG decided where each half of the claim lives.** `engine-conformance` is model-agnostic by
+  eslint rule and `engine-superscalar` imports it, so importing `MAX_ISSUE_WIDTH` back is a package
+  cycle. Harness owns the SHAPE claim (N widths ⇒ N labels, literal); the model's own file owns the
+  COMPLETENESS claim (reaches every width the guard admits, derived). Check the DAG before choosing
+  a file, not after the lint fails.
+- **A fifth unfailable check caught before shipping** (after M12's `Lesson.depthDefault`, step 2's
+  string tautology, step 3's dead `taken.doomed`). The new guard's first draft asserted the duplicate
+  titles COLLAPSE (`distinct === len/2`) — but under the raw compare both still render `width 1`, so
+  it holds in BOTH worlds and can never redden. Replaced by set-equality against a lone neutral
+  config's titles. **Ask of every new assertion: what state makes this red?**
+- **Handed to step 6, not fixed:** `configLabel` renders `?? 1` — the SUPERSCALAR's default. The OoO
+  model defaults absent width to **2**. Unreachable today (every OoO config states its width); a
+  shared control makes it reachable. OoO `WIDTHS` deliberately left `[1, 2]`.
+- **What 396 green cells buy, said honestly:** the step-0 dump had already measured width-3/4 final
+  state, so this holds it in a suite; plus a second bounded-liveness sweep. They buy **nothing** on
+  the mis-copied-ISA-idiom class (width-invariant, already caught) and cannot see out-of-order
+  retirement (M7 step 2b ran green through a matrix this exact shape).
 
 ### Step 3 SHIPPED `ba14b43` — **the ruler measured 2, and no audit could have found it**
 

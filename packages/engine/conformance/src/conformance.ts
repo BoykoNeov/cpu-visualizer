@@ -261,7 +261,17 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   // OPTIONAL, every pre-M7 config leaves it `undefined` — `undefined !== undefined` is false, so
   // those suites stay silent for free rather than by a special case. The render still defaults,
   // since an unset width means the single-issue machine.
-  if (among.some((c) => c.issueWidth !== first.issueWidth)) {
+  //
+  // **The comparison is DEFAULTED, not raw, and that is the injectivity invariant above applied to
+  // an optional scalar** (M13 step 4). The obvious raw `c.issueWidth !== first.issueWidth` compares
+  // values while the render prints `?? 1`, so a list holding both an unset config and an explicit
+  // `issueWidth: 1` would call them distinct, fire the clause, and print `width 1` for both — a
+  // duplicated title, on the one axis whose columns are all green, which is exactly the failure this
+  // clause exists to prevent. Defaulting both sides restores `varies ⟹ distinct label`: absent and
+  // the explicit default ARE the same machine, so the honest report is silence, not two identical
+  // names. Unreached by any shipped list today (every superscalar and out-of-order config states its
+  // width), which is precisely why it would have kept.
+  if (among.some((c) => (c.issueWidth ?? 1) !== (first.issueWidth ?? 1))) {
     parts.push(`width ${config.issueWidth ?? 1}`);
   }
   // `outOfOrderIssue` (M9 step 2) — same shape as `issueWidth`: optional boolean, `!==` is the
@@ -271,7 +281,9 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   // headline of "the differential is timing-blind" — see the out-of-order model's own
   // `differential.test.ts`), so a title collision here would be two green columns with nothing to
   // prompt a second look.
-  if (among.some((c) => c.outOfOrderIssue !== first.outOfOrderIssue)) {
+  // Defaulted on both sides for the reason spelled out under `issueWidth`: the render folds
+  // `undefined` and `false` onto the same string `in-order`, so the comparison must fold them too.
+  if (among.some((c) => (c.outOfOrderIssue ?? false) !== (first.outOfOrderIssue ?? false))) {
     parts.push(`order ${config.outOfOrderIssue ? 'out-of-order' : 'in-order'}`);
   }
   // `robSize` (M9+M10 review finding 8) — same optional-number shape as `issueWidth`. Without this
@@ -280,7 +292,11 @@ function configLabel(config: ProcessorConfig, among: readonly ProcessorConfig[])
   // so a regression in the small-ROB path the probe exists to reach would report under an
   // indistinguishable title. Render the engine's effective value (`?? 16`) so a varying-but-unset
   // config never prints `rob undefined`.
-  if (among.some((c) => c.robSize !== first.robSize)) {
+  // Defaulted on both sides, same reason again — and this is the clause where the raw comparison was
+  // closest to being reached: the out-of-order suite's cross-product leaves `robSize` unset and only
+  // `ROB_SIZE_PROBE` states one, so a second probe stating the default explicitly would have
+  // collided.
+  if (among.some((c) => (c.robSize ?? 16) !== (first.robSize ?? 16))) {
     parts.push(`rob ${config.robSize ?? 16}`);
   }
   return parts.join(', ');

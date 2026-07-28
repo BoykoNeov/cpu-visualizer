@@ -2,9 +2,10 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, and
-the width-3/4 timing matrix is derived. Next: step 4 (conformance + `configLabel`).
-Six models ship, each with a lesson track. Repo **5113 tests**, five gates green.
+steps 0/0b/1/2/3/4 done; the guard admits widths 1..4, the arity->2 adversarial nets are in, the
+width-3/4 timing matrix is derived, and conformance runs all four widths (72 configs). Next: step 5
+(recorder + `location` at width ≥ 3). Six models ship, each with a lesson track. Repo **5558 tests**,
+five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -54,7 +55,14 @@ Six models ship, each with a lesson track. Repo **5113 tests**, five gates green
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/**3** done. Step 3's sharpest
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/**4** done. **Step 4's finding
+    is in `engine/conformance`, not the engine:** `configLabel` compared optional knobs RAW and
+    rendered them DEFAULTED, so `undefined` vs. explicit `1` printed `width 1` twice — the inverse of
+    the injectivity invariant that file itself declares load-bearing. Its proof is an experiment:
+    collapsing the render to `min(w, 2)` reddens 3 guards while the **797-test conformance matrix
+    stays entirely green**. Also: **nothing in this repo asserts on `it()` titles**, so title
+    invariance must be MEASURED (JSON dumps, 0 of 1140 moved) — a green run is not evidence of it.
+    Step 3's sharpest
     finding is about MEASUREMENT: the timing suite's ruler looped `s < 2`, so every group of 3 or 4
     would have read as 2 and all 44 derived cells would have been permanently green — and **step 1's
     arity sweep could not have matched it**, because the arity was a loop bound over a template
