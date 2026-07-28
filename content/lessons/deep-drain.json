@@ -1,0 +1,58 @@
+{
+  "id": "deep-drain",
+  "title": "Three instructions, ten cycles",
+  "program": "add",
+  "model": "deep-pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "Three instructions with nothing wrong with them — on a machine seven stages deep.",
+        "detailed": "The smallest program in the library: put 5 in one register, 37 in another, add them. No loop, no branch, no memory, and one dependency. There is nothing here for a predictor to get wrong. This is the deep pipeline on its best behaviour — and it still takes ten cycles to do what the five-stage machine does in seven. Where do the extra cycles go?",
+        "expert": "`cycles = N + 6 + S + P` with N = 3, P = 0 and S = 1 — the one `ex-latency` bubble between the second `addi` and the `add` that reads it. The five-stage's constant is 4 and its S here is 0, so it runs the same three instructions in 7. The whole difference is the two extra stages and the two-cycle execute they pay for."
+      }
+    },
+    {
+      "trigger": {
+        "event": "instr-retire",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The first instruction is finished — in cycle 6. Five stages would have finished it in cycle 4.",
+        "detailed": "Follow the first `addi`. It was fetched in cycle 0 and its result reaches the register file in cycle 6, because it has seven stages to walk through and each one takes a cycle. On the five-stage pipeline the same instruction is done in cycle 4. That is what depth costs one instruction: two more stages, two more cycles, every single time — and no setting of forwarding or prediction touches it.",
+        "expert": "Latency, not throughput. One instruction's trip is exactly the depth of the machine: IF1 IF2 ID EX1 EX2 MEM WB. Nothing in the microarchitecture shortens it. The hazard toggles change how long an instruction WAITS before it starts walking; they cannot change how long the walk takes."
+      }
+    },
+    {
+      "trigger": {
+        "event": "instr-retire",
+        "nth": 2
+      },
+      "narration": {
+        "essentials": "The second one lands one cycle later — not another seven.",
+        "detailed": "Here is the other half of the story, and it is why anyone builds a pipe this long. The second instruction does not need seven more cycles: it was one stage behind the first the whole way, so it finishes one cycle after it. The machine is slow to produce its first result and then produces one per cycle. Depth costs latency. It does not cost rate.",
+        "expert": "In the steady state every machine in this family retires one instruction per cycle — they are all one-wide by construction, and width is the superscalar's axis, not this one. What separates them is the length of the fill and the size of the penalties, which is exactly why depth shows up as a constant in `N + 6` rather than as a multiplier on N."
+      }
+    },
+    {
+      "trigger": {
+        "event": "instr-retire",
+        "nth": 3
+      },
+      "narration": {
+        "essentials": "The last one arrives in cycle 9 — and cycle 8 is completely empty.",
+        "detailed": "The third instruction retires in cycle 9, the last cycle of the run. Scrub back one and look at cycle 8: nothing happens in it at all. The only instruction left in the machine is passing through the memory stage, and an `add` has no memory work to do, so the cycle goes by with an empty trace. That is the tail of a long pipe. Three instructions, ten cycles — and on a program with 34 instructions the same tail costs the same two extra cycles and all but disappears. The toll is fixed, which is why it ruins a tiny program and vanishes into a long one.",
+        "expert": "The `+6` constant seen from the end: fetching stops six cycles before the machine does, where the five-stage's stops four. Note what this simulator cannot show you. The reason to build a deeper pipe is a SHORTER cycle — less work per stage means the clock can tick faster — and nothing here models cycle time; every machine's clock ticks once per row of the transport. Inside this tool a deeper pipeline can only ever look more expensive. What it buys is real, and it is outside the trace."
+      }
+    }
+  ]
+}

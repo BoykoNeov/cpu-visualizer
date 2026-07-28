@@ -9,6 +9,7 @@ import {
   type Lesson,
   type LessonStep,
 } from '@cpu-viz/curriculum';
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import {
@@ -773,7 +774,7 @@ describe('authored lessons (INV-6)', () => {
     // `deep-pipeline` and teach that forwarding — the thing the machine track taught them to trust —
     // stops being enough once execute takes two cycles. That is why they could not be authored onto
     // the 5-stage and why they are not more `forwarding-bubble` steps.
-    expect(LESSONS.length).toBe(21);
+    expect(LESSONS.length).toBe(22);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -797,7 +798,7 @@ describe('authored lessons (INV-6)', () => {
       LESSONS.filter((l) => l.model === 'deep-pipeline')
         .map((l) => l.id)
         .sort(),
-    ).toEqual(['deep-bet-pays-double', 'deep-bubble-survives']);
+    ).toEqual(['deep-bet-pays-double', 'deep-bubble-survives', 'deep-drain']);
   });
 
   it('canonicalizes every declared cache to a shipped constant (M6 step 7 reconcile)', () => {
@@ -3550,5 +3551,109 @@ describe('deep-bet-pays-double — the speculation penalty doubles too (M12 step
       t.flatMap((c) => c.events).filter((e) => e.type === 'stall').length;
     expect(stalls(deep(false))).toBe(11);
     expect(stalls(deep(true))).toBe(11);
+  });
+});
+
+/**
+ * `deep-drain`' oracle — the fixed cost of depth (M12 step 3), and the milestone's UN-ANCHORABLE
+ * beat authored rather than dropped.
+ *
+ * ## Why this lesson exists at all, given nothing fires for its subject
+ *
+ * Its subject is a cycle that contains NOTHING: cycle 8, where the machine's last instruction is
+ * passing through MEM with no memory work to do. No event fires for a draining pipe — there is no
+ * `drain`, no `pipe-empty`, and inventing one to give a lesson something to hang on would be adding
+ * to the trace schema for the author's convenience rather than the view's need (INV-3). M10 faced
+ * the same shape with renaming and dropped it. This one is authored instead, because the beat has a
+ * lawful home: it anchors on the retires either side of the gap and the prose points AT the gap
+ * ("scrub back one and look at cycle 8"). Asserted below — the empty cycle is real, and it is
+ * between the anchors rather than at one of them.
+ *
+ * ## What it teaches that the other two lessons cannot
+ *
+ * Both of those are about something going wrong — a hazard, a bad guess. This one is the machine on
+ * its best behaviour: no branch, no memory, one dependency, nothing to predict, and it STILL costs
+ * three cycles more than the five-stage. Latency and throughput come apart here in a way no other
+ * corpus program shows this cleanly: retire 1 is two cycles later than the shallower machine's, and
+ * retire 2 is one cycle after retire 1 on both.
+ */
+describe('deep-drain — depth costs even when nothing goes wrong (M12 step 3)', () => {
+  const lesson = (): Lesson => byId('deep-drain');
+
+  const deep = (): readonly CycleTrace[] => recordLesson(lesson(), lesson().config!);
+  const shallow = (): readonly CycleTrace[] =>
+    recordProgram('add', () => new PipelineProcessor(), lesson().config!);
+
+  const retireCycles = (t: readonly CycleTrace[]): number[] =>
+    t.flatMap((c) => c.events.filter((e) => e.type === 'instr-retire').map(() => c.cycle));
+
+  it('runs the corpus program that has NOTHING going wrong in it', () => {
+    expect(lesson().model).toBe('deep-pipeline');
+    expect(lesson().program).toBe('add');
+    // No branch and no memory access, so P is zero by construction and the cache axis is inert —
+    // which is what makes this the one program where the constant is the whole story. Asserted
+    // rather than assumed: a corpus edit that gave `add.s` a branch would quietly turn the closing
+    // narration's "nothing here for a predictor to get wrong" into a false sentence.
+    const kinds = new Set(deep().flatMap((c) => c.events.map((e) => e.type)));
+    expect(kinds.has('flush')).toBe(false);
+    expect(kinds.has('branch-resolved')).toBe(false);
+    expect(kinds.has('mem-read')).toBe(false);
+    expect(kinds.has('mem-write')).toBe(false);
+  });
+
+  it('LATENCY and THROUGHPUT come apart — the two numbers steps 1 and 2 quote', () => {
+    const [here, there] = [retireCycles(deep()), retireCycles(shallow())];
+    // Step 1: one instruction's trip is the depth of the machine. Fetched in cycle 0, retired in
+    // cycle 6 here and cycle 4 there — the two extra stages, exactly.
+    expect(here[0]).toBe(6);
+    expect(there[0]).toBe(4);
+    // Step 2: and the next one is one cycle behind, not seven — the same on both machines, which is
+    // the point. Depth moved the first number and left the second alone.
+    expect(here[1]! - here[0]!).toBe(1);
+    expect(there[1]! - there[0]!).toBe(1);
+  });
+
+  it('THE UN-ANCHORABLE BEAT: cycle 8 is genuinely empty, and it is BETWEEN the anchors', () => {
+    const trace = deep();
+    const anchored = anchorLesson(lesson(), trace);
+
+    // The prose tells the reader to scrub back one cycle from the last step and look at an empty
+    // trace. That instruction is only honest if the cycle is really empty and really adjacent, and
+    // neither is derivable from the anchors — so both are pinned here.
+    const empty = trace.filter((c) => c.events.length === 0).map((c) => c.cycle);
+    expect(empty, 'exactly one empty cycle, and it is cycle 8').toEqual([8]);
+    expect(anchored[2]!.cycle, 'the step before the gap').toBe(7);
+    expect(anchored[3]!.cycle, 'the step after it').toBe(9);
+    // ...and the reason it is empty: the only instruction left is in MEM, and an `add` does nothing
+    // there. If a future engine emitted a per-stage heartbeat this would redden, which is correct —
+    // the lesson would then have a real event to anchor on and should be rewritten to use it.
+    expect(trace.at(-1)!.cycle).toBe(9);
+  });
+
+  it('the fixed toll: +3 on a 3-instruction program, +2 of it constant', () => {
+    // The closing step's claim, in the only form that makes "fixed" mean anything — the same two
+    // drain cycles measured against a program an order of magnitude longer.
+    expect(deep().length).toBe(10);
+    expect(shallow().length).toBe(7);
+    // N + 6 + S + P, with S = 1 (the ex-latency bubble) and P = 0.
+    const stalls = deep()
+      .flatMap((c) => c.events)
+      .filter((e) => e.type === 'stall');
+    expect(stalls).toHaveLength(1);
+    expect(stalls[0]).toMatchObject({ reason: 'ex-latency' });
+    expect(3 + 6 + 1 + 0).toBe(10);
+    // And the same constant against array-sum's 34 retires: two cycles of a 74-cycle run, where here
+    // it is two cycles of ten. That contrast is the lesson's last sentence, so it is measured.
+    const long = (make: () => Processor): number =>
+      recordProgram('array-sum', make, lesson().config!).length;
+    expect(long(() => new DeepPipelineProcessor()) - long(() => new PipelineProcessor())).toBe(23);
+  });
+
+  it('it HALTS, without an ecall — the shell has a terminal state to show', () => {
+    // `add.s` has no `ecall`: it runs off the end of `.text`, which M11's timing docblock records
+    // and which made this program a question rather than an obvious choice. The engine halts anyway,
+    // so the transport's "halted" marker means the same thing here as on every other lesson — the
+    // browser pass can assert it without a special case.
+    expect(deep().at(-1)!.state.halted).toBe(true);
   });
 });
