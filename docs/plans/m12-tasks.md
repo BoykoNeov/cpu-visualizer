@@ -232,8 +232,15 @@ reached exactly where predicted). These are M12's, written so they can be caught
       ships two beats a reader reaches only by flipping the predictor** — at its opening config three
       of its five steps anchor, and the two bet-flush beats (including "the tenth time, the bet is
       wrong") are unreachable until the toggle moves. That is `branch-bet`'s established shape rather
-      than a defect, and step 1's prose is what invites the flip; noted here so a future reader does
-      not rediscover it as a bug. Acceptance: as step 1, plus an
+      than a defect. **CORRECTED 2026-07-28 (M11+M12 review, finding 2): this paragraph went on to
+      say "step 1's prose is what invites the flip", and it did not.** Step 1 says "Watch what depth
+      does to that price" — an invitation to watch depth. No step asked for the toggle, and
+      `runner.ts:96` skips an unanchored step in silence, so a learner following the lesson as it
+      opens saw three of five steps, then read "Prediction is on." asserting a machine state that was
+      false as configured — the M11 step-5 tooltip defect in a lesson. `branch-bet` does not rely on
+      inference: it says "it is worth seeing before you flip the toggle" IN the step before. Step 2
+      now carries the same prompt at all three tiers. The shape was fine; the thing that made it work
+      was missing, and "known and deliberate" is not a substitute for it. Acceptance: as step 1, plus an
       explicit assertion that the narrated penalty matches the recording's cycle delta rather than
       `stages.length`.
 

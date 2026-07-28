@@ -3635,6 +3635,38 @@ describe('deep-bet-pays-double — the speculation penalty doubles too (M12 step
     expect(stalls(deep(false))).toBe(11);
     expect(stalls(deep(true))).toBe(11);
   });
+
+  /**
+   * A lesson with config-exclusive steps must ASK for the config change, in the step before the
+   * first step that needs it — the M11+M12 review's finding 2.
+   *
+   * The test above proves the steps partition by prediction scheme. That is the lesson's shape and
+   * it is `branch-bet`'s, but `branch-bet` also does the thing that makes the shape work: "it is
+   * worth seeing before you flip the toggle", said in the step BEFORE the flip-dependent content.
+   * This lesson shipped without it. `runner.ts` skips an unanchored step in silence, so a learner
+   * following the lesson as it opens got three of five steps and then a step opening "Prediction is
+   * on." about a machine configured `static-not-taken` — a false claim about machine state, which
+   * is the shape of the defect M11 step 5 found in the prediction tooltip.
+   *
+   * Pinned at ALL THREE tiers rather than one: the beginner is the reader most likely to be
+   * stranded, and `essentials` is the tier most likely to be trimmed later for length.
+   */
+  it('asks for the toggle in the step before the steps that need it', () => {
+    const steps = lesson().steps;
+    // Step index 1 is the last step alive at the declared config; 2 and 3 need the bet.
+    const before = steps[1]!.narration;
+    for (const tier of ['essentials', 'detailed', 'expert'] as const) {
+      const text = before[tier];
+      expect(text, `${tier} exists`).toBeDefined();
+      expect(
+        /predict/i.test(text!),
+        `the ${tier} tier must name the control the next two steps depend on`,
+      ).toBe(true);
+    }
+    // And the beat that would otherwise read as a contradiction is still there, unchanged: this is
+    // a prompt ADDED, not a claim softened.
+    expect(steps[2]!.narration.detailed).toMatch(/^Prediction is on\./);
+  });
 });
 
 /**
