@@ -1,0 +1,93 @@
+{
+  "id": "deep-bubble-survives",
+  "title": "The bubble forwarding cannot close",
+  "program": "array-sum",
+  "model": "deep-pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The same program, the same forwarding — on a machine seven stages deep.",
+        "detailed": "This is the array-sum program you watched on the five-stage pipeline, running on a deeper machine: `IF1 IF2 ID EX1 EX2 MEM WB`. Two of those stages are new. Fetching takes two cycles, and so does the ALU — execute is split across EX1 and EX2. Forwarding is already ON. On the five-stage machine that was enough to make the bubbles vanish. Watch what it is not enough for here.",
+        "expert": "Seven stages, six latches. The extra depth is split between the front end (IF1/IF2) and execute (EX1/EX2), and the second is the one that changes the rules: a result is not ready until the end of EX2, and the forwarding muxes sit in EX1 feeding the EX1/EX2 latch — so the earliest a forwarded operand can arrive is the cycle after the consumer first asked for it."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 1,
+        "where": {
+          "reason": "ex-latency"
+        }
+      },
+      "narration": {
+        "essentials": "`addi` needs what `lui` is still computing — and forwarding cannot help.",
+        "detailed": "The very first bubble, with forwarding already on. `lui t0` and the `addi` after it are an ordinary pair: one computes a value, the next uses it. On the five-stage machine forwarding hands the result straight over and neither instruction waits. Here the ALU takes two cycles, so at the moment the `addi` wants its operand, the `lui` has not finished producing it. There is nothing to forward yet. The trace names this stall `ex-latency` — a hazard the five-stage machine cannot produce at all.",
+        "expert": "A read-after-write dependence at distance 1 onto a two-cycle execute. The hazard unit reports `ex-latency` when the producer is still in EX1: its result lands in the EX2/MEM latch at the end of EX2, so a consumer entering EX1 this cycle cannot be fed. Distance 2 is free; distance 1 costs exactly one cycle, with forwarding on."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 1,
+        "where": {
+          "reason": "load-use"
+        }
+      },
+      "narration": {
+        "essentials": "The load-use stall is back — and it lasts twice as long.",
+        "detailed": "You have met this one. `lw t2` fetches a word from memory and `add a0, a0, t2` wants it immediately; forwarding cannot close the gap, because the value comes out of memory rather than out of the ALU. That was true on the five-stage machine too, where it cost one cycle. Here it costs two, and it does it once per array element: ten cycles of waiting where the shallower machine spent five.",
+        "expert": "The loaded word is available at the end of MEM. Its consumer needs it in EX1, which is now two stages upstream rather than one, so the interlock runs two cycles before the MEM/WB forward can supply it. Same hazard, same reason string, twice the coefficient — depth does not invent this stall, it lengthens it."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 2,
+        "where": {
+          "reason": "ex-latency"
+        }
+      },
+      "narration": {
+        "essentials": "This is the bubble the five-stage machine lost. Here it stays.",
+        "detailed": "`addi t1, t1, -1` decrements the counter and `bne t1, x0, loop` reads it on the very next line. On the five-stage machine this was the flagship: turn forwarding on, and the two-cycle wait became a wire. Forwarding is on right now, and the branch is waiting anyway. The two-cycle ALU is why — the counter does not exist yet when the branch asks for it. This happens on every iteration of the loop, and it is the whole point of this machine: forwarding did not break, it stopped being enough.",
+        "expert": "The same `ex-latency` shape as the first one, on the loop's hot pair, once per iteration. Note what did not change: the branch is an ordinary RAW consumer and still resolves at the end of EX2. What changed is that a distance-1 producer is no longer finished when its consumer reaches EX1, so the interlock the five-stage machine removed comes back — not as a regression but as the price of a deeper execute."
+      }
+    },
+    {
+      "trigger": {
+        "event": "forward",
+        "nth": 2,
+        "where": {
+          "from": "EX2/MEM",
+          "to": "EX1.rs1"
+        }
+      },
+      "narration": {
+        "essentials": "The operand arrives — straight out of EX2, one cycle late.",
+        "detailed": "Here is the forward that ends the branch's wait. The counter is handed from the end of the ALU's second cycle directly into the branch's input, skipping the register file exactly as it did on the five-stage machine. Forwarding is not missing here and it is not broken: it is arriving as early as it possibly can, which is one cycle later than the branch would have liked. That gap is the bubble you just watched.",
+        "expert": "`EX2/MEM → EX1.rs1`: the producer's result, captured in the EX2/MEM latch at the end of its second execute cycle, selected over the stale register read. The path exists and is taken; what a deeper execute changes is when the value is ready, not whether it can be routed. It is also why this model needed its own datapath — a diagram that puts the muxes and the ALU behind one latch cannot draw this cycle honestly."
+      }
+    },
+    {
+      "trigger": {
+        "event": "mem-write",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "Same answer — 120 — in 74 cycles, where five stages took 51.",
+        "detailed": "The program stores the same total, 120, that it stored on every other machine: depth changes when work happens, never what the machine computes. What it changed is the clock. This program runs 51 cycles on the five-stage pipeline with forwarding on, and 74 here with forwarding on. Part of that is the longer pipe emptying at the end, part is a taken branch now costing four cycles instead of two, and the rest is what you just watched — the bubbles forwarding used to erase.",
+        "expert": "`cycles = N + 6 + S + P`. N is 34 retires on either machine. The constant is 6 rather than 4 — two more stages to drain. S is 18 here against 5 there, split 10 load-use and 8 `ex-latency`. P is 16 against 8: four taken branches at four cycles each rather than two. 34 + 6 + 18 + 16 = 74."
+      }
+    }
+  ]
+}

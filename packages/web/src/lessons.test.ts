@@ -609,6 +609,7 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The language',
       'The machine',
       'The cache',
+      'The deeper machine',
       'The wide machine',
       'The out-of-order machine',
     ]);
@@ -731,6 +732,7 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The language',
       'The machine',
       'The cache',
+      'The deeper machine',
       'The wide machine',
       'The out-of-order machine',
     ]);
@@ -765,7 +767,13 @@ describe('authored lessons (INV-6)', () => {
     // finish out of order but retire in program order; and "the reservation station holds" (step 3) —
     // the Tomasulo namesake, a slow op held across several execute cycles while independent work
     // issues around it. The renaming beat was DROPPED with proof (step 6), so this track is final.
-    expect(LESSONS.length).toBe(19);
+    //
+    // The deeper machine (M12) is the first track whose subject is a DELTA against a machine the
+    // learner has already seen rather than a mechanism they have not: its lessons run on
+    // `deep-pipeline` and teach that forwarding — the thing the machine track taught them to trust —
+    // stops being enough once execute takes two cycles. That is why they could not be authored onto
+    // the 5-stage and why they are not more `forwarding-bubble` steps.
+    expect(LESSONS.length).toBe(20);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -782,6 +790,14 @@ describe('authored lessons (INV-6)', () => {
       'cache-temporal',
       'forwarding-bubble',
     ]);
+    // And the deeper machine's own set (M12), asserted by name for the same reason: these are the
+    // lessons whose narration is FALSE on the 5-stage, so a lesson that drifted onto `pipeline` here
+    // would be a lesson quietly claiming the shallower machine stalls where it does not.
+    expect(
+      LESSONS.filter((l) => l.model === 'deep-pipeline')
+        .map((l) => l.id)
+        .sort(),
+    ).toEqual(['deep-bubble-survives']);
   });
 
   it('canonicalizes every declared cache to a shipped constant (M6 step 7 reconcile)', () => {
@@ -3252,5 +3268,150 @@ describe('racing-ahead-of-the-miss — the second miss starts under the first (M
       recordLesson(lesson(), { ...declared, cache: null, outOfOrderIssue }).length;
     expect(noCache(false)).toBe(51);
     expect(noCache(true)).toBe(51);
+  });
+});
+
+/**
+ * `deep-bubble-survives`' oracle — the M12 thesis, and the first lesson whose subject is a DELTA
+ * against a machine the learner has already seen (step 1).
+ *
+ * ## What makes this lesson different from every oracle above it
+ *
+ * Its narration quotes numbers about **another model**. The closing step says the program "runs 51
+ * cycles on the five-stage pipeline with forwarding on, and 74 here" — and only the second of those
+ * is a fact about the machine the lesson opens. `Lesson.model` is a single id and the shell opens one
+ * machine, so a cross-model comparison can only ever be delivered as prose; there is no declaration
+ * for it and therefore nothing that goes red when the 5-stage's timing moves. **That is the gap this
+ * oracle exists to close**, and it is the M4-step-4 trap one axis over: that finding was a lesson
+ * quoting numbers true only under an undeclared PREDICTION scheme; this is a lesson quoting numbers
+ * true only on an undeclared MODEL. So both machines are recorded here, and the 5-stage's number is
+ * asserted against a real `pipeline` recording of the same program at the same knobs.
+ *
+ * ## The discriminator every lesson in this track has to pass
+ *
+ * Swap `model` to `pipeline` and the narration must become a LIE. Asserted directly below rather
+ * than argued in a comment: on the 5-stage this program at these knobs has ZERO `ex-latency` stalls
+ * (the reason string is unreachable there), which would delete four of the six steps — so the lesson
+ * cannot be quietly re-homed onto the shallower machine, and it is not `forwarding-bubble` with
+ * extra beats.
+ */
+describe('deep-bubble-survives — forwarding stops being enough (M12 step 1)', () => {
+  const LA_PC = 4; // `addi t0, t0, …` — the `la` pair's second half, reading the `lui` above it
+  const LOAD_USE_PC = 20; // `add a0, a0, t2` — reads the t2 that `lw t2, 0(t0)` is still fetching
+  const BRANCH_PC = 32; // `bnez t1, loop` — reads the t1 that `addi t1, t1, -1` just wrote
+
+  const lesson = (): Lesson => byId('deep-bubble-survives');
+
+  /** The lesson's OWN declared machine, everything derived from the declaration (M4 step 4). */
+  const deep = (): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared)
+      throw new Error('deep-bubble-survives must declare the machine its prose quotes');
+    return recordLesson(lesson(), declared);
+  };
+
+  /** The SAME program and the SAME knobs on the 5-stage — the machine the prose compares against. */
+  const shallow = (): readonly CycleTrace[] =>
+    recordProgram('array-sum', () => new PipelineProcessor(), lesson().config!);
+
+  const stallsAt = (trace: readonly CycleTrace[], pc: number, reason: string): number => {
+    const pcs = pcById(trace);
+    return trace
+      .flatMap((c) => c.events)
+      .filter((e) => e.type === 'stall' && e.reason === reason && pcs.get(e.instr) === pc).length;
+  };
+
+  it('opens on the deep pipeline with forwarding ON — the inversion IS the lesson', () => {
+    // Every other flagship opens at the OFF position and invites the flip that makes the machine
+    // better. This one opens at ON and the bubble is still there, which is the only arrangement in
+    // which its first stall means anything: a reader who arrives with forwarding off sees a `raw`
+    // interlock, the same one the machine track already explained, and the thesis never lands.
+    expect(lesson().model).toBe('deep-pipeline');
+    expect(lesson().config?.forwarding).toBe(true);
+    // And the control knob, for the reason `forwarding-bubble` pins its own: the closing step quotes
+    // 74 and 51, and both move under `static-taken` (to 70 and 49).
+    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    expect(lesson().config!.cache).toBeNull();
+  });
+
+  it('anchors the thesis on `ex-latency` — a stall reason NO other model can emit', () => {
+    const trace = deep();
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Step 1: the first bubble, on the `la` pair — an ordinary ALU-to-ALU dependence at distance 1,
+    // which the 5-stage runs for free.
+    expect(anchoredEvent(trace, anchored[1]!)).toMatchObject({
+      type: 'stall',
+      reason: 'ex-latency',
+      stage: 'ID',
+    });
+    expect(anchoredPc(trace, anchored[1]!)).toBe(LA_PC);
+
+    // Step 3: THE beat. The same source line `forwarding-bubble` step 3 promised would stop stalling
+    // once forwarding came on — still stalling, with forwarding on, on the deeper machine.
+    expect(anchoredEvent(trace, anchored[3]!)).toMatchObject({
+      type: 'stall',
+      reason: 'ex-latency',
+    });
+    expect(anchoredPc(trace, anchored[3]!)).toBe(BRANCH_PC);
+
+    // Step 4: what ends that wait, one cycle later — the operand out of the SECOND execute cycle.
+    expect(anchoredEvent(trace, anchored[4]!)).toMatchObject({
+      type: 'forward',
+      from: 'EX2/MEM',
+      to: 'EX1.rs1',
+    });
+    expect(anchoredPc(trace, anchored[4]!)).toBe(BRANCH_PC);
+  });
+
+  it('THE DISCRIMINATOR: the same program on the 5-stage has no such stall at all', () => {
+    // The one-line test for whether a beat belongs in this track (M12's headline): move it to
+    // `pipeline` and the prose must go false. It does, and not marginally — the branch that stalls
+    // five times here stalls ZERO times there at the same knobs, because forwarding closes it
+    // completely on a one-cycle execute. The reason string is not merely absent from this recording;
+    // it is unreachable on that model.
+    const [here, there] = [deep(), shallow()];
+    expect(stallsAt(here, BRANCH_PC, 'ex-latency')).toBe(5); // once per iteration
+    expect(stallsAt(there, BRANCH_PC, 'ex-latency')).toBe(0);
+    expect(stallsAt(there, BRANCH_PC, 'raw')).toBe(0); // not renamed — genuinely gone
+    const reasons = (t: readonly CycleTrace[]): string[] => [
+      ...new Set(t.flatMap((c) => c.events).flatMap((e) => (e.type === 'stall' ? [e.reason] : []))),
+    ];
+    expect(reasons(here).sort()).toEqual(['ex-latency', 'load-use']);
+    expect(reasons(there)).toEqual(['load-use']);
+  });
+
+  it('the load-use stall is the SAME hazard at twice the price — step 2 quotes both numbers', () => {
+    // The beat that would duplicate `forwarding-bubble` if it were about what a load-use hazard IS.
+    // What makes it non-duplicate is the coefficient, so the coefficient is what gets pinned: five
+    // array elements, one stall cycle each on the 5-stage, two each here.
+    const [here, there] = [deep(), shallow()];
+    expect(stallsAt(there, LOAD_USE_PC, 'load-use')).toBe(5);
+    expect(stallsAt(here, LOAD_USE_PC, 'load-use')).toBe(10);
+    // ...and the lesson's step 2 anchors the first of them, on that line.
+    const anchored = anchorLesson(lesson(), here);
+    expect(anchoredEvent(here, anchored[2]!)).toMatchObject({ type: 'stall', reason: 'load-use' });
+    expect(anchoredPc(here, anchored[2]!)).toBe(LOAD_USE_PC);
+  });
+
+  it('same answer, more cycles: 120 either way, and the closing 51 vs 74 is REAL on both', () => {
+    const [here, there] = [deep(), shallow()];
+    // The last step, alive on both machines — it is what the program computed, not how it ran.
+    const last = anchorLesson(lesson(), here).at(-1)!;
+    expect(anchoredEvent(here, last)).toMatchObject({ type: 'mem-write', value: 120 });
+
+    // The two numbers the closing narration states as fact. The second is the one no declaration
+    // protects: it is a claim about a model this lesson does not open, recorded here so the prose
+    // and the 5-stage cannot drift apart silently.
+    expect(here.length, 'the deep machine, at the lesson-declared config').toBe(74);
+    expect(there.length, 'the 5-stage, same program, same knobs — quoted in the prose').toBe(51);
+
+    // And the expert tier's decomposition, term by term, so `N + 6 + S + P` is not decoration:
+    // 34 retires, a 6-cycle drain, 18 stall cycles (10 load-use + 8 ex-latency), 16 of penalty.
+    const retires = here.flatMap((c) => c.events).filter((e) => e.type === 'instr-retire').length;
+    const stalls = here.flatMap((c) => c.events).filter((e) => e.type === 'stall').length;
+    expect(retires).toBe(34);
+    expect(stalls).toBe(18);
+    expect(retires + 6 + stalls + 16).toBe(here.length);
   });
 });

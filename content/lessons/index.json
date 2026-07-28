@@ -19,6 +19,10 @@
     "lessons": ["cache-spatial", "cache-temporal", "cache-conflict"]
   },
   {
+    "track": "The deeper machine",
+    "lessons": ["deep-bubble-survives"]
+  },
+  {
     "track": "The wide machine",
     "lessons": ["two-at-once", "pair-that-cant", "one-door", "one-branch-unit"]
   },
