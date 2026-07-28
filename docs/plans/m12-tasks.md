@@ -228,7 +228,12 @@ reached exactly where predicted). These are M12's, written so they can be caught
       prediction ON emits `branch-predicted-taken`×10 and the story is what a correct bet SAVES). The
       wrong-bet story is `paired-branches`, the one program prediction makes worse — 11 → **19\*\* here
       against 13 → 9 there. Both are lawful lessons; they are not the same lesson, and the seeded one
-      is the good bet because a 2× gain restates the depth thesis. Acceptance: as step 1, plus an
+      is the good bet because a 2× gain restates the depth thesis. **Known and deliberate: this lesson
+      ships two beats a reader reaches only by flipping the predictor** — at its opening config three
+      of its five steps anchor, and the two bet-flush beats (including "the tenth time, the bet is
+      wrong") are unreachable until the toggle moves. That is `branch-bet`'s established shape rather
+      than a defect, and step 1's prose is what invites the flip; noted here so a future reader does
+      not rediscover it as a bug. Acceptance: as step 1, plus an
       explicit assertion that the narrated penalty matches the recording's cycle delta rather than
       `stages.length`.
 
@@ -304,7 +309,17 @@ reached exactly where predicted). These are M12's, written so they can be caught
       `Prediction`; and the rail shows the steps that ANCHOR, not the steps AUTHORED — the bet lesson
       shows three of its five at its opening config, which is the app telling the truth about
       config-exclusive steps, now turned into a positive assertion (flip the bet, the rail becomes
-      four and they are not the same three). ORIGINAL TEXT:** Drive the
+      four and they are not the same three).
+      **The fix's other directions, put on the record rather than assumed** (a behavior change applied
+      to 22 lessons deserves more than the one direction that motivated it): the reader can still move
+      the dial and it stays moved; opening a SECOND lesson asserts its own declared depth over a manual
+      move; and **leaving a lesson leaves the dial where it stood** — nothing is restored because
+      nothing is remembered to restore, which is the same cross-route behavior M11 step 8 pinned for
+      the model and the config a lesson brings. **And the 19 pre-existing lessons that inherited the
+      fix now render a tier that had never been on screen**, so both ends of the library were sampled
+      — `first-program` (the language track's front door, a beginner's worst case) and `cache-spatial`
+      — walked step by step for the M3-step-8 failure mode: markup the renderer cannot show. Clean.
+      61 checks total. ORIGINAL TEXT:** Drive the
       **shipped bundle** (`vite preview`) through every lesson in the new track via CDP. M11 step 8's
       preconditions are acceptance criteria here, not advice: confirm the built bundle by its
       `/assets/index-*.js` script tag; assert built-bundle + CSS-loaded + a **known-present** control
