@@ -2,12 +2,12 @@
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
 M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3/4/5/6/**7** done; the ISSUE control offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
-in `engine-common` so the **out-of-order model shares the bound and is netted at it**, and the
-**datapath now draws N lanes** — its geometry became a FUNCTION of the width (`geometryFor`), since
-N lanes plus a rail band is what sets the height. Next: step 8 (the pairing readout at N lanes —
-its caption still says a literal **"up to 2 instructions"**, wrong at widths 3/4 since step 6), then
-the browser pass. Six models ship, each with a lesson track. Repo **6171 tests**, five gates green.
+steps 0/0b/1/2/3/4/5/6/7/**8** done; the ISSUE control offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
+in `engine-common` so the **out-of-order model shares the bound and is netted at it**, the
+**datapath draws N lanes** (its geometry became a FUNCTION of the width — `geometryFor`), and the
+**pairing readout now speaks in GROUPS rather than pairs**, its two count glosses DERIVED and its
+vocabulary pinned as a property rather than as sentences. **Only step 9, the browser pass, is
+left.** Six models ship, each with a lesson track. Repo **6186 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -57,7 +57,23 @@ the browser pass. Six models ship, each with a lesson track. Repo **6171 tests**
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/6/**7** done. **Step 7's
+  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/6/7/**8** done; only the
+    browser pass is left. **Step 8's readout pass was where the milestone's signature defect appeared
+    for the 8th time and — for the second time — inside the fix itself:** the vocabulary sweep's own
+    non-vacuity clause stayed GREEN when the panel was broken to render nothing at width 4, because
+    it keyed off the PURE FOLD rather than the render (step 7's closing-pass lesson, recurring inside
+    the test written to enforce it). Its other results: the old glosses were **FALSE on the majority
+    of the cycles they described** (at width 4 all 26 co-issue cycles hold 3 or 4, none holds two),
+    so the fix is DERIVED counts — arithmetic a test can watch — not a vaguer adjective; the wording
+    is pinned as a **PROPERTY**, which deliberately forbids neither the term of art `pairing` nor the
+    **derived** numeral 2; the identity `micro.idEx@N === EX@N+1`, the panel's entire licence for
+    reading `micro`, **had never run above width 2**; the IPC claim had to be **NARROWED** (9 of 11
+    programs are IPC-identical at 3 and 4, and relaxing `>` to `>=` is satisfied by an engine that
+    ignores the toggle) — so the strict rise is pinned to `slow-op-loop` BY NAME and the flat set is
+    enumerated; the ambiguous-reason worry was **MEASURED to zero** and the shape deliberately left
+    alone; and a break in a DIFFERENT package exposed a latent **5 s-timeout flake** in step 7's
+    `throughBox` litmus (~2 s alone, 6.4 s under load — `testTimeout` now 30 s, which does not weaken
+    the liveness net because non-termination is caught by CYCLE bounds). **Step 7's
     new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible
     to all 1533 tests AND to M7's browser pass**; the per-width refactor MANUFACTURED a vacuous test
     (a filter over a narrowed set), the M7 refusal fixtures turned out NON-MONOTONE in width

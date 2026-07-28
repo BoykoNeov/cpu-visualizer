@@ -1,20 +1,89 @@
 ---
 name: m13-width-planned
-description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6/7 done. Step 7 made the DATAPATH a function of the width: geometryFor(w), because N lanes plus a rail band is what sets the height, so a constant canvas would draw width 1 as one lane in a mostly-empty box. Its new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible to all 1533 tests AND to M7s browser pass. The refactor MANUFACTURED a vacuous test (a filter over a narrowed set) — caught before writing, fixed by asking the claim of BOTH sets. The M7 refusal fixtures were non-monotone in width (BRANCH_SLOT refuses at 2 and 4 but NOT at 3). The palette record was WRONG: dE 41.3/42.6 does not reproduce (real: 13.0/15.9) and no 4-set can match a 2-set minimum; user pinned keep-lanes-0/1 + green/purple. A break harness using `git checkout --` destroyed the uncommitted tree — COMMIT BEFORE YOU BREAK. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH in engine-common), arity->2 nets, the derived width-3/4 timing matrix, conformance at 72 configs, and the recorder/location proofs. INV-8 is a FALSE net here, proven by experiment. Read before touching engine/superscalar, engine/conformance, the datapath or the lane hues.'
+description: 'M13 (issue width > 2) — IN PROGRESS: steps 0/0b/1/2/3/4/5/6/7/8 done, ONLY THE BROWSER PASS LEFT. Step 8 made the pairing readout speak in GROUPS: its glosses were not merely narrow but FALSE on the majority of the cycles they described (at width 4 all 26 co-issue cycles hold 3 or 4 instructions and NONE holds two). The wording is pinned as a PROPERTY, not as sentences — and its own non-vacuity clause was BLIND until a break exposed it, because it keyed off the pure fold rather than the render. The identity micro.idEx@N === EX@N+1, the panels entire licence for reading micro, had NEVER RUN ABOVE WIDTH 2. The IPC claim had to be NARROWED (9 of 11 programs are IPC-identical at widths 3 and 4) not swept wider. A break in a different package exposed a latent 5s-timeout flake in step 7s throughBox litmus. Step 7 made the DATAPATH a function of the width: geometryFor(w), and its segment-through-box litmus found TWO wire routes invisible to all 1533 tests AND to M7s browser pass. The palette record was WRONG: dE 41.3/42.6 does not reproduce (real 13.0/15.9); user pinned keep-lanes-0/1 + green/purple. A break harness using `git checkout --` destroyed the uncommitted tree — COMMIT BEFORE YOU BREAK. Earlier: the guard admits 1..4 (MAX_ISSUE_WIDTH in engine-common), the derived width-3/4 timing matrix, conformance at 72 configs, the recorder/location proofs. INV-8 is a FALSE net here, proven by experiment. Read before touching engine/superscalar, engine/conformance, the datapath, the readout or the lane hues.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 694ca14b-8d6d-4835-b4c9-69e79781d7f5
-  modified: 2026-07-28T15:57:40.048Z
+  modified: 2026-07-28T20:24:51.158Z
 ---
 
-## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / 6 / **7** done.
+## M13 — the wide machine, widened. **IN PROGRESS 2026-07-28.** Steps 0 / 0b / 1 / 2 / 3 / 4 / 5 / 6 / 7 / **8** done.
 
 Plan: `docs/plans/m13-tasks.md`. Dumps: `M:\claud_projects\temp\m13-step0\dump.txt` (pre-fix) and
-`dump-postfix.txt` (the one to read); step 6's at `M:\claud_projects\temp\m13-step6\`. Repo 4498 →
-4504 → 4523 → 5157 → 5558 → 5575 → 6157 → **6171** tests. See [[project-overview]] for the index,
-[[m7-superscalar-engine]] for the machine this generalizes, [[m9-out-of-order]] for the model step 6
-widened.
+`dump-postfix.txt` (the one to read); step 6's at `M:\claud_projects\temp\m13-step6\`, step 8's at
+`M:\claud_projects\temp\m13-step8\` (`dump.txt` = the measurements, `breaks.txt` = the break record).
+Repo 4498 → 4504 → 4523 → 5157 → 5558 → 5575 → 6157 → 6171 → **6186** tests. See [[project-overview]]
+for the index, [[m7-superscalar-engine]] for the machine this generalizes, [[m9-out-of-order]] for
+the model step 6 widened. **Only step 9 (the browser pass) is left.**
+
+### Step 8 SHIPPED `b2dd29d` + `9297f5b` — **the panel stopped claiming there are two of everything**
+
+The readout's prose was written for a two-wide machine and had been on screen under a four-position
+control since step 6. In descending order of what each cost:
+
+- **⚠ THE RISK IS THAT A PROSE PASS SHIPS GREEN, AND STEP 7 HAD ALREADY MEASURED IT** (restoring the
+  caption's literal `2` reddened **0 of 1535**). So the wording is pinned as a **PROPERTY**, not as
+  sentences: no `both` / `partner` / `the pair` / `the younger` / `the older` in the rendered HTML at
+  any width. It deliberately does NOT forbid the word **`pairing`** (the mechanism's historical name)
+  nor the **numeral 2** — the first run had to teach that, because the caption legitimately renders
+  "up to 2 instructions" at width 2 since that number is DERIVED. **A term of art, a derived count
+  and a false count are three different things, and only the last is a defect.**
+- **⚠ THE STEP'S OWN NON-VACUITY CLAUSE WAS BLIND — 8th instance of the signature defect, and only
+  the BREAK PASS could show it.** The clause claimed "every verdict and every reason the machine can
+  reach is actually rendered". Break the panel to return `null` at width 4: **it stayed green**,
+  because it keyed its coverage off `readPairing` — the PURE fold, which does not know the component
+  exists. Step 7's own closing-pass lesson (_a pure-data test of a view proves the data; the seam
+  needs its own render_) recurring INSIDE the test written to enforce it. Fixed by keying on rendered
+  HTML and asserting each render contains the gloss it looked up, **checked against `REASON_TEXT`
+  itself — so the clause pins the WIRING (which a rewrite must survive) and not the words (which are
+  what a rewrite changes).** Same break now reddens 4 of 7 instead of 3.
+- **The vocabulary was WRONG on the MAJORITY of the cycles it described, and that took a measurement
+  to establish rather than an argument.** Corpus at width 4: all 26 `paired` cycles hold **three or
+  four instructions, none holds two** (22×3, 4×4); a refusal holds three back on 51 cycles vs one on 41. So "both issued together" / "the older issued; the younger waits" were FALSE on screen, not
+  merely narrow. Both glosses are now derived from the candidate counts — **a count is arithmetic a
+  test can watch, where a vaguer adjective ("several issued") is prose that ships green whatever it
+  says.** `paired`'s LABEL became `CO-ISSUED`; the verdict IDENTIFIER stayed `'paired'` (asserted by
+  name in two files — step 1's `intra-pair-raw` call one layer up).
+- **The rule glosses became PER-INSTRUCTION relations, which is INV-5's shape in prose.** Each names
+  the held instruction's relation to an OLDER GROUP-MATE ("an older instruction in its group already
+  has the one data-memory port"), equally true at width 2 — so the sweep runs at **all four
+  positions**. A claim scoped to w ≥ 3 would have licensed "both" at width 2 and made the property
+  width-conditional.
+- **The highest-value change is a TEST, not a string: `micro.idEx@N` === the EX occupants at N+1 had
+  NEVER RUN ABOVE WIDTH 2.** It is the module's entire licence for reading `micro` at all and its
+  failure is silent by construction. Now derived from `MAX_ISSUE_WIDTH`. Same shape as step 5's
+  fixture that peaked at 11 and step 6's half-dead `loadInto`: **not a wrong answer, an unasked
+  question.**
+- **The reason lookup stopped being structural at width 3, and the measurement said LEAVE IT ALONE.**
+  `reasonFor` takes the first `stall` naming a group member; at width 2 that cannot be ambiguous,
+  from width 3 "silently picks one of two rules" becomes imaginable. Measured over corpus + 3
+  fixtures × 4 widths × fwd × cache: **zero cycles carry two distinct stall reasons naming one ID
+  group** (the engine emits at most one stall per cycle, already pinned in
+  `datapath-superscalar.test.ts`). So: cite the existing pin, add the readout's own corpus-wide
+  version, **do not restructure into per-candidate reasons.** _Measure before redesigning, and record
+  the measurement so nobody re-chases it._
+- **⚠ THE IPC CLAIM HAD TO BE NARROWED, AND THE OBVIOUS WEAKENING IS THE TRAP ALREADY PAID FOR.**
+  Strict rise at every position is FALSE — **nine of eleven programs are IPC-identical at widths 3
+  and 4**, and `add`/`paired-branches` are flat from 2 to 3. Relaxing `>` to `>=` corpus-wide is
+  satisfied by an engine that ignores the toggle (step 6). Split into a UNIVERSAL half (ceiling
+  `ipc ≤ w`, monotone, retire count invariant, all four positions) and a STRICT rise pinned to
+  **`slow-op-loop` BY NAME** (.682 → .857 → .882 → .909) — the same name step 6 adopted for the seam
+  fixture. Flat set **enumerated, not characterised**. Product finding: **the tile now teaches the
+  milestone's headline with a NUMBER — flip 3 → 4 and watch IPC sit still.**
+- **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE.** Break 1 (a gloss in the readout)
+  reddened `throughBox` — step 7's newest litmus, ~2 s alone but **6.4 s under a loaded full run**
+  against vitest's 5 s default. `testTimeout` is now 30 s in `vitest.config.ts`. **The objection to
+  check before raising a timeout — does it weaken the liveness net? — is NO here:** non-termination
+  is caught by CYCLE bounds (`halt-shadow` at 500, `Recorder.runToEnd` at 1e6), so a hung machine
+  still fails as a hung machine.
+- **Eight breaks watched; four isolate to exactly ONE test.** `REASON_TEXT['mem-port']` → 1;
+  `REFUSAL_TEXT` "its partner" → 1; the refusal note singular → 1; static `paired` gloss → 2;
+  static `refused` gloss → 3; the panel rendering nothing at w4 → 4; two ID/EX latches → 5; the
+  engine running narrow above 2 → **452**.
+- **Riders, all comments asserting a false NUMBER** (step 1's `CycleCtx.bet` class): "a PAIR of words
+  comes back", "decode both candidates, read four register ports" (eight at w4), "both lanes can need
+  it in one cycle". Lessons checked and LEFT ALONE — a lesson about the 2-wide machine may say "pair".
 
 ### Step 7 SHIPPED `88bbb4d` — **the geometry stopped being a constant, and the new litmus found two M7 defects**
 
@@ -104,6 +173,9 @@ replaces one drawing with four; the lane tint set is four. In descending order o
 - **Handed to step 8, named so it cannot be lost:** `PairingReadoutView`'s caption is a literal
   **"up to 2 instructions may issue together"** — WRONG at widths 3/4 since step 6 shipped the control —
   and `REFUSAL_TEXT`'s "its partner" is pair-shaped. `pairing-readout.ts` itself stays arity-generic.
+  ⚠ **The caption half of this note went STALE within the step that wrote it** — step 7's own closing
+  pass fixed the arithmetic, leaving only `REFUSAL_TEXT` for step 8. _A hand-off written before the
+  closing pass can be overtaken by it; re-read the code before working the note._
 
 ### Step 6 SHIPPED — **the control gained positions, and so did a SECOND engine**
 

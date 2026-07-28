@@ -755,10 +755,97 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
 
       </details>
 
-- [ ] **8. The pairing readout and IPC at N lanes.** The panel's vocabulary is pair-shaped in the
-      PROSE (`refused`/`blocked` are fine; "the pair in ID" is not). Keep the M7 step 8 rule that
-      earned it: **read the RESULT (`micro.idEx`), never enumerate the REASONS** — the naive
-      "no `stall` event ⇒ they issued together" rule is a lie a miss-freeze tells.
+- [x] **8. The pairing readout and IPC at N lanes.** ✅ DONE 2026-07-28 (repo 6171 → **6186** tests),
+      commits `b2dd29d` + `9297f5b`. The M7 step 8 rule was kept and never came under pressure: the
+      fold still reads the RESULT (`micro.idEx`) and never enumerates the reasons. In descending
+      order of what each cost to learn:
+
+      <details><summary>Findings</summary>
+
+      - **⚠ THE STEP'S REAL RISK IS THAT A PROSE PASS SHIPS GREEN, AND STEP 7 HAD ALREADY MEASURED
+        IT** — restoring the caption's literal `2` reddened **zero of 1535**. `PairingReadoutView.test.tsx`
+        deliberately left the wording unpinned so this step would be a copy edit rather than a test
+        edit. The answer is step 6's shape one level up: pin a **PROPERTY**, not sentences. The sweep
+        forbids `both` / `partner` / `the pair` / `the younger` / `the older` in the rendered HTML at
+        **every** width, and it survives a future rewrite of the copy. **It deliberately does NOT
+        forbid the word `pairing`** (the mechanism's historical name — step 1's call, and
+        `intra-pair-raw` is a `stall.reason` three consumers read) **nor the numeral 2**, which the
+        first run had to teach: the caption legitimately renders "up to 2 instructions" at width 2
+        because that number is DERIVED. _A term of art, a derived count and a false count are three
+        different things, and only the last is a defect._
+      - **⚠ THE STEP'S OWN NON-VACUITY CLAUSE WAS BLIND, AND ONLY THE BREAK PASS COULD SHOW IT — 8th
+        instance of the milestone's signature defect, and the second the fix itself creates.** The
+        sweep's companion test claimed "every verdict and every reason the machine can reach is
+        actually rendered". Break: make the panel return `null` at width 4. **The clause stayed
+        green** — it keyed its coverage sets off `readPairing`, the PURE fold, which does not know
+        the component exists. That is step 7's own closing-pass lesson (_a pure-data test of a view
+        proves the data; the seam needs its own render_) recurring INSIDE the test written to
+        enforce it. Fixed by keying on rendered HTML and asserting each render contains the gloss it
+        looked up — **checked against `REASON_TEXT` itself, so the clause pins the WIRING, which a
+        vocabulary rewrite must survive, and not the words, which are what it changes.**
+      - **The vocabulary was WRONG on the majority of the cycles it described, not merely imprecise —
+        and that took a measurement to establish.** Over the corpus at width 4: every one of the 26
+        `paired` cycles holds **three or four instructions and none holds two** (22 × 3, 4 × 4), and
+        a refusal holds three back on 51 cycles against one on 41. So "both issued together this
+        cycle" and "the older issued; the younger waits a cycle" were false statements on screen,
+        not just narrow ones. The two glosses are now DERIVED from the candidate counts — the same
+        call the caption made, because **a count is arithmetic a test can watch, where a hand-picked
+        adjective ("several issued") is prose that ships green whatever it says.**
+      - **The rule glosses became per-instruction relations, which is INV-5's shape in prose.** Each
+        now describes the held instruction's relation to an OLDER GROUP-MATE ("an older instruction
+        in its group already has the one data-memory port"). That is exactly as true at width 2 as
+        at 4, so the sweep can run at **all four positions** instead of only above 2 — a narrower
+        claim would have licensed "both" at width 2 and made the property width-conditional.
+      - **The highest-value change is a test, not a string: the identity `micro.idEx@N` === the EX
+        occupants at N+1 had NEVER RUN ABOVE WIDTH 2.** It is this module's entire licence for
+        reading `micro` in a per-cycle panel, and its failure is silent by construction. Now derived
+        from `MAX_ISSUE_WIDTH`. Break (the engine reports only two ID/EX latches while claiming its
+        width) reddens it — plus 2 recorder cells step 5 added at widths 3/4, so the view now has an
+        independent net beside the recorder's. Same shape as step 5's fixture that peaked at 11 and
+        step 6's half-dead `loadInto`: **not a wrong answer, an unasked question.**
+      - **The reason lookup stopped being structural at width 3, and the measurement said leave it
+        alone.** `reasonFor` takes the FIRST `stall` naming a group member; at width 2 that cannot be
+        ambiguous (one possible refusee), from width 3 "the panel silently picks one of two rules"
+        becomes imaginable. Measured across corpus + 3 fixtures × 4 widths × forwarding × cache:
+        **zero cycles carry two distinct stall reasons naming one ID group.** The engine emits at
+        most one stall per cycle (`stageId` breaks out on a refusal) and `datapath-superscalar.test.ts`
+        already pinned that — so the fix was to CITE the existing pin and add the readout's own
+        corpus-wide version, not to restructure into per-candidate reasons. _Measure before
+        redesigning; record the measurement so nobody re-chases it._
+      - **⚠ THE IPC CLAIM HAD TO BE NARROWED, AND THE OBVIOUS WEAKENING IS THE TRAP THIS MILESTONE
+        ALREADY PAID FOR.** The M7 test asserts a STRICT rise 1 → 2 on every program. Strict rise at
+        every position is simply false: measured, **nine of eleven programs are IPC-identical at
+        widths 3 and 4**, and `add` / `paired-branches` are already flat from 2 to 3. Relaxing `>` to
+        `>=` corpus-wide would be satisfied by an engine that ignores the toggle (step 6's finding).
+        Split instead into a UNIVERSAL half (ceiling `ipc ≤ w`, monotone non-decreasing, retire count
+        invariant — all four positions) and a STRICT rise pinned to **`slow-op-loop` BY NAME**
+        (0.682 → 0.857 → 0.882 → 0.909), the same name step 6 had to adopt for the seam fixture and
+        for the same reason. The flat set is **enumerated, not characterised** (step 6's 33 survivors).
+      - **The tile now teaches something two positions could not, and it is the milestone's headline
+        said with a number: the figure STOPS MOVING.** A reader who flips ISSUE from 3 to 4 and
+        watches IPC sit still is reading the diminishing return that justifies the bound directly.
+        It is the one place in the app that says so with an observation rather than with prose.
+      - **⚠ A LATENT FLAKE, found by a break in a DIFFERENT PACKAGE.** Break 1 (a gloss in
+        `PairingReadoutView.tsx`) reddened `datapath-superscalar.test.ts`'s `throughBox` litmus —
+        step 7's newest and slowest test, ~2 s alone but **6.4 s under a loaded full run**, against
+        vitest's 5 s default. A wall-clock red herring in the middle of a break measurement is worse
+        than a slow test; `testTimeout` is now 30 s. **The objection worth checking before raising a
+        timeout — does this weaken the liveness net? — is NO here**: non-termination is caught by
+        CYCLE bounds (`halt-shadow` at 500, `Recorder.runToEnd` at 1e6), so a hung machine still
+        fails as a hung machine. Only the machine-speed dependence goes.
+      - **Eight breaks watched; four isolate to exactly ONE test.** Static `paired` gloss → 2 (+1
+        flake); static `refused` gloss → 3; `REASON_TEXT['mem-port']` back to "both" → **1**;
+        `REFUSAL_TEXT` back to "its partner" → **1**; the refusal note singular again → **1**; the
+        engine reporting two ID/EX latches → 5; the panel rendering nothing at width 4 → 4 (3 before
+        the non-vacuity fix); the engine running narrow above width 2 → **452**.
+      - **Riders fixed, all comments asserting a false NUMBER** (step 1's `CycleCtx.bet` class):
+        `datapath-superscalar.ts`'s "a PAIR of words comes back", "the pair, drawn as a pair",
+        "decode both candidates, read four register ports" (eight at width 4) and "both lanes can
+        need it in one cycle". Lessons were checked and left alone — a lesson about the 2-wide
+        machine may legitimately say "pair".
+
+      </details>
+
 - [ ] **9. The browser pass.** Non-negotiable — `browser-is-the-only-net`: 9 of 10 view steps in
       project history shipped a defect only the browser caught, and no test here can see a click.
       **Step 7 sharpened what to look at, and one of its findings makes the obvious plan wrong.**
@@ -770,6 +857,16 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       corridor widening moved the execute cluster 32px right without re-checking them), and **the
       width-1 diagram's new proportions**. And the flagship A/B is still the acceptance criterion
       at the top: flip ISSUE across all four positions on `array-sum.s` WITHOUT reloading.
+      **Step 8 adds three things to look at, all of which are prose a headless render can only
+      prove PRESENT, never READABLE:** the derived verdict glosses at width 4 ("4 instructions
+      issued together this cycle", "1 of 4 issued; 3 held for the next group") and whether the
+      `CO-ISSUED` badge still reads as a status chip at its new length; the reworded rule glosses,
+      which are LONGER than the ones they replace and share a flex row with the badge — a wrap is
+      exactly the kind of defect only the browser catches; and the IPC tile, where the acceptance
+      is that the number **visibly stops moving** between positions 3 and 4 on nine of eleven
+      programs. `array-sum` is one of the nine, so the flagship A/B demonstrates the diminishing
+      return and the toggle-does-nothing failure mode with the SAME picture — use `slow-op-loop`
+      as the control, since it is the one program whose IPC rises at every position.
 
 ## Acceptance criteria
 
