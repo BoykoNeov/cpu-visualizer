@@ -185,7 +185,8 @@ describe('the model table', () => {
  * `engineConfigFor` — the shell's session config narrowed to the knobs a model claims (M11 step 5).
  *
  * **Why this exists at all, in one sentence: the cache is held at SESSION level and handed to every
- * engine, and `deep-pipeline` is the first engine that REFUSES a knob instead of ignoring it.** So
+ * engine, and `deep-pipeline` was the first engine that REFUSED a knob instead of ignoring it** (it
+ * honors the cache since M11 step 6, so nothing refuses anything today — see `models.ts`). So
  * "pipeline with the cache on, then pick Deep pipeline" threw out of a click handler — a live crash
  * with no headless test anywhere able to see it, since this repo renders with
  * `renderToStaticMarkup` and no jsdom. Extracting the narrowing as a pure function is what turns

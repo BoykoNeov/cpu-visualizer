@@ -383,9 +383,9 @@ export function useSimulator(): Simulator {
   const loadInto = useCallback(
     (source: string) => {
       // `engineConfigFor` narrows the session config to the knobs THIS model claims — today that is
-      // the cache alone, and only for a model that REFUSES rather than ignores it (M11 step 5; see
-      // its docblock). The session's own `cacheRef` is untouched, so leaving the deep pipeline
-      // restores whatever geometry was set before it.
+      // the cache alone, for any model declaring `configurableCache: false` (M11 step 5; see its
+      // docblock, which explains why it is normalization now that no shipped engine REFUSES a knob).
+      // The session's own `cacheRef` is untouched, so leaving a model restores the geometry it had.
       const result = loadSource(
         source,
         activeModel.current.make,

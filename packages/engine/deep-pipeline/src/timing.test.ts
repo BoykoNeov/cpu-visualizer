@@ -114,9 +114,9 @@ const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', impo
 
 /**
  * `cache: null` is written EXPLICITLY rather than inherited, for the reason `differential.test.ts`
- * spells out: this machine REFUSES a non-null cache by name (M11 step 6 owns the miss-freeze seam),
- * so the field is load-bearing in the negative and a future change to `defaultConfig()`'s default
- * would turn this whole matrix into thrown Errors rather than red assertions.
+ * spells out. Note that reason CHANGED at M11 step 6 while the practice stayed: the machine used to
+ * refuse a non-null cache by name, and now honors it — so an inherited default would no longer
+ * throw here, it would silently add `misses × missPenalty` to every closed-form cell below.
  */
 const base = (): ProcessorConfig => ({ ...defaultConfig(), cache: null });
 

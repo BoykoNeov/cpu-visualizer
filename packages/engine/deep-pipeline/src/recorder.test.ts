@@ -48,10 +48,10 @@ import { DeepPipelineProcessor, type DeepPipelineMicro } from './index';
 
 const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));
 
-// `cache: null` is written EXPLICITLY rather than inherited, the step-2 pin: this machine REFUSES a
-// non-null cache by name, so the field is load-bearing in the negative. A future change to
-// `defaultConfig()`'s default would turn this whole file into thrown Errors rather than into red
-// assertions, which reads as a broken suite instead of a behaviour change.
+// `cache: null` is written EXPLICITLY rather than inherited, the step-2 pin. It meant "this machine
+// REFUSES a non-null cache, so an inherited default would throw rather than redden"; since M11 step
+// 6 honors the cache it means something stronger — an inherited default would put every assertion
+// below on a DIFFERENT machine, with cycle counts that are lawful for it and wrong for this file.
 const OFF: ProcessorConfig = { ...defaultConfig(), forwarding: false, cache: null };
 const ON: ProcessorConfig = { ...defaultConfig(), forwarding: true, cache: null };
 

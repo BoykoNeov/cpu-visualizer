@@ -543,11 +543,13 @@ export class DeepPipelineProcessor implements Processor {
   private haltFetch = false;
 
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
-    // REFUSE a cache rather than ignore one. M6's miss-freeze holds IF/ID/EX for `missPenalty`
-    // cycles; on this machine "IF" and "EX" are each two stages, and whether an in-flight EX2
-    // completes under the freeze is a choice with no external ground truth (the M9 finding-F9
-    // shape). M11 step 6 pins it with a named seam. Until then, running with the knob silently
-    // unhonored is exactly how M10 step 0 found `slowOpLatency` shipped INERT.
+    // The cache is HONORED here (M11 step 6). Until that step it was REFUSED by name — `reset`
+    // threw — rather than silently ignored, because M6's miss-freeze holds IF/ID/EX for
+    // `missPenalty` cycles and on this machine "IF" and "EX" are each two stages, so whether an
+    // in-flight EX2 completes under the freeze was a choice with no external ground truth (the M9
+    // finding-F9 shape). Throwing was the alternative to shipping the knob INERT, which is how M10
+    // step 0 found `slowOpLatency`. Step 6 pinned the seam — the freeze is back-pressure, so all
+    // five younger stages hold — and the throw went with it. See {@link stageMem}.
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.missCyclesRemaining = 0;
@@ -750,9 +752,10 @@ export class DeepPipelineProcessor implements Processor {
   }
 
   /**
-   * MEM — the one data-memory access, and where a load's datum finally exists. Exactly one cycle,
-   * always: this machine has no cache (see {@link reset}), which is the scope lever that keeps M6's
-   * variable-latency freeze out of the MVP's path entirely.
+   * MEM — the one data-memory access, and where a load's datum finally exists. One cycle on a hit
+   * or with no cache configured; `missPenalty` more on a miss, which freezes the five stages behind
+   * it (M11 step 6). The freeze is pure BACK-PRESSURE: MEM owns `next.ex2Mem`, so re-presenting its
+   * own occupant there is what makes every younger stage hold.
    */
   private stageMem(ctx: CycleCtx): void {
     const em = ctx.prev.ex2Mem;

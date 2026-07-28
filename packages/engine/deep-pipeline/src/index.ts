@@ -13,10 +13,12 @@
  * latches, enumerated `EX2/MEM → EX1` and `MEM/WB → EX1` forwarding paths, and an interlock that
  * watches BOTH execute stages. The timing matrix that proves the depth is real — rather than a
  * 5-stage wearing seven labels — is step 3; step 5 wires it into the model picker. A non-null
- * `cache` config is REFUSED BY NAME until step 6 pins how M6's miss-freeze meets two execute
- * stages — and because the shell holds its cache geometry at SESSION level and hands it to every
- * model, that refusal is what makes the shell clamp the knob for a model that declares it does not
- * honor it (`engineConfigFor` in `web/src/models.ts`, M11 step 5).
+ * `cache` config was REFUSED BY NAME until step 6 pinned how M6's miss-freeze meets two execute
+ * stages; step 6 honors it. That refusal is why the shell has `engineConfigFor`
+ * (`web/src/models.ts`, M11 step 5) — the shell holds its cache geometry at SESSION level and hands
+ * it to every model, so an engine that THREW on an unhonored knob made "hand every model
+ * everything" a live crash. No shipped engine refuses anything today; that function is kept as
+ * normalization, and for the next one that does.
  *
  * Implements the {@link Processor} interface (handoff §6) over the pure {@link ProgramImage};
  * `toProgramImage` (in `@cpu-viz/engine-common`) adapts an `AssembledProgram` into that image.

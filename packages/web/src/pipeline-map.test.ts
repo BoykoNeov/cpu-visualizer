@@ -732,10 +732,10 @@ describe('two rows share a column — the real superscalar, not a hand-built tra
  * hard-coded seven columns, and — more to the point — could not state the thing the milestone is
  * FOR, which is a difference between two machines.
  *
- * `cache: null` is written explicitly for the same reason step 2's differential does: the deep model
- * REFUSES a non-null cache by name, so the field is load-bearing in the negative and a future change
- * to `defaultConfig()` should redden an assertion rather than throw an Error that reads as a broken
- * suite.
+ * `cache: null` is written explicitly for the same reason step 2's differential does. That reason
+ * was "the deep model REFUSES a non-null cache by name, so an inherited default would throw"; since
+ * M11 step 6 honors the cache it is now "an inherited default would move these rows onto a machine
+ * that stalls in MEM", which is a wrong diagram rather than a loud error.
  */
 describe('seven stages, five hues — the real deep pipeline, not a hand-built trace (M11 step 4)', () => {
   const sourceOf = (name: string): string => {

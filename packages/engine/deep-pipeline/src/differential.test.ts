@@ -64,11 +64,15 @@ const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
 
 /**
  * `cache: null` is written EXPLICITLY rather than inherited from `defaultConfig()`. Every other
- * model's matrix can afford to inherit a default it does not care about; this is the one suite in
- * the repo where the field is load-bearing in the negative — the processor REFUSES a non-null cache,
- * so a future change to `defaultConfig()`'s default would turn six green cases into six thrown
- * Errors rather than into a silent behaviour shift. Naming the field makes this matrix say what it
- * means independently of that default.
+ * model's matrix can afford to inherit a default it does not care about; here the field is
+ * load-bearing, so a future change to `defaultConfig()`'s default must not silently redefine what
+ * these six cases mean. Naming it makes the matrix say what it means independently of that default.
+ *
+ * **The REASON changed at M11 step 6 and the practice did not.** Until then this processor REFUSED
+ * a non-null cache — `reset` threw — so an inherited default would have turned six green cases into
+ * six thrown Errors. Step 6 honors the cache, so the same change would now shift these runs onto a
+ * different machine instead: no throw, no red, just a differential quietly proving something other
+ * than what it claims. The stakes went UP, not away.
  */
 const CONFIGS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
   SCHEMES.map((branchPrediction) => ({
