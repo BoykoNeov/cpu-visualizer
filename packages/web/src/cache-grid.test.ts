@@ -18,6 +18,7 @@
 import { toProgramImage } from '@cpu-viz/engine-common';
 import { assemble } from '@cpu-viz/assembler';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { defaultConfig, type CacheConfig, type CycleTrace } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import { buildCacheGrid } from './cache-grid';
@@ -148,6 +149,75 @@ describe('the size flip, at the view layer (the flagship)', () => {
   it('draws one row per configured line', () => {
     expect(buildCacheGrid(null, CACHE_SMALL)!.lines).toHaveLength(2);
     expect(buildCacheGrid(null, CACHE_LARGE)!.lines).toHaveLength(4);
+  });
+});
+
+/**
+ * The same freeze, on the DEEP pipeline — the M11+M12 review's finding 5.
+ *
+ * `accessThisCycle` read `micro.exMem`, which is the five-stage machines' latch name. The deep
+ * pipeline has two execute stages and calls it `ex2Mem`, so from M11 step 6 (which gave that machine
+ * a cache) the read returned undefined and the panel went IDLE for the whole freeze — reintroducing,
+ * on a shipped and user-reachable config, the exact blanking the `filling` state was added to
+ * prevent. Silent: nothing throws when a view reads a field a model does not have.
+ *
+ * **The five-stage assertion comes first and is not decoration.** A grid helper can only ever return
+ * `filling` or not, so a lone deep-pipeline assertion would look like a passing test on the day the
+ * helper stopped deriving anything for anybody. Asserting the machine known to work, in the same
+ * loop, on the same program, is what makes the deep-pipeline result mean something.
+ */
+describe('the freeze is drawn on every machine that can freeze, not just the five-stage', () => {
+  /** Record the straddler on a given engine, cache on, forwarding off — the dump's config. */
+  const recordOn = (
+    make: () => PipelineProcessor | DeepPipelineProcessor,
+  ): readonly CycleTrace[] => {
+    const prog = EXAMPLE_PROGRAMS.find((p) => p.name === 'array-sum-twice')!;
+    const { program, errors } = assemble(prog.source);
+    if (!program) throw new Error(`assembly failed: ${errors.map((e) => e.message).join()}`);
+    const p = make();
+    p.reset(toProgramImage(program), { ...defaultConfig(), cache: CACHE_SMALL });
+    const traces: CycleTrace[] = [];
+    let guard = 0;
+    while (!p.isHalted()) {
+      if (guard++ >= 500) throw new Error('runaway');
+      traces.push(p.step());
+    }
+    return traces;
+  };
+
+  const MACHINES = [
+    ['five-stage', () => new PipelineProcessor()],
+    ['deep pipeline', () => new DeepPipelineProcessor()],
+  ] as const;
+
+  it.each(MACHINES)('%s: the served line counts down through the freeze', (_name, make) => {
+    const traces = recordOn(make);
+    // Derived, not pinned: the two machines detect the same miss on DIFFERENT cycles (depth moves
+    // when, never which — `deep-pipeline/cache.test.ts` pins that), so a literal cycle number would
+    // only be right for one of them. The VALUES below are literals.
+    const detect = traces.findIndex((t) =>
+      t.events.some((e) => e.type === 'cache-access' && !e.hit),
+    );
+    expect(detect, 'the run must actually miss').toBeGreaterThanOrEqual(0);
+
+    // The detection cycle itself: the event wins, so this reads `miss`, not `filling`.
+    expect(buildCacheGrid(traces[detect]!, CACHE_SMALL)!.access).toEqual({
+      addr: BLOCK0,
+      line: 0,
+      blockBase: BLOCK0,
+      state: 'miss',
+    });
+
+    // Then every held cycle, counting down — and NOT going idle, which is the whole finding.
+    for (let i = 1; i < CACHE_SMALL.missPenalty; i++) {
+      expect(buildCacheGrid(traces[detect + i]!, CACHE_SMALL)!.access, `held cycle +${i}`).toEqual({
+        addr: BLOCK0,
+        line: 0,
+        blockBase: BLOCK0,
+        state: 'filling',
+        penaltyLeft: CACHE_SMALL.missPenalty - i,
+      });
+    }
   });
 });
 

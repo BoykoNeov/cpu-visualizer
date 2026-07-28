@@ -239,6 +239,18 @@ export interface Ex2MemLatch extends FetchLatch {
   readonly nextPc: number;
   /** An architectural halt (`ecall`/`ebreak`/unknown): pc does not advance past it. */
   readonly halt: boolean;
+  /**
+   * Penalty cycles this instruction still owes in MEM before it may advance to WB — `0` on a hit,
+   * with no cache, and when EX2 first hands the instruction over. MEM sets it to `missPenalty` on
+   * the cycle it detects a miss and decrements it each cycle after.
+   *
+   * On the LATCH rather than on the processor, mirroring `engine/pipeline`'s `ExMemLatch`. It lived
+   * on the processor until the M11+M12 review, under a docblock arguing that a per-latch copy
+   * bought nothing because "`micro.cache` is what the view actually reads" — which is false for one
+   * state the view has: `CacheGridView` draws a line `filling`, with a countdown, from
+   * `micro.<memLatch>.missCyclesRemaining`, and a processor-private counter reaches no view at all.
+   */
+  readonly missCyclesRemaining: number;
 }
 
 /** MEM/WB — the final value on its way to the register file. */
@@ -531,12 +543,6 @@ export class DeepPipelineProcessor implements Processor {
   private cacheConfig: CacheConfig | null = null;
   /** The single-buffered tag/valid state, mutated in place by {@link access}; null iff no cache. */
   private cache: CacheState | null = null;
-  /**
-   * Cycles left to serve on a miss in progress. A plain field rather than a rider on the EX2/MEM
-   * latch (where the 5-stage keeps it): MEM re-presents that latch unchanged during the hold, so
-   * there is nothing a per-latch copy would buy, and `micro.cache` is what the view actually reads.
-   */
-  private missCyclesRemaining = 0;
   /** The instruction in the IF1 stage: fetched this cycle, or held over across a stall. */
   private ifSlot: Fetched | null = null;
   /** Sticky once an architectural halt is decoded: fetch never restarts, the pipe just drains. */
@@ -552,7 +558,6 @@ export class DeepPipelineProcessor implements Processor {
     // five younger stages hold — and the throw went with it. See {@link stageMem}.
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
-    this.missCyclesRemaining = 0;
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
     this.registers = makeRegisters();
@@ -770,21 +775,23 @@ export class DeepPipelineProcessor implements Processor {
     //     lone `cache-access`), then hold. The data access is deferred to the release cycle.
     //   - HIT, NO CACHE, OR THE RELEASE CYCLE: do the access and build MEM/WB, exactly as the
     //     cache-less machine always has.
-    if (this.missCyclesRemaining > 0) {
-      this.missCyclesRemaining -= 1;
-      if (this.missCyclesRemaining > 0) {
+    if (em.missCyclesRemaining > 0) {
+      const remaining = em.missCyclesRemaining - 1;
+      if (remaining > 0) {
         ctx.memStall = true;
-        ctx.next.ex2Mem = em; // re-present; `next.memWb` stays null — the WB bubble
+        // Re-present WITH the decremented count; `next.memWb` stays null — the WB bubble. The count
+        // rides the latch (as in the 5-stage) so it reaches `micro`, and the cache panel can draw
+        // the line `filling` with a countdown instead of going idle mid-freeze.
+        ctx.next.ex2Mem = { ...em, missCyclesRemaining: remaining };
         return;
       }
       // remaining === 0 ⇒ the release cycle: fall through to the real access + MEM/WB build.
     } else {
       const penalty = this.consultCache(ctx, em);
       if (penalty > 0) {
-        this.missCyclesRemaining = penalty;
         ctx.memStall = true;
         ctx.memStallStarted = true;
-        ctx.next.ex2Mem = em;
+        ctx.next.ex2Mem = { ...em, missCyclesRemaining: penalty };
         return;
       }
     }
@@ -1123,6 +1130,7 @@ export class DeepPipelineProcessor implements Processor {
       storeData,
       nextPc,
       halt: isArchHalt(d),
+      missCyclesRemaining: 0, // at rest: MEM sets the penalty on the cycle it detects a miss
     };
   }
 

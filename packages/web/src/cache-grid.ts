@@ -24,9 +24,15 @@
  * penalty cycles that follow emit none. A grid keyed only on the event would light for one cycle and
  * go dark for the rest of the stall, blanking the cache panel at the exact moment the map above it
  * shows `MEM MEM MEM` and the flagship "watch it stall on a miss" is happening. So when no event
- * fires but a penalty is in progress (`micro.exMem.missCyclesRemaining > 0`), the served line is
- * derived from the stalled load's address (`micro.exMem.aluOut`) and shown as `filling`, with the
- * countdown. No new trace field — both facts already ride `micro` (INV-3).
+ * fires but a penalty is in progress (`missCyclesRemaining > 0` on the MEM-stage latch), the served
+ * line is derived from the stalled load's address (that latch's `aluOut`) and shown as `filling`,
+ * with the countdown. No new trace field — both facts already ride `micro` (INV-3).
+ *
+ * **And it is read through {@link memOccupant}, because the latch's NAME is per-model.** The deep
+ * pipeline calls it `ex2Mem`; a hard-coded `micro.exMem` silently returns undefined there, so from
+ * M11 step 6 (which gave that machine a cache) until the M11+M12 review, this panel went idle for
+ * the whole freeze on the deep pipeline — reintroducing, on a shipped and user-reachable config,
+ * exactly the blanking the paragraph above exists to prevent.
  */
 
 import {
@@ -129,6 +135,21 @@ export function buildCacheGrid(
 }
 
 /**
+ * The MEM-stage occupant, whatever the model calls its latch — `exMem` on the four five-stage-shaped
+ * machines, `ex2Mem` on the deep pipeline, which has two execute stages before it.
+ *
+ * A model-shaped read, deliberately narrow: the name is the ONLY thing that differs, and both latches
+ * carry the two fields below with identical meaning. The alternative — a per-model branch upstream —
+ * would put model identity into a helper whose whole job is to be told a `micro`.
+ */
+function memOccupant(
+  micro: PipelineMicro | null,
+): { missCyclesRemaining: number; aluOut: number | null } | null {
+  const m = micro as (PipelineMicro & { ex2Mem?: PipelineMicro['exMem'] }) | null;
+  return m?.exMem ?? m?.ex2Mem ?? null;
+}
+
+/**
  * The line touched this cycle, and how. The `cache-access` event is authoritative when present (it
  * is the cycle the access actually happened, verdict and all); otherwise a penalty in progress means
  * the load is still waiting in MEM, so the served line is derived from the stalled address and shown
@@ -151,7 +172,7 @@ function accessThisCycle(
     };
   }
 
-  const em = micro?.exMem;
+  const em = memOccupant(micro);
   if (em && em.missCyclesRemaining > 0 && em.aluOut !== null) {
     const addr = em.aluOut >>> 0;
     return {
