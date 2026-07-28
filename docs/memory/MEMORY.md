@@ -1,8 +1,9 @@
 # Project memory — CPU Visualizer
 
 A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
-M10; M11/M12 came from the don't-foreclose flag). Six models ship, each with a lesson
-track. Repo **4498 tests**, five gates green.
+M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is PLANNED, not
+built** — its step-0 dump found a live hang in shipped code. Six models ship, each with a
+lesson track. Repo **4502 tests**, five gates green.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -49,9 +50,15 @@ track. Repo **4498 tests**, five gates green.
 - [Cycles cannot see a lost forward](cycles-cannot-see-a-lost-forward.md) — verify engine
   changes on the EVENT MULTISET under hand-built adversarial programs: a cycles-only
   identity held in every cell while two `forward` events silently vanished.
-- [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11).
-  **WIDTH is the one open axis**: `superscalar/processor.ts` still refuses
-  `issueWidth > 2` by name, so that milestone generalizes pairing rules IN PLACE.
+- [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
+  **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
+  are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
+  - [M13 width — planned](m13-width-planned.md) — the step-0 dump: the rules were already
+    width-generic, **a live width-2 HANG in shipped code** (`bnez` then `ecall`; the corpus
+    was safe only by its `li a7, 10` exit spacer — fixed `a9f1b70`), and width 4 is where
+    widening stops paying. Both gating decisions pinned. **Read before touching
+    `engine/superscalar` or the lane hues** — the lane tints are a SECOND validated channel,
+    not `PHASE_COLORS`, and the two share no constraint.
 - [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
   keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
   each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
