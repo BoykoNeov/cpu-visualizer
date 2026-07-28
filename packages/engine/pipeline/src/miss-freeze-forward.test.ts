@@ -128,8 +128,20 @@ describe('a cache miss must not eat a forward', () => {
    * once in the release cycle's ordinary resolve. This machine is safe for a reason that is an
    * ARGUMENT rather than a pin — what it holds in EX/MEM is the missing memory op itself, which
    * forwards to nobody (a store's `rd` is 0; a load with a consumer in EX is what the load-use
-   * interlock forbids). Asserted here as a property so that a later forwarding source, which is the
-   * thing that would make the argument false, fails a test instead of shipping.
+   * interlock forbids).
+   *
+   * **What this test can and cannot see, stated exactly, because the superscalar's twin was
+   * MEASURED vacuous.** Run against that broken machine, a sweep over this same program shape
+   * passed 8/8: its consumer forwards from MEM/WB, which `holdInMem` bubbles for the whole freeze,
+   * so nothing survives to be re-matched. The superscalar could be made non-vacuous by adding a
+   * geometry that keeps a producer alive across the freeze (`pairedSrc`, over there); **this
+   * machine has no such geometry** — a width-1 pipe holds exactly one instruction in MEM, and it is
+   * the missing one.
+   *
+   * So this sweep catches a duplicate arising from a source that is ALREADY reachable here, and it
+   * would NOT catch one arising from a forwarding source that does not exist yet. If a future
+   * change lets something else survive a freeze in MEM, this file needs a program that reaches it —
+   * the test does not inherit that coverage for free.
    */
   it.each([0, 1, 2, 3])('consumer %i behind the load: no port is forwarded twice', (k) => {
     const perPort = new Map<string, number>();

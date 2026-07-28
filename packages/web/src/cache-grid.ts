@@ -141,6 +141,13 @@ export function buildCacheGrid(
  * A model-shaped read, deliberately narrow: the name is the ONLY thing that differs, and both latches
  * carry the two fields below with identical meaning. The alternative — a per-model branch upstream —
  * would put model identity into a helper whose whole job is to be told a `micro`.
+ *
+ * **This RELOCATES the seam; it does not close it.** A third model with a third latch name falls
+ * through to `null` here exactly as the deep pipeline did, and nothing throws. So: any new model
+ * that can freeze in MEM must add its latch name to this function AND a row to the `it.each` in
+ * `cache-grid.test.ts` — where the five-stage row is the positive control that keeps the new row
+ * meaningful. There is no registry to make that automatic, and building one for two names would
+ * cost more than it catches; this sentence is the substitute.
  */
 function memOccupant(
   micro: PipelineMicro | null,

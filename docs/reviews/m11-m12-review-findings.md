@@ -11,9 +11,43 @@ Line numbers are as of `582a525` and may drift.
 ## ✅ RESOLVED — all 5 fixed (2026-07-28)
 
 Each in its own commit with a regression test. The two user-visible ones (2, 5) were
-additionally **browser-verified on the shipped bundle** (`vite preview`, rig at
-`M:/claud_projects/temp/m11m12-fix-browser/verify.mjs`, 27 checks, all pass). Repo
-went 4466 → 4498 tests; typecheck / lint / build / format:check green.
+additionally **browser-verified on the shipped bundle** (`vite preview`, 27 checks,
+all pass — recorded below rather than by pointer). Repo went 4466 → 4498 tests;
+typecheck / lint / build / format:check green.
+
+### What the browser pass asserted
+
+The rig itself lived at `M:/claud_projects/temp/m11m12-fix-browser/verify.mjs`, which
+is outside the repo and will be swept — so what it checked is written down here
+instead. (Recording it as a path would have been this review's own finding 2: a
+document naming a mechanism that is not there.)
+
+- **§0, the anti-vacuity gate** (5 checks) — attached to our page by served `<title>`;
+  the page is the BUILT bundle (a `/assets/index-*.js` script tag, no `/src/main.tsx`);
+  the built CSS actually loaded (1 sheet, 74 rules); a KNOWN-PRESENT control resolves;
+  the class-keyed cache selectors resolve on minified CSS. Nothing below counts until
+  these pass — a production class transform makes every absence check pass vacuously.
+- **§1, finding 5** (10 checks, 5 per machine) — `array-sum-twice` under the 2-line
+  cache on **both** the five-stage and the deep pipeline. The miss cycle is DERIVED,
+  not pinned, because depth moves _when_ the miss happens and not _which_ (5-stage
+  detects at cycle 11, deep at 15). Each: the detection cycle reads `MISS`; the next
+  three read `FILLING … · N cycles left` counting 9, 8, 7; and the served LINE carries
+  the amber `FILLING · 9` tag, not merely the caption under the grid. The five-stage
+  half is the positive control.
+- **§2, finding 2** (11 checks) — started from `single-cycle`, so `startLesson` has to
+  drag model + program + config. The lesson opens on `deep-pipeline` / `sum-loop` and
+  records at M12's pinned **87** (the bet is 73). The rail then states the finding out
+  loud: **"Not started · 3 steps"** — three of five, at the declared config. Two Nexts
+  reach "Step 2 of 3", exactly one narration paragraph is visible, and it ends with the
+  new prompt. Flipping Predict → taken moves the recording 87 → 73 **and re-anchors the
+  rail to 4 steps**; the bet beat is then step 2 of 4 and still opens "Prediction is
+  on." — true now, which it was not before.
+- **§3** — no console errors or exceptions across the whole pass.
+
+Three rig defects surfaced and all three were the rig: it looked for lesson _buttons_
+(the control is a `<select>`), it used the caption `Prediction` (it is `Predict`), and
+it expected "Step 2 of 5" where the app correctly says "of 3". The last one is the app
+telling the truth about the finding.
 
 ---
 
@@ -44,11 +78,17 @@ over that program **passed**. Only a producer paired _with_ the load survives to
 re-matched. So the file now carries a named EX/MEM-sourced test asserting its own
 `from` (a front end that stopped pairing would otherwise make the count 1 and the
 test green for the wrong reason), plus a property sweep — no port forwarded twice,
-anywhere — over **both** geometries × both widths × four alignments. `engine/pipeline`
-and `engine/deep-pipeline` carry the property test too: they pass today for a reason
-that was an argument reconstructed by hand (what they hold across a freeze is the
-missing memory op, which forwards to nobody), and an argument about today's
-forwarding sources is not a guarantee about tomorrow's.
+anywhere — over **both** geometries × both widths × four alignments.
+
+`engine/pipeline` and `engine/deep-pipeline` carry the property test too, and its
+reach there is stated in their docblocks rather than assumed: **neither machine has a
+paired geometry to add**, because a width-1 pipe holds exactly one instruction in MEM
+and it is the missing one. So on those two the sweep catches a duplicate from a source
+already reachable, and would NOT catch one from a forwarding source that does not exist
+yet — if a future change lets something else survive a freeze in MEM, those files need
+a program that reaches it. Writing that down is the point: the first draft of these
+comments claimed the test would catch a later forwarding source, which is exactly the
+overclaim the superscalar's measured-vacuous sweep had just disproved.
 
 ### 2. MEDIUM — `deep-bet-pays-double` never asked for the toggle it needs
 

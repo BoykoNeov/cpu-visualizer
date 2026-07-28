@@ -300,10 +300,16 @@ ${filler}    addi x10, x10, -1    # C — reads x10 stale in ID; needs the forwa
    * This machine is not broken — what it holds in EX2/MEM across a freeze is the missing memory op
    * itself, which forwards to nobody (a store's `rd` is 0; a load with a consumer in EX1 is exactly
    * what the load-use interlock forbids) — but until now that was an ARGUMENT, reconstructed by
-   * hand, not a pin. The superscalar's is the same argument and it is false there, because that
-   * machine also holds a younger PAIR-MATE in the same latch. So the claim is asserted as a
-   * property rather than a geometry: it survives a new forwarding source being added later, which
-   * is the circumstance that would turn the argument false here too.
+   * hand, not a pin. The superscalar's is the same argument and it is FALSE there, because that
+   * machine also holds a younger PAIR-MATE in the same latch.
+   *
+   * **What it can and cannot see, stated exactly.** The superscalar's twin of this sweep was
+   * MEASURED vacuous — 8/8 green against the broken machine — until a geometry that keeps a
+   * producer alive across the freeze was added to its loop. This machine has no such geometry: it
+   * issues one instruction, so the single EX2/MEM occupant during a freeze is the missing op
+   * itself. So this catches a duplicate from a source already reachable here, and would NOT catch
+   * one from a forwarding source that does not exist yet. If a future change lets something else
+   * survive a freeze in MEM, this file needs a program that reaches it — the coverage is not free.
    */
   it.each([0, 1, 2, 3])('consumer %i behind the load: no port is forwarded twice', (k) => {
     const { program, errors } = assemble(src(k));
