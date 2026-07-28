@@ -291,6 +291,40 @@ ${filler}    addi x10, x10, -1    # C — reads x10 stale in ID; needs the forwa
       );
     }
   });
+
+  /**
+   * The freeze's OTHER direction, and the one no engine asserted until the M11+M12 review found the
+   * superscalar failing it: a capture that runs on the detection cycle must not ALSO run on the
+   * release cycle, or one read of one value emits two `forward` events.
+   *
+   * This machine is not broken — what it holds in EX2/MEM across a freeze is the missing memory op
+   * itself, which forwards to nobody (a store's `rd` is 0; a load with a consumer in EX1 is exactly
+   * what the load-use interlock forbids) — but until now that was an ARGUMENT, reconstructed by
+   * hand, not a pin. The superscalar's is the same argument and it is false there, because that
+   * machine also holds a younger PAIR-MATE in the same latch. So the claim is asserted as a
+   * property rather than a geometry: it survives a new forwarding source being added later, which
+   * is the circumstance that would turn the argument false here too.
+   */
+  it.each([0, 1, 2, 3])('consumer %i behind the load: no port is forwarded twice', (k) => {
+    const { program, errors } = assemble(src(k));
+    if (!program) throw new Error(errors.map((e) => e.message).join());
+    const traces = run(toProgramImage(program), cfg({ forwarding: true, cache: CACHE_SMALL }));
+
+    const perPort = new Map<string, number>();
+    for (const t of traces) {
+      for (const e of t.events) {
+        if (e.type !== 'forward') continue;
+        const key = `${e.instr}→${e.to}`;
+        perPort.set(key, (perPort.get(key) ?? 0) + 1);
+      }
+    }
+    // Non-vacuity FIRST: a run with no forwards at all would satisfy the claim below trivially.
+    expect(perPort.size, `k=${k}: the geometry must actually forward`).toBeGreaterThan(0);
+    expect(
+      [...perPort.entries()].filter(([, n]) => n > 1),
+      `k=${k}`,
+    ).toEqual([]);
+  });
 });
 
 describe('INV-8 locally, and the recorder’s deep-copy obligation', () => {

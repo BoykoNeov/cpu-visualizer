@@ -125,6 +125,21 @@ export interface IdExLatch extends IfIdLatch {
    * a comparison that cannot fail.
    */
   readonly predictedTaken: boolean;
+  /**
+   * `a`/`b` already carry their FORWARDED values, captured on a miss's detection cycle — so EX must
+   * use them as they stand and not resolve the network a second time.
+   *
+   * Only a miss-freeze sets this. The capture exists because a producer reachable only by
+   * forwarding right now can retire during the freeze (see {@link executeSlot}); the flag exists
+   * because at width ≥ 2 the opposite is also true. `stageMem`'s `frozen` walk re-presents an older
+   * pair-mate in `exMem` for the whole freeze INCLUDING the release cycle, so a producer that is
+   * still standing there would be matched twice — once by the capture, once by the release cycle's
+   * ordinary resolve — and `forward` would be emitted twice for one read of one value. The other
+   * two engines never see this: what they hold in MEM across a freeze is the missing memory op
+   * itself, which forwards to nobody (a store writes x0; a load with a consumer in EX is what the
+   * load-use interlock forbids). So this flag is what makes THIS machine agree with them.
+   */
+  readonly operandsResolved: boolean;
 }
 
 /** EX/MEM — the ALU's answer on its way to memory. */
@@ -944,16 +959,22 @@ export class SuperscalarProcessor implements Processor {
     // on the detection cycle retires during the freeze and its latch drains, so a value reachable
     // only by forwarding right now is GONE by the release cycle — and the occupant would then
     // execute on its stale, pre-forwarding register read from ID. Resolving the operands here and
-    // latching them back onto `a`/`b` fixes that with no new latch field: the release cycle's own
-    // `resolveOperand` finds no producer and returns exactly these values. See
-    // `docs/reviews/m11-miss-freeze-forward-loss.md` — this was a wrong ARCHITECTURAL answer from a
-    // knob that is supposed to be a pure timing shadow, and no corpus program could reach it.
+    // latching them back onto `a`/`b` fixes that, and marks them {@link IdExLatch.operandsResolved}
+    // so the release cycle uses them AS THEY STAND. See `docs/reviews/m11-miss-freeze-forward-loss.md`
+    // — this was a wrong ARCHITECTURAL answer from a knob that is supposed to be a pure timing shadow,
+    // and no corpus program could reach it.
+    //
+    // The flag is not bookkeeping. In the other two engines the release cycle can safely resolve a
+    // second time, because everything it could match is gone by then; here an older PAIR-MATE is
+    // re-presented in `exMem` for the whole freeze and would be matched again, emitting a second
+    // `forward` for one read of one value — see {@link IdExLatch.operandsResolved}.
     if (ctx.memStall) {
       ctx.next.idEx[slot] = ctx.memStallStarted
         ? {
             ...ie,
             a: this.resolveOperand(ctx, ie, 'rs1', ie.decoded.rs1, ie.a),
             b: this.resolveOperand(ctx, ie, 'rs2', ie.decoded.rs2, ie.b),
+            operandsResolved: true,
           }
         : ie;
       return;
@@ -974,9 +995,11 @@ export class SuperscalarProcessor implements Processor {
     const shamt = imm & 0x1f; // shift amount: low 5 bits, for both reg- and imm-shifts
 
     // Resolve the two source operands against the forwarding network (a no-op when the toggle is
-    // off, where the ID interlock has already guaranteed the latched values are current).
-    const fwdA = this.resolveOperand(ctx, ie, 'rs1', rs1, ie.a);
-    const fwdB = this.resolveOperand(ctx, ie, 'rs2', rs2, ie.b);
+    // off, where the ID interlock has already guaranteed the latched values are current) — unless a
+    // miss-freeze already resolved them, in which case `a`/`b` ARE the forwarded values and asking
+    // again would only re-emit the event.
+    const fwdA = ie.operandsResolved ? ie.a : this.resolveOperand(ctx, ie, 'rs1', rs1, ie.a);
+    const fwdB = ie.operandsResolved ? ie.b : this.resolveOperand(ctx, ie, 'rs2', rs2, ie.b);
 
     // A null operand where the execute logic wants one means `sourceRegs()` and this switch
     // disagree — the hazard unit's worst bug class, since every stall and forward keys off the
@@ -1374,6 +1397,7 @@ export class SuperscalarProcessor implements Processor {
         a,
         b,
         predictedTaken: target !== null,
+        operandsResolved: false, // pre-forwarding, as read from the register file
       };
       group.push(fd);
       issued = s + 1;

@@ -119,6 +119,35 @@ describe('a cache miss must not eat a forward', () => {
     expect(forwardCycles).toEqual([missCycle]);
   });
 
+  /**
+   * The same "exactly once" claim as the test above, widened from ONE consumer at ONE alignment to
+   * every port in the run — the form the M11+M12 review found the superscalar failing.
+   *
+   * That machine freezes a younger PAIR-MATE in EX/MEM beside the miss and re-presents it for the
+   * whole freeze including the release cycle, so its consumer matched twice: once in the capture,
+   * once in the release cycle's ordinary resolve. This machine is safe for a reason that is an
+   * ARGUMENT rather than a pin — what it holds in EX/MEM is the missing memory op itself, which
+   * forwards to nobody (a store's `rd` is 0; a load with a consumer in EX is what the load-use
+   * interlock forbids). Asserted here as a property so that a later forwarding source, which is the
+   * thing that would make the argument false, fails a test instead of shipping.
+   */
+  it.each([0, 1, 2, 3])('consumer %i behind the load: no port is forwarded twice', (k) => {
+    const perPort = new Map<string, number>();
+    for (const t of run(k, cfg({ cache: CACHE_SMALL }))) {
+      for (const e of t.events) {
+        if (e.type !== 'forward') continue;
+        const key = `${e.instr}→${e.to}`;
+        perPort.set(key, (perPort.get(key) ?? 0) + 1);
+      }
+    }
+    // Non-vacuity FIRST: a run that forwards nothing satisfies the claim below for free.
+    expect(perPort.size, `k=${k}: the geometry must actually forward`).toBeGreaterThan(0);
+    expect(
+      [...perPort.entries()].filter(([, n]) => n > 1),
+      `k=${k}`,
+    ).toEqual([]);
+  });
+
   it('still pays the full miss penalty — the freeze is not what was wrong', () => {
     const off = run(0, cfg({ cache: null })).length;
     const on = run(0, cfg({ cache: CACHE_SMALL })).length;
