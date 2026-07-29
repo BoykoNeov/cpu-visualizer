@@ -179,6 +179,32 @@ const LANE_H = 260;
 /** A lane's sign-extender sits this far below its block top, in the shared ID band. */
 const SEXT_DY = 114;
 const ALU_W = 84;
+/** The instruction memory's width — named because the IF/ID corridor below is derived from its
+ *  right edge, so the two must move together. */
+const IMEM_W = 76;
+/**
+ * How much clear horizontal room the IF/ID corridor must hold, and it is arithmetic rather than
+ * taste: the widest value label anchored in that corridor is a fetched instruction's ENCODING,
+ * `hex32` renders exactly 10 characters, and `layoutLabels` sizes a label box at
+ * `text.length * 3.2 + 3` either side of its anchor. `layoutLabels` also counts a label as
+ * colliding with a component box within 2 units of its edge, so the corridor must clear that margin
+ * at both ends — and the label needs it at both of its own ends too.
+ *
+ * **M13 step 9 found this by looking at the picture.** `pcmuxX` grows with the width (the left
+ * margin holds `2n` redirect channels) and `ifidX` shrank with it (the ID band holds `2n` channels
+ * of its own), so the one corridor between them was squeezed from BOTH sides: 80 → 56 → 32 → **8**
+ * units against a 70-unit label. At widths 3 and 4 all of the fetched encodings were drawn
+ * straddling the IF/ID bar, which is painted over them — `0x01ff1e33` read as `ff…3`. Every
+ * headless test passed, because a label's coordinates were never compared to anything.
+ *
+ * This is step 7's own rule arriving one column to the left: `fwdmuxX` is derived from the number
+ * of channels its corridor must hold, so a wider machine MOVES THE HARDWARE instead of overrunning
+ * the corridor. The execute side got that treatment at step 7; the front end did not, because
+ * nothing there is a channel COUNT — it is a label, and a label is not part of the geometry until
+ * something says how wide it is.
+ */
+export const HEX_LABEL_W = 2 * (10 * 3.2 + 3);
+export const IFID_CORRIDOR = HEX_LABEL_W + 4 * 2;
 
 /** How many lanes forward on each outboard side. Reproduces M7's assignment at widths 1 and 2. */
 function sideSplit(width: number): { top: number; bottom: number } {
@@ -326,15 +352,26 @@ function layout(n: number) {
   const seqCh = imemX + 78;
 
   // The ID band's channels: one bet-immediate run and one writeback bus per lane, in the gap
-  // between the IF/ID bar and the ID column. The column stays at x = 330 and the BAR moves left as
-  // the machine widens, which is what keeps the ID band's own boxes where the reader learned them.
-  const idCh = Array.from({ length: 2 * n }, (_, k) => 330 - 12 * n + 6 * k);
-  const ifidX = 308 - 12 * n;
-  const idX = 330;
+  // between the IF/ID bar and the ID column. The BAR moves left as the machine widens, to hold
+  // those `2n` channels without moving the ID band's own boxes off where the reader learned them.
+  //
+  // ...but the bar moving left is what starved the corridor on its OTHER side, so the whole ID
+  // column and everything right of it now slides by `idShift` — the shortfall, if any, between the
+  // room {@link IFID_CORRIDOR} needs and the room those two independently-derived x's left it. At
+  // widths 1 and 2 the pre-M13 relation already cleared it and the shift is ZERO, so those two
+  // drawings are untouched by this; at widths 3 and 4 the hardware moves rather than the labels
+  // being drawn under a latch bar. The five bases below were five independent literals, which is
+  // precisely why a squeeze between two of them could go unnoticed — they are one chain now.
+  const ifidFloor = 308 - 12 * n;
+  const idShift = Math.max(0, imemX + IMEM_W + IFID_CORRIDOR - ifidFloor);
+  const ifidX = ifidFloor + idShift;
+  const idCh = Array.from({ length: 2 * n }, (_, k) => 330 + idShift - 12 * n + 6 * k);
+  const idX = 330 + idShift;
 
   // Between the register file and the ID/EX bar: two read-port channels per lane, one bet-corner
   // channel per lane, and one return for the bet adder's own output.
-  const midCh = Array.from({ length: 3 * n + 2 }, (_, k) => 448 + 5 * k);
+  const midCh = Array.from({ length: 3 * n + 2 }, (_, k) => 448 + idShift + 5 * k);
+  const idexX = 520 + idShift;
   const portCh = (lane: number, port: number): number => midCh[2 * lane + port]!;
   const cornerX = (lane: number): number => midCh[2 * n + lane]!;
   const betCh = midCh[3 * n]!;
@@ -348,7 +385,7 @@ function layout(n: number) {
   // (reused by the bottom side, y-disjointly), then four contraction channels per top-side lane.
   // A contraction and a through-mux wire are never co-visible, so those two families may overlap
   // each other's x freely — but never within a family.
-  const fwdCh = Array.from({ length: 5 * topLanes }, (_, k) => 542 + 8 * k);
+  const fwdCh = Array.from({ length: 5 * topLanes }, (_, k) => 542 + idShift + 8 * k);
   const fwdmuxX = fwdCh[fwdCh.length - 1]! + 14;
   const conCh = Array.from({ length: 4 * topLanes }, (_, k) => fwdmuxX + 20 + 6 * k);
   const muxOutCh = fwdmuxX + 30;
@@ -402,6 +439,8 @@ function layout(n: number) {
     idCh,
     ifidX,
     idX,
+    idexX,
+    idShift,
     portCh,
     cornerX,
     betCh,
@@ -467,7 +506,7 @@ function sharedNodes(L: Layout): DatapathNode[] {
     // width 4 it would be wrong most of the time. The wire out of it carries the real number from
     // the trace, which is where a reader gets the actual value.
     { id: 'addn', label: '+4n', x: L.imemX, y: L.spineY - 132, w: 58, h: 48, shape: 'adder' },
-    { id: 'imem', label: 'Instr\nMem', x: L.imemX, y: L.spineY - 40, w: 76, h: 80 },
+    { id: 'imem', label: 'Instr\nMem', x: L.imemX, y: L.spineY - 40, w: IMEM_W, h: 80 },
     { id: 'ifid', label: 'IF\n/\nID', x: L.ifidX, y: L.barTop, w: 16, h: L.barH },
     // --- ID (shared): issue/pairing, hazard detection, the register file, the bet adder ---------
     // THE MODEL'S SOUL, drawn. It answers "may these go together?" and its refusal reason is what
@@ -485,7 +524,7 @@ function sharedNodes(L: Layout): DatapathNode[] {
     // but fed from EVERY lane's sign-extender, since the betting branch may sit in any slot.
     // Proportioned near-square so the P&H notch reads as an adder (M4 step 5's browser finding).
     { id: 'btarget', label: 'Branch\ntarget', x: L.idX, y: L.btargetY, w: 80, h: 54, shape: 'adder', predictTakenOnly: true }, // prettier-ignore
-    { id: 'idex', label: 'ID\n/\nEX', x: 520, y: L.barTop, w: 16, h: L.barH },
+    { id: 'idex', label: 'ID\n/\nEX', x: L.idexX, y: L.barTop, w: 16, h: L.barH },
     { id: 'exmem', label: 'EX\n/\nMEM', x: L.exmemX, y: L.barTop, w: 16, h: L.barH },
     // --- MEM (shared, and single by RULE): one data memory, one port --------------------------
     // The mem-port refusal is what keeps this box single, and it pays for itself several times

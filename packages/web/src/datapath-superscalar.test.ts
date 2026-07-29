@@ -38,6 +38,8 @@ import { DEPTH_TIERS } from '@cpu-viz/curriculum';
 import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { defaultConfig, type CycleTrace } from '@cpu-viz/trace';
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   activate,
@@ -45,6 +47,8 @@ import {
   geometryFor,
   LANES,
   laneId,
+  HEX_LABEL_W,
+  IFID_CORRIDOR,
   MAX_WIDTH,
   NODES,
   nodeVisibleAt,
@@ -60,7 +64,8 @@ import {
   type DatapathNode,
   type DatapathWire,
 } from './datapath-superscalar';
-import { shapePolygon } from './DatapathDiagram';
+import { DatapathDiagram, shapePolygon } from './DatapathDiagram';
+import { hex32 } from './format';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
@@ -1031,5 +1036,95 @@ describe('geometry: wires are orthogonal, anchored on real edges, and clear of t
         }
       }
     }
+  });
+});
+
+// =================================================================================================
+// The IF/ID corridor — M13 step 9, and the only litmus here whose subject is a LABEL
+// =================================================================================================
+
+/**
+ * **The defect this closes was found by looking at the picture, and nothing in this file could have
+ * seen it.** Every litmus above is about wires and boxes; a value label had no coordinates as far
+ * as the suite was concerned. So when `pcmuxX` (which grows with the width, to hold `2n` redirect
+ * channels) and `ifidX` (which shrank with it, to hold `2n` channels of its own) squeezed the one
+ * corridor between them from **80 → 56 → 32 → 8 units**, against a 70-unit instruction-encoding
+ * label, all 6186 tests stayed green — and at widths 3 and 4 every fetched encoding was drawn
+ * straddling the IF/ID bar, which is painted over it. `0x01ff1e33` read as `ff…3`.
+ *
+ * Two halves, because the claim spans two layers and either one alone is satisfiable by a lie:
+ *
+ *  - **(a) the constant is honest** — {@link HEX_LABEL_W} is checked against what `DatapathDiagram`
+ *    ACTUALLY draws, by rendering one and measuring the emitted box. A geometry that reserves room
+ *    for a label size the renderer does not use is reserving nothing.
+ *  - **(b) the geometry keeps it, at every width** — asked of the drawing that is really rendered,
+ *    `geometryFor(w)`, not of the lane universe.
+ *
+ * The signed overlap that found this is worth naming as a POINTER rather than a verdict: the
+ * measurement read −7 at width 2 (legible) and −31 at width 4 (not), so the number ranked the
+ * widths while the image decided which of them was broken.
+ */
+describe('the IF/ID corridor holds an instruction encoding, at every width', () => {
+  it('(a) the reserved width matches what the RENDERER actually draws for a 32-bit encoding', () => {
+    // `hex32` renders `0x` + eight digits. Ten characters is the widest value label this diagram
+    // can emit, and it is emitted on exactly the wires that cross this corridor.
+    const text = hex32(0x01ff1e33);
+    expect(text).toHaveLength(10);
+    const markup = renderToStaticMarkup(
+      createElement(DatapathDiagram, {
+        title: 't',
+        ariaLabel: 'a',
+        markerPrefix: 'm',
+        canvas: { width: 400, height: 200 },
+        nodes: [],
+        wires: [
+          {
+            id: 'w',
+            points: [
+              [100, 100],
+              [300, 100],
+            ],
+            active: true,
+            label: text,
+          },
+        ],
+      }),
+    );
+    const box = /class="dp-vlabel-box"[^>]*width="([\d.]+)"/.exec(markup);
+    expect(box, 'the renderer emitted no value-label box').not.toBeNull();
+    const drawn = Number(box![1]);
+    expect(
+      HEX_LABEL_W,
+      `the geometry reserves ${HEX_LABEL_W} for a label the renderer draws at ${drawn}`,
+    ).toBeGreaterThanOrEqual(drawn);
+  });
+
+  it('(b) at every width, the gap between the instruction memory and the IF/ID bar holds it', () => {
+    for (let w = 1; w <= MAX_WIDTH; w++) {
+      const g = geometryFor(w);
+      const imem = g.nodes.get('imem')!;
+      const ifid = g.nodes.get('ifid')!;
+      const corridor = ifid.x - (imem.x + imem.w);
+      expect(
+        corridor,
+        `width ${w}: the encoding labels have ${corridor}px between Instr Mem and the IF/ID bar`,
+      ).toBeGreaterThanOrEqual(IFID_CORRIDOR);
+    }
+  });
+
+  it('(d) which widths the fix MOVED — enumerated, because the first draft guessed and was wrong', () => {
+    // The draft asserted "widths 1 and 2 were already clear, so they did not move". Width 1 was;
+    // width 2 was NOT — its corridor is 56 against a requirement of 78, so the bar slides 22px and
+    // the shipped two-wide drawing changes. That is the correct outcome (at width 2 the encoding
+    // already overhung the bar by 7px and only got away with it), but it is a fact about the
+    // machine, not a convenience: the same class as step 6's 33 survivors and step 3's fillsFour
+    // names. **Enumerate what your change moved; do not characterise it from what you hoped.**
+    expect([1, 2, 3, 4].map((w) => geometryFor(w).nodes.get('ifid')!.x - (308 - 12 * w))).toEqual([
+      0, 22, 46, 70,
+    ]);
+    // Width 1's zero is for a STATED reason rather than by luck: its corridor was already wide
+    // enough. Asserting the reason, not just the zero.
+    const g1 = geometryFor(1);
+    expect(g1.nodes.get('ifid')!.x - (g1.nodes.get('imem')!.x + g1.nodes.get('imem')!.w)).toBe(80);
   });
 });
