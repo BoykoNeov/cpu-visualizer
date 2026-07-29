@@ -1024,13 +1024,35 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
   path to it, and the fix that looks obvious — changing the OoO engine's `?? 2` — moves pinned
   recordings. **Do not claim it closed; it has never been closed.**
 - **`layoutLabels` has no horizontal escape.** Its de-collide loop searches only in `y` (±160 in
-  4-unit steps) and, when that fails, **places the label anyway** — on the box. Step 9's corridor
-  fix removes the only case in this repo that reaches the fallback, but the fallback is still there
-  and it is silent. Deliberately NOT folded into the closing pass: it is a change to the SHARED
-  renderer, so it belongs to its own commit with its own break pass. Note the reason it is not
-  obviously an improvement — at width 4 there are four encodings in one corridor, and **a label
-  displaced far enough to be clear could belong to any of them**, which is worse than a visibly
-  truncated one. The geometry was the right layer; this would be a safety net, not the fix.
+  4-unit steps) and, when that fails, **places the label anyway** — on the box. Deliberately NOT
+  folded into the closing pass: it is a change to the SHARED renderer, so it belongs to its own
+  commit with its own break pass. Note the reason it is not obviously an improvement — at width 4
+  there are four encodings in one corridor, and **a label displaced far enough to be clear could
+  belong to any of them**, which is worse than a visibly truncated one. The geometry was the right
+  layer; this would be a safety net, not the fix.
+
+  > **⚠ CORRECTED 2026-07-29 by the M13 review (finding 2). This entry used to continue "Step 9's
+  > corridor fix removes the only case in this repo that reaches the fallback", and that was
+  > FALSE** — it was an inference from having fixed the case step 9 went looking for, never a
+  > measurement. Instrumenting the fallback branch and sweeping the corpus × forwarding × cache ×
+  > all three tiers: the superscalar datapath reaches it with **1 distinct label at width 1, 3 at
+  > width 2, 2 at width 3, 3 at width 4**, and the **five-stage pipeline datapath reaches it too**,
+  > on a label the width axis never touched. It is a property of the shared renderer that has been
+  > shipping since M3, not a residue of step 9's corridor.
+  >
+  > **Most of it is harmless and one case is not**, which the original entry's framing could not
+  > have distinguished. Almost every hit is a corner clip of a few units — `exmem-dmem-addr` clips
+  > `exmem` by 4 of 70, `regfile-idex-a-l1` clips `idex` by 5 of 64. Exactly one label is genuinely
+  > buried: at **width 4 only**, a branch target's `0x0000000c` on `alu-pcmux` lane 0 is covered for
+  > its leading **16 of 70 units** by the EX/MEM bar — and since **component boxes paint AFTER
+  > labels**, the bar covers the label rather than the other way round. That is step 9's defect one
+  > column right and one order smaller, and it is the M13-era half of this item.
+  >
+  > `packages/web/src/label-collisions.test.tsx` now asserts the buried set as an ENUMERATION over
+  > the rendered SVG, so a new collision and a worse known one are both red, each naming itself. It
+  > is incidentally **the first real net under step 9's own fix**: reverting `IFID_CORRIDOR` reddens
+  > it with **452 buried labels**, where the milestone recorded that break as "exactly 2 of 1551" —
+  > and neither of those two named the defect.
 
 ## How this milestone can lie to itself
 
