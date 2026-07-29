@@ -34,7 +34,7 @@ commits, which no review had ever seen."_
 
 ---
 
-## 1. MEDIUM — a lesson's absent `issueWidth` is normalized to 1 on a reason that is false for the out-of-order engine
+## 1. LOW — three sites justify a default width with a claim that is false for one of the two engines that read it
 
 `packages/web/src/session.ts:255` (and its docblock at `:69–76`, and the comment at `:247–254`)
 
@@ -62,30 +62,37 @@ So the sentence justifying the shell's `?? 1` is false for one of the exactly tw
 field applies to — and it is the shell's rule, not the engine's, that would actually fire,
 because `loadInto` passes the normalized number explicitly.
 
-**Not reachable today, and measured rather than assumed.** Every lesson that declares a
-config for a width-honoring model states its width: all four superscalar lessons
-(`two-at-once`, `one-door`, `one-branch-unit`, `pair-that-cant`) and all four out-of-order
-ones (`work-slides-ahead`, `commit-in-order`, `reservation-station-holds`,
+**The lesson path cannot reach it.** Every lesson that declares a config for a
+width-honoring model states its width: all four superscalar lessons (`two-at-once`,
+`one-door`, `one-branch-unit`, `pair-that-cant`) and all four out-of-order ones
+(`work-slides-ahead`, `commit-in-order`, `reservation-station-holds`,
 `racing-ahead-of-the-miss`). Every other lesson is on a width-blind model.
 
-**What it costs if it is ever reached**, which is why this is MEDIUM and not LOW: an
-out-of-order lesson that declares a config and omits the width would open on a **1-wide**
-machine while the model's own default is 2 — with the width control showing `1-wide`, and
-with the lesson's pinned cycle counts recorded against a machine the reader is not on. That
-is M12's finding 2 exactly (`deep-bet-pays-double` asserting "Prediction is on." on a machine
-where it wasn't), one knob over. The three deep-pipeline lessons already ship with
-`config=NO-WIDTH`, so the shape "declared config, omitted width" is not hypothetical in this
-corpus — only its combination with an out-of-order model is.
+**Nor can free play — and that is the sharper half of this finding, checked because
+enumerating the lesson corpus alone would have been the narrower question.** `useSimulator`
+seeds `useState(1)` and `loadInto` passes `issueWidth: issueWidthRef.current` — always a
+number, never absent. `models.ts` deliberately does not clamp width (its M13 step 6 docblock
+argues at length that it need not). So **the out-of-order engine's `?? 2` never fires through
+the product at all**: selecting that model in free play runs it 1-wide, and the ISSUE control
+correctly reads `1-wide` while it does. The reader is not misled — the control and the machine
+agree — which is why this is LOW rather than the M12-finding-2 shape it first resembles.
 
-**Note this is the SAME root divergence as the handed-past `configLabel ?? 1`** in
-`engine/conformance` — one fact ("what is a model's default width?") with two answers and now
-three sites asserting the wrong one. That argues for fixing the root (a per-model default the
-shell and the harness both read) over patching site by site; the two `?? 1`s have now each
-been measured unreachable twice and rediscovered anyway.
+What the check actually establishes is narrower and cleaner than "a latent wrong default":
+**the out-of-order model's documented default of 2 is reachable only from engine tests and the
+conformance harness, never from the app.** So the divergence between `?? 1` and `?? 2` exists
+entirely between two defaults the product never exercises — and the cost is not a wrong
+machine but a false explanation sitting in three places, each of which reads as if it had been
+checked against the engines.
+
+**It is the SAME root divergence as the handed-past `configLabel ?? 1`** in
+`engine/conformance` — one fact ("what is a model's default width?") with two answers, and now
+three sites asserting the wrong one. Both `?? 1`s have been measured unreachable twice and
+rediscovered anyway, which is the argument for fixing the root (one owner for a model's default
+width, or an absent width made impossible) rather than the sites.
 
 ---
 
-## 2. LOW — the `layoutLabels` deferral note's stated reason is false by ~1000×
+## 2. LOW — the `layoutLabels` deferral note says nothing reaches the fallback; labels reach it at every width, and on a datapath M13 never touched
 
 `docs/plans/m13-tasks.md` ("Handed PAST M13") · `packages/web/src/DatapathDiagram.tsx:214–229`
 
@@ -99,17 +106,24 @@ The open work item is recorded like this:
 **Measured, by instrumenting the fallback branch and sweeping the corpus** (11 programs ×
 {forwarding on, off} × {no cache, `CACHE_SMALL`} × all 3 depth tiers, every recorded cycle):
 
-| datapath                            | fallbacks reached | all landing on a box? |
-| ----------------------------------- | ----------------- | --------------------- |
-| superscalar, width 1                | 160               | yes (1 distinct)      |
-| superscalar, width 2                | 364               | yes (3 distinct)      |
-| superscalar, width 3                | 296               | yes (2 distinct)      |
-| superscalar, width 4                | 300               | yes (3 distinct)      |
-| **pipeline (M3, untouched by M13)** | **288**           | yes (1 distinct)      |
+**The unit matters, and the two columns are not the same claim.** The note speaks of _cases_ —
+labels that reach the fallback. The sweep re-renders each of those once per
+(program × forwarding × cache × tier × cycle), so the render column is FREQUENCY, not a count
+of distinct problems. Leading with it would overstate the finding by conflating two units,
+which is the failure mode this review is nominally about.
 
-So the fallback is not an unreached edge; it is the ordinary outcome for a handful of labels,
-at **every** width including 1 and 2, and on a datapath M13 never opened. It is a
-long-standing property of the shared renderer, not something step 9's fix created or removed.
+| datapath                            | distinct labels reaching it | renders | landing on a box |
+| ----------------------------------- | --------------------------- | ------- | ---------------- |
+| superscalar, width 1                | **1**                       | 160     | all              |
+| superscalar, width 2                | **3**                       | 364     | all              |
+| superscalar, width 3                | **2**                       | 296     | all              |
+| superscalar, width 4                | **3**                       | 300     | all              |
+| **pipeline (M3, untouched by M13)** | **1**                       | 288     | all              |
+
+So the note's "the only case" is not zero-after-the-fix; it is one to three labels at every
+width, on every program that touches memory, plus one on the five-stage datapath M13 never
+opened. It is a long-standing property of the shared renderer, not something step 9's fix
+created or removed.
 
 **Why this is LOW and not MEDIUM — the measurement that argues the other way, kept rather
 than dropped.** The overlap is small in every dominant case: `exmem-dmem-addr` encroaches
@@ -122,9 +136,9 @@ order of thing. Per this repo's own rule, a signed overlap is a pointer and not 
 any of it is visible.
 
 **The finding is the note, not the pixels.** Whoever picks that item up would start from a
-premise that is wrong by three orders of magnitude, and would be looking for a case that
-step 9 supposedly left behind rather than for a condition that has been shipping since M3.
-Correct the note; decide the rendering question with an image.
+premise that says zero when the answer is nonzero at every width, and would be hunting a
+residue of step 9's corridor rather than a condition that has been shipping since M3. Correct
+the note; decide the rendering question with an image.
 
 ---
 
@@ -202,12 +216,17 @@ The repo's answer so far has been a browser pass every milestone, which works an
 real defects — but it pays the cost again each time, and M13 step 6's note ends by handing the
 widest position to step 9 precisely because nothing else could hold it.
 
-**The literal does not have to live in the hook.** Lifting lines 393–402 into a pure exported
-function over the eight ref values would make the seam assertable headlessly — "every session
-knob reaches the engine config, by name" becomes one table-driven test — and would retire the
-defect class rather than re-measuring it. The hook keeps calling it; nothing about the
-rendering path changes. This is offered as the shape of a fix, not as a defect: the current
-code is correct, and its documentation of its own blindness is unusually good.
+**The diagnosis is what this pass earned; the prescription is not.** What is established is
+that the literal's POSITION — inside a hook — is what makes the seam unreachable, and that no
+amount of test-writing fixes that from outside. Moving it somewhere a headless test can call
+is the shape of a fix, and it is deliberately left unscoped here: this review did not check
+what else reads those refs, nor whether `engineConfigFor`'s narrowing composes with an
+extracted builder. Whoever takes it should scope it first.
+
+The current code is correct, and its documentation of its own blindness is unusually good —
+each of the three measurements above is written down beside the thing it cannot see. The point
+is only that the repo has now paid for the same measurement three times and answered it with a
+browser pass three times.
 
 ---
 
