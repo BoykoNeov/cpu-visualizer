@@ -20,10 +20,64 @@ verbatim the mistake M11+M12's own method note warns about: _"Start a review ran
 previous review's HEAD, not the milestone boundary. Finding 3 lived in the M9+M10 fix
 commits, which no review had ever seen."_
 
+## ✅ RESOLVED — all 5 fixed, 2026-07-29
+
+Each in its own commit with a regression test. Repo **6189 → 6203 tests**; typecheck /
+lint / build / format:check green.
+
+| #   | fix                                                       | commit                |
+| --- | --------------------------------------------------------- | --------------------- |
+| 1   | the `?? 1` is the shell's rule, not the engines'          | `b169997`             |
+| 2   | the note corrected, the buried-label net, **and the fix** | `62368a8` + `e629a96` |
+| 3   | candidates fill the whole range `0..width`                | `2427990`             |
+| 4   | a defaulting operator whose left side cannot be nullish   | `4004ab2`             |
+| 5   | the shell→engine seam moved out of the hook               | `46b4494`             |
+
+**Finding 2 changed severity when the image arrived, which is the headline of the fix
+pass.** It was graded LOW from its number — a 16-unit overlap of a 70-unit label box,
+which reads exactly like a corner clip. A 5× crop of the shipped bundle showed the EX/MEM
+bar crossing the **middle** of the branch target, rendering `0x0000000c` as `0x0000███c`.
+Component boxes paint after labels, so the bar hides three digits of a hex value a reader
+cannot then recover. `layoutLabels` now has a horizontal escape, confined to the path that
+had already given up in `y` so no currently-clear label can move, and bounded at ±96 units
+because step 9's reason for deferring it stands: a label displaced far enough to be
+unambiguous about clearance becomes ambiguous about ownership.
+
+### The browser pass — 21 checks, on the shipped `vite preview` bundle
+
+Recorded here rather than by pointer: the rig lived under `M:/claud_projects/temp/`, which
+is sweepable, and naming a mechanism that is not there would be this review's own finding 2.
+
+- **§1 anti-vacuity** (5) — our title; the page is the BUILT bundle (`/assets/index-*.js`,
+  no `/src/main.tsx`); the built CSS loaded (1 sheet, 74 rules); a known-present control
+  resolves; and the model is selected FIRST, since the ISSUE control renders only under
+  `capabilities.configurableIssueWidth`.
+- **§2 finding 5's other half** (5) — the half no headless test can reach. Forwarding is set
+  ON and read back, the scheme confirmed as the base one, then all four ISSUE positions are
+  clicked: `slow-op-loop` re-records **44 / 35 / 34 / 33**. The extracted builder is reached
+  by the real control, at the widest position specifically.
+- **§3 finding 2** (4) — no label is buried anywhere in the width-4 recording, and the
+  formerly-buried one is photographed whole at the cursor it was buried on.
+- **§4 finding 3** (4) — candidate rows reach sizes `{0, 3, 4}` at width 4, a co-issue gloss
+  names 3, and nothing on screen says "both" or "the younger".
+- **§5 finding 1** (3) — a session at width 1 is overridden by a superscalar lesson's declared
+  width after `sessionKnobs()` replaced the two hand-written literals.
+- **§6** — no console errors or exceptions across the pass.
+
+**Four rig defects surfaced, all one shape: a rig asserting something it never measured.**
+It read cycle counts with forwarding OFF and reported 70/61/60/59 against pinned
+forwarding-ON numbers; it compared a 16-USER-UNIT overlap against a 10-CSS-PIXEL threshold
+on an SVG scaled to fit; it guessed `branch-flavors` for the program because that sounded
+like where a branch target lives (it is `call-return`, cycle 6); and it mixed viewport
+coordinates into a page-relative screenshot clip, producing a uniformly black crop that
+reads exactly like "the datapath did not render". Each was fixed by dumping the answer
+first — which is step 9's own lesson, paid for again.
+
 ## What this pass did NOT cover, stated so it is not mistaken for a clean bill
 
-- **No browser pass.** M13 is mostly view work and this repo's standing lesson is that the
-  browser is the only net for it. Nothing below was checked on the shipped bundle.
+- **The finding pass had no browser phase** — the 21 checks above are a FIX-verification
+  pass, aimed at the five findings. They are not a sweep of M13's view work, and a defect
+  outside their aim would not have been seen.
 - **The engine's width logic was read, not fuzzed.** `issueVerdict`, `detectHazard`,
   `stageId`'s slide and the out-of-order dispatch loop are all genuinely group-shaped rather
   than pair-shaped; the milestone's claim on that point survives reading. No new adversarial
@@ -31,6 +85,11 @@ commits, which no review had ever seen."_
 - **The palette re-validation was read, not re-measured.** The four-tint record in
   `styles.css` is unusually honest — it reports the figure that got worse — and was taken at
   its word.
+- **One measurement in this document is under-globbed, and it is finding 3's table.** Those
+  counts come from a sweep without the prediction axis. Under the full config sweep
+  `configsAt` uses, width 4 also reaches a candidate count of **2** — so the table understates
+  the range rather than overstating it, and the shipped test asserts the full-glob set. The
+  step-4 rule ("a measurement's glob is part of its claim") caught this review too.
 
 ---
 
