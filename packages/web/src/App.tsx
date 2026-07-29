@@ -491,8 +491,17 @@ export function App(): React.JSX.Element {
                     // WIDTH. At `1-wide` the second execute lane and the issue unit are absent — not
                     // idle — because a width-1 trace has no `.1` occupant and no pairing refusal to
                     // put there, so the width toggle visibly restructures the diagram rather than
-                    // just changing its numbers. `issueWidth` is optional on `ProcessorConfig` (only
-                    // this model needs it), so the shell resolves the absent case to 1 right here.
+                    // just changing its numbers.
+                    //
+                    // `issueWidth` is optional on `ProcessorConfig` (only this model needs it), but
+                    // it is NOT optional here and this line does not re-resolve it: `Simulator`
+                    // narrows the knob to a total `number` at its own boundary (`useState(1)`, and
+                    // `lessonOpening` normalizes a lesson's absent width before it ever reaches the
+                    // session). This read `sim.issueWidth ?? 1` until the M13 review — a defaulting
+                    // operator whose left side cannot be nullish, with a comment claiming the
+                    // resolution happened here when it had already happened one layer up. Dead in
+                    // the same way the two `?? 1`s the review's finding 1 is about are dead, and
+                    // named together with them so the family is fixed rather than the instance.
                     <SuperscalarDatapath
                       trace={sim.cycleTrace}
                       cycleKey={sim.cursor}
@@ -500,7 +509,7 @@ export function App(): React.JSX.Element {
                       config={{
                         forwarding: sim.forwarding,
                         predictTaken: predictsTaken(sim.branchPrediction),
-                        issueWidth: sim.issueWidth ?? 1,
+                        issueWidth: sim.issueWidth,
                       }}
                       followed={followed}
                     />
