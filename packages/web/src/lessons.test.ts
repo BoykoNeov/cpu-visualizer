@@ -2655,6 +2655,28 @@ describe('where-widening-stops — the third slot barely pays, the fourth pays n
     expect(Math.max(...groupSizes(record(3))), 'never four, even with four slots').toBe(3);
     expect(Math.max(...groupSizes(record(4))), 'never four, even with four slots').toBe(3);
 
+    // The closing step's expert tier states two more figures, and until this block nothing touched
+    // them: "22 cycles of this run issue nothing at all, and that number is identical at two, three
+    // and four", and "the removal of exactly one issue group from the run, the last one, out of
+    // twenty-two". `groupSizes` is what can see both, and above it is consumed only by `Math.max` —
+    // so they were prose-only, which is the class `two-at-once`'s oracle exists to prevent. A change
+    // to the flush shadow would move 22 with every other assertion here still green.
+    const idleCycles = (w: number): number => groupSizes(record(w)).filter((n) => n === 0).length;
+    const groupCount = (w: number): number => groupSizes(record(w)).filter((n) => n > 0).length;
+    expect(
+      [idleCycles(2), idleCycles(3), idleCycles(4)],
+      'the mispredict shadow is width-invariant — this is why the loop cannot be helped',
+    ).toEqual([22, 22, 22]);
+    expect(
+      [groupCount(2), groupCount(3), groupCount(4)],
+      'the third slot removes ONE group from the run; the fourth removes none',
+    ).toEqual([22, 21, 21]);
+    // ...and the prose is held to them, at the tier that quotes them.
+    const closingExpert = lesson().steps.at(-1)!.narration.expert!;
+    expect(closingExpert, 'the expert tier quotes the idle-cycle count').toContain(
+      String(idleCycles(2)),
+    );
+
     // The claim the refusal step's prose leans on — "the branch resolves on exactly the cycle it
     // resolved on at two wide" — asserted rather than asserted-in-narration. All ten mispredicting
     // passes resolve on the identical cycles at all three widths, so nothing the refusals touched was
@@ -2724,10 +2746,14 @@ describe('where-widening-stops — the third slot barely pays, the fourth pays n
         ).toBe(true);
       }
     }
-    // The IPCs are attributed in the tier that quotes them; `essentials` deliberately quotes none.
+    // The IPCs are attributed in the tier that quotes them. `essentials` quotes none — asserted as
+    // "no decimal point at all" rather than as a missing `'0.7'`, which would go on passing if an
+    // author wrote 0.8 there. The claim is that the shortest tier stays on whole cycle counts.
     expect(statesNumberBeside(closing.detailed!, 'Two wide', '0.77')).toBe(true);
     expect(statesNumberBeside(closing.detailed!, 'Three wide', '0.79')).toBe(true);
-    expect(closing.essentials!).not.toContain('0.7');
+    expect(closing.essentials!, 'the essentials tier states no IPC to attribute').not.toMatch(
+      /\d\.\d/,
+    );
   });
 
   it('the attribution guard can tell an attributed number from a bare one', () => {
