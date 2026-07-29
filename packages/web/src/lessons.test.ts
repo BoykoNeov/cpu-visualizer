@@ -2580,7 +2580,12 @@ describe('where-widening-stops — the third slot barely pays, the fourth pays n
           .filter((a) => a.cycle !== null)
           .map((a) => a.index),
       );
-    const [atTwo, atThree] = [liveAt(2), liveAt(3)];
+    // The opening width is read from the DECLARATION, not written as a 2 — "dead where the lesson
+    // opens" is the claim, and hard-coding the width would let the declaration drift to 3 (where no
+    // step is exclusive and the ask is redundant prose) with this test still green. Measured: it is,
+    // exactly that way, until the width is taken from here.
+    const declaredWidth = lesson().config!.issueWidth!;
+    const [atOpen, atWider] = [liveAt(declaredWidth), liveAt(declaredWidth + 1)];
 
     // Exactly one step is width-exclusive, and it is the refusal — dead where the lesson opens,
     // alive one notch wider. Pinned as an equality rather than a "some step": a second silent
@@ -2588,7 +2593,7 @@ describe('where-widening-stops — the third slot barely pays, the fourth pays n
     // past the sweep for the same reason the first one does.
     const exclusive = lesson()
       .steps.map((_, index) => index)
-      .filter((index) => !atTwo.has(index) && atThree.has(index));
+      .filter((index) => !atOpen.has(index) && atWider.has(index));
     expect(exclusive, 'exactly one step needs a machine wider than the declared one').toEqual([2]);
 
     // The rule (M11+M12 review finding 2): the step BEFORE it must ask for the change, because the
@@ -2673,6 +2678,11 @@ describe('where-widening-stops — the third slot barely pays, the fourth pays n
       BNE_PC,
     );
     // ...and the slip this guards against is one step away: `nth: 1` would point at the prologue.
+    // Honest about its own force, because the break harness measured it: `nth: 1` and `nth: 2` are
+    // BOTH caught first by the generic sweep's order check (they anchor before the previous step),
+    // so this pin is not the sole net for those two. What it is, is the record of WHICH instruction
+    // the narration points at — the thing that goes quietly wrong if the steps are ever reordered,
+    // or if a corpus edit moves the prologue's refusal later in the run.
     const firstRefusal = trace
       .flatMap((c) => c.events.map((e) => ({ cycle: c.cycle, e })))
       .find(({ e }) => isIntraPairRaw(e))!;

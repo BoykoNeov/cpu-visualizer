@@ -1,10 +1,10 @@
 ---
 name: m14-width-lessons-step0
-description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). SCOPED, NOT STARTED as of 2026-07-29: step 0's dump is run and one shipped defect found and fixed. Read before authoring any width lesson, and before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step."
+description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-29: steps 0 and 1 done (`where-widening-stops` ships), steps 2–5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, and before writing a number into prose a reader can see at more than one config."
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-29T04:09:45.661Z
+  modified: 2026-07-29T19:27:39.413Z
   originSessionId: 65f78fd8-0a6b-4187-a611-6595cf485bd4
 ---
 
@@ -96,6 +96,39 @@ instr=i5}` and `reg-read{reg=6,value=0,instr=i6}` both go 0 → 0 → 1. It is t
   quoted at ONE width cannot show where the gain stopped, and where it stopped is the whole subject.
   Always put the neighbouring width beside it.** It also fixes a discriminator: narration true at w3
   is equally true at w4, so lesson 1 can only ever discriminate against w2.
+
+## Step 1 SHIPPED — `where-widening-stops` (`58ff293`, repo 6779 → 6887)
+
+"Where widening stops paying": `sum-loop`, four steps, appended to "The wide machine" at position 5.
+Declares w2, asks the learner to flip ISSUE to 3. Three findings worth carrying:
+
+- **The cycle total is the WEAK form of a width claim; the retire-cycle MAP is the strong one.**
+  44 → 43 → 43 says one cycle moved somewhere. Measured per instruction, **33 of the 34 retire on the
+  identical cycle at w2 and w3** and the lone mover is the `ecall` — because at w3 the closing `bne`,
+  `li a7, 10` and `ecall` form ONE issue group where w2's is full after two (confirmed on
+  `state.micro.idEx`: `[i49 i50]`+`[i51 -]` against `[i49 i50 i51]`). The loop is untouched — every
+  `branch-resolved` lands on the same cycle at all three widths. And **w3 ≡ w4 as a retire map, id
+  for id**, which is "the fourth buys nothing" as data rather than an equal total two runs could
+  share by coincidence. Generalises: **diff the maps, not the totals.**
+- **`resolveNarration` falls back DOWNWARD, so an ask written only at `detailed` is invisible to an
+  `expert` reader.** The config-flip request must be in EVERY authored tier of the asking step.
+  Stripping it from `expert` alone reddens exactly one assertion and nothing else in 1705 sees it —
+  and no browser pass at the default tier would either. This sharpens
+  [[m11-m12-review-resolved]]'s finding 2, which only said "the step before, in prose".
+- **A step that is LIVE at more than one config needs its numbers ATTRIBUTED, and `toContain` cannot
+  check that.** The closing step fires at every width, so a bare "43 cycles" reads as a claim about
+  the run in front of a reader who may be at 44 — the `forwarding-bubble` "51 over a transport
+  reading 49" defect, arriving where **declaring harder cannot fix it**, because the lesson's subject
+  IS the other position. The guard is `statesNumberBeside(text, width, value)`: the number within 70
+  chars AFTER the width word. "two wide it takes 44, three wide 43" passes; "44 cycles, down to 43"
+  fails; a token check passes both.
+
+Method notes: **`nth` was measured across all 48 superscalar positions, not reasoned** — nth 3
+anchors before the previous step everywhere (an order violation), nth 4 is the first that clears it.
+The break harness then showed the pc pin beside it is **not** the sole net (nth 1 and nth 2 are both
+caught first by the sweep's order check), so its comment says so rather than overclaiming. Adding a
+lesson file touches **three** places or the suite reddens: `index.json`, the by-name track-membership
+`toEqual`, and `LESSONS.length`.
 
 ## Not yet decided (content calls, deliberately left to the user)
 

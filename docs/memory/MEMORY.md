@@ -6,10 +6,11 @@ offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-o
 shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
 FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
-with a lesson track. Repo **6779 tests**, five gates green. **M13 has now been code-reviewed and all
+with a lesson track. Repo **6887 tests**, five gates green. **M13 has now been code-reviewed and all
 5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is SCOPED but NOT STARTED** ([M14 step 0](m14-width-lessons-step0.md), the dump
-is run and one shipped defect is already fixed); no other milestone is in progress.
+DELTA lesson track — is IN PROGRESS**: steps 0 and 1 are done (`where-widening-stops` ships, the wide
+track now has five lessons), steps 2–5 open ([M14](m14-width-lessons-step0.md)). No other milestone
+is in progress.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -69,12 +70,17 @@ is run and one shipped defect is already fixed); no other milestone is in progre
     by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
     source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
     commit before you break.**
-- [M14 width lessons — step 0](m14-width-lessons-step0.md) — the width DELTA track: scoped, dump
-  run, **not started**. Read before authoring a width lesson. Its shipped find: `lessons.test.ts`
-  swept the wide lessons at 2 of the 4 widths the shell offers (fixed, +576 assertions) — and the
-  fix makes that sweep a **weaker** net for a config-exclusive step. Also: `paired-branches` has an
-  identical event multiset at w2/w3/w4 while its cycles differ, so **the events cannot see a won
-  cycle**; and a refusal count is not a penalty.
+- [M14 width lessons — steps 0+1](m14-width-lessons-step0.md) — the width DELTA track: **steps 0
+  and 1 DONE, steps 2–5 open**. Read before authoring a width lesson. Its shipped find:
+  `lessons.test.ts` swept the wide lessons at 2 of the 4 widths the shell offers (fixed, +576
+  assertions) — and the fix makes that sweep a **weaker** net for a config-exclusive step. Step 1
+  shipped `where-widening-stops` and added three: **diff retire-cycle MAPS, not cycle totals** (one
+  instruction moves w2→w3, none at all w3→w4); an ask written only at `detailed` is **invisible to
+  an `expert` reader**, so it goes in every tier; and a step live at more than one config needs its
+  numbers **attributed to a named position** — `toContain` cannot tell "two wide it takes 44, three
+  wide 43" from "44 cycles, down to 43". Also: `paired-branches` has an identical event multiset at
+  w2/w3/w4 while its cycles differ, so **the events cannot see a won cycle**; and a refusal count is
+  not a penalty.
 - [M13 review resolved](m13-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-29**
   (6189→6203 tests; 21 browser checks on the shipped bundle). Read before trusting a docblock's
   stated reason, writing a range claim, or adding a knob to the shell→engine seam. Its sharpest
