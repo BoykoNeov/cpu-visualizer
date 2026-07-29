@@ -9,6 +9,7 @@ import {
   type Lesson,
   type LessonStep,
 } from '@cpu-viz/curriculum';
+import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
@@ -158,11 +159,24 @@ const CONFIG_AXES: readonly ConfigAxis[] = [
     // targets the superscalar today, so `honored` is false for every lesson's model and this axis
     // contributes nothing yet. That is exactly why it goes in NOW: the first superscalar lesson
     // would otherwise be swept at half coverage, and nothing would say so.
+    //
+    // **And it went stale anyway — the third instance of the shape it was written to prevent.**
+    // This axis sat at a literal `[1-wide, 2-wide]` while M13 raised the product to 1/2/3/4, so
+    // the four shipped wide-machine lessons were swept at HALF the widths the shell offers, and
+    // nothing said so: every content assertion passes at 3 and 4 (measured — widening this list
+    // reddened only the two position-COUNT pins below, never a lesson). A literal list is what
+    // failed, so it is gone: the positions are DERIVED from `MAX_ISSUE_WIDTH`, the bound the
+    // control and both wide engines already share, which is M13 step 3's precedent for exactly
+    // this staleness class (`WIDE_WIDTHS`, and `pairing-readout.test.ts`'s "raising
+    // `MAX_ISSUE_WIDTH` cannot leave the widest machine the least tested"). Every width is its
+    // own BEHAVIOR — this axis's own rule, the one that collapsed prediction's `'none'` into
+    // `'static-not-taken'` — and the corpus proves it: `paired-branches` runs 7 at 3-wide and 6
+    // at 4-wide, `slow-op-loop` 34 and 33.
     honored: (caps) => caps.configurableIssueWidth,
-    positions: [
-      { label: '1-wide', set: (c) => ({ ...c, issueWidth: 1 }) },
-      { label: '2-wide', set: (c) => ({ ...c, issueWidth: 2 }) },
-    ],
+    positions: Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => ({
+      label: `${i + 1}-wide`,
+      set: (c: ProcessorConfig) => ({ ...c, issueWidth: i + 1 }),
+    })),
   },
   {
     // The fifth axis (M10 step 0) — out-of-order ISSUE, the M9 flagship A/B — added the step that
@@ -432,21 +446,31 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
    * That is the precise shape of the two staleness bugs recorded above, so the case list is
    * extended to reach the collision rather than left to the first superscalar lesson to discover.
    *
-   * Four honored knobs ⇒ 2 × 2 × 3 × 2 = twenty-four machines. Asserted as a COUNT plus the axis
-   * order and the endpoints, not twenty-four spelled-out labels: at this size a literal list stops
-   * being read and starts being pasted, and what is worth pinning is that all four axes are in the
-   * product and the width is the innermost one.
+   * Four honored knobs ⇒ 2 × 2 × 3 × `MAX_ISSUE_WIDTH` = forty-eight machines. Asserted as a COUNT
+   * plus the axis order and the endpoints, not forty-eight spelled-out labels: at this size a
+   * literal list stops being read and starts being pasted, and what is worth pinning is that all
+   * four axes are in the product and the width is the innermost one.
+   *
+   * The width factor is DERIVED and the other three are literal — the same half-derived shape as
+   * `datapath-superscalar.test.ts`'s `4 * MAX_ISSUE_WIDTH`. Fully deriving it would make the pin
+   * vacuous (true at any width); leaving it literal is what let this case read twenty-four while
+   * the shell offered four widths, straight through M13. Deriving exactly the stale term is the
+   * fix, and the three that have never moved stay honest numbers a human chose.
    */
   it('gives the superscalar all FOUR knobs it honors — the width axis included', () => {
     const labels = positionsFor('superscalar').map((p) => p.label);
-    expect(labels).toHaveLength(24);
+    expect(labels).toHaveLength(12 * MAX_ISSUE_WIDTH);
     expect(labels[0]).toBe('forwarding off, predict not-taken, cache off, 1-wide');
     expect(labels[1]).toBe('forwarding off, predict not-taken, cache off, 2-wide');
-    expect(labels[23]).toBe('forwarding on, predict taken, cache large, 2-wide');
+    expect(labels.at(-1)).toBe(
+      `forwarding on, predict taken, cache large, ${MAX_ISSUE_WIDTH}-wide`,
+    );
     // Non-vacuity: the width genuinely varies across the sweep rather than every position carrying
-    // the same value under two different labels — the failure a length check alone cannot see.
+    // the same value under two different labels — the failure a length check alone cannot see. It
+    // is ALSO the coverage claim: the sweep offers every width the product does, so re-pinning the
+    // axis to a literal short list reddens here as well as on the count.
     const widths = new Set(positionsFor('superscalar').map((p) => p.config.issueWidth));
-    expect(widths).toEqual(new Set([1, 2]));
+    expect(widths).toEqual(new Set(Array.from({ length: MAX_ISSUE_WIDTH }, (_, i) => i + 1)));
   });
 
   /**
@@ -458,18 +482,20 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
    * record.
    *
    * FIVE honored knobs, but `configurableForwarding` is FALSE on this model (the CDB broadcast IS the
-   * forward — no off-position), so the product is prediction(2) × cache(3) × width(2) ×
-   * outOfOrderIssue(2) × robSize(2) = 48, NOT the superscalar's 24 with a forwarding axis on top.
+   * forward — no off-position), so the product is prediction(2) × cache(3) × width(`MAX_ISSUE_WIDTH`)
+   * × outOfOrderIssue(2) × robSize(2) = 96, NOT the superscalar's 48 with a forwarding axis on top.
    * Asserted as a COUNT plus the axis order and the endpoints, like the superscalar case: at this size
    * a literal list stops being read and starts being pasted, and what is worth pinning is that BOTH
    * new axes are in the product (the flagship toggle and the ROB-size lever), innermost, that
    * `slowOpLatency` is NOT (no shell control — held per-lesson), and that forwarding is absent.
    */
-  it('gives the out-of-order model prediction × cache × width × the OoO cluster — 48 machines', () => {
+  it('gives the out-of-order model prediction × cache × width × the OoO cluster — 96 machines', () => {
     const labels = positionsFor('out-of-order').map((p) => p.label);
-    expect(labels).toHaveLength(48);
+    expect(labels).toHaveLength(24 * MAX_ISSUE_WIDTH);
     expect(labels[0]).toBe('predict not-taken, cache off, 1-wide, in-order issue, rob 16');
-    expect(labels[47]).toBe('predict taken, cache large, 2-wide, out-of-order issue, rob 4');
+    expect(labels.at(-1)).toBe(
+      `predict taken, cache large, ${MAX_ISSUE_WIDTH}-wide, out-of-order issue, rob 4`,
+    );
     // Non-vacuity: BOTH new knobs genuinely vary across the sweep rather than every position carrying
     // one value under two labels — the failure a length check alone cannot see (the width case's move,
     // twice). Read off the configs, which is what would agree while the labels lied.
