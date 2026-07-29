@@ -1,6 +1,6 @@
 ---
 name: future-microarchitectures
-description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design. DEPTH IS DELIVERED (M11, the 7-stage); WIDTH is now IN PROGRESS as M13 — its guard opened to widths 1..4 on 2026-07-28, so BOTH axes of the flag are now under construction. This file's claim that the pairing rules are pair-shaped was FALSE and is corrected below"
+description: "User wants longer (deeper) pipelines and a superscalar CPU visualized in future milestones — a don't-foreclose constraint on M3 design. BOTH AXES ARE NOW DELIVERED: depth by M11 (the 7-stage) and WIDTH by M13, complete 2026-07-29 at widths 1..4. So this flag is DISCHARGED and nothing here is open work — read it for the predictions that held and the one that was FALSE (the pairing rules are NOT pair-shaped; that sentence paraphrased the guard's error message)."
 metadata:
   node_type: memory
   type: project
@@ -16,11 +16,12 @@ CPU** visualized in future milestones.
 M11 shipped `engine/deep-pipeline` (a 7-stage `IF1 IF2 ID EX1 EX2 MEM WB` with its timing matrix,
 cache, recorder, web enablement and bespoke datapath) — see [[m11-deep-pipeline-planned]]. Every
 prediction in this file held: the map needed **no change at all**, the trace schema needed none,
-`location` absorbed `"IF1"`/`"EX2"` as a plain string, and the hues went by stage FAMILY. **What remained open was WIDTH — and as of 2026-07-28 it is IN PROGRESS, not merely planned.** M13
-step 1 opened the superscalar guard to `MAX_ISSUE_WIDTH = 4`; the engine half is essentially done
-and the view half (steps 6-9) is where the budget went. See [[m13-width-planned]] before doing any
-of it. **This paragraph is the second thing in this file to go stale, after the correction below —
-which is the point: a status line in a memory ages faster than the lesson beside it.**
+`location` absorbed `"IF1"`/`"EX2"` as a plain string, and the hues went by stage FAMILY. **STATUS 2026-07-29 — the WIDTH half is DELIVERED too, so this flag is DISCHARGED.** M13 shipped
+widths 1..4 across both in-order and out-of-order models (guard, timing matrix, conformance,
+recorder, control, an N-lane datapath and a group-shaped readout). See [[m13-width-planned]] before
+touching any of it. **This status line has now gone stale twice in three days, which is the point:
+a status line in a memory ages faster than the lesson beside it — read the dated line, then check
+the code.**
 
 **⚠ CORRECTION 2026-07-28. This file used to say `superscalar/processor.ts` refuses `issueWidth > 2`
 BY NAME "because `intra-pair-raw` / `mem-port` / `branch-slot` are written for a pair". The second

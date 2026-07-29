@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-28T07:27:44.809Z
+  modified: 2026-07-29T01:06:37.280Z
 ---
 
 Once you can drive the app ([[browser-rig-cdp-recipe]]), the remaining failure mode is a check that
@@ -90,6 +90,29 @@ Two more things from that pass:
   failed at 34 — which was exactly right for the state the shell opens in (dump a
   tier×config→count table and index it with the state you read live). Of the failures in that
   run, **all** were the rig, continuing the M11 step-5 pattern.
+
+**HEADLESS CHROME REPORTS `prefers-color-scheme: dark`, so the shell's `auto` theme OPENS DARK
+here** (2026-07-29, M13 step 9). A theme section that reads the tints at `auto`, then clicks to
+explicit `dark` and compares, is **comparing dark against dark** — it reports "the tints did not
+change with the theme", which reads exactly like a missing dark block, and the LIGHT block never
+gets measured at all. `auto` is not a third palette; it is whichever of the two the host prefers.
+Drive to each **explicit** position and read the label back before reading any color.
+
+**A CONTROL WHOSE CORRECT BEHAVIOUR IS "THE SAME NUMBER" NEEDS A SECOND MEASUREMENT TO DISTINGUISH
+CORRECT FROM DEAD** (same pass). The out-of-order model forced to in-order issue returned cycle
+counts **identical to the superscalar at all four widths** — which is either the bisection control
+working exactly as designed or the model picker silently not taking, and nothing in the section
+could tell them apart. The fix is to flip the model's OWN knob and require the numbers to move
+(`array-sum` 51/42/36/36 in order vs 51/33/30/26 out). Generalises past themes and models: **any
+check whose passing value equals the value a broken app would also produce is not a check.**
+
+**A LABEL-COLLISION METRIC MUST MEASURE THE PROMISE THE CODE MAKES** (same pass). Comparing every
+`<text>` against every wire SEGMENT reported the datapath's value labels as overlapping — but
+`layoutLabels` anchors each label at the midpoint of its OWN wire and nudges it off, so proximity to
+_a_ wire is the design. What it actually promises is **no label on another label and no label on a
+component box**; only the second reddened, and it was the real defect. And the signed number was a
+**pointer, not a verdict**: −7 was legible (the box overhangs a bar by half a character) and −31 was
+not, so **the metric ranked the widths and a 4× crop decided which was broken.**
 
 **Ask which path the last refactor existed to fix, and whether anything ever clicked it.** M11's
 `useSimulator` change was made because "two refs assigned at three sites is how the LESSON path

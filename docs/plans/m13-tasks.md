@@ -873,7 +873,93 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
 
       </details>
 
-- [ ] **9. The browser pass.** Non-negotiable — `browser-is-the-only-net`: 9 of 10 view steps in
+- [x] **9. The browser pass.** ✅ DONE 2026-07-29 (repo 6186 → **6189** tests), commits `4d6d8ac` +
+      this one. All five gates green. Rig at `M:\claud_projects\temp\m13-step9\` (`eyeball.mjs`, 62
+      checks; `crop.mjs`; `dump.txt` = the cursors, `geometry.json` = the four drawings). In
+      descending order of what each cost to learn:
+
+      **⚠ THE PASS FOUND A REAL DEFECT, AND IT WAS IN THE ONE PLACE THIS STEP WAS TOLD TO LOOK.**
+      At widths 3 and 4 every fetched instruction ENCODING was drawn straddling the IF/ID latch bar,
+      which is painted over it — `0x01ff1e33` read as `ff…3`. Cause: `pcmuxX = 10 + 12n` grows with
+      the width (the left margin holds `2n` redirect channels) while `ifidX = 308 - 12n` shrank with
+      it (the ID band holds `2n` of its own), so the corridor between them was squeezed from **BOTH
+      SIDES: 80 → 56 → 32 → 8 units** against a 70-unit label. **This is step 7's own rule one column
+      to the left** — `fwdmuxX` is derived from the channel count so a wider machine moves the
+      hardware rather than overrunning the corridor; the front end never got that treatment, and the
+      reason is worth keeping: **nothing there is a channel COUNT. It is a LABEL, and a label has no
+      width as far as the geometry is concerned until something says so.** `IFID_CORRIDOR` now
+      derives it from `hex32`'s ten characters and `layoutLabels`'s own box formula, and the five
+      independently-anchored literals right of the bar (`idCh`, `idX`, `midCh`, `idexX`, `fwdCh`)
+      become one chain via `idShift`. **Breaking it reddens exactly 2 of 1551 — the two new guards
+      and nothing else**, which is the honest measure of how invisible it was.
+
+      **⚠ THE FIRST DRAFT OF THE MEASUREMENT WAS ASKING THE WRONG QUESTION, AND IT FAILED AGAINST A
+      CORRECT APP.** It measured every `<text>` against every wire SEGMENT and reported the value
+      labels as overlapping at −4.7. That is the design: a label is anchored at the midpoint of its
+      OWN wire's longest segment and nudged off it. What `layoutLabels` actually promises is **no
+      label on another label, and no label on a component box** — those two are the claim, and only
+      the second one reddened. _Measure the promise the code makes, not the one the metric happens
+      to be able to compute._ (M11 step 7's pattern: a rig failing against a correct app.)
+
+      **⚠ AND THE SIGNED NUMBER WAS A POINTER, NOT A VERDICT.** The sweep read **−7 at width 2 and
+      −31 at width 4**, and −7 is LEGIBLE (the label box overhangs the bar's edge by half a
+      character) while −31 is not. So the metric ranked the widths and **the IMAGE decided which of
+      them was broken** — exactly what the plan meant by "label density is the thing no test can
+      settle". A 4× crop settled it in one look after the number had said where to look.
+
+      **⚠ THE FIX MOVED WIDTH 2, AND THE DRAFT GUARD CLAIMED IT DID NOT.** Test (d) first asserted
+      "widths 1 and 2 were already clear, so they did not move" — **width 1 was, width 2 was not**
+      (its corridor is 56 against a requirement of 78, so the bar slides 22px and the shipped
+      two-wide drawing changes). Correct outcome — at width 2 the encoding already overhung by 7px
+      and only got away with it — but the guard now ENUMERATES the shifts `[0, 22, 46, 70]` rather
+      than characterising them. Step 6's 33-survivors lesson and step 3's `fillsFour` names, third
+      running: **enumerate what your change moved; do not characterise it from what you hoped.**
+      Width 1's zero is asserted WITH ITS REASON (corridor already 80), so it is not luck.
+
+      **The two instructions the plan gave this step were both unfalsifiable as written, and fixing
+      that is what made the pass mean anything.** (i) The acceptance criterion's `array-sum` runs
+      51 → 42 → 36 → **36**, so **a 4→3 clamp anywhere in the wiring is invisible on it** — which is
+      precisely the half-dead-toggle class step 6 handed forward. The width-4 evidence is
+      `slow-op-loop`, the one corpus program that moves at every boundary (**44 → 35 → 34 → 33**,
+      live) — and **only under the base scheme**, so the predictor is set explicitly and read back
+      (`static-taken` gives 41 → 32 → 32 → 31, and the rig asserts that too, because the second half
+      is what makes the first mean something). (ii) The width-4 glosses are **unreachable on
+      `array-sum`**: "4 instructions issued together" needs a group of four, which only three corpus
+      programs ever build. Every cursor the rig scrubs to came off a dump taken BEFORE the browser
+      ran — `slow-op-loop` @ w4 cursor **1** is the group of four, cursor **2** the refusal holding
+      three back. Both read exactly as authored.
+
+      **⚠ THE THEME SECTION COMPARED DARK AGAINST DARK AND REPORTED THE TINTS "UNCHANGED".**
+      Headless Chrome reports `prefers-color-scheme: dark`, so the shell's `auto` opens DARK here —
+      the light block was never measured, and the rig read that as a defect. **`auto` is not a third
+      palette; it is whichever of the two the host prefers**, so the toggle must be driven to each
+      EXPLICIT position and read back. Once it was: four distinct tints in light, four in dark, and
+      all four differ between them — the two new hues are real in both blocks, which no headless
+      test can check.
+
+      **⚠ §9 MEASURED THE OUT-OF-ORDER MODEL AND COULD NOT PROVE IT WAS DRIVING IT.** The OoO model
+      with issue-order IN ORDER returned `44 → 35 → 34 → 33` on `slow-op-loop` — **identical to the
+      superscalar at all four widths**, which is either the bisection control working exactly as
+      designed or the model switch silently not taking, and nothing in the section distinguished
+      them. Fixed by flipping the model's OWN knob and requiring the numbers to move: `array-sum`
+      **51 → 42 → 36 → 36 in order vs 51 → 33 → 30 → 26 out of order**, so the milestone's second
+      headline is now confirmed on screen — **width keeps paying out of order where it stopped
+      paying in order.** _A control whose correct behaviour is "the same number" needs a second
+      measurement to distinguish correct from dead._
+
+      **What the pass confirmed rather than found** (all live, on the shipped `vite preview`
+      bundle): the flagship A/B flips ISSUE across all four positions **without a reload** and the
+      IPC tile's retire count stays 34 while the quotient moves and then **visibly stops** between 3
+      and 4; the caption is derived at every position; the vocabulary property holds over **150
+      width × cursor renders** with no `both`/`partner`/`the pair`/`the younger`/`the older`; four
+      distinct lane tints in the readout AND the datapath; each width's canvas matches
+      `geometryFor(w)` and no lane above `w-1` is drawn anywhere; badge and gloss share one line at
+      1600px and at 1100px (**they wrap at 900px — reported, not asserted away**); every model loads
+      from the built bundle with a clean console.
+
+      <details><summary><em>The scope as planned, kept for the record.</em></summary>
+
+      Non-negotiable — `browser-is-the-only-net`: 9 of 10 view steps in
       project history shipped a defect only the browser caught, and no test here can see a click.
       **Step 7 sharpened what to look at, and one of its findings makes the obvious plan wrong.**
       Step 6 said to check the WIDEST position specifically (the `loadInto` clamp is a half-dead
@@ -895,17 +981,56 @@ deeply equal [9, 10, 11]`. **No cycle count in the repo can see that break**; on
       return and the toggle-does-nothing failure mode with the SAME picture — use `slow-op-loop`
       as the control, since it is the one program whose IPC rises at every position.
 
+      </details>
+
 ## Acceptance criteria
 
-- [ ] `array-sum.s` at forwarding ON, flipping ISSUE across its positions **without reloading**,
-      moves 51 → 42 → 36 live, matching the derived matrix.
+- [x] `array-sum.s` at forwarding ON, flipping ISSUE across its positions **without reloading**,
+      moves 51 → 42 → 36 live, matching the derived matrix. ✅ step 9 — and 36 again at width 4,
+      with the IPC tile reading `34 ÷ 51` → `34 ÷ 42` → `34 ÷ 36` → `34 ÷ 36`. **The criterion as
+      written cannot see the widest position** (see step 9); `slow-op-loop`'s live 44 → 35 → 34 → 33
+      is what carries that half.
 - [x] The datapath draws N execute lanes with the shared front end and single memory port intact;
       lane hiding at narrower widths stays TESTED, not argued (M7's rule: if a narrow width ever
       emits a `.N` location, the honest fix is an idle lane, not more hiding). ✅ step 7 — and the
       hiding claim is asked of the FULL lane universe as well as of the per-width geometry, because
       asked only of the latter it is vacuous.
-- [ ] All five gates green; INV-8 differential passes at every offered width.
-- [ ] Widths 1 and 2 are byte-identical to their pre-milestone traces.
+- [x] All five gates green; INV-8 differential passes at every offered width. ✅ 6189 tests, 807
+      conformance cells across 72 superscalar configs. **Ticked WITH the qualifier this milestone
+      proved by experiment, because otherwise the green box reads as evidence it is not:** INV-8 is
+      a **FALSE net here**. Step 6 built it — an engine running `Math.min(width, 2)` while reporting
+      the width it was handed reddens **147 of 180 timing cells and ZERO of 807 conformance cells**.
+      An in-order machine retires in order, so final architectural state is width-invariant _by
+      construction_. **The closed form `Σ k·sizes[k] = retires + doomed` is the net that carries the
+      width claim**, not this box.
+- [x] Widths 1 and 2 are byte-identical to their pre-milestone traces. ✅ **with the qualifier, and
+      the qualifier is not a hedge — the claim as written is FALSE.** Step 0b (`a9f1b70`)
+      deliberately changed behaviour: a branch squash now clears `haltFetch`, which fires **only on
+      runs that previously never terminated**, so on those there is no pre-milestone trace to be
+      identical to. Step 1 measured 396/396 whole-trace sets byte-equal (11 programs × widths {1,2}
+      × 18 configs, 22 455 cycles) **against the post-`a9f1b70` engine**, which is the honest
+      baseline. Re-verified rather than assumed at step 9: every engine-source change since
+      `3fbda0c` is a guard, an import or a re-export (`boundedIssueWidth`, `MAX_ISSUE_WIDTH` moving
+      to `engine-common`, the superscalar re-exporting it) — **no behavioural line at any accepted
+      width** — and the 1240-cell timing matrix plus the conformance matrix hold it.
+
+## Handed PAST M13 — named here so they cannot fall off the end
+
+- **`configLabel`'s `?? 1`** (`engine/conformance`). It renders an absent `issueWidth` as the
+  SUPERSCALAR's default; the out-of-order engine defaults absent width to **2**. Handed forward by
+  step 4 on the theory that a shared control would make it reachable, and **MEASURED unreachable
+  twice** — step 6 (all four OoO lesson JSONs state `issueWidth`, `session.ts` applies its own
+  `?? 1`, `useSimulator` seeds `useState(1)`) and again here. It is a latent inconsistency with no
+  path to it, and the fix that looks obvious — changing the OoO engine's `?? 2` — moves pinned
+  recordings. **Do not claim it closed; it has never been closed.**
+- **`layoutLabels` has no horizontal escape.** Its de-collide loop searches only in `y` (±160 in
+  4-unit steps) and, when that fails, **places the label anyway** — on the box. Step 9's corridor
+  fix removes the only case in this repo that reaches the fallback, but the fallback is still there
+  and it is silent. Deliberately NOT folded into the closing pass: it is a change to the SHARED
+  renderer, so it belongs to its own commit with its own break pass. Note the reason it is not
+  obviously an improvement — at width 4 there are four encodings in one corridor, and **a label
+  displaced far enough to be clear could belong to any of them**, which is worse than a visibly
+  truncated one. The geometry was the right layer; this would be a safety net, not the fix.
 
 ## How this milestone can lie to itself
 

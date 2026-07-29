@@ -1,13 +1,13 @@
 # Project memory — CPU Visualizer
 
-A pedagogical RV32I simulator. **M1–M12 all COMPLETE** (spec §12's roadmap finished at
-M10; M11/M12 came from the don't-foreclose flag). **M13 (issue width > 2) is IN PROGRESS** —
-steps 0/0b/1/2/3/4/5/6/7/**8** done; the ISSUE control offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives
-in `engine-common` so the **out-of-order model shares the bound and is netted at it**, the
-**datapath draws N lanes** (its geometry became a FUNCTION of the width — `geometryFor`), and the
-**pairing readout now speaks in GROUPS rather than pairs**, its two count glosses DERIVED and its
-vocabulary pinned as a property rather than as sentences. **Only step 9, the browser pass, is
-left.** Six models ship, each with a lesson track. Repo **6186 tests**, five gates green.
+A pedagogical RV32I simulator. **M1–M13 ALL COMPLETE** (spec §12's roadmap finished at M10;
+M11/M12/M13 came from the don't-foreclose flag). M13 delivered issue width > 2: the ISSUE control
+offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-of-order model
+shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
+FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
+pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
+with a lesson track. Repo **6189 tests**, five gates green. **No milestone is in progress** — see
+[Future microarchitectures](future-microarchitectures.md) for what is open.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -57,8 +57,23 @@ left.** Six models ship, each with a lesson track. Repo **6186 tests**, five gat
 - [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
   **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
   are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — in progress](m13-width-planned.md) — steps 0/0b/1/2/3/4/5/6/7/**8** done; only the
-    browser pass is left. **Step 8's readout pass was where the milestone's signature defect appeared
+  - [M13 width — COMPLETE](m13-width-planned.md) — all ten steps. **Step 9, the browser pass, found
+    the defect it was sent to look for, and it was a LABEL WITH NO WIDTH:** at widths 3 and 4 every
+    fetched instruction encoding was drawn straddling the IF/ID bar and unreadable, because the
+    corridor between `imem` and the bar was squeezed from BOTH sides (**80 → 56 → 32 → 8** units)
+    against a 70-unit label — step 7's _the corridor moves the hardware_ rule one column left,
+    missed because **nothing there is a channel COUNT; it is a label, and a label has no width until
+    something states it.** Breaking the fix reddens **exactly 2 of 1551**. Three further step-9
+    findings were the RIG, not the app: the first metric asked the wrong question and **failed
+    against a correct app** (a label sits beside its OWN wire by design); the signed overlap was a
+    **POINTER, not a verdict** (−7 legible, −31 not — the IMAGE decided); and **headless Chrome
+    prefers DARK**, so the theme check compared dark against dark and the light block was never
+    measured. Also from step 9: **both of the plan's own instructions were unfalsifiable** (the
+    acceptance program `array-sum` runs 36 at BOTH 3 and 4, so a 4→3 clamp is invisible on it, and
+    the width-4 glosses are unreachable on it); the fix **MOVED width 2** and the draft guard denied
+    it; and **a control whose correct behaviour is "the same number" needs a second measurement** —
+    the OoO model matched the superscalar at all four widths until its own knob was flipped
+    (51/42/36/36 in order vs **51/33/30/26** out). **Step 8's readout pass was where the milestone's signature defect appeared
     for the 8th time and — for the second time — inside the fix itself:** the vocabulary sweep's own
     non-vacuity clause stayed GREEN when the panel was broken to render nothing at width 4, because
     it keyed off the PURE FOLD rather than the render (step 7's closing-pass lesson, recurring inside

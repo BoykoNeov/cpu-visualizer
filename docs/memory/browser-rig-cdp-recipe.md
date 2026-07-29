@@ -85,7 +85,14 @@ Chrome can take **>60s** to first target here: give the poll a real budget and r
 background rather than concluding it hung — one "hang" was a slow start that had already succeeded.
 
 **Reusable rig inventory — `M:/claud_projects/temp/` IS SWEEPABLE, so treat these as conveniences,
-not as the record.** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) —
+not as the record.** `M:/claud_projects/temp/m13-step9/` (2026-07-29, the newest) — `eyeball.mjs`
+(M13's milestone-closing pass over the preview bundle: the anti-vacuity §0, the derived prose, the
+flagship width A/B without a reload, the width-4 evidence on a program that can SEE width 4, the
+readout's derived glosses at cursors dumped in advance, a wrap check at a STATED viewport, the
+datapath compared per width against `geometryFor(w)`, label density, both themes, the OoO
+bisection — 62 checks) and `crop.mjs` (a 4× crop of one band per width, which is what settled the
+one real defect). Its two pre-browser dumps — `dump.txt` (cursor indices) and `geometry.json` — are
+the pattern to copy: **a rig that guesses a cycle reports a defect against a correct app.** `M:/claud_projects/temp/m11-browser/` (2026-07-27, the newest) —
 `step8-preview.mjs` (the milestone-closing pass over the SHIPPED `vite preview` bundle: the
 anti-vacuity §0, picker, the cross-model cycle/walk comparison, map hues, coefficients, tooltip
 prose, the datapath dump comparison, follow+scrub, the cache, a model sweep and a console-error
