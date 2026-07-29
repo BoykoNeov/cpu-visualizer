@@ -729,18 +729,20 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'cache-temporal',
     ]);
 
-    // The wide machine's membership (M8), by name for the same reason: "is this lesson about
-    // superscalar width" is pedagogy, not derivable — all four run on `superscalar` at `issueWidth: 2`,
-    // but so could a lesson that is really about, say, forwarding observed on a wide machine. The
-    // track claims exactly these four: the pairing payoff plus the three refusals. `lessonSections`
-    // totality (line 600) would stay green even if one were misfiled, because `LESSON_ORDER` derives
-    // from the same `index.json`; only naming the set here catches a mis-file.
+    // The wide machine's membership (M8, extended at M14), by name for the same reason: "is this
+    // lesson about superscalar width" is pedagogy, not derivable — all five run on `superscalar` at
+    // `issueWidth: 2`, but so could a lesson that is really about, say, forwarding observed on a wide
+    // machine. The track claims the pairing payoff, the three refusals, and — M14 — the DELTA lesson
+    // that asks the learner to widen past two and finds the gain stopping. `lessonSections` totality
+    // (line 600) would stay green even if one were misfiled, because `LESSON_ORDER` derives from the
+    // same `index.json`; only naming the set here catches a mis-file.
     const wide = LESSON_TRACKS.find((t) => t.track === 'The wide machine');
     expect([...(wide?.lessons ?? [])].sort()).toEqual([
       'one-branch-unit',
       'one-door',
       'pair-that-cant',
       'two-at-once',
+      'where-widening-stops',
     ]);
 
     // The out-of-order machine's membership (M10), by name for the same reason: "is this lesson about
@@ -844,7 +846,16 @@ describe('authored lessons (INV-6)', () => {
     // `deep-pipeline` and teach that forwarding — the thing the machine track taught them to trust —
     // stops being enough once execute takes two cycles. That is why they could not be authored onto
     // the 5-stage and why they are not more `forwarding-bubble` steps.
-    expect(LESSONS.length).toBe(22);
+    //
+    // The wide machine gains a FIFTH lesson at M14, and it is a different kind from the four: its
+    // subject is not a mechanism the learner has yet to meet but a DELTA against the machine the
+    // other four taught them — what the third and fourth issue slots are worth on a program they
+    // have already watched at two. That makes it the deeper machine's shape (M12) one axis over,
+    // with one difference that costs it: M12's delta was against another MODEL, protected by the
+    // lesson's `model` declaration, while this one is against another position of a KNOB on the
+    // same model. So it declares width 2 and ASKS for the flip in prose, and every number it
+    // states is attributed to a named width — see its oracle below.
+    expect(LESSONS.length).toBe(23);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
@@ -2437,6 +2448,292 @@ describe('one-branch-unit — two branches, one branch unit (M8 step 4)', () => 
     // not speed.)
     const closing = resolveNarration(lesson().steps.at(-1)!.narration, lesson().depthDefault)!;
     expect(closing, 'the closing must quote the answer it claims').toContain('42');
+  });
+});
+
+/**
+ * `where-widening-stops`' oracle (M14 step 1) — the wide track's fifth beat, and the first lesson in
+ * the library whose subject is a difference between two positions of ONE KNOB on ONE model.
+ *
+ * M12's deep-pipeline track was the first delta track, but its delta was against another MODEL, so
+ * `lesson.model` protected every comparison it made. Here the two machines being compared differ
+ * only in `issueWidth`, and a lesson declares exactly one of those. That is a weaker declaration
+ * carrying a heavier load, and it puts three claims outside the generic sweep's reach:
+ *
+ * **(1) The ASK.** The lesson declares width 2 and asks the learner to flip to 3, so one of its
+ * steps is width-exclusive — dead at the width the lesson opens at. `runner.ts` skips an unanchored
+ * step in SILENCE, so a learner who never touches the control sees a step vanish and nothing say
+ * why. M11+M12 review finding 2 is the authoring rule that answers it (the step BEFORE must request
+ * the change, in prose), and `deep-bet-pays-double` shipped broken on exactly that. The sweep cannot
+ * see it — worse, M14 step 0's own fix made the sweep MORE likely to pass here, because widening it
+ * from two width positions to four gives a width-exclusive step more places to anchor. A broader
+ * sweep is a weaker net for this shape. So the ask is asserted here, at EVERY authored tier: a
+ * reader at `expert` gets the expert paragraph and nothing below it, so an ask present only in
+ * `detailed` is an ask that reader never sees.
+ *
+ * **(2) The DELTA, on retire cycles rather than on a total.** "44 versus 43" is one cycle out of
+ * forty-four and would be satisfied by a wrong reason anywhere in the run. The lesson's actual claim
+ * is far stronger and is pinned as such: at the declared config, every instruction but ONE retires
+ * on exactly the cycle it retired on at width 2, and the exception is the last. That is the thesis
+ * in falsifiable form, and it gives the "the fourth slot buys nothing" half for free — width 3 and
+ * width 4 produce the SAME retire map, id for id, not merely the same total.
+ *
+ * **(3) The ATTRIBUTION.** The closing step is live at every width, which is the trap: a bare "43
+ * cycles" in it reads as a claim about the run in front of the reader, and a reader who did not flip
+ * is looking at 44. That is `forwarding-bubble`'s "51 over a transport reading 49" (M4 step 4) with
+ * the width knob in place of the prediction knob — and it cannot be fixed by declaring harder,
+ * because the lesson's whole subject is the other position. It is fixed by attributing every number
+ * to a named width, `branch-bet`-style, and {@link statesNumberBeside} is the guard that the prose
+ * actually does so rather than merely mentioning the widths somewhere.
+ *
+ * The signature trap of this milestone is the fourth thing pinned below: **a refusal count is not a
+ * penalty.** Width 3 gains eleven `intra-pair-raw` stalls that width 2 does not have, and it is
+ * FASTER. What the eleven do is cap the group — so the cap is what is asserted (no group of four
+ * ever forms, at width 3 or 4), together with the fact the prose leans on: every branch resolves on
+ * the identical cycle at all three widths, so nothing the refusals touched was delayed by them.
+ */
+describe('where-widening-stops — the third slot barely pays, the fourth pays nothing (M14 step 1)', () => {
+  const BNE_PC = 16; // the loop's closing `bne t0, x0, loop` — the instruction refused at width 3
+  const PROLOGUE_ADD_PC = 8; // the FIRST intra-pair-raw is here, not in the loop: why `nth` is set
+  const lesson = (): Lesson => byId('where-widening-stops');
+
+  /** The lesson's own declared machine with only the width varied — everything else from the JSON. */
+  const record = (issueWidth: number): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) {
+      throw new Error('where-widening-stops must declare the machine its prose describes');
+    }
+    return recordLesson(lesson(), { ...declared, issueWidth });
+  };
+
+  /** instr id → the cycle it retired on. The lesson's thesis is a comparison of two of these. */
+  const retireCycles = (trace: readonly CycleTrace[]): Map<string, number> => {
+    const cycles = new Map<string, number>();
+    for (const cycle of trace) {
+      for (const event of cycle.events) {
+        if (event.type === 'instr-retire') cycles.set(event.instr, cycle.cycle);
+      }
+    }
+    return cycles;
+  };
+
+  /** Ids whose retire cycle differs between two recordings, as `id: a -> b`. */
+  const retireDiff = (a: readonly CycleTrace[], b: readonly CycleTrace[]): string[] => {
+    const [left, right] = [retireCycles(a), retireCycles(b)];
+    return [...left]
+      .filter(([id, cycle]) => right.get(id) !== cycle)
+      .map(([id, cycle]) => `${id}: ${cycle} -> ${right.get(id)}`);
+  };
+
+  /**
+   * How many instructions the machine issued as one group, per cycle — read off `ID/EX` occupancy,
+   * the latch the group is formed into. This is the only channel that can see a group CAP: the
+   * events cannot, because a group of three and a group of four emit the same events in the same
+   * order, one cycle apart.
+   */
+  const groupSizes = (trace: readonly CycleTrace[]): number[] =>
+    trace.map((c) => {
+      const micro = c.state.micro as { idEx?: readonly (unknown | null)[] } | undefined;
+      return (micro?.idEx ?? []).filter((slot) => slot !== null).length;
+    });
+
+  const eventCount = (trace: readonly CycleTrace[], is: (e: TraceEvent) => boolean): number =>
+    trace.flatMap((c) => c.events).filter(is).length;
+
+  const isIntraPairRaw = (e: TraceEvent): boolean =>
+    e.type === 'stall' && e.reason === 'intra-pair-raw';
+
+  /** Cycles on which a branch resolved — the timeline the "nothing was lost" claim rests on. */
+  const resolveCycles = (trace: readonly CycleTrace[]): number[] =>
+    trace.flatMap((c) => c.events.filter((e) => e.type === 'branch-resolved').map(() => c.cycle));
+
+  /**
+   * Does `text` state `value` as a property of `width` — the number within `window` characters AFTER
+   * the width it belongs to — rather than merely mentioning both somewhere?
+   *
+   * This is the mechanical form of the attribution rule, and the distinction it draws is the whole
+   * point: "two wide it takes 44 cycles, three wide 43" and "44 cycles, down to 43" contain the same
+   * tokens, and only the first is true for a reader who has not flipped the control. A plain
+   * `toContain` on the numbers cannot tell them apart, which is exactly how a lesson ships prose that
+   * is false in the position it opens at.
+   */
+  const statesNumberBeside = (text: string, width: string, value: string, window = 70): boolean => {
+    for (let from = text.indexOf(width); from !== -1; from = text.indexOf(width, from + 1)) {
+      if (text.slice(from, from + window).includes(value)) return true;
+    }
+    return false;
+  };
+
+  it('opens on the superscalar at width 2 — the position the lesson asks the learner to LEAVE', () => {
+    // Every other wide lesson declares width 2 because that is the machine its prose describes. This
+    // one declares it because that is where the learner STARTS: the subject is the difference between
+    // that machine and a wider one, and the alternative (declare 4, quote 2 in prose) would leave the
+    // quoted number protected by no declaration at all — the M4 step 4 trap, a third time.
+    expect(lesson().model).toBe('superscalar');
+    expect(lesson().config?.issueWidth).toBe(2);
+  });
+
+  it('THE ASK: the step before the width-exclusive one requests the flip, at EVERY tier', () => {
+    const liveAt = (issueWidth: number): Set<number> =>
+      new Set(
+        anchorLesson(lesson(), record(issueWidth))
+          .filter((a) => a.cycle !== null)
+          .map((a) => a.index),
+      );
+    const [atTwo, atThree] = [liveAt(2), liveAt(3)];
+
+    // Exactly one step is width-exclusive, and it is the refusal — dead where the lesson opens,
+    // alive one notch wider. Pinned as an equality rather than a "some step": a second silent
+    // width-exclusive step would be a second place a reader can lose the thread, and it would slip
+    // past the sweep for the same reason the first one does.
+    const exclusive = lesson()
+      .steps.map((_, index) => index)
+      .filter((index) => !atTwo.has(index) && atThree.has(index));
+    expect(exclusive, 'exactly one step needs a machine wider than the declared one').toEqual([2]);
+
+    // The rule (M11+M12 review finding 2): the step BEFORE it must ask for the change, because the
+    // runner skips an unanchored step in silence. Asserted at every AUTHORED tier — `resolveNarration`
+    // falls back downward, so a reader sitting at `expert` sees the expert paragraph alone, and an ask
+    // written only into `detailed` is an ask that reader is never shown.
+    const ask = lesson().steps[exclusive[0]! - 1]!;
+    const tiers = Object.entries(ask.narration);
+    expect(tiers.length, 'the ask step authors all three tiers').toBe(3);
+    for (const [tier, text] of tiers) {
+      expect(text, `the ask step's [${tier}] must name the control`).toContain('ISSUE');
+      expect(text, `the ask step's [${tier}] must name the width to flip to`).toMatch(/\b3\b/);
+    }
+
+    // Non-vacuity of the position: the ask sits in the step immediately before, not merely somewhere
+    // earlier. A reader steps forward one beat at a time, so "asked three steps ago" is a step they
+    // have already scrolled past by the time the silence happens.
+    expect(exclusive[0]).toBeGreaterThan(0);
+  });
+
+  it('THE DELTA: exactly ONE instruction moves from width 2 to 3, and NOTHING moves from 3 to 4', () => {
+    const [w2, w3, w4] = [record(2), record(3), record(4)];
+
+    // The thesis, stated on retire cycles rather than on a total. 34 instructions retire at every
+    // width (width is a throughput knob, never a correctness one), so the maps are comparable id for
+    // id — and 33 of the 34 land on the identical cycle. The lone mover is the LAST instruction of
+    // the run, which is what the closing narration claims in words.
+    expect(retireCycles(w2).size, 'the same 34 retire at every width').toBe(34);
+    const moved = retireDiff(w2, w3);
+    expect(moved, 'one instruction moves, and it moves one cycle').toEqual(['i51: 43 -> 42']);
+    expect([...retireCycles(w2)].at(-1)![0], 'the mover is the last instruction to retire').toBe(
+      'i51',
+    );
+
+    // And the other half of the thesis: the fourth slot buys NOTHING. Asserted as an identical retire
+    // map rather than an identical cycle TOTAL — two runs can share a total while moving work about
+    // inside it, and "43 either way" is the weaker claim a coincidence could satisfy.
+    expect(retireDiff(w3, w4), 'width 4 changes nothing this program can observe').toEqual([]);
+
+    // The discriminator, recorded rather than argued (the plan's acceptance line): put the width back
+    // to 2 and the lesson's numbers stop being true. Note what is NOT here — width 4 is not a
+    // discriminator for this lesson and must never be made one, because every claim it makes about 4
+    // is equally true at 3. That is the lesson's subject, not a weakness in it.
+    expect([w2.length, w3.length, w4.length]).toEqual([44, 43, 43]);
+  });
+
+  it('THE CAP: eleven refusals appear WITH the speedup — a count is not a penalty', () => {
+    // The milestone's signature trap. Width 3 gains eleven `intra-pair-raw` stalls that width 2 does
+    // not have, and it is the FASTER machine. Prose that tallies refusals as cost is right at width 2
+    // (`pair-that-cant`, where a refusal splits a pair that would have shared a cycle) and wrong here,
+    // with every anchor green either way.
+    expect([1, 2, 3, 4].map((w) => eventCount(record(w), isIntraPairRaw))).toEqual([0, 0, 11, 11]);
+
+    // What the eleven actually do: CAP the group. This machine forms groups of two and three and
+    // never one of four — at width 4 as much as at width 3, which is why the fourth slot is idle
+    // hardware here. Read off ID/EX occupancy, because no event can see it: a refused fourth member
+    // and a group that simply had three members emit the same events.
+    expect(Math.max(...groupSizes(record(2)))).toBe(2);
+    expect(Math.max(...groupSizes(record(3))), 'never four, even with four slots').toBe(3);
+    expect(Math.max(...groupSizes(record(4))), 'never four, even with four slots').toBe(3);
+
+    // The claim the refusal step's prose leans on — "the branch resolves on exactly the cycle it
+    // resolved on at two wide" — asserted rather than asserted-in-narration. All ten mispredicting
+    // passes resolve on the identical cycles at all three widths, so nothing the refusals touched was
+    // delayed by them. This is also why the loop cannot be helped: a flush is a flush at any width.
+    expect(resolveCycles(record(3))).toEqual(resolveCycles(record(2)));
+    expect(resolveCycles(record(4))).toEqual(resolveCycles(record(2)));
+
+    // The anchor points at the LOOP's refusal, not the prologue's. `nth: 4` is load-bearing and
+    // measured, not guessed: the first `intra-pair-raw` in this recording is the prologue's
+    // `add a0, a0, t0` reading the `t0` that `li t0, 10` beside it just wrote — a real refusal, but
+    // not the once-a-pass one the narration describes. This is `pair-that-cant`'s `nth` finding on a
+    // different program.
+    const trace = record(3);
+    const anchored = anchorLesson(lesson(), trace);
+    const refusal = anchored[2]!;
+    expect(anchoredEvent(trace, refusal)).toMatchObject({
+      type: 'stall',
+      reason: 'intra-pair-raw',
+    });
+    expect(anchoredPc(trace, refusal), 'the anchored refusal is the loop-closing branch').toBe(
+      BNE_PC,
+    );
+    // ...and the slip this guards against is one step away: `nth: 1` would point at the prologue.
+    const firstRefusal = trace
+      .flatMap((c) => c.events.map((e) => ({ cycle: c.cycle, e })))
+      .find(({ e }) => isIntraPairRaw(e))!;
+    expect(pcById(trace).get((firstRefusal.e as TraceEvent & { instr: string }).instr)).toBe(
+      PROLOGUE_ADD_PC,
+    );
+  });
+
+  it('every number the prose states is DERIVED, and stated beside the width it belongs to', () => {
+    const [w1, w2, w3, w4] = [record(1), record(2), record(3), record(4)];
+    const ipc = (trace: readonly CycleTrace[]): string =>
+      (eventCount(trace, (e) => e.type === 'instr-retire') / trace.length).toFixed(2);
+
+    // Derived, never carried across from another lesson's prose. The opening step re-states
+    // "Two at once"'s measurement (0.61 at one slot, 0.77 at two) and that lesson's numbers were
+    // authored six milestones ago — so they are re-recorded here rather than quoted.
+    expect([ipc(w1), ipc(w2), ipc(w3), ipc(w4)]).toEqual(['0.61', '0.77', '0.79', '0.79']);
+    const opening = resolveNarration(lesson().steps[0]!.narration, lesson().depthDefault)!;
+    for (const token of ['44', '0.77', '0.61']) {
+      expect(opening, `the opening must quote ${token} from the recording`).toContain(token);
+    }
+
+    // The closing step is LIVE AT EVERY WIDTH — that is the whole difficulty. A bare "43 cycles"
+    // there is read as a claim about the run in front of the reader, and a reader who never flipped
+    // the control is looking at 44. So each figure is checked to sit BESIDE the width it describes,
+    // at both tiers a reader can land on, which a `toContain` on the tokens cannot distinguish from
+    // the same numbers in a sentence that lies.
+    const closing = lesson().steps.at(-1)!.narration;
+    for (const tier of ['essentials', 'detailed'] as const) {
+      const text = closing[tier]!;
+      for (const [width, cycles] of [
+        ['Two wide', String(w2.length)],
+        ['Three wide', String(w3.length)],
+        ['Four wide', String(w4.length)],
+      ]) {
+        expect(
+          statesNumberBeside(text, width!, cycles!),
+          `closing [${tier}] must state ${cycles} as a property of "${width}"`,
+        ).toBe(true);
+      }
+    }
+    // The IPCs are attributed in the tier that quotes them; `essentials` deliberately quotes none.
+    expect(statesNumberBeside(closing.detailed!, 'Two wide', '0.77')).toBe(true);
+    expect(statesNumberBeside(closing.detailed!, 'Three wide', '0.79')).toBe(true);
+    expect(closing.essentials!).not.toContain('0.7');
+  });
+
+  it('the attribution guard can tell an attributed number from a bare one', () => {
+    // Non-vacuity for {@link statesNumberBeside} — without this it could be a function that returns
+    // true, and the test above would pass on exactly the prose it exists to forbid. The second case
+    // is the sentence this lesson's first draft would have shipped.
+    expect(
+      statesNumberBeside('Two wide it takes 44 cycles; three wide, 43.', 'Two wide', '44'),
+    ).toBe(true);
+    expect(
+      statesNumberBeside('The run takes 44 cycles, down to 43 once widened.', 'Two wide', '44'),
+    ).toBe(false);
+    // ...and it must not be satisfied by the number merely appearing FIRST, far from the width word.
+    expect(statesNumberBeside(`44 cycles.${' '.repeat(80)}Two wide.`, 'Two wide', '44')).toBe(
+      false,
+    );
   });
 });
 

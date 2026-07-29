@@ -1,0 +1,47 @@
+{
+  "id": "where-widening-stops",
+  "title": "Where widening stops paying",
+  "program": "sum-loop",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "instr-fetch", "nth": 2 },
+      "narration": {
+        "essentials": "Back on the two-wide machine, with the program the wide track opened on. The ISSUE control goes up to four. What does a third slot buy?",
+        "detailed": "Same machine, same program: `sum-loop` on the two-wide superscalar, with `li a0, 0` and `li t0, 10` pulled from instruction memory together in the very first cycle. \"Two at once\" measured what that width was worth — 34 instructions retired in 44 cycles, an IPC of 0.77, against 0.61 on the one-wide pipeline. Nearly a quarter off the clock for one extra slot. But the ISSUE control does not stop at two: it goes to three, and to four. This lesson is about what those two slots are worth, and it is not what the second one was worth.",
+        "expert": "`issueWidth` replicates the whole machine at once — fetch, decode, the register-file read ports, the execute lanes, writeback. Four is not an arbitrary ceiling; it is where this corpus stops rewarding the hardware, which is the only honest reason to ship a knob a learner can turn past the point of paying. Keep the two measured numbers in hand while you turn it: 0.61 at one slot, 0.77 at two."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "result": 19 } },
+      "narration": {
+        "essentials": "Both slots busy — `add` and `addi` in one cycle. The `bne` behind them waits for the next group. Now set the ISSUE control to 3 and run the program again; the rest of this lesson needs a machine wider than two.",
+        "detailed": "Mid-loop, and here is the two-wide machine at its best: `add a0, a0, t0` pushes the total to 19 while `addi t0, t0, -1` drops the counter to 8 — both in Execute, one per lane. But the loop body is three instructions, not two: the `add`, the `addi`, and the `bne t0, x0, loop` that closes the pass. A two-wide group is full after the first two, so the branch goes in the group behind them. Which suggests the obvious experiment. Set the ISSUE control to 3 and run the program again — the step after this one only happens on a machine wider than two.",
+        "expert": "Nothing here REFUSES the branch. At two wide the group ends because the width ends — a structural limit, not a hazard, and no `stall` is emitted because nothing was rejected. That distinction is what makes the next step worth watching, and seeing it needs a wider machine: set the ISSUE control to 3 and run the program again. Widening does not lift the limit on this group; it changes which kind of limit binds."
+      }
+    },
+    {
+      "trigger": { "event": "stall", "where": { "reason": "intra-pair-raw" }, "nth": 4 },
+      "narration": {
+        "essentials": "Three wide, and the branch still does not get in: it reads the counter the `addi` beside it is writing. Refused — once every pass.",
+        "detailed": "There is the third slot doing its work, and there is what it got for it. Fetch pulled the branch in a cycle earlier and offered it to issue as the third member of the group, and issue handed it straight back. `bne t0, x0, loop` reads `t0`; `addi t0, t0, -1`, in the same group, writes it. Every instruction in a group reads the register file in the same cycle, so the branch would read a counter that has not been decremented yet. The refusal is marked `intra-pair-raw` and it happens once per pass — eleven times in this run, where the two-wide machine had none at all. Before counting that as a cost, though: the branch issues in the very next group and resolves on exactly the cycle it resolved on at two wide. Nothing was lost here. The third slot simply had nothing to do.",
+        "expert": "Eleven refusals sounds like eleven lost cycles and is nothing of the kind — this is the trap in reading a refusal count. What the eleven do is CAP the group: across the whole run this machine forms groups of two and of three and never one of four, at three wide and at four wide alike. A refusal that stops a group growing costs nothing when the instruction it rejected had nowhere earlier to go. Compare \"The pair that can't\", where the same event with the same reason string splits work that would otherwise have shared a cycle. Same refusal, opposite consequence — which is why a count of them is not a penalty."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 10, "value": 55 } },
+      "narration": {
+        "essentials": "55 at every width. Two wide: 44 cycles. Three wide: 43. Four wide: 43 again.",
+        "detailed": "The sum is 55 on every machine here — width never changes what a program computes. What it changed is one cycle. Two wide, this run takes 44 cycles for its 34 instructions: 0.77 instructions per cycle. Three wide it takes 43, for 0.79. Four wide it takes 43 again, for 0.79 again — set the ISSUE control to 4 and watch the count refuse to move. And the one cycle the third slot did buy is not spread thinly through the loop; it is in one place. Every instruction in this run but one retires on exactly the cycle it retired on at two wide, and the exception is the last one. At three wide the closing `bne`, the `li a7, 10` and the `ecall` leave as a single group of three; at two wide the group is full after two, so the `ecall` waits a cycle for a group of its own.",
+        "expert": "34 / 44 = 0.77 at two wide, 34 / 43 = 0.79 at three, and 0.79 again at four. The reason the loop itself cannot be helped sits upstream of the width: its backward branch mispredicts every pass under this scheme, and a flush is a flush at any width — 22 cycles of this run issue nothing at all, and that number is identical at two, three and four. What widening bought was the removal of exactly one issue group from the run, the last one, out of twenty-two. Width pays where independent work is standing by; here the dependence chain and the mispredict set the clock, and the third and fourth slots are hardware this program cannot spend."
+      }
+    }
+  ]
+}
