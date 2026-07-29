@@ -40,7 +40,13 @@ import {
   SUPERSCALAR_MODEL_DESCRIPTION,
   SUPERSCALAR_MODEL_ID,
 } from '@cpu-viz/engine-superscalar';
-import type { Processor, ProcessorCapabilities, ProcessorConfig } from '@cpu-viz/trace';
+import {
+  defaultConfig,
+  type Processor,
+  type ProcessorCapabilities,
+  type ProcessorConfig,
+} from '@cpu-viz/trace';
+import type { SessionKnobs } from './session';
 
 /**
  * Which bespoke SVG datapath view (if any) renders a model's trace. Each model has its OWN
@@ -242,4 +248,30 @@ export function modelById(id: string): ModelChoice {
 export function engineConfigFor(model: ModelChoice, config: ProcessorConfig): ProcessorConfig {
   if (model.capabilities.configurableCache) return config;
   return { ...config, cache: null };
+}
+
+/**
+ * **The whole shell→engine seam, as a pure function** (M13 review, finding 5): the
+ * {@link ProcessorConfig} a model is actually handed for a given set of {@link SessionKnobs}.
+ *
+ * This is `useSimulator.loadInto`'s config expression, moved out of the `useCallback` it used to
+ * live inside. That position was the defect, not any line in it: a hook cannot be invoked without
+ * jsdom, which this repo deliberately does not have, so **the seam was unreachable from every
+ * headless test by construction**. Three milestones each measured the same consequence and each
+ * answered it with a browser pass — deleting `branchPrediction` from the literal left all 229 web
+ * tests green (M11 step 5), deleting `issueWidth` left all 581 (M7 step 6), and clamping
+ * `issueWidth` to 2 left all 1518 (M13 step 6), which is a control that is right at widths 1 and 2
+ * and silently wrong at 3 and 4.
+ *
+ * **Five of the eight knobs are OPTIONAL on `ProcessorConfig`**, so dropping one is not even a type
+ * error — only `forwarding`, `branchPrediction` and `cache` redden `tsc`. That asymmetry is why the
+ * hole was worse for exactly the knobs the last three milestones added.
+ *
+ * The two steps are kept in this order and both belong here. The spread over `defaultConfig()`
+ * supplies the fields no shell control owns (`seed`, and anything a future model adds); the
+ * {@link engineConfigFor} narrowing then removes what THIS model refuses. Reversing them would
+ * clamp a cache and then hand `defaultConfig()`'s back.
+ */
+export function engineConfigOf(model: ModelChoice, knobs: SessionKnobs): ProcessorConfig {
+  return engineConfigFor(model, { ...defaultConfig(), ...knobs });
 }

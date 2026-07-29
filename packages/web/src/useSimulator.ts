@@ -16,7 +16,7 @@ import {
   type MachineState,
 } from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_MODEL_ID, engineConfigFor, modelById, type ModelChoice } from './models';
+import { DEFAULT_MODEL_ID, engineConfigOf, modelById, type ModelChoice } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import {
   activeLessonOf,
@@ -28,6 +28,7 @@ import {
   predictsTaken,
   type BranchPrediction,
   type Session,
+  type SessionKnobs,
 } from './session';
 import { loadSource, type LoadedProgram } from './simulator';
 
@@ -374,6 +375,34 @@ export function useSimulator(): Simulator {
   const numMshrsRef = useRef(2);
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
+  /**
+   * The session's whole opinion about the machine, read off the refs at call time — the ONE place
+   * the eight knobs are enumerated (M13 review, finding 5).
+   *
+   * There used to be two hand-written copies of this literal, in `loadInto` and in `startLesson`,
+   * and they had to agree by vigilance: a ninth knob added to one and not the other would have
+   * meant a lesson opening on a machine the free-play path could not reproduce, with nothing
+   * failing. `slowOpLatency` and `numMshrs` are the two that make that concrete — they have no
+   * control, so a reader could never have seen the difference.
+   *
+   * Refs rather than state, deliberately and for the reason `activeModel` is a ref: this is read at
+   * CALL time, so a knob set moments earlier in the same handler is already current here, where the
+   * corresponding `useState` would still hold the previous render's value.
+   */
+  const sessionKnobs = useCallback(
+    (): SessionKnobs => ({
+      forwarding: forwardingRef.current,
+      branchPrediction: branchPredictionRef.current,
+      cache: cacheRef.current,
+      issueWidth: issueWidthRef.current,
+      outOfOrderIssue: outOfOrderIssueRef.current,
+      robSize: robSizeRef.current,
+      slowOpLatency: slowOpLatencyRef.current,
+      numMshrs: numMshrsRef.current,
+    }),
+    [],
+  );
+
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
   // point (`select` / `startLesson` / `loadEdited`) — the mode differs only in the `session`
   // set beforehand; the driver path is identical, which is why "the sandbox run still animates
@@ -382,24 +411,18 @@ export function useSimulator(): Simulator {
   // exclusive: a program either fails to assemble or fails to terminate, never both).
   const loadInto = useCallback(
     (source: string) => {
-      // `engineConfigFor` narrows the session config to the knobs THIS model claims — today that is
-      // the cache alone, for any model declaring `configurableCache: false` (M11 step 5; see its
-      // docblock, which explains why it is normalization now that no shipped engine REFUSES a knob).
-      // The session's own `cacheRef` is untouched, so leaving a model restores the geometry it had.
+      // `engineConfigOf` is this expression's whole content, and it lives in `models.ts` rather than
+      // here BECAUSE of where "here" is (M13 review, finding 5): a `useCallback` body cannot be
+      // invoked without jsdom, so while the object literal sat inline the shell→engine seam was
+      // unreachable from every headless test — and three milestones each measured that the same way,
+      // by deleting a knob and watching the whole web suite stay green. It narrows the session config
+      // to the knobs THIS model claims (today the cache alone, for any model declaring
+      // `configurableCache: false` — M11 step 5). The session's own `cacheRef` is untouched, so
+      // leaving a model restores the geometry it had.
       const result = loadSource(
         source,
         activeModel.current.make,
-        engineConfigFor(activeModel.current, {
-          ...defaultConfig(),
-          forwarding: forwardingRef.current,
-          branchPrediction: branchPredictionRef.current,
-          cache: cacheRef.current,
-          issueWidth: issueWidthRef.current,
-          outOfOrderIssue: outOfOrderIssueRef.current,
-          robSize: robSizeRef.current,
-          slowOpLatency: slowOpLatencyRef.current,
-          numMshrs: numMshrsRef.current,
-        }),
+        engineConfigOf(activeModel.current, sessionKnobs()),
       );
       if (!result.ok) {
         loaded.current = null;
@@ -433,7 +456,7 @@ export function useSimulator(): Simulator {
       setRuntimeError(null);
       rerender();
     },
-    [rerender],
+    [rerender, sessionKnobs],
   );
 
   const select = useCallback(
@@ -463,16 +486,7 @@ export function useSimulator(): Simulator {
       // they must be set BEFORE it runs; the states drive the picker + toggle. Deliberately not
       // routed through `setModel`/`setForwarding`: each of those re-loads on its own, so a lesson
       // that changed both would record the program three times over.
-      const opening = lessonOpening(lesson, {
-        forwarding: forwardingRef.current,
-        branchPrediction: branchPredictionRef.current,
-        cache: cacheRef.current,
-        issueWidth: issueWidthRef.current,
-        outOfOrderIssue: outOfOrderIssueRef.current,
-        robSize: robSizeRef.current,
-        slowOpLatency: slowOpLatencyRef.current,
-        numMshrs: numMshrsRef.current,
-      });
+      const opening = lessonOpening(lesson, sessionKnobs());
       const choice = modelById(opening.modelId);
       activeModel.current = choice;
       setModelState(choice.id);
@@ -497,7 +511,7 @@ export function useSimulator(): Simulator {
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
     },
-    [loadInto],
+    [loadInto, sessionKnobs],
   );
 
   const loadEdited = useCallback(

@@ -57,6 +57,36 @@ export function originNameOf(session: Session | null): string | null {
 }
 
 /** The microarchitecture + config position a lesson should OPEN in. */
+/**
+ * **Every knob the session holds about the machine — the shell's whole opinion, in one named
+ * shape** (M13 review, finding 5).
+ *
+ * It existed as an anonymous inline type on {@link lessonOpening}'s second parameter and as two
+ * hand-written eight-field object literals in `useSimulator`, which is three places that had to
+ * agree by vigilance. Naming it is what lets `engineConfigOf` be a pure function of it, and that
+ * is what makes the shell→engine seam reachable from a headless test at all: the literal used to
+ * live inside a `useCallback`, so **no test without jsdom could invoke it**, and three separate
+ * milestones each measured the same consequence — deleting a knob from that literal left the whole
+ * web suite green (M7 step 6: 581 tests; M11 step 5: 229; M13 step 6: 1518).
+ *
+ * That is not a coverage gap a better test could close. It is the position of the code, and the
+ * only fix for it is to move the code. Adding a knob here now means adding it to ONE literal and
+ * watching `engine-config.test.ts` name it.
+ *
+ * Distinct from {@link LessonOpening}, which is this plus the model id: a lesson declares a machine
+ * AND which model runs it, while the session holds only the knobs.
+ */
+export interface SessionKnobs {
+  forwarding: boolean;
+  branchPrediction: BranchPrediction;
+  cache: ProcessorConfig['cache'];
+  issueWidth: number;
+  outOfOrderIssue: boolean;
+  robSize: number;
+  slowOpLatency: number;
+  numMshrs: number;
+}
+
 export interface LessonOpening {
   /** The model id to drive the lesson under — the one it was authored against. */
   modelId: string;
@@ -223,19 +253,7 @@ export function cacheEquals(a: ProcessorConfig['cache'], b: ProcessorConfig['cac
  * still anchor (`lessons.test.ts` sweeps all four positions), but a narration that quotes cycle
  * counts is quoting the machine it opened on.
  */
-export function lessonOpening(
-  lesson: Lesson,
-  current: {
-    forwarding: boolean;
-    branchPrediction: BranchPrediction;
-    cache: ProcessorConfig['cache'];
-    issueWidth: number;
-    outOfOrderIssue: boolean;
-    robSize: number;
-    slowOpLatency: number;
-    numMshrs: number;
-  },
-): LessonOpening {
+export function lessonOpening(lesson: Lesson, current: SessionKnobs): LessonOpening {
   // All-or-nothing, spelled as all-or-nothing. A `??` per knob would read like a per-knob rule and
   // behave like this one — the type makes a declared config total — which is the shape that hid the
   // question until a second knob existed. The cache joins as a THIRD knob under the same rule
