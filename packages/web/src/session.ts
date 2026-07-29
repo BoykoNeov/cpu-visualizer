@@ -67,11 +67,26 @@ export interface LessonOpening {
   /** The cache geometry to record in, or `null` for no D-cache (M6 step 5). */
   cache: ProcessorConfig['cache'];
   /**
-   * The issue width to record at (M7 step 6) — 1 or 2. **Always a number here, even though
-   * `ProcessorConfig.issueWidth` is optional**: a lesson that declares a config but no width means
-   * width 1, which is what the engine itself reads it as (`config.issueWidth ?? 1`). Keeping the
-   * opening total rather than optional is what stops "honored WHOLE" from quietly acquiring an
-   * exception — see {@link lessonOpening}.
+   * The issue width to record at (M7 step 6) — 1 to `MAX_ISSUE_WIDTH` since M13 step 6. **Always a
+   * number here, even though `ProcessorConfig.issueWidth` is optional**: a lesson that declares a
+   * config but no width means width 1. Keeping the opening total rather than optional is what stops
+   * "honored WHOLE" from quietly acquiring an exception — see {@link lessonOpening}.
+   *
+   * **The 1 is the SHELL's rule, and this docblock used to justify it as the engines' — which was
+   * false for one of the two** (M13 review, finding 1). The superscalar reads an absent width as
+   * `?? 1`; the **out-of-order core reads it as `?? 2`**, deliberately and as a pinned decision at
+   * its own `private width = 2`. Three sites in this repo asserted the engines agreed. They do not,
+   * and the sibling knobs below are not a precedent for it: `outOfOrderIssue ?? false`,
+   * `robSize ?? 16` and `slowOpLatency ?? 1` each really do match the engine that reads them.
+   * `issueWidth` is the one odd member of the list.
+   *
+   * It is nonetheless the right number, for a reason that had to be measured rather than assumed:
+   * **no engine's absent-width default is reachable through the product at all.** `useSimulator`
+   * seeds `useState(1)` and `loadInto` always passes `issueWidth: issueWidthRef.current`, a number,
+   * so `ProcessorConfig.issueWidth` is never absent by the time an engine sees it. 1 is therefore
+   * the shell's own choice of opening width — the superscalar's degenerate case, which is what the
+   * width control also opens on — and not an inherited reading. `session.test.ts` pins both engine
+   * defaults and the divergence between them, so this paragraph reddens if either moves.
    */
   issueWidth: number;
   /**
@@ -247,7 +262,9 @@ export function lessonOpening(
     // The FOURTH knob (M7 step 6), and the first one the config type makes OPTIONAL — which is
     // exactly why it is spelled out here rather than left off. `issueWidth` follows `seed`'s
     // precedent in `ProcessorConfig` (present only if a model needs it), so a declared config can
-    // omit it; omitting it MEANS width 1, the reading the engine itself applies (`?? 1`). Dropping
+    // omit it; omitting it MEANS width 1 — **the SHELL's rule, not "the reading the engine itself
+    // applies", which is what this comment claimed until the M13 review and is false for the
+    // out-of-order core (`?? 2`). See {@link LessonOpening.issueWidth}.** Dropping
     // the field instead would make a declared config leave the user's width untouched — a per-knob
     // rule smuggled into an all-or-nothing one, which is precisely the shape M4 step 4 shipped and
     // the browser caught (a lesson's own prose quoting cycle counts from a machine the reader was

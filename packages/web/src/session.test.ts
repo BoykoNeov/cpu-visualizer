@@ -1,8 +1,12 @@
 import type { Lesson } from '@cpu-viz/curriculum';
 import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
-import { defaultConfig, type ProcessorConfig } from '@cpu-viz/trace';
+import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
+import { OutOfOrderProcessor } from '@cpu-viz/engine-out-of-order';
+import { defaultConfig, type Processor, type ProcessorConfig } from '@cpu-viz/trace';
 import { describe, expect, it } from 'vitest';
 import { LESSONS } from './lessons';
+import { EXAMPLE_PROGRAMS } from './programs';
+import { loadSource } from './simulator';
 import {
   activeLessonOf,
   exampleSession,
@@ -334,5 +338,83 @@ describe('predictsTaken — three scheme names, two behaviors', () => {
     // where `defaultConfig()` is what the shell opens on.
     expect(predictsTaken('none')).toBe(false);
     expect(predictsTaken(defaultConfig().branchPrediction)).toBe(false);
+  });
+});
+
+/**
+ * **M13 review, finding 1 — the divergence three sites papered over, pinned so it cannot be
+ * re-justified by assertion.**
+ *
+ * `LessonOpening.issueWidth`, `lessonOpening`'s inline comment and (before the review) `App.tsx`
+ * all explained a `?? 1` as "the reading the engine itself applies". Two engines read
+ * `ProcessorConfig.issueWidth`, and they do not agree: the superscalar defaults an absent width to
+ * 1, the out-of-order core to 2 — deliberately, at its own `private width = 2`.
+ *
+ * These pin the divergence itself rather than the prose about it. They are deliberately
+ * BEHAVIORAL: the out-of-order micro carries no `width` field to read back, and asserting on a
+ * recorded schedule is the stronger claim anyway — it is the default's EFFECT, which is what the
+ * comments were making promises about.
+ *
+ * The reason this is a guard and not a fix: correcting either engine's default would move pinned
+ * recordings across the conformance matrix and the M9/M10 lesson set, and the divergence is
+ * unreachable through the product (see the third test). So the honest move is to make the two
+ * numbers loud rather than to quietly pick one.
+ *
+ * **And these are the ONLY things in the repo that can see either number.** Measured while writing
+ * them: changing the out-of-order core's `?? 2` to `?? 1` — deleting the pinned decision outright —
+ * leaves **all 4400 engine tests green**, because every engine suite states `issueWidth` explicitly
+ * and never exercises the absent case. A decision documented at its own declaration, on a knob two
+ * models read, with no net under it anywhere below the web package. That is the real reason the
+ * three comments could go on asserting the engines agreed for two milestones: nothing would have
+ * contradicted them if they had been right either.
+ */
+describe('the two engines that read issueWidth default it differently (M13 review finding 1)', () => {
+  const cyclesOf = (make: () => Processor, config: ProcessorConfig, program: string): number => {
+    const example = EXAMPLE_PROGRAMS.find((p) => p.name === program);
+    if (!example) throw new Error(`no such example: ${program}`);
+    const r = loadSource(example.source, make, config);
+    if (!r.ok) throw new Error('assembly failed');
+    r.loaded.recorder.runToEnd();
+    return r.loaded.recorder.recorded.length;
+  };
+
+  /** A config with `issueWidth` genuinely ABSENT — the state the two `?? N`s disagree about. */
+  const absent = (): ProcessorConfig => {
+    const c: ProcessorConfig = { ...defaultConfig(), forwarding: true };
+    delete (c as { issueWidth?: number }).issueWidth;
+    return c;
+  };
+  const at = (w: number): ProcessorConfig => ({ ...absent(), issueWidth: w });
+
+  it('the superscalar reads an absent width as 1', () => {
+    const make = (): Processor => new SuperscalarProcessor();
+    const [w1, w2] = [cyclesOf(make, at(1), 'sum-loop'), cyclesOf(make, at(2), 'sum-loop')];
+    // Non-vacuity FIRST: if the two explicit widths ran the same schedule, "absent matches 1" would
+    // be satisfied by an engine that ignored the knob entirely, and this whole file would measure
+    // nothing. Same failure shape as the identity toggle `simulator.test.ts` records.
+    expect(w1, 'the two widths run the same schedule — the test below is vacuous').not.toBe(w2);
+    expect(cyclesOf(make, absent(), 'sum-loop')).toBe(w1);
+  });
+
+  it('...and the out-of-order core reads it as 2 — the fact the shell claimed did not exist', () => {
+    const make = (): Processor => new OutOfOrderProcessor();
+    const [w1, w2] = [cyclesOf(make, at(1), 'array-sum'), cyclesOf(make, at(2), 'array-sum')];
+    expect(w1, 'the two widths run the same schedule — the test below is vacuous').not.toBe(w2);
+    expect(cyclesOf(make, absent(), 'array-sum')).toBe(w2);
+  });
+
+  it('no lesson can reach the divergence — every width-honoring lesson declares its width', () => {
+    // The measurement that makes `?? 1` safe today. It is a fact about the CORPUS, so it expires
+    // the moment a lesson is added; asserting it here is what turns "we checked once" into a gate.
+    // Widths are read off `Lesson.config`, which is the only thing `lessonOpening` looks at.
+    const WIDTH_HONORING = new Set(['superscalar', 'out-of-order']);
+    const offenders = LESSONS.filter(
+      (l) => WIDTH_HONORING.has(l.model) && l.config !== undefined && l.config.issueWidth === undefined, // prettier-ignore
+    ).map((l) => l.id);
+    expect(offenders, 'a lesson would silently take the shell default over its model’s').toEqual(
+      [],
+    );
+    // ...and non-vacuously: there ARE such lessons to check.
+    expect(LESSONS.filter((l) => WIDTH_HONORING.has(l.model)).length).toBeGreaterThan(0);
   });
 });
