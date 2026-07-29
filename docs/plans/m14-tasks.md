@@ -1,0 +1,257 @@
+# Milestone 14 — The width delta lesson track
+
+**Status: NOT STARTED — step 0 DONE 2026-07-29. The dump is run
+(`M:\claud_projects\temp\m14-step0\dump.txt`) and the pre-milestone defect it uncovered is ALREADY
+FIXED AND PUSHED (`458b4ce`, repo 6203 → 6779 tests): `lessons.test.ts` was sweeping the four shipped
+wide-machine lessons at two of the four widths the shell offers. That was live in shipped code and
+did not belong inside an unpinned milestone — M13 step 0b's precedent. The three SUBJECTS are pinned
+(user, 2026-07-29): all three ship, matching M12's track size. Everything else in the decisions table
+is open, and none of it gates step 1.**
+
+Source of truth for scope: `cpu-visualizer-spec.md` §13 (the curriculum system) and §12.4 (the
+superscalar tier). The load-bearing invariants are INV-6 (lessons anchor to trace EVENTS, never cycle
+numbers) and INV-2 (depth is a property of the view, not the engine). The track's ground truth is
+`docs/plans/m7-tasks.md` (the machine) and `docs/plans/m13-tasks.md` step 3 (its behaviour at widths
+3 and 4, already derived and pinned in `timing.test.ts`).
+
+## Why this milestone, and why now
+
+M13 raised the product's widest machine from two to four and deferred the teaching by name: _"the
+existing 'The wide machine' track would gain a delta lesson, which is the M12 shape and its own
+milestone."_ This is that milestone. The four shipped wide lessons — `two-at-once`, `pair-that-cant`,
+`one-door`, `one-branch-unit` — all declare `issueWidth: 2`, so their pair-shaped prose is **lawful,
+not a contradiction** with M13's group-shaped readout. The gap is that **nothing in the library
+teaches 3 or 4**, and width 4 was chosen (decision W) precisely because it is where widening visibly
+STOPS paying. The tier ships a control the curriculum never explains.
+
+This is the second delta track, after M12's. What is genuinely new: M12's delta was against a
+different MODEL (`pipeline` → `deep-pipeline`), so a lesson's `model` declaration protected every
+comparison. **Here the delta is against a different KNOB on the same model**, which is a weaker
+declaration and a stronger interaction — spec §12's flagship "same program, flip the toggle, watch
+it change."
+
+## The dump (the design's factual ground) — RUN 2026-07-29
+
+`M:\claud_projects\temp\m14-step0\dump.txt`. Six programs × {w2, w3, w4} at the config all four
+shipped lessons declare (forwarding on, `static-not-taken`, no cache).
+
+**Deliberately NOT re-derived:** cycles, issue-group histograms and refusal counts. M13 step 0
+measured them and `timing.test.ts` pins them; re-deriving would be the M7 step 2b trap (copying
+counts out of the engine). This dump adds the one thing no existing artifact holds — **per-cycle
+events WITH PAYLOADS**, so an author can read a `where` clause straight off a line, plus the width
+discriminator computed on the **event multiset** rather than on cycle counts
+(`cycles-cannot-see-a-lost-forward`).
+
+### What it establishes
+
+- **`'none'` ≡ `'static-not-taken'` is MEASURED, not inferred** — byte-identical traces on all 18
+  program×width combinations. So M13's dump (which swept `'none'`) does describe the lesson config,
+  and its cycle counts reproduce here exactly. Two independent sources agree: `CONFIG_AXES`'s own
+  docblock already says "the positions are the BEHAVIORS, not the names." Stated because the
+  alternative was to trust a docblock's reason, which the M13 review named as its own trap.
+- **Cycle totals at the lesson config**: `sum-loop` 44 → 43 → 43, `slow-op-loop` 35 → 34 → 33,
+  `paired-branches` 7 → 7 → 6, `array-sum` 42 → 36 → 36, `branch-flavors` 11 → 10 → 10,
+  `byte-loads` 9 → 8 → 8.
+
+### The four findings that decide the track
+
+1. **`paired-branches` has an IDENTICAL EVENT MULTISET at w2, w3 and w4** — every event type, every
+   payload, every count — while running 7, 7, 6. The `branch-slot` refusal is **width-invariant**
+   (one branch unit is one branch unit at any width); the entire delta is WHEN instructions group
+   and retire. This is `cycles-cannot-see-a-lost-forward` **running in reverse: the events cannot see
+   a WON cycle.** `byte-loads` is the same shape. See the dedicated section below.
+2. **`slow-op-loop` is the only candidate with genuinely w4-EXCLUSIVE events** —
+   `forward{from=MEM/WB,to=EX.rs1,value=0,instr=i5}` and `reg-read{reg=6,value=0,instr=i6}` both go
+   0 → 0 → 1. With M13 step 3 calling its behaviour "the width axis's honest lesson" in those words,
+   it is the flagship.
+3. **A refusal count is NOT a penalty, and this is the milestone's signature trap.** `sum-loop` gains
+   eleven `intra-pair-raw` stalls — but at **w3**, not w4 (each goes 0 → 1 → 1) — and its
+   `groupHist(w4)` is `{"0":22,"2":11,"3":10}`, with no 1s and no 4s. Those refusals **cap groups at
+   2–3 instead of 4**; they do not split a pair at a cycle each the way `pair-that-cant` narrates at
+   w2. Eleven of them bought ONE cycle. Prose that counts refusals is right at w2 and wrong at w4
+   **with every anchor green** — "a flush's `stages` array is not the penalty" (M12) one axis over.
+4. **`branch-flavors`' enormous multiset delta is mostly instruction-ID RENUMBERING** — `i8` → `i10`
+   at the same pc and the same encoding, because a different number of instructions get squashed. A
+   multiset diff is not self-interpreting; read the pc, not the id.
+
+## Headline decision — the lessons declare width 2 and ASK for the flip
+
+The subject is a difference BETWEEN widths, and a lesson declares ONE `issueWidth`. Two shapes were
+available and the choice is not close:
+
+- **Declare w4, quote w2 in prose.** Rejected. A number true only under an undeclared width is
+  protected by NO declaration — the M4-step-4 trap (numbers true only under an undeclared prediction
+  scheme) and M12's cross-model mirror (true only on an undeclared model), a third time.
+- **Declare w2, ask the learner to flip ISSUE.** ✅ **Chosen.** It is spec §12's flagship interaction
+  in its purest form, the existing four lessons park the learner at exactly w2 so the track continues
+  from where it left them, and `branch-bet` / `deep-bet-pays-double` already establish the
+  config-exclusive shape.
+
+**The price, and it is paid explicitly in every step.** M11+M12 review finding 2 is a hard authoring
+rule: **a lesson with config-exclusive steps must ASK for the config change, in the step BEFORE the
+first step that needs it.** `runner.ts` skips an unanchored step in SILENCE and the rail quietly
+reports the smaller count. `deep-bet-pays-double` shipped broken on exactly this and its plan
+recorded the gap as "known and deliberate", justified by prose that did not exist.
+
+## ⚠ The net got WEAKER the day before this milestone, and step 0 is what did it
+
+Step 0's own fix (`458b4ce`) widened `lessons.test.ts`'s sweep from 2 width positions to 4. That is
+correct and it found nothing broken — but it changes what the suite PROVES for the lessons M14 is
+about to write. The sweep's rule is _"every step anchors in AT LEAST ONE position."_ With four width
+positions in the product:
+
+> A width-exclusive step anchors at its own width position and **the sweep goes green** — while a
+> learner who never touches the ISSUE control sees a silently-skipped step and prose about a machine
+> they are not running.
+
+**This is structurally invisible to `lessons.test.ts`, and no amount of widening fixes it** — a
+broader sweep makes it MORE likely to pass, not less. It is caught by exactly two things, both of
+which every lesson step below must carry:
+
+- the authoring rule above (the prior step asks for the flip, in prose a reader actually sees), and
+- **a browser pass driving the real ISSUE control** (step 5). `useSimulator`'s anchor memo is keyed
+  `(activeLesson, recorder)` and a config change mints a fresh recorder — but that is an INFERENCE
+  about the width knob specifically, read off a `useMemo` dependency list, not a measurement.
+  `browser-is-the-only-net`.
+
+## The un-anchorable delta — `paired-branches`, where the events cannot see a won cycle
+
+M12 met a beat with no event (`deep-drain`'s cycle 8, a cycle containing nothing) and gave it a
+lawful home: anchor on the retires either side, point the prose AT the gap, pin every fact the
+narration leans on. **M14's third lesson is the harder version of that shape.** Here the events are
+not absent — they are IDENTICAL across all three widths. A step still anchors (the last retire sits
+at c6 at w2 and w3, c5 at w4), so the lesson is authorable; what fails is the **discriminator**.
+
+M13 step 3 already accounted for the shape term by term, and the lesson should be written off that
+account rather than re-deriving it: w3 buys nothing **not because the third slot goes unused — it
+fills.** G is 3 at both w2 and w3 with different shapes (`{1,2,2}` against `{1,3,1}`): the third slot
+pulls `addi a7` forward and thereby pushes `ecall` out of the tail group into one of its own. **The
+widening moved work between groups without reducing their number.** w4 is where the tail finally
+fits in one group.
+
+**So this lesson's UNCHANGED criterion cannot be "the event multiset differs" — it must be stated on
+the anchored CYCLE**, and it must say so out loud rather than quietly using a weaker check. That
+inverts this repo's standing rule (verify on the multiset, not on cycles) for one lesson only, which
+is exactly why it is written down here instead of discovered in step 3.
+
+## Falsifiable UNCHANGED criteria (state before building; check at the end)
+
+1. **No new trace event or field.** `stall.reason` already carries all three refusals, `location`
+   absorbs `"EX.3"`, and the group shape is on `state.micro.idEx`. House record: M4 +1 field of 5,
+   M6 +0, M7 +0, M11 +0, M13 +0.
+2. **No engine change of any kind.** M14 is content plus one track-order edit.
+3. **No new corpus program.** The three subjects use `sum-loop`, `slow-op-loop` and
+   `paired-branches`, all already in the corpus — and an addition pays the full INV-8 ripple across
+   six models (M12's finding).
+4. **No new lesson-format field.** If a step wants one, that is a finding about the format, not a
+   licence — and `Lesson.depthDefault` was dead for eleven milestones, so the bar is: name which
+   code READS it.
+5. **`content/lessons/index.json` gains three ids in an existing track and no new track.**
+
+## Build order (each step testable before the next)
+
+- [x] **0. The dump, and the shipped defect it found. ✅ DONE 2026-07-29**, `458b4ce`. Above. The
+      fix derives `CONFIG_AXES`' width positions from `MAX_ISSUE_WIDTH` (M13 step 3's precedent for
+      this staleness class) and takes the half-derived count shape `datapath-superscalar.test.ts`
+      already uses (`12 * MAX_ISSUE_WIDTH`) — deriving only the term that went stale, because a
+      fully derived count is vacuous. Both pins run against broken code: re-pinning the axis to a
+      literal short list reddens both counts (24 vs 48, 48 vs 96); making the labels vary while the
+      config does not reddens the width-set check plus two lesson-content steps, since a 1-wide
+      machine emits no pairing refusal at all. Repo 6203 → **6779**; all five gates green.
+
+- [ ] **1. Lesson — the third slot barely pays (the thesis).** `sum-loop`, the program
+      `two-at-once` already used, so the learner returns to a machine and a NUMBER they have met:
+      that lesson tells them 0.77 IPC at w2 against 0.61 at w1. Opens at w2, asks for the flip, and
+      the payoff is that IPC moves to **0.79**. Every number READ from a recording, never computed —
+      the retire count and both cycle totals pinned by an oracle at the lesson's own config.
+      ⚠ The eleven new refusals are the **explanation**, not a cost to be counted (finding 3): they
+      cap groups at 2–3, and prose that tallies them is wrong at w4 with every anchor green.
+      Narrate the TOTAL; measure the cycle DELTA between width positions.
+      Acceptance: steps anchor in order at both width positions; the flip is REQUESTED in the step
+      before the first width-exclusive one; the sweep is green; setting `issueWidth` back to 2
+      makes the narration false (recorded, not argued).
+
+- [ ] **2. Lesson — four in a row (the flagship).** `slow-op-loop`, the only subject with
+      w4-exclusive anchors (finding 2), and M13 step 3's own "honest lesson": four independent `li`s
+      form **one group of four exactly ONCE in six iterations**, the loop body is byte-identical at
+      w3 and w4, so the gain is **1 cycle and not 6**. The beat is a prologue effect and the lesson
+      must say so — a reader who sees "a group of four!" and generalises to the loop has learned the
+      opposite of the truth.
+      Its ready-made mirror, if a step wants it: **`static-taken` SPENDS the width** — a bet ends its
+      group, so `paired-branches` runs 6 at w4 under the base behaviour and 11 under betting, the
+      same 11 it runs at w3. That is a second config axis in one lesson; take it only if a step
+      earns it, and it inherits the same ask-for-the-flip rule.
+      Acceptance: as step 1, plus at least one step anchors on an event that exists ONLY at w4
+      (named explicitly in the step, from the dump).
+
+- [ ] **3. Lesson (CONDITIONAL) — the width that moved the work.** `paired-branches`. Write it off
+      M13 step 3's term-by-term account, not by re-deriving. **Its discriminator is on the anchored
+      CYCLE, not the event multiset** (see the un-anchorable section) — state that in the lesson's
+      own test rather than silently using a weaker check. CONDITIONAL in M12's sense: if the beat
+      cannot be made to read honestly without inventing an event, **dropping it is a success and
+      inventing one is the only failure**.
+      Acceptance: as step 1, with the discriminator stated on the cycle and the reason recorded.
+
+- [ ] **4. Wire the track.** Three ids appended to `"The wide machine"` in
+      `content/lessons/index.json`. **Read the ordered-assertion tests, do not grep their names**
+      (M12's method note): `lessons.test.ts` holds an exhaustive `toEqual` on track NAMES and a
+      pairwise order check — extending an existing track should touch neither, and if it does, that
+      is a finding. Decide the WITHIN-track order by the cache track's discriminator: **a sequence
+      pin earns its place only if a prose sentence LIES when reordered.**
+      Acceptance: the picker shows seven lessons under "The wide machine"; the track-name and
+      pairwise pins are untouched; any order pin added is justified by a named sentence.
+
+- [ ] **5. Browser pass — the only net that sees this.** The step the headline decision's price is
+      paid in. Drive each new lesson through `startLesson` on the **shipped bundle**, starting from
+      a different model so every assertion is about what the lesson dragged, then **flip ISSUE with
+      the real control** and assert the rail re-anchors and the step count changes. Read
+      `browser-rig-cdp-recipe`, `browser-rig-chrome-cleanup` (never `taskkill //IM`),
+      `browser-rig-vacuity-traps` and `never-kill-dev-servers-by-port` first.
+      ⚠ §0 must select a model that HAS the width control before checking a known-present control —
+      M12's rig reported itself broken when its own premise was wrong.
+      Acceptance: every new lesson opens at its declared width and depth; the flip re-anchors; the
+      rail's count changes across the flip and the surviving steps are not the same set.
+
+## Acceptance criteria (mirror the spec §11 shape)
+
+- [ ] "The wide machine" track shows seven lessons; the three new ones open on the superscalar at
+      `issueWidth: 2` and at their declared depth tier.
+- [ ] Each new lesson's steps anchor in order, in at least one config position, with narration
+      resolvable at all three tiers.
+- [ ] Every cycle count and IPC figure in narration is pinned by an oracle against a recording at
+      the lesson's own config — none computed in prose.
+- [ ] Each lesson's width discriminator is recorded: setting `issueWidth` back to 2 makes its
+      narration false. For lesson 3 the discriminator is on the anchored CYCLE, and the file says so.
+- [ ] Every config-exclusive step is REQUESTED by the step before it, in prose.
+- [ ] All five gates green (`test`, `typecheck`, `lint`, `format:check`, `build`).
+- [ ] The browser pass drove `startLesson` and the real ISSUE control on the shipped bundle.
+- [ ] The five UNCHANGED criteria above all held, or the exception is written up.
+
+## How this milestone can lie to itself
+
+- **Counting refusals.** Finding 3, and it is the signature defect: a count that is a penalty at w2
+  and a group cap at w4, green either way.
+- **Trusting the widened sweep.** Step 0's own fix made "every step anchors somewhere" a weaker
+  guarantee for exactly this track's shape. Green there is not evidence a learner sees the step.
+- **Reading a multiset diff as behaviour.** `branch-flavors` renumbers instruction ids wholesale
+  across widths (finding 4). Read the pc and the encoding.
+- **Generalising the prologue.** `slow-op-loop`'s group of four happens once, in the prologue, in a
+  six-iteration run. A lesson that shows it without saying so teaches that width 4 pays in loops.
+- **Assuming the corpus's shape is the language's shape** — M13's finding, unchanged. Three subjects
+  from eleven programs is a sample, and "no corpus program does X" is a measurement with an
+  expiry date.
+- **Quoting `two-at-once`'s 0.77 without re-recording it.** It is a number in another lesson's prose,
+  authored at a different milestone. Read it from a recording or do not use it.
+
+## Decisions to pin (seeded with recommended answers)
+
+| Decision                                        | Recommendation (seed)                                                                                                                                                                                                                  | Pinned answer                              |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| **Which subjects ship**                         | All three — `sum-loop` (the thesis), `slow-op-loop` (the flagship), `paired-branches` (the conditional). Matches M12's track size. Gates steps 1–3                                                                                     | **All three** (user, 2026-07-29)           |
+| **The declared width, and who flips**           | Declare `issueWidth: 2` and ask the learner to flip — see the Headline decision. Gates every step                                                                                                                                      | **As seeded** (headline; reopen to change) |
+| **A new track vs extending "The wide machine"** | **Extend.** Same model, different knob; extending touches neither the exhaustive track-NAME `toEqual` nor the pairwise order pin, while a new track makes both a hard edit. M12 minted a track because its delta was a different MODEL | _open_ — gates step 4                      |
+| Which width each lesson flips TO                | **Per-subject, from the dump, not a house rule.** `sum-loop`'s delta is w2→**w3** (the eleven refusals appear at 3 and stay); `slow-op-loop`'s flagship beat is w4-exclusive; `paired-branches` gains its cycle only at w4             | _open_ — gates steps 1–3                   |
+| Within-track order of the three                 | Thesis → flagship → conditional, appended after `one-branch-unit`. Pin a sequence test ONLY if a prose sentence lies when reordered (the cache track's discriminator)                                                                  | _open_ — gates step 4                      |
+| The `static-taken`-spends-the-width mirror      | **Available, not required.** A second config axis inside one lesson doubles the ask-for-the-flip burden; take it only if a step earns it                                                                                               | _open_ — step 2                            |
+| A new trace event or field                      | **No** — predicted, not assumed (UNCHANGED criterion 1). If lesson 3 seems to need one, the answer is M12's: dropping the beat is a success, inventing an event is the only failure                                                    | _open_                                     |
+| Depth tier each lesson declares                 | `detailed`, matching all 22 shipped lessons — and it is now actually READ (M12's headline fix). Assert the declared tier selects different prose from `expert`, or the fix is invisible again                                          | _open_                                     |
