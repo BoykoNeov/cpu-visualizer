@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 9dd1c38f-ce9d-44cb-9964-9bad97d0676f
-  modified: 2026-07-29T02:11:18.056Z
+  modified: 2026-07-29T02:19:19.395Z
 ---
 
 A **directed inline pass** over `89bb26e..HEAD` (46 commits, 80 files, ~11.3k ins), 2026-07-29.
@@ -52,6 +52,13 @@ adding a knob to the shell→engine seam. See [[m13-width-planned]] for the mile
   in `y` (so no currently-clear label can move) and bounded at ±96 units (a label displaced far
   enough to be unambiguous about CLEARANCE becomes ambiguous about OWNERSHIP — step 9's reason for
   deferring it stands). This is the same family as [[browser-is-the-only-net]].
+  **The fallback is NOT closed, and the docblock says so** — 72 placements / 14 distinct labels still
+  escape neither way (all the five-stage's `regfile-idex-a`, none on the superscalar), down from
+  ~1000. Claiming otherwise would have been this finding's own mistake a second time.
+- **When a fix could TRADE one defect for another, measure the other one too.** The escape made
+  placement order-dependent in a new way, and the net measured only label-vs-**box**. Adding
+  label-vs-**label** came back zero — and proving it non-vacuous (disable `clear()`'s placed-label
+  check ⇒ named pairs) is what makes that zero worth anything.
 - **Instrument the branch; do not infer from having fixed the case you went looking for.** The
   false note in finding 3 was exactly that inference. Counting the fallback took one `if`.
 - **Break the fix in a DIFFERENT place to learn what a net is worth.** Reverting `IFID_CORRIDOR`
