@@ -113,7 +113,28 @@ export interface PairingReadoutView {
    *  micro, never a default: a hardcoded number here mislabels every recording made at another
    *  width, and the caption and the IPC tile's ceiling are both derived from it. */
   readonly width: number;
-  /** The ID occupants, oldest first. Length 0 (idle), 1, or `width`. */
+  /**
+   * The ID occupants, oldest first — **length 0 (idle) through `width`, and every value between
+   * them is reachable.**
+   *
+   * This said "Length 0 (idle), 1, or `width`" until the M13 review. That was true at width 2,
+   * where `width` and 2 coincide and there is no room for a middle value, and it went false the
+   * moment step 6 opened widths 3 and 4 — measured over the corpus × widths 1–4 × forwarding ×
+   * cache, the length is **3 on 264 cycles at width 4** and 2 on 4 cycles at width 3. IF/ID is
+   * compacted, so occupants are contiguous from slot 0; what varies is how many the front end had
+   * to give, and near the end of `.text` (or behind a partial refill) that is fewer than `width`.
+   *
+   * It survived step 8's sweep of "every sentence asserting a COUNT OF TWO" for an instructive
+   * reason, recorded because the next stale claim will hide the same way: **it does not say "two",
+   * it says `width`** — so a sweep aimed at pair-shaped vocabulary could not see it, and neither
+   * could `PAIR_SHAPED` in `PairingReadoutView.test.tsx`. The reachable lengths are now pinned by
+   * test rather than by this sentence (`pairing-readout.test.ts`), which is the only form of
+   * comment about a range that cannot rot silently.
+   *
+   * Nothing has ever depended on the false version: the verdict fold and both derived glosses read
+   * `candidates.length` directly, which is step 8's "make it arithmetic so a test can watch it"
+   * working exactly as intended.
+   */
   readonly candidates: readonly IssueCandidate[];
   readonly verdict: IssueVerdict;
   /** The machine-readable cause when one is known, else `null`. `null` is a legitimate answer and

@@ -318,6 +318,46 @@ describe('the group at N lanes', () => {
   });
 
   /**
+   * **The M13 review's finding 3, turned from a sentence into arithmetic.**
+   *
+   * `PairingReadoutView.candidates` documented its own length as _"0 (idle), 1, or `width`"_. That
+   * is true at width 2 — where `width` IS 2, so there is no room for a middle value — and it went
+   * false the moment step 6 opened widths 3 and 4. IF/ID is compacted, so occupants are contiguous
+   * from slot 0; what varies is how many the front end had to give, and near the end of `.text` it
+   * is fewer than `width`.
+   *
+   * **Why no sweep in this milestone caught it, which is the part worth keeping:** step 8 swept for
+   * "every sentence asserting a COUNT OF TWO" and this sentence does not say two — it says `width`.
+   * A vocabulary sweep aimed at pair-shaped words is structurally blind to a claim that is wrong in
+   * the SHAPE of its range rather than in its number. So the fix is not a better-worded comment; it
+   * is this test, which asserts the range itself.
+   *
+   * Asserted as the exact reachable SET per width rather than as bounds, and the direction matters
+   * both ways. `toBeLessThanOrEqual(width)` would pass on an engine that only ever fetched one
+   * instruction — the vacuity this file has walked into twice. Naming the set makes a narrowing
+   * regression (a front end that stopped filling four slots) and a widening one (a `location` slot
+   * past the machine's width) both red, and each with a diff that says which.
+   */
+  it('candidate counts fill the WHOLE range 0..width — the middle values are not decoration', () => {
+    const lengthsAt = (w: number): number[] => {
+      const s = new Set<number>();
+      for (const p of EXAMPLE_PROGRAMS) {
+        for (const [, cfg] of configsAt(w)) {
+          for (const t of record(p.source, cfg)) s.add(readPairing(t)!.candidates.length);
+        }
+      }
+      return [...s].sort((a, b) => a - b);
+    };
+    // Widths 1 and 2 have no middle value to reach, which is exactly why the old claim read as
+    // true for as long as it did — they are the control, not the case.
+    expect(lengthsAt(1), 'width 1').toEqual([0, 1]);
+    expect(lengthsAt(2), 'width 2').toEqual([0, 1, 2]);
+    // ...and from width 3 the claim "0, 1, or width" starts naming a set the machine does not have.
+    expect(lengthsAt(3), 'width 3').toEqual([0, 1, 2, 3]);
+    expect(lengthsAt(4), 'width 4').toEqual([0, 1, 2, 3, 4]);
+  });
+
+  /**
    * `reasonFor` takes the FIRST `stall` event naming a group member. At width 2 that cannot be
    * ambiguous — one refusee, so at most one reason to attribute. From width 3 the group has several
    * younger members, and "the panel silently picks one of two rules" becomes a reachable defect
