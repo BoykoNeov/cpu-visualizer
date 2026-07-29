@@ -178,9 +178,33 @@ interface PlacedLabel {
   ink: string;
 }
 
-/** Place each active wire's value label off its clearest segment, then nudge it vertically until it
- *  clears both earlier labels AND component boxes — so a label never obscures another label or sits
- *  on top of a box (requirement: labels don't obscure labels/arrows). Boxes stay inside the canvas. */
+/**
+ * Place each active wire's value label off its clearest segment, then nudge it until it clears both
+ * earlier labels AND component boxes — so a label never obscures another label or sits on top of a
+ * box (requirement: labels don't obscure labels/arrows). Boxes stay inside the canvas.
+ *
+ * ## The horizontal escape (M13 review, finding 2)
+ *
+ * The search was **vertical only** until the M13 review, and when ±160 units of y turned up nothing
+ * it placed the label anyway, silently, on whatever it had collided with. That was handed past M13
+ * with the claim that step 9's corridor fix had left nothing reaching it — measured false: one to
+ * three labels reach it at every width, and on the five-stage datapath too.
+ *
+ * Nearly all of those are harmless corner clips. **One was not, and only the image said so.** At
+ * width 4 on `call-return`, a branch target's `0x0000000c` sat with the EX/MEM latch bar crossing
+ * the MIDDLE of it — and since component boxes paint after labels, the bar hid three of its digits.
+ * The signed overlap (16 units of a 70-unit box) reads like a corner clip and was graded as one; the
+ * 5× crop showed `0x0000███c`, a hex value a reader cannot recover. **A signed overlap is a pointer,
+ * not a verdict.**
+ *
+ * The escape is deliberately confined to the path that had already given up: it runs only after the
+ * y-search fails, so **it cannot move any label that currently finds a clear y** — which is what
+ * makes a change to the SHARED renderer safe for all six datapaths. It also stays near its wire
+ * (±96 units, the same 4-unit granularity), because the reason this was deferred rather than fixed
+ * at step 9 stands: at width 4 four encodings share one corridor, and a label displaced far enough
+ * to be unambiguous about clearance becomes ambiguous about OWNERSHIP. A bounded nudge keeps the
+ * label beside the segment it belongs to; an unbounded search would not.
+ */
 function layoutLabels(
   wires: readonly WireVM[],
   nodes: readonly NodeVM[],
@@ -193,17 +217,21 @@ function layoutLabels(
     const anc = labelAnchor(wire.points);
     const side = wire.labelSide ?? (anc.horizontal ? 'up' : 'right');
     const halfW = wire.label.length * 3.2 + 3;
-    let cx = anc.x + (side === 'left' ? -(halfW + 3) : side === 'right' ? halfW + 3 : 0);
+    const cx0 = Math.min(
+      Math.max(anc.x + (side === 'left' ? -(halfW + 3) : side === 'right' ? halfW + 3 : 0), halfW + 1), // prettier-ignore
+      canvas.width - halfW - 1,
+    );
+    let cx = cx0;
     const cy0 = anc.y + (side === 'up' ? -9 : side === 'down' ? 9 : 0);
-    cx = Math.min(Math.max(cx, halfW + 1), canvas.width - halfW - 1);
-    // A candidate y is "clear" iff its box overlaps no already-placed label and no component box.
-    const clear = (y: number): boolean => {
-      const l = cx - halfW;
-      const r = cx + halfW;
+    // A candidate (x, y) is "clear" iff its box overlaps no already-placed label and no component
+    // box. `x` defaults to the current `cx` so the vertical search below reads unchanged.
+    const clear = (y: number, x: number = cx): boolean => {
+      const l = x - halfW;
+      const r = x + halfW;
       const t = y - HALF_H;
       const b = y + HALF_H;
       for (const p of placed) {
-        if (Math.abs(p.cx - cx) < p.halfW + halfW + 2 && Math.abs(p.cy - y) < HALF_H * 2 + 2)
+        if (Math.abs(p.cx - x) < p.halfW + halfW + 2 && Math.abs(p.cy - y) < HALF_H * 2 + 2)
           return false;
       }
       for (const n of nodes) {
@@ -213,15 +241,27 @@ function layoutLabels(
     };
     let cy = cy0;
     if (!clear(cy)) {
-      for (let step = 1; step <= 40; step++) {
+      let escaped = false;
+      for (let step = 1; step <= 40 && !escaped; step++) {
         const up = cy0 - step * 4;
         const down = cy0 + step * 4;
         if (up >= 9 && clear(up)) {
           cy = up;
-          break;
-        }
-        if (down <= canvas.height - 9 && clear(down)) {
+          escaped = true;
+        } else if (down <= canvas.height - 9 && clear(down)) {
           cy = down;
+          escaped = true;
+        }
+      }
+      // ...and only now, having given up in y, try sideways. See the docblock: this runs on the
+      // path that used to place the label on the box and say nothing.
+      for (let step = 1; step <= 24 && !escaped; step++) {
+        for (const nx of [cx0 + step * 4, cx0 - step * 4]) {
+          if (nx < halfW + 1 || nx > canvas.width - halfW - 1) continue;
+          if (!clear(cy0, nx)) continue;
+          cx = nx;
+          cy = cy0;
+          escaped = true;
           break;
         }
       }

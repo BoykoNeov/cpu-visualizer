@@ -149,27 +149,24 @@ const BURIED = 12;
 const LABELLED_TIERS = DEPTH_TIERS.filter(showValueLabels);
 
 /**
- * **The one real collision in the app, named rather than tolerated by a loosened bound.**
+ * **The buried set is EMPTY, and it took an image to learn that it should be.**
  *
- * Raising a threshold until a suite goes green is how a bound stops being a net, so this is an
- * enumeration instead: the sweep must produce EXACTLY these offenders. A new collision reddens
- * because it is not in the set; this one getting worse reddens because its measurement is in the
- * string. Both failures name what changed.
+ * The review first graded this case LOW from its number: 16 units of a 70-unit label box, which
+ * reads exactly like a corner clip. The 5x crop of the shipped bundle showed something else — the
+ * EX/MEM latch bar crossing the MIDDLE of a branch target, rendering `0x0000000c` as `0x0000###c`,
+ * a hex value a reader cannot recover. **A signed overlap is a pointer, not a verdict**, and this
+ * one pointed the wrong way.
  *
- * The case: at **width 4 only**, on the `alu-pcmux` lane-0 wire, a branch target's 10-character hex
- * label anchors on the short stub between the ALU and its redirect channel — which at four lanes is
- * pressed against the EX/MEM latch bar. `layoutLabels` searches ±160 units in y, finds nothing
- * clear, and (having no horizontal escape) places it anyway. **Component boxes paint AFTER labels**,
- * so the bar covers the label's leading ~16 of 70 units rather than the other way round.
+ * The case was `call-return` at cycle 6, width 4, on the `alu-pcmux` lane-0 wire — and the rig took
+ * three wrong guesses at the program before that was DUMPED rather than reasoned. It is fixed by
+ * `layoutLabels`' horizontal escape (see its docblock), which runs only on the path that had already
+ * given up in y, so no label that finds a clear y can move.
  *
- * This is step 9's defect one column right and one order smaller — a label with no width, in a
- * corridor that narrows as the machine widens — and it is the M13-era half of finding 2, as against
- * the small clips that have been shipping since M3. It is recorded rather than fixed here because
- * the fix is geometry and the arbiter is an image: `labelSide` would be the cheap lever and this
- * datapath's `DatapathWire` does not carry one, so it is a real change to the shared renderer's
- * contract, which the review deliberately left unscoped.
+ * The list stays here, empty, rather than the assertion becoming `toEqual([])` inline: an empty
+ * named constant says "this was measured to be empty", where a bare literal says nothing about
+ * whether anyone looked.
  */
-const KNOWN_BURIED = ['w4 detailed: "0x0000000c" 16/70 into EX///MEM', 'w4 expert: "0x0000000c" 16/70 into EX///MEM']; // prettier-ignore
+const KNOWN_BURIED: string[] = [];
 
 describe('no value label is buried in a component box (M13 review finding 2)', () => {
   const sweep = (
