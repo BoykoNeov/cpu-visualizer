@@ -4,7 +4,7 @@ description: "M14 (the width DELTA lesson track — new lessons in the existing 
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-29T04:01:20.827Z
+  modified: 2026-07-29T04:09:45.661Z
   originSessionId: 65f78fd8-0a6b-4187-a611-6595cf485bd4
 ---
 
@@ -84,9 +84,18 @@ instr=i5}` and `reg-read{reg=6,value=0,instr=i6}` both go 0 → 0 → 1. It is t
 - **Only `branch-flavors`, `paired-branches`, `slow-op-loop` ever fill four slots** (measured and
   asserted by name in M13 step 3). Any beat about THE FOURTH SLOT must use one of those three —
   `sum-loop` never takes four and is disqualified from that subject.
-- **`sum-loop`'s IPC is the sharpest honest number**: `two-at-once` already tells the learner 0.77 at
-  w2 against 0.61 at w1. At w4 it is 34/43 = **0.79**. Doubling the width again moves IPC by 0.02 —
-  which is precisely what decision W chose width 4 to teach, told on a number they already read.
+- **`sum-loop`'s IPC is the sharpest honest number, and getting it slightly wrong is instructive.**
+  `two-at-once` already tells the learner 0.77 at w2 against 0.61 at w1. **34 instructions retire at
+  every width** (measured — not carried over from that prose, and not free, since `branch-flavors`
+  renumbers wholesale across widths) over 44 → 43 → 43 cycles. So it is 0.7727 at w2 and **0.7907 at
+  w3 — and the identical 0.7907 at w4.** The third slot buys 0.02 IPC; **the fourth buys this
+  program nothing at all**, which is exactly what decision W chose width 4 to teach.
+  ⚠ The first draft of this memory and of `m14-tasks.md` both said "at w4 it is 0.79, doubling the
+  width again moves IPC by 0.02" — **arithmetically true and pedagogically backwards**, because it
+  credits the fourth slot with the third slot's gain. Generalises past this milestone: **a figure
+  quoted at ONE width cannot show where the gain stopped, and where it stopped is the whole subject.
+  Always put the neighbouring width beside it.** It also fixes a discriminator: narration true at w3
+  is equally true at w4, so lesson 1 can only ever discriminate against w2.
 
 ## Not yet decided (content calls, deliberately left to the user)
 

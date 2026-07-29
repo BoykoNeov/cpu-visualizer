@@ -52,6 +52,11 @@ discriminator computed on the **event multiset** rather than on cycle counts
 - **Cycle totals at the lesson config**: `sum-loop` 44 → 43 → 43, `slow-op-loop` 35 → 34 → 33,
   `paired-branches` 7 → 7 → 6, `array-sum` 42 → 36 → 36, `branch-flavors` 11 → 10 → 10,
   `byte-loads` 9 → 8 → 8.
+- **`sum-loop` retires 34 instructions at ALL THREE widths** (measured from the dump, not carried
+  over from `two-at-once`'s prose). That is what makes an IPC comparison across widths
+  apples-to-apples, and it is not free: finding 4 shows `branch-flavors` renumbering its
+  instructions wholesale across widths, so a differing retire count is a real possibility that has
+  to be checked per program rather than assumed.
 
 ### The four findings that decide the track
 
@@ -159,17 +164,26 @@ is exactly why it is written down here instead of discovered in step 3.
       config does not reddens the width-set check plus two lesson-content steps, since a 1-wide
       machine emits no pairing refusal at all. Repo 6203 → **6779**; all five gates green.
 
-- [ ] **1. Lesson — the third slot barely pays (the thesis).** `sum-loop`, the program
-      `two-at-once` already used, so the learner returns to a machine and a NUMBER they have met:
-      that lesson tells them 0.77 IPC at w2 against 0.61 at w1. Opens at w2, asks for the flip, and
-      the payoff is that IPC moves to **0.79**. Every number READ from a recording, never computed —
-      the retire count and both cycle totals pinned by an oracle at the lesson's own config.
+- [ ] **1. Lesson — the third slot barely pays, and the fourth pays NOTHING (the thesis).**
+      `sum-loop`, the program `two-at-once` already used, so the learner returns to a machine and a
+      NUMBER they have met: that lesson tells them 0.77 IPC at w2 against 0.61 at w1.
+      **The flip is to width 3, and the arithmetic is the whole lesson — state it exactly.** 34
+      retires at every width over 44 → 43 → 43 cycles gives 0.7727 at w2 and **0.7907 at w3 — and
+      the identical 0.7907 at w4**, because w3 and w4 are the same 43 cycles. So the third slot buys
+      0.02 IPC and **the fourth buys this program literally nothing.** That is not a caveat to the
+      thesis, it IS the thesis, and it is decision W's stated reason for offering width 4 at all.
+      ⚠ An earlier draft of this plan said "at w4 it is 0.79, doubling the width again moves IPC by
+      0.02" — arithmetically true and pedagogically backwards, since it credits the fourth slot with
+      the third slot's gain. **The corrected form is the one to author from.** It also fixes the
+      discriminator: narration about w4 would be equally true at w3, so lesson 1's discriminator can
+      only ever be against w2, and the step's acceptance says exactly that.
       ⚠ The eleven new refusals are the **explanation**, not a cost to be counted (finding 3): they
       cap groups at 2–3, and prose that tallies them is wrong at w4 with every anchor green.
       Narrate the TOTAL; measure the cycle DELTA between width positions.
       Acceptance: steps anchor in order at both width positions; the flip is REQUESTED in the step
       before the first width-exclusive one; the sweep is green; setting `issueWidth` back to 2
-      makes the narration false (recorded, not argued).
+      makes the narration false (recorded, not argued) — and the file records that w4 is NOT a
+      discriminator for this lesson, so nobody later "strengthens" it into one.
 
 - [ ] **2. Lesson — four in a row (the flagship).** `slow-op-loop`, the only subject with
       w4-exclusive anchors (finding 2), and M13 step 3's own "honest lesson": four independent `li`s
@@ -231,6 +245,11 @@ is exactly why it is written down here instead of discovered in step 3.
 
 - **Counting refusals.** Finding 3, and it is the signature defect: a count that is a penalty at w2
   and a group cap at w4, green either way.
+- **Crediting a slot with the gain the slot below it made.** This plan shipped that error in its own
+  first draft (step 1's ⚠) — "at w4 it is 0.79" is TRUE and reads as though the fourth slot bought
+  something, when w3 and w4 are the same 43 cycles. **Every width claim needs the neighbouring width
+  beside it**, because a figure quoted at one width alone cannot show where the gain stopped, and
+  where the gain stops is what this whole track exists to teach.
 - **Trusting the widened sweep.** Step 0's own fix made "every step anchors somewhere" a weaker
   guarantee for exactly this track's shape. Green there is not evidence a learner sees the step.
 - **Reading a multiset diff as behaviour.** `branch-flavors` renumbers instruction ids wholesale
@@ -245,13 +264,13 @@ is exactly why it is written down here instead of discovered in step 3.
 
 ## Decisions to pin (seeded with recommended answers)
 
-| Decision                                        | Recommendation (seed)                                                                                                                                                                                                                  | Pinned answer                              |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| **Which subjects ship**                         | All three — `sum-loop` (the thesis), `slow-op-loop` (the flagship), `paired-branches` (the conditional). Matches M12's track size. Gates steps 1–3                                                                                     | **All three** (user, 2026-07-29)           |
-| **The declared width, and who flips**           | Declare `issueWidth: 2` and ask the learner to flip — see the Headline decision. Gates every step                                                                                                                                      | **As seeded** (headline; reopen to change) |
-| **A new track vs extending "The wide machine"** | **Extend.** Same model, different knob; extending touches neither the exhaustive track-NAME `toEqual` nor the pairwise order pin, while a new track makes both a hard edit. M12 minted a track because its delta was a different MODEL | _open_ — gates step 4                      |
-| Which width each lesson flips TO                | **Per-subject, from the dump, not a house rule.** `sum-loop`'s delta is w2→**w3** (the eleven refusals appear at 3 and stay); `slow-op-loop`'s flagship beat is w4-exclusive; `paired-branches` gains its cycle only at w4             | _open_ — gates steps 1–3                   |
-| Within-track order of the three                 | Thesis → flagship → conditional, appended after `one-branch-unit`. Pin a sequence test ONLY if a prose sentence lies when reordered (the cache track's discriminator)                                                                  | _open_ — gates step 4                      |
-| The `static-taken`-spends-the-width mirror      | **Available, not required.** A second config axis inside one lesson doubles the ask-for-the-flip burden; take it only if a step earns it                                                                                               | _open_ — step 2                            |
-| A new trace event or field                      | **No** — predicted, not assumed (UNCHANGED criterion 1). If lesson 3 seems to need one, the answer is M12's: dropping the beat is a success, inventing an event is the only failure                                                    | _open_                                     |
-| Depth tier each lesson declares                 | `detailed`, matching all 22 shipped lessons — and it is now actually READ (M12's headline fix). Assert the declared tier selects different prose from `expert`, or the fix is invisible again                                          | _open_                                     |
+| Decision                                        | Recommendation (seed)                                                                                                                                                                                                                                                                                                              | Pinned answer                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Which subjects ship**                         | All three — `sum-loop` (the thesis), `slow-op-loop` (the flagship), `paired-branches` (the conditional). Matches M12's track size. Gates steps 1–3                                                                                                                                                                                 | **All three** (user, 2026-07-29)                                                                                                                                                                                                                                                    |
+| **The declared width, and who flips**           | Declare `issueWidth: 2` and ask the learner to flip — see the Headline decision. Gates every step                                                                                                                                                                                                                                  | **As seeded** (headline; reopen to change)                                                                                                                                                                                                                                          |
+| **A new track vs extending "The wide machine"** | **Extend.** Same model, different knob; extending touches neither the exhaustive track-NAME `toEqual` nor the pairwise order pin, while a new track makes both a hard edit. M12 minted a track because its delta was a different MODEL                                                                                             | **Extend** — pinned by the argument here, because step 4 and its acceptance already assume it. A step written against an `_open_` row is the "pinned decision with no net is a comment" defect inverted: an answer with no decision. Reopen deliberately if the picker gets crowded |
+| **Which width each lesson flips TO**            | **Per-subject, from the dump, not a house rule.** `sum-loop` → **w3** (its 0.02 IPC gain is entirely w2→w3; w4 is the same 43 cycles and is NOT a discriminator for it); `slow-op-loop` → **w4** (the only w4-exclusive anchors in the corpus); `paired-branches` → **w4** (7 → 7 → 6, so w3 is not a discriminator for it either) | **As seeded** — pinned by measurement, since step 1's arithmetic and step 3's discriminator both depend on it. Any change needs a new recording, not an edit                                                                                                                        |
+| Within-track order of the three                 | Thesis → flagship → conditional, appended after `one-branch-unit`. Pin a sequence test ONLY if a prose sentence lies when reordered (the cache track's discriminator)                                                                                                                                                              | _open_ — gates step 4                                                                                                                                                                                                                                                               |
+| The `static-taken`-spends-the-width mirror      | **Available, not required.** A second config axis inside one lesson doubles the ask-for-the-flip burden; take it only if a step earns it                                                                                                                                                                                           | _open_ — step 2                                                                                                                                                                                                                                                                     |
+| A new trace event or field                      | **No** — predicted, not assumed (UNCHANGED criterion 1). If lesson 3 seems to need one, the answer is M12's: dropping the beat is a success, inventing an event is the only failure                                                                                                                                                | _open_                                                                                                                                                                                                                                                                              |
+| Depth tier each lesson declares                 | `detailed`, matching all 22 shipped lessons — and it is now actually READ (M12's headline fix). Assert the declared tier selects different prose from `expert`, or the fix is invisible again                                                                                                                                      | _open_                                                                                                                                                                                                                                                                              |
