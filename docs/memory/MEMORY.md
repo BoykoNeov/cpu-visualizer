@@ -6,8 +6,9 @@ offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-o
 shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
 FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
-with a lesson track. Repo **6189 tests**, five gates green. **No milestone is in progress** — see
-[Future microarchitectures](future-microarchitectures.md) for what is open.
+with a lesson track. Repo **6203 tests**, five gates green. **M13 has now been code-reviewed and all
+5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **No milestone is
+in progress** — see [Future microarchitectures](future-microarchitectures.md) for what is open.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -54,90 +55,29 @@ with a lesson track. Repo **6189 tests**, five gates green. **No milestone is in
 - [Cycles cannot see a lost forward](cycles-cannot-see-a-lost-forward.md) — verify engine
   changes on the EVENT MULTISET under hand-built adversarial programs: a cycles-only
   identity held in every cell while two `forward` events silently vanished.
-- [Future microarchitectures](future-microarchitectures.md) — depth is DELIVERED (M11);
-  **WIDTH is the one open axis.** Carries a ⚠ CORRECTION: its claim that the pairing rules
-  are pair-shaped was FALSE — it paraphrased the guard's error message, not the code.
-  - [M13 width — COMPLETE](m13-width-planned.md) — all ten steps. **Step 9, the browser pass, found
-    the defect it was sent to look for, and it was a LABEL WITH NO WIDTH:** at widths 3 and 4 every
-    fetched instruction encoding was drawn straddling the IF/ID bar and unreadable, because the
-    corridor between `imem` and the bar was squeezed from BOTH sides (**80 → 56 → 32 → 8** units)
-    against a 70-unit label — step 7's _the corridor moves the hardware_ rule one column left,
-    missed because **nothing there is a channel COUNT; it is a label, and a label has no width until
-    something states it.** Breaking the fix reddens **exactly 2 of 1551**. Three further step-9
-    findings were the RIG, not the app: the first metric asked the wrong question and **failed
-    against a correct app** (a label sits beside its OWN wire by design); the signed overlap was a
-    **POINTER, not a verdict** (−7 legible, −31 not — the IMAGE decided); and **headless Chrome
-    prefers DARK**, so the theme check compared dark against dark and the light block was never
-    measured. Also from step 9: **both of the plan's own instructions were unfalsifiable** (the
-    acceptance program `array-sum` runs 36 at BOTH 3 and 4, so a 4→3 clamp is invisible on it, and
-    the width-4 glosses are unreachable on it); the fix **MOVED width 2** and the draft guard denied
-    it; and **a control whose correct behaviour is "the same number" needs a second measurement** —
-    the OoO model matched the superscalar at all four widths until its own knob was flipped
-    (51/42/36/36 in order vs **51/33/30/26** out). **Step 8's readout pass was where the milestone's signature defect appeared
-    for the 8th time and — for the second time — inside the fix itself:** the vocabulary sweep's own
-    non-vacuity clause stayed GREEN when the panel was broken to render nothing at width 4, because
-    it keyed off the PURE FOLD rather than the render (step 7's closing-pass lesson, recurring inside
-    the test written to enforce it). Its other results: the old glosses were **FALSE on the majority
-    of the cycles they described** (at width 4 all 26 co-issue cycles hold 3 or 4, none holds two),
-    so the fix is DERIVED counts — arithmetic a test can watch — not a vaguer adjective; the wording
-    is pinned as a **PROPERTY**, which deliberately forbids neither the term of art `pairing` nor the
-    **derived** numeral 2; the identity `micro.idEx@N === EX@N+1`, the panel's entire licence for
-    reading `micro`, **had never run above width 2**; the IPC claim had to be **NARROWED** (9 of 11
-    programs are IPC-identical at 3 and 4, and relaxing `>` to `>=` is satisfied by an engine that
-    ignores the toggle) — so the strict rise is pinned to `slow-op-loop` BY NAME **and by SCHEME**,
-    and the flat set is enumerated; the ambiguous-reason worry was **MEASURED to zero** and the shape
-    deliberately left alone. Then a closing review found **three of the step's own new claims were
-    narrower than they read and one was FALSE** — all three because the drafts swept widths but left
-    the CONFIG glob at one, and the false one would have reddened on a cycle the code handles
-    perfectly. And a break in a DIFFERENT package exposed a latent **5 s-timeout flake** (~20% of full
-    runs, FOUR width-4 geometry sweeps, worst **17.3 s**; `testTimeout` now 60 s, which does not
-    weaken the liveness net because non-termination is caught by CYCLE bounds) — whose **first
-    diagnosis was an inference dressed as a measurement**, because the break harness printed only
-    WHICH test went red, never why. **Step 7's
-    new segment-through-box litmus found TWO wire routes that had shipped since M7 and were invisible
-    to all 1533 tests AND to M7's browser pass**; the per-width refactor MANUFACTURED a vacuous test
-    (a filter over a narrowed set), the M7 refusal fixtures turned out NON-MONOTONE in width
-    (`BRANCH_SLOT` refuses at 2 and 4 but not at 3), the palette's recorded dE did not reproduce and
-    its acceptance was unachievable for any 4-set, and **a break harness using `git checkout --`
-    destroyed the uncommitted tree — commit before you break.** **Step 6
-    proved INV-8 is a FALSE net by EXPERIMENT rather than assertion:** an engine running narrow
-    (`Math.min(width, 2)`) reddens 147 of the 180 new out-of-order timing cells and **zero of 807
-    conformance cells.** It also found that two "lawful answers" were not symmetric (eslint forbids
-    OoO importing the superscalar, so the shared bound had to move down to `engine-common`); that
-    gating a CONTROL's positions cannot contain a hazard reachable by a model switch; that the old
-    seam fixtures (`sum-loop`, `array-sum`) are **structurally blind to the 3→4 flip**; and that the
-    `loadInto` wiring gap is now a **HALF-dead toggle** — widths 1/2 correct, 3/4 collapsed, invisible
-    to all 1518 web tests, so **step 9 must check the WIDEST position specifically.** `configLabel`'s
-    `?? 1` was MEASURED still unreachable and stays handed forward rather than claimed closed. **Step 5's
-    finding is in the VIEW, not the engine:** `datapath-superscalar.ts` hard-codes `MAX_WIDTH = 2`, so
-    `parseLocation` returns `null` for slot ≥ 2 and an `EX.2` occupant is **dropped from occupancy
-    with no crash and no red test** — handed to step 7. Its method lessons: a fixture sized for the
-    old width is a DIFFERENT measurement wearing the same name (`TEN_INDEPENDENT` peaks at 11, not
-    20, at width 4); SUBSET and SURJECTIVITY of the location set have different scopes; **width ≥ 3
-    is where a slot can move by more than one in a cycle, and width 4 is NOT the extreme case**
-    ([0,1,2,1]); and the subset test's own assertion was BLIND to the clamp break — only the
-    non-vacuity clause riding with it reddened. **Step 4's finding
-    is in `engine/conformance`, not the engine:** `configLabel` compared optional knobs RAW and
-    rendered them DEFAULTED, so `undefined` vs. explicit `1` printed `width 1` twice — the inverse of
-    the injectivity invariant that file itself declares load-bearing. Its proof is an experiment:
-    collapsing the render to `min(w, 2)` reddens 3 guards while the **797-test conformance matrix
-    stays entirely green**. Also: **nothing in this repo asserts on `it()` titles**, so title
-    invariance must be MEASURED (JSON dumps, 0 of 1140 moved) — a green run is not evidence of it.
-    Step 3's sharpest
-    finding is about MEASUREMENT: the timing suite's ruler looped `s < 2`, so every group of 3 or 4
-    would have read as 2 and all 44 derived cells would have been permanently green — and **step 1's
-    arity sweep could not have matched it**, because the arity was a loop bound over a template
-    string. Also: only 3 of 11 programs ever fill four slots, and a break that caps the group at 3
-    leaves `branch-flavors` at exactly 10 cycles — **no cycle count in the repo can see it.**
-    ⚠ `Set-Content` mojibaked a source file mid-step; never use it on one here. The rules were
-    already width-generic and the audit's code sweep came back EMPTY; **a live width-2 HANG in
-    shipped code** (`bnez` then `ecall`; the corpus was safe only by its `li a7, 10` exit spacer
-    — fixed `a9f1b70`); width 4 is where widening stops paying. Guard now `MAX_ISSUE_WIDTH = 4`,
-    exported. Step 2's `wide-groups.test.ts` watched **7 breaks**, and its finding is about the
-    REPO: the only existing net at widths 3/4 is a LIVENESS sweep, so it reports arity bugs as
-    hangs and crashes, never as the defect. Both gating decisions pinned. **Read before touching
-    `engine/superscalar` or the lane hues** — the lane tints are a SECOND validated channel, not
-    `PHASE_COLORS`, and the two share no constraint.
+- [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED**: depth delivered by
+  M11, width by M13, so nothing here is open work. Read it for the predictions that held and the
+  one that was FALSE — its claim that the pairing rules are pair-shaped paraphrased the guard's
+  ERROR MESSAGE, not the code.
+  - [M13 width — COMPLETE](m13-width-planned.md) — all ten steps, step by step, with every finding
+    and pinned decision. **Read before touching `engine/superscalar`, the width control, or the lane
+    hues** (the lane tints are a SECOND validated channel, not `PHASE_COLORS` — they share no
+    constraint). Its transferable ones: the milestone's signature defect is **a test that keys off a
+    pure fold rather than the render**, which recurred 8 times and twice inside the fix written to
+    stop it; **a measurement's glob is part of its claim**; **INV-8 is a FALSE net for width** (proved
+    by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
+    source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
+    commit before you break.**
+- [M13 review resolved](m13-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-29**
+  (6189→6203 tests; 21 browser checks on the shipped bundle). Read before trusting a docblock's
+  stated reason, writing a range claim, or adding a knob to the shell→engine seam. Its sharpest
+  lesson **inverts** one this repo already had: a signed overlap is a pointer, not a verdict — and
+  here it pointed the **WRONG way**. A 16-of-70-unit overlap was graded LOW as a corner clip; the
+  5× crop showed the EX/MEM bar through the **middle** of a hex value. Also: code can be
+  untestable **by POSITION** (a config literal inside a `useCallback` — three milestones each
+  measured the same hole and each answered it with a browser pass), and **a pinned decision with
+  no net is a comment** (deleting the OoO default-width decision leaves all 4400 engine tests
+  green).
 - [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
   keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
   each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
