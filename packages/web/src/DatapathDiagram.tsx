@@ -204,6 +204,15 @@ interface PlacedLabel {
  * at step 9 stands: at width 4 four encodings share one corridor, and a label displaced far enough
  * to be unambiguous about clearance becomes ambiguous about OWNERSHIP. A bounded nudge keeps the
  * label beside the segment it belongs to; an unbounded search would not.
+ *
+ * **The silent fallback still exists, and saying otherwise would repeat the exact mistake this fixed.**
+ * Instrumented over the corpus × widths 1–4 × cache × all tiers: **72 placements, 14 distinct labels,
+ * escape NEITHER way** and are still placed where they collided. Every one is the five-stage
+ * datapath's `regfile-idex-a` — a 9-digit decimal address — and none is on the superscalar. They are
+ * corner clips well under the `BURIED` threshold, which is why `label-collisions.test.tsx` is green;
+ * what closed here is the case that was unreadable, not the mechanism. A label whose text is wide
+ * enough and whose neighbourhood is dense enough can still lose, silently, and the next one that
+ * matters should be fixed in the GEOMETRY — step 9's conclusion, which this does not overturn.
  */
 function layoutLabels(
   wires: readonly WireVM[],

@@ -155,6 +155,13 @@ width, or an absent width made impossible) rather than the sites.
 
 `docs/plans/m13-tasks.md` ("Handed PAST M13") · `packages/web/src/DatapathDiagram.tsx:214–229`
 
+> **⚠ THE SEVERITY BELOW IS SUPERSEDED — see the resolved section above.** The "why this is LOW"
+> paragraph reasons from the overlap NUMBER and concludes with "none of the above has been looked at
+> in a browser". It was looked at, and the verdict flipped: the crop showed the EX/MEM bar through
+> the middle of a hex value, not a corner clip. The wrong reasoning is left standing beside its
+> correction on purpose — it is the more useful record, because the number really does read like a
+> corner clip and the next reviewer will meet one that does too.
+
 The open work item is recorded like this:
 
 > `layoutLabels` has no horizontal escape. Its de-collide loop searches only in `y` (±160 in

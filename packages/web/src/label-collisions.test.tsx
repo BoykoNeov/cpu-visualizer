@@ -114,6 +114,34 @@ function buriedIn(labels: Box[], boxes: Box[], tag: string): string[] {
   return out;
 }
 
+/**
+ * Every pair of value labels in one render that OVERLAP EACH OTHER at all.
+ *
+ * `layoutLabels`' contract has always been "a label never obscures another label **or** sits on top
+ * of a box", and until the M13 review this file measured only the second half. That gap became
+ * load-bearing the moment the horizontal escape landed: placement is ORDER-DEPENDENT (`clear()`
+ * tests against labels already placed), so a label that escapes sideways occupies space a later one
+ * would have used, and the later one can be pushed somewhere it previously fit. **A fix for
+ * label-on-box that traded it for label-on-label would have been invisible here.**
+ *
+ * The threshold is ZERO rather than {@link BURIED}: two labels are both text, so any overlap makes
+ * one of them wrong, where a label clipping the corner of a box is merely untidy.
+ */
+function labelPairs(labels: Box[], tag: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const a = labels[i]!;
+      const b = labels[j]!;
+      const dx = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+      const dy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+      if (dx <= 0 || dy <= 0) continue;
+      out.push(`${tag}: "${a.text}" ∩ "${b.text}" ${dx.toFixed(0)}x${dy.toFixed(0)}`);
+    }
+  }
+  return out;
+}
+
 function record(
   make: () => Processor,
   config: ProcessorConfig,
@@ -173,8 +201,9 @@ describe('no value label is buried in a component box (M13 review finding 2)', (
     make: () => Processor,
     render: (trace: unknown, tier: string, forwarding: boolean, width: number) => string,
     widths: number[],
-  ): { buried: Set<string>; renders: number; labels: number } => {
+  ): { buried: Set<string>; overlaps: Set<string>; renders: number; labels: number } => {
     const buried = new Set<string>();
+    const overlaps = new Set<string>();
     let renders = 0;
     let labels = 0;
     for (const p of EXAMPLE_PROGRAMS) {
@@ -191,16 +220,17 @@ describe('no value label is buried in a component box (M13 review finding 2)', (
               renders++;
               labels += parsed.labels.length;
               for (const b of buriedIn(parsed.labels, parsed.boxes, `w${width} ${tier}`)) buried.add(b); // prettier-ignore
+              for (const o of labelPairs(parsed.labels, `w${width} ${tier}`)) overlaps.add(o);
             }
           }
         }
       }
     }
-    return { buried, renders, labels };
+    return { buried, overlaps, renders, labels };
   };
 
   it('the superscalar datapath, at every width the control offers', () => {
-    const { buried, renders, labels } = sweep(
+    const { buried, overlaps, renders, labels } = sweep(
       () => new SuperscalarProcessor(),
       (trace, tier, forwarding, width) =>
         renderToStaticMarkup(
@@ -219,13 +249,17 @@ describe('no value label is buried in a component box (M13 review finding 2)', (
     expect(renders, 'nothing rendered').toBeGreaterThan(0);
     expect(labels, 'no value labels were parsed — check the selectors').toBeGreaterThan(0);
     expect([...buried].sort(), 'the set of buried labels moved').toEqual([...KNOWN_BURIED].sort());
+    // The other half of layoutLabels' contract, and the one the horizontal escape could have
+    // traded FOR the first: placement is order-dependent, so a label that steps sideways takes
+    // room a later one would have used. Measured at zero both before and after the escape landed.
+    expect([...overlaps].slice(0, 5), 'two value labels overlap each other').toEqual([]);
   });
 
   it('...and the five-stage pipeline, which shares the renderer and predates the width axis', () => {
     // Swept because the finding is about the SHARED renderer, not about M13: this datapath reaches
     // the same silent fallback on a label the width axis never touched. Its clips are all corner
     // clips, so its buried set is EMPTY — which is the honest form of "M3's are the small ones".
-    const { buried, renders, labels } = sweep(
+    const { buried, overlaps, renders, labels } = sweep(
       () => new PipelineProcessor(),
       (trace, tier, forwarding) =>
         renderToStaticMarkup(
@@ -242,5 +276,6 @@ describe('no value label is buried in a component box (M13 review finding 2)', (
     expect(renders, 'nothing rendered').toBeGreaterThan(0);
     expect(labels, 'no value labels were parsed — check the selectors').toBeGreaterThan(0);
     expect([...buried].sort(), 'the five-stage grew a buried label').toEqual([]);
+    expect([...overlaps].slice(0, 5), 'two value labels overlap each other').toEqual([]);
   });
 });
