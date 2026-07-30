@@ -151,8 +151,13 @@ describe('nextCursor — the end rule', () => {
 
   it('refuses to start on an empty recording', () => {
     // `lastCycle` is `recordedCycles - 1`, so nothing loaded reports −1 — which is ALSO the pre-run
-    // cursor. Without this rung, "play from the start" and "play with no program" are the same call.
+    // cursor, and that coincidence is the whole answer: `-1 >= -1` stops, so the ONE comparison
+    // covers both. The module shipped with a separate `if (lastCycle < 0)` guard for this case and
+    // the break harness measured it as dead code (deleting it failed 0 of 29 tests); it is a comment
+    // on `nextCursor` now. This assertion stays because the CASE is real even though it needs no
+    // rung of its own.
     expect(nextCursor(-1, -1)).toBe('stop');
+    expect(canPlay(-1, -1)).toBe(false);
   });
 
   it('a single-cycle recording plays its one cycle and then stops', () => {

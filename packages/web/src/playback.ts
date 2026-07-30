@@ -111,17 +111,24 @@ export const SPEED_LABELS: Readonly<Record<PlaySpeed, string>> = {
  *  - **`lastCycle` stops.** Note this is one tick EARLIER than "the cursor went out of range": at
  *    `lastCycle` the run is already shown in full, so advancing first and stopping after would
  *    require a cursor position that does not exist.
- *  - **An empty recording refuses to start.** `lastCycle` is `recordedCycles - 1`, so a shell with
- *    nothing loaded reports −1 — and −1 is also the pre-run cursor, which is exactly the pair that
- *    would otherwise make "play from the start" and "play with no program" indistinguishable.
+ *  - **An empty recording refuses to start**, and it does so through the SAME rung — which is worth
+ *    stating because it did not look that way. `lastCycle` is `recordedCycles - 1`, so a shell with
+ *    nothing loaded reports −1, and the pre-run cursor is also −1: `-1 >= -1` already stops. This
+ *    function shipped with a separate `if (lastCycle < 0)` guard above the comparison, and the break
+ *    harness measured it as **dead code — deleting it failed 0 of 29 tests**, because no reachable
+ *    cursor can be below −1. It is a comment now rather than a line, per this repo's standing lesson
+ *    that a decision with no net is a comment; the empty-recording test stays, and now documents
+ *    that one rung answers both questions.
  *
  * Deliberately takes `cursor` and `lastCycle` as plain numbers rather than the simulator: it is the
  * arithmetic that has the defects, and a function over two numbers can be swept over every cell of
  * the interesting range.
  */
 export function nextCursor(cursor: number, lastCycle: number): number | 'stop' {
-  if (lastCycle < 0) return 'stop'; // nothing recorded — there is no cycle to play to
-  if (cursor >= lastCycle) return 'stop'; // the run is fully shown; `>=` so an over-range cursor also stops
+  // `>=`, and it is doing three jobs: it stops AT the last cycle (the run is already fully shown),
+  // it stops from an over-range cursor, and — because pre-run and "nothing recorded" are both −1 —
+  // it is what refuses to start on an empty recording.
+  if (cursor >= lastCycle) return 'stop';
   return cursor + 1;
 }
 
