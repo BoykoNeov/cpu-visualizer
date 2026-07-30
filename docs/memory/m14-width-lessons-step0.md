@@ -1,10 +1,10 @@
 ---
 name: m14-width-lessons-step0
-description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0, 1 and 2 done (`where-widening-stops` and `four-in-a-row` ship), steps 3–5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, and before writing a number into prose a reader can see at more than one config."
+description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0–3 done, all three lessons authored (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work`); steps 4 and 5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, before writing a number into prose a reader can see at more than one config, and before assuming a lesson HAS a config-exclusive step to hang its ask on."
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T02:03:56.462Z
+  modified: 2026-07-30T05:40:00.000Z
   originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
@@ -183,8 +183,57 @@ group's last member. The two M14 lessons have **OPPOSITE discriminators** (w4 is
 1; w3 is one for lesson 2) and both oracles say so, because a later "strengthening" pass will want to
 flatten them.
 
-## Not yet decided (content calls, deliberately left to the user)
+## Step 3 SHIPPED — `width-moved-the-work` (`50c50db`+`56ac7cf`, repo 6996 → 7105)
 
-Step 3's `paired-branches` lesson is the remaining content call (it is CONDITIONAL in M12's sense).
-See [[m12-deep-pipeline-lessons]] for the delta-track precedent and the authoring traps that apply
-unchanged.
+"The width that moved the work": `paired-branches`, five steps, position 7. Declares w2, and the ask
+is **TWO-STAGE** — flip to 3, then to 4. **The CONDITIONAL resolved to SHIP**: no new event, no new
+field, no new program, no engine change. Five things worth carrying:
+
+- **A lesson can have NO config-exclusive step, and that INVERTS where the ask's protection comes
+  from.** The identical multiset means every step anchors at every width, so the exclusive-step
+  search both siblings hang their ask on (`exclusive === [2]`) returns `[]` here. Good for the
+  reader — the runner can never silently skip a step — and bad for the net: **strip the ask and
+  nothing anchoring, ordering or sweeping notices.** Pin it POSITIONALLY, by literal step index, at
+  all three tiers, and assert the live-step sets at w2/w3/w4 are EQUAL so nobody later "strengthens"
+  the lesson by inventing an exclusive step.
+- **With the multiset identical, the discriminator is the lesson's own ANCHOR VECTOR** — and the
+  strong form is not "the vectors differ" but **each flip moves exactly ONE anchor, and a different
+  one**: `[0,1,2,4,6]` at w2, `[0,1,2,3,6]` at w3, `[0,1,2,3,5]` at w4. Retire maps say the same on
+  the other channel: `i3: 6→5` at w3 with the run **exactly as long**, then `i4: 6→5` at w4.
+- ⚠ **The refusal trap's third and sharpest face: the count is FLAT while the clock falls.**
+  `branch-slot` is 0, 1, 1, 1 against 9, 7, 7, 6 cycles, so **the machine WITH the refusal is faster
+  than the one without**. Step 1's rose with the speedup, step 2's was non-monotonic; this one cannot
+  be read as a cost at either end. `branch-slot` cannot climb with width at all — the hardware it
+  names was never replicated.
+- ⚠ **The plan's own decision-table REASON was falsified by measurement.** The row said w4 "because
+  7 → 7 → 6, so w3 is not a discriminator for it either." w3 **is** one — on the retire map, the
+  group shape (`{1,2,2}` → `{1,3,1}`) and the anchored cycle. It is not one on the CYCLE TOTAL, which
+  is this milestone's own "totals are the weak form" trap **appearing inside its own decision table**.
+  Generalises: a pinned decision's REASON goes stale the same way its answer does, and step 1's
+  finding is the thing that falsifies it. Hence the two-stage ask — a reader who jumps to 4 never
+  sees the third slot fill, which is the lesson's subject.
+- ⚠ **Reject a config mirror on a MECHANISM, not on burden.** Under `static-taken` this program runs
+  13, 12, 11, 11 — the THIRD slot pays and the fourth does not, **exactly inverting** the not-taken
+  9, 7, 7, 6. Striking, and unauthorable: `stall{branch-slot}` anchors null in all 24 static-taken
+  positions (a bet redirects fetch before the two transfers are ever candidates together), so asking
+  the reader to flip PREDICTION kills step 2 in silence. The draft reason ("it doubles the ask
+  burden") would not have held. Same finding as [[m11-m12-review-resolved]] #2.
+
+Method notes: **10 breaks run, 10 reddened the intended test.** The load-bearing one is the advisor's:
+moving the declared `issueWidth` to 3 had **a single net** until both ask targets were DERIVED
+(one notch wider than the declaration; `MAX_ISSUE_WIDTH`) — now two. An advisor also caught a
+sentence one draft from shipping: "the group behind the younger branch holds three instructions" is
+true at w3 and **false at w4** (it holds four) while `li a7` executes at cycle 3 in both, so the
+anchor is identical and green either way — step 1's attribution trap arriving on a GROUP claim
+instead of a cycle count. **Attribution is the WHOLE protection here**, a first: with no
+width-exclusive step, no anchor keeps any prose off the wrong machine, so `statesNumberBeside` runs
+over every figure in every step. Step 2 deliberately reuses `one-branch-unit`'s anchor (nothing pins
+cross-lesson anchor uniqueness) — there the refusal is introduced, here re-read as width-invariant.
+
+## What is left
+
+Steps 4 and 5. **Step 4 is now VERIFICATION, not wiring** — each lesson wired its own id as it
+landed, so the picker already shows seven; what remains is the within-track order pin, and step 3
+supplied the sentence that decides it (its prose names both siblings and leans on them, so reordering
+makes them forward references). Step 5 is the browser pass driving the real ISSUE control —
+[[browser-is-the-only-net]], and the only net that can see a learner who never flips.

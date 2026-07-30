@@ -8,8 +8,9 @@ FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GR
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
 with a lesson track. Repo **6996 tests**, five gates green. **M13 has now been code-reviewed and all
 5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is IN PROGRESS**: steps 0, 1 and 2 are done (`where-widening-stops` and
-`four-in-a-row` ship, the wide track now has six lessons), steps 3–5 open
+DELTA lesson track — is IN PROGRESS**: steps 0–3 are done, so all three lessons are authored
+(`where-widening-stops`, `four-in-a-row`, `width-moved-the-work` — the wide track now has SEVEN
+lessons and the repo 7105 tests); steps 4 (order pin) and 5 (browser pass) remain
 ([M14](m14-width-lessons-step0.md)). No other milestone is in progress.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
@@ -70,8 +71,17 @@ DELTA lesson track — is IN PROGRESS**: steps 0, 1 and 2 are done (`where-widen
     by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
     source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
     commit before you break.**
-- [M14 width lessons — steps 0–2](m14-width-lessons-step0.md) — the width DELTA track: **steps 0, 1
-  and 2 DONE, steps 3–5 open**. Read before authoring a width lesson, and before choosing between a
+- [M14 width lessons — steps 0–3](m14-width-lessons-step0.md) — the width DELTA track: **steps 0–3
+  DONE (all three lessons authored), steps 4–5 open**. Step 3's sharpest find: **a lesson can have NO
+  config-exclusive step**, which inverts where the ask's protection comes from — `paired-branches`
+  emits an IDENTICAL event multiset at w2/w3/w4 while running 7, 7, 6, so every step anchors
+  everywhere and **nothing structural notices if the ask is deleted**. Pin it by literal step index,
+  and pin the live-step sets EQUAL. Also: the discriminator is the lesson's own ANCHOR VECTOR (each
+  flip moves exactly one anchor, a different one); the refusal count is FLAT at 0/1/1/1 while cycles
+  fall 9/7/7/6, so **the machine WITH the refusal is the faster one**; the plan's own decision-table
+  REASON was falsified by measurement (a pinned reason goes stale like a pinned answer); and a config
+  mirror is rejected on a MECHANISM (a `static-taken` ask would kill step 2 in silence), not on
+  burden. Read before authoring a width lesson, and before choosing between a
   striking event and a safe anchor — step 2's sharpest find is that **when they differ, anchor on the
   one whose existence conditions match the prose**: the vivid `reg-read{reg:6,value:0}` is alive in
   45 of 48 positions on a DIFFERENT instruction, while the forward that repairs it is alive in
