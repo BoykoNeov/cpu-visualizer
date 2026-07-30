@@ -20,7 +20,7 @@ import { Datapath } from './DatapathView';
 import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
-import { LONGEST_REFUSAL_TEXT, SuperscalarDatapath } from './SuperscalarDatapathView';
+import { LONGEST_REFUSAL_TEXT, REFUSAL_TEXT, SuperscalarDatapath } from './SuperscalarDatapathView';
 import { loadSource } from './simulator';
 
 /** Assemble `source`, step `cycles` on the chosen engine, and return the trace at the cursor. */
@@ -330,6 +330,23 @@ describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
     // have applied here: a reserve sized to the current cycle reserves nothing.
     expect(paired).toContain(LONGEST_REFUSAL_TEXT);
     expect(paired).not.toContain('one data-memory port');
+
+    // ...and the constant really is the longest, asserted WITHOUT naming it on both sides. The line
+    // above is self-referential — it says "the render contains whatever the constant is", so the
+    // constant and the assertion move together and a reducer that kept the SHORTEST string passed the
+    // whole web suite (M14 review, finding 1). The docblock's stated purpose is that a fourth refusal
+    // reason with a longer sentence widens the reserve BY EXISTING, and that is this pair: the
+    // constant is one of the texts, and no text is longer than it.
+    const texts = Object.values(REFUSAL_TEXT);
+    expect(texts, 'the reserve is one of the sentences the chip can say').toContain(
+      LONGEST_REFUSAL_TEXT,
+    );
+    for (const text of texts) {
+      expect(
+        text.length,
+        `"${text}" is longer than the reserve — the header will grow on the cycle it fires`,
+      ).toBeLessThanOrEqual(LONGEST_REFUSAL_TEXT.length);
+    }
   });
 
   it('strokes one cycle in MANY stage hues while TWO instructions share a stage', () => {
