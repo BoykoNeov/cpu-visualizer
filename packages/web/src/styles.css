@@ -318,6 +318,10 @@ input[type='range'] {
   gap: 0.75rem;
   margin-top: 0.6rem;
 }
+/* No `text-overflow: ellipsis` here, and its absence is deliberate: this is a FLEX container, and
+   `text-overflow` acts on a block container's own inline content, so the declaration would render
+   nothing and read as a finished decision — the `.play-speed-label`-with-no-rule smell inverted.
+   Below ~700px the tail is clipped hard. That is a viewport behaviour, identical at every cursor. */
 .transport-readout {
   display: flex;
   align-items: baseline;
@@ -326,7 +330,6 @@ input[type='range'] {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .transport-scrub {
   flex: 1 1 0;

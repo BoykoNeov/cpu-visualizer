@@ -501,7 +501,7 @@ describe('transport readout: identical geometry at every cursor', () => {
   const WIDE: ProcessorConfig = { ...defaultConfig(), issueWidth: 2, forwarding: true };
   const recorded = record('paired-branches', WIDE, () => new SuperscalarProcessor());
   const lastCycle = recorded.length - 1;
-  const reserve = readoutReserve(recorded, false);
+  const reserve = readoutReserve(recorded);
   /** The readout as the shell draws it, at the pre-run cursor and then at every recorded cycle. */
   const htmls = cursors(recorded).map((trace, i) => {
     const cursor = i - 1;
@@ -563,9 +563,19 @@ describe('transport readout: identical geometry at every cursor', () => {
         expect(s.text.length, `"${s.text}" must fit ${s.ch}ch`).toBeLessThanOrEqual(s.ch);
       }
     }
-    // ...and the peak is actually REACHED, or an over-large constant would pass the loop above.
-    const widest = Math.max(...htmls.flatMap((html) => spans(html).map((s) => s.text.length)));
-    expect(widest).toBe(Math.max(reserve.counter, reserve.instruction, reserve.chip));
+    // ...and each reserve is actually REACHED, per span, or an over-large constant would satisfy the
+    // loop above. Read per position rather than as one maximum: a single `Math.max` over all three
+    // is answered by whichever span happens to be widest and says nothing about the other two.
+    const widest = (i: number): number =>
+      Math.max(...htmls.map((html) => spans(html)[i]!.text.length));
+    expect(widest(0), 'the counter reserve').toBe(reserve.counter);
+    expect(widest(1), 'the instruction reserve').toBe(reserve.instruction);
+    // The chip is the deliberate exception, and the gap is exactly the verb: the reserve holds
+    // `following` (9) so that clicking a map cell cannot resize the box, while this run — which
+    // follows nothing — only ever draws `in` (2). If those words change, this number must.
+    expect(widest(2), 'the chip reserve, minus the verb it holds for the follow case').toBe(
+      reserve.chip - ('following'.length - 'in'.length),
+    );
   });
 
   it('a run that never has two in flight omits the chip at every cursor, not at some', () => {
@@ -573,7 +583,7 @@ describe('transport readout: identical geometry at every cursor', () => {
     // disappears when the model or program changes — a deliberate act — and never on a step. This is
     // the same gate shape as the map's, and the reason it is not `inFlightCount > 1` any more.
     const solo = record('sum-loop', defaultConfig(), () => new SingleCycleProcessor());
-    const soloReserve = readoutReserve(solo, false);
+    const soloReserve = readoutReserve(solo);
     expect(soloReserve.chip).toBe(0);
     const soloHtmls = cursors(solo).map((trace, i) =>
       renderToStaticMarkup(
@@ -590,6 +600,62 @@ describe('transport readout: identical geometry at every cursor', () => {
     );
     for (const html of soloHtmls) expect(spans(html)).toHaveLength(2);
     expect(distinct(soloHtmls.map((html) => spans(html).map((s) => s.ch))).size).toBe(1);
+  });
+
+  it('FOLLOWING an instruction does not move the geometry as you step past it', () => {
+    // The state every sweep above misses, and the one that reopens the class: `following` is not a
+    // mode the reader switches on, it is `shownInstruction(...)?.id === followed` — TRUE only at the
+    // cursors where the followed instruction is actually in flight, so with a map cell clicked it
+    // flips on its own as the clock steps. The chip's verb is "following" (9 chars) at those cursors
+    // and "in" (2) at the others, which is ~49px of readout box appearing and disappearing mid-run,
+    // taken out of the slider beside it. So the reserve cannot depend on it — it holds the wider
+    // verb always — and this drives the flip rather than passing a fixed flag for a whole run.
+    const followed = recorded[2]!.instructions[0]!.id;
+    const rendered = cursors(recorded).map((trace, i) => {
+      const instructions = trace?.instructions ?? [];
+      const inFlight = shownInstruction(instructions, followed);
+      return {
+        following: inFlight !== null && inFlight.id === followed,
+        html: renderToStaticMarkup(
+          <TransportReadout
+            cursor={i - 1}
+            lastCycle={lastCycle}
+            atEnd={i - 1 === lastCycle}
+            inFlight={inFlight}
+            inFlightCount={instructions.length}
+            following={inFlight !== null && inFlight.id === followed}
+            reserve={reserve}
+          />,
+        ),
+      };
+    });
+    // Non-vacuity: the flip has to actually happen in this run, or the constancy below is about
+    // nothing. Both values must appear.
+    expect(new Set(rendered.map((r) => r.following)).size, 'the run must both follow and not').toBe(
+      2,
+    );
+    const shapes = rendered.map((r) => spans(r.html).map((s) => s.ch));
+    expect(distinct(shapes).size, 'the reserved geometry must survive the follow flip').toBe(1);
+    for (const r of rendered) {
+      for (const s of spans(r.html)) {
+        expect(s.text.length, `"${s.text}" must fit ${s.ch}ch`).toBeLessThanOrEqual(s.ch);
+      }
+    }
+  });
+
+  it('an empty chip says nothing — no tooltip about "undefined"', () => {
+    // The span is drawn at every cursor so it holds its width; its TITLE is a sentence about a
+    // specific cycle, and at a cursor with nothing in flight that sentence would read "0
+    // instructions are in flight this cycle; the one named beside it is in undefined". A reserve is
+    // allowed to be silent — it is not allowed to say something false.
+    const empty = htmls.filter((html) => spans(html).some((s) => s.text === ''));
+    expect(empty.length, 'the run must reach a cursor with no chip').toBeGreaterThan(0);
+    for (const html of empty) {
+      const chip = /<span([^>]*)>(?:)<\/span>/.exec(html);
+      expect(html).not.toContain('undefined');
+      expect(html).not.toContain('0 instructions are in flight');
+      if (chip) expect(chip[1]).not.toContain('title=');
+    }
   });
 
   it('the scrub row cannot become two rows', () => {

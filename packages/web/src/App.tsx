@@ -1751,11 +1751,20 @@ export function TransportReadout(props: {
             fontSize: '0.8rem',
             minWidth: `${reserve.chip}ch`,
           }}
+          // The title belongs to the SENTENCE, not to the reserve. At a cursor where the chip says
+          // nothing this span is holding width and nothing else, and the tooltip it used to carry
+          // was built from that cycle's numbers regardless — so a pre-run hover read "0 instructions
+          // are in flight this cycle; the one named beside it is in undefined". A reserve is allowed
+          // to be silent; it is not allowed to say something false. `aria-hidden` for the same
+          // reason the data-memory ghosts carry it: an empty box is not a thing to read out.
           title={
-            following
-              ? `${inFlightCount} instructions are in flight this cycle. You are FOLLOWING the one named above, now in ${inFlight?.location} — the map and datapath ring it too. Clear it on the map to go back to the retiring instruction.`
-              : `${inFlightCount} instructions are in flight this cycle; the one named beside it is in ${inFlight?.location} (nearest retirement). The map below shows all of them — click a cell to follow one.`
+            chip === ''
+              ? undefined
+              : following
+                ? `${inFlightCount} instructions are in flight this cycle. You are FOLLOWING the one named beside it, now in ${inFlight?.location} — the map and datapath ring it too. Clear it on the map to go back to the retiring instruction.`
+                : `${inFlightCount} instructions are in flight this cycle; the one named beside it is in ${inFlight?.location} (nearest retirement). The map below shows all of them — click a cell to follow one.`
           }
+          aria-hidden={chip === '' ? true : undefined}
         >
           {chip}
         </span>
@@ -1776,9 +1785,11 @@ function Transport(props: {
 }): React.JSX.Element {
   const { sim, play, atStart, lastCycle, inFlight, following } = props;
   const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
-  // Keyed on the recording, so it is recomputed when a new program or config is loaded and not on
-  // every step — and on `following`, which changes the chip's verb ("in" → "following").
-  const reserve = useMemo(() => readoutReserve(sim.recorded, following), [sim.recorded, following]);
+  // Keyed on the recording ALONE, so it is recomputed when a new program or config is loaded and
+  // never on a step. Not on `following`: that flips by itself as the clock steps past the followed
+  // instruction, and a reserve keyed on it would be 49px wider at some cursors than others — see
+  // {@link readoutReserve}, which holds the wider verb for exactly that reason.
+  const reserve = useMemo(() => readoutReserve(sim.recorded), [sim.recorded]);
   return (
     // PINNED to the top of the viewport (`transport--sticky`). The clock controls are the one
     // surface a reader needs while looking at ANY other surface: the whole point of the datapath,

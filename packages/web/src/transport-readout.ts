@@ -88,11 +88,17 @@ export interface ReadoutReserve {
  *    the one the shell happens to show. That makes the reserve independent of which instruction the
  *    reader is following: clicking a cell on the map retargets the readout, and a reserve derived
  *    from the default choice would be too small the moment they did.
+ *
+ * ⚠ AND THE CHIP IS ALWAYS MEASURED WITH THE WIDER VERB, which is why this takes no `following`
+ * argument even though {@link chipText} does. Following is not a mode the reader switches on: it is
+ * `shownInstruction(...)?.id === followed`, TRUE only at the cursors where the followed instruction
+ * is actually in flight — so with a map cell clicked it flips on its own as the clock steps. A
+ * reserve keyed on it would be 7 characters (~49px) wider at some cursors than at others, which is
+ * the per-step jitter this whole module exists to remove, reintroduced in the one state the sweeps
+ * did not enter. Reserving `following` (9) rather than `in` (2) costs those 49px of slider on every
+ * run and buys a box that no step and no click can move.
  */
-export function readoutReserve(
-  recording: readonly CycleTrace[],
-  following: boolean,
-): ReadoutReserve {
+export function readoutReserve(recording: readonly CycleTrace[]): ReadoutReserve {
   const lastCycle = recording.length - 1;
   // The pre-run words are always drawable — they are what the shell opens at — and the widest cycle
   // text is the last one with the halted suffix, when there IS a last one. The guard is not
@@ -109,7 +115,7 @@ export function readoutReserve(
     const count = cycle.instructions.length;
     for (const instr of cycle.instructions) {
       instruction = Math.max(instruction, instructionText(instr).length);
-      chip = Math.max(chip, chipText(instr, count, following).length);
+      chip = Math.max(chip, chipText(instr, count, true).length);
     }
   }
   return { counter, instruction, chip };

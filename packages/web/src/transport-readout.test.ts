@@ -49,7 +49,7 @@ describe('counterText names every position the clock can be at', () => {
   it('the halted end says so, and that is the widest the counter ever gets', () => {
     expect(counterText(42, 42, true)).toBe('cycle 42 / 42 — halted');
     const recorded = record('sum-loop', defaultConfig(), () => new SingleCycleProcessor());
-    expect(readoutReserve(recorded, false).counter).toBe(
+    expect(readoutReserve(recorded).counter).toBe(
       counterText(recorded.length - 1, recorded.length - 1, true).length,
     );
   });
@@ -57,7 +57,7 @@ describe('counterText names every position the clock can be at', () => {
   it('with nothing loaded, reserves only what a bar with nothing loaded can draw', () => {
     // Not a hypothetical: the shell renders the transport before a program is recorded. Reserving
     // `cycle 0 / -1 — halted` there would hold 6 characters open for a sentence no cursor can show.
-    expect(readoutReserve([], false).counter).toBe('start (pre-run)'.length);
+    expect(readoutReserve([]).counter).toBe('start (pre-run)'.length);
   });
 });
 
@@ -132,7 +132,7 @@ describe.each(SCENARIOS)(
     const lastCycle = recorded.length - 1;
 
     it.each([false, true])('...with following=%s, at every cursor', (following) => {
-      const reserve = readoutReserve(recorded, following);
+      const reserve = readoutReserve(recorded);
       // Cursor −1 first — the pre-run one, where the instruction span is empty and the counter is at
       // its second-widest. A reserve derived from cycle 0 onward would still pass a sweep that skipped
       // it, and it is the cursor every run opens at.
@@ -160,7 +160,7 @@ describe.each(SCENARIOS)(
       // The floor, per model: an all-zero reserve satisfies "constant at every cursor" trivially, and
       // a chip reserve that is nonzero on a machine that never runs two at once would draw an empty
       // span for the whole run.
-      const reserve = readoutReserve(recorded, false);
+      const reserve = readoutReserve(recorded);
       const everCrowded = recorded.some((trace) => trace.instructions.length > 1);
       expect(reserve.counter).toBeGreaterThan(0);
       expect(reserve.instruction).toBeGreaterThan(0);
@@ -176,11 +176,9 @@ describe('the reserve is bounded, not one class per row', () => {
     // so the only thing a longer program can move is the digit count of the cycle counter.
     const short = readoutReserve(
       record('add', { ...defaultConfig(), forwarding: true }, () => new PipelineProcessor()),
-      false,
     );
     const long = readoutReserve(
       record('array-sum', { ...defaultConfig(), forwarding: true }, () => new PipelineProcessor()),
-      false,
     );
     expect(Object.keys(long)).toEqual(Object.keys(short));
     expect(long.counter - short.counter).toBeLessThanOrEqual(2); // two more digits, at most
