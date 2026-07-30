@@ -295,6 +295,44 @@ input[type='range'] {
   border-bottom: 1px solid var(--line);
 }
 
+/* The bar's second row: the cursor readout and the scrub slider, sharing one line.
+   This row is where the per-step jitter fix lives, and its shape is load-bearing:
+
+     - It never sets `flex-wrap`, so it CANNOT become two lines. Everything in it that changes with
+       the cursor is therefore height-neutral by construction rather than by measurement — which is
+       the property the control row above could not have, because its occupants' combined width
+       moved 888 → 1218px over one run against a constant 1168px of space (`main` is capped at
+       `maxWidth: 1200`), so the bar stepped between 81.4px and 104.4px as the reader stepped the
+       clock. Measured in the shipped bundle 2026-07-30, at 1500/1400/1300/1240/1200/920/900/880/840px.
+     - The slider takes the leftover with `flex: 1 1 0`, so the readout's width never pushes it to a
+       new line, and the readout's own spans are held at this recording's peak text (see
+       `transport-readout.ts`) so the slider keeps ONE length for the whole run. A scrub bar that
+       changes length while you scrub is a playhead that lies about where it is.
+     - `min-width: 0` + `overflow: hidden` on the readout is the last resort, not the mechanism: at a
+       window narrow enough that the peak text and a usable slider do not both fit, the readout's
+       tail clips instead of the row growing. That is a VIEWPORT-width behaviour like the caption
+       rules below, not a per-cursor one. */
+.transport-scrub-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+.transport-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.transport-scrub {
+  flex: 1 1 0;
+  min-width: 120px;
+}
+
 /* The captions in the transport bar, and the width each stops being free at.
    This bar is `position: sticky`, so a wrapped row is not cosmetic: 81px of permanently-eaten
    viewport becomes ~105px on every scroll, in an app whose whole point is watching the surfaces

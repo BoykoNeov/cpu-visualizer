@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CacheGrid } from './CacheGridView';
 import { Datapath } from './DatapathView';
 import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
-import { formatInstruction } from './format';
 import { IsaReference } from './IsaReference';
 import {
   ACTION_WORDS,
@@ -33,6 +32,13 @@ import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
 import { predictsTaken, type BranchPrediction } from './session';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
+import {
+  chipText,
+  counterText,
+  instructionText,
+  readoutReserve,
+  type ReadoutReserve,
+} from './transport-readout';
 import { usePlayback, type Playback } from './usePlayback';
 import { useSimulator } from './useSimulator';
 
@@ -1680,6 +1686,84 @@ export function PlayControl(props: {
   );
 }
 
+/**
+ * The three texts that change as the clock steps: where the cursor is, which instruction the shell
+ * is watching, and — when more than one is in flight — which of them that is.
+ *
+ * It renders on the SCRUB row rather than beside the clock buttons, and that placement is the fix
+ * for a measured defect rather than a preference. In the control row its width moved 888 → 1218px
+ * over one run against a constant 1168px of space, so the row wrapped at some cursors and not
+ * others and the sticky bar stepped between 81.4px and 104.4px — shoving every surface on the page
+ * up and down as the reader stepped the clock. Down here the only neighbour is a slider that gives
+ * up whatever width the readout takes. See {@link readoutReserve} for the numbers and for why the
+ * span widths are character counts.
+ *
+ * Every span is rendered at every cursor, empty rather than absent (an element that is not there
+ * reserves nothing), and each is held at the widest text this recording will put in it — so the
+ * slider beside them keeps ONE length for the whole run. A scrub bar that changes length as you
+ * scrub is a playhead that lies about where it is.
+ */
+export function TransportReadout(props: {
+  cursor: number;
+  lastCycle: number;
+  atEnd: boolean;
+  inFlight: InstructionInstance | null;
+  inFlightCount: number;
+  following: boolean;
+  reserve: ReadoutReserve;
+}): React.JSX.Element {
+  const { cursor, lastCycle, atEnd, inFlight, inFlightCount, following, reserve } = props;
+  const chip = chipText(inFlight, inFlightCount, following);
+  return (
+    <div className="transport-readout">
+      <span style={{ fontFamily: MONO, color: T.ink2, minWidth: `${reserve.counter}ch` }}>
+        {counterText(cursor, lastCycle, atEnd)}
+      </span>
+      <span
+        style={{
+          fontFamily: MONO,
+          color: T.ink2,
+          fontSize: '0.85rem',
+          minWidth: `${reserve.instruction}ch`,
+        }}
+      >
+        {instructionText(inFlight)}
+      </span>
+      {/* Qualify the instruction beside it exactly when it is NOT the whole story — i.e. when more
+          than one is in flight. Derived purely from the trace (INV-3) with no model knowledge:
+          single-cycle and multi-cycle always have exactly one occupant, so this never appears for
+          them; the pipeline qualifies itself. Without it the shell shows one instruction while the
+          header promises five, and the reader has no way to tell that the line highlighted is the
+          one RETIRING rather than the only one running — which reads as "a pipeline is just a slow
+          single-cycle", the exact misconception this tier exists to break. The map below now shows
+          all of them; this stays because the map answers "what is the whole run" and this answers
+          "which one am I looking at".
+
+          The RESERVE is what decides whether the span exists at all, not the cursor: it is zero
+          exactly when no cycle of this recording has two instructions in flight, so the element
+          appears and disappears with the model and the program — deliberate acts — and never with a
+          step. */}
+      {reserve.chip > 0 ? (
+        <span
+          style={{
+            color: following ? T.ink2 : T.ink3,
+            fontFamily: MONO,
+            fontSize: '0.8rem',
+            minWidth: `${reserve.chip}ch`,
+          }}
+          title={
+            following
+              ? `${inFlightCount} instructions are in flight this cycle. You are FOLLOWING the one named above, now in ${inFlight?.location} — the map and datapath ring it too. Clear it on the map to go back to the retiring instruction.`
+              : `${inFlightCount} instructions are in flight this cycle; the one named beside it is in ${inFlight?.location} (nearest retirement). The map below shows all of them — click a cell to follow one.`
+          }
+        >
+          {chip}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function Transport(props: {
   sim: ReturnType<typeof useSimulator>;
   play: Playback;
@@ -1692,6 +1776,9 @@ function Transport(props: {
 }): React.JSX.Element {
   const { sim, play, atStart, lastCycle, inFlight, following } = props;
   const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
+  // Keyed on the recording, so it is recomputed when a new program or config is loaded and not on
+  // every step — and on `following`, which changes the chip's verb ("in" → "following").
+  const reserve = useMemo(() => readoutReserve(sim.recorded, following), [sim.recorded, following]);
   return (
     // PINNED to the top of the viewport (`transport--sticky`). The clock controls are the one
     // surface a reader needs while looking at ANY other surface: the whole point of the datapath,
@@ -1710,46 +1797,32 @@ function Transport(props: {
             onSpeed={play.setSpeed}
           />
         </TransportButtons>
-        <span style={{ marginLeft: '0.5rem', fontFamily: MONO, color: T.ink2 }}>
-          {atStart ? 'start (pre-run)' : `cycle ${sim.cursor} / ${lastCycle}`}
-          {sim.atEnd ? '  — halted' : ''}
-        </span>
-        {inFlight ? (
-          <span style={{ color: T.ink2, fontFamily: MONO, fontSize: '0.85rem' }}>
-            {formatInstruction(inFlight.decoded)}
-          </span>
-        ) : null}
-        {/* Qualify the instruction above exactly when it is NOT the whole story — i.e. when more
-            than one is in flight. Derived purely from the trace (INV-3) with no model knowledge:
-            single-cycle and multi-cycle always have exactly one occupant, so this never appears
-            for them; the pipeline qualifies itself. Without it the shell shows one instruction
-            while the header promises five, and the reader has no way to tell that the line
-            highlighted is the one RETIRING rather than the only one running — which reads as "a
-            pipeline is just a slow single-cycle", the exact misconception this tier exists to
-            break. The map below now shows all of them; this stays because the map answers "what is
-            the whole run" and this answers "which one am I looking at". */}
-        {inFlightCount > 1 ? (
-          <span
-            style={{ color: following ? T.ink2 : T.ink3, fontFamily: MONO, fontSize: '0.8rem' }}
-            title={
-              following
-                ? `${inFlightCount} instructions are in flight this cycle. You are FOLLOWING the one named above, now in ${inFlight?.location} — the map and datapath ring it too. Clear it on the map to go back to the retiring instruction.`
-                : `${inFlightCount} instructions are in flight this cycle; the one named above is in ${inFlight?.location} (nearest retirement). The map below shows all of them — click a cell to follow one.`
-            }
-          >
-            {following ? 'following' : 'in'} {inFlight?.location} · {inFlightCount} in flight
-          </span>
-        ) : null}
       </div>
-      <input
-        type="range"
-        min={-1}
-        max={Math.max(lastCycle, -1)}
-        value={sim.cursor}
-        onChange={(e) => sim.scrubTo(Number(e.target.value))}
-        style={{ width: '100%', marginTop: '0.6rem' }}
-        aria-label="Scrub timeline"
-      />
+      {/* The scrub row: the readout and the slider share one line, and that is the whole shape of
+          the jitter fix. The row above wraps by VIEWPORT WIDTH only now — nothing in it changes with
+          the cursor — and this row cannot wrap at all (`flex-wrap` is never set on it), so the bar's
+          height is a function of the window and not of where the clock is. The counter also belongs
+          here on its own merits: it names the position the slider is pointing at. */}
+      <div className="transport-scrub-row">
+        <TransportReadout
+          cursor={sim.cursor}
+          lastCycle={lastCycle}
+          atEnd={sim.atEnd}
+          inFlight={inFlight}
+          inFlightCount={inFlightCount}
+          following={following}
+          reserve={reserve}
+        />
+        <input
+          type="range"
+          className="transport-scrub"
+          min={-1}
+          max={Math.max(lastCycle, -1)}
+          value={sim.cursor}
+          onChange={(e) => sim.scrubTo(Number(e.target.value))}
+          aria-label="Scrub timeline"
+        />
+      </div>
     </div>
   );
 }

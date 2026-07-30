@@ -43,8 +43,11 @@ import {
   type Processor,
   type ProcessorConfig,
 } from '@cpu-viz/trace';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { shownInstruction, TransportReadout } from './App';
+import { readoutReserve } from './transport-readout';
 import { CacheGrid } from './CacheGridView';
 import { MicroTablePanel } from './MicroTablePanel';
 import { PairingReadout } from './PairingReadoutView';
@@ -468,5 +471,137 @@ describe('data memory: the row count is the run PEAK at every cursor', () => {
     const first = htmls[0]!;
     expect(count(first, '<tr style="visibility:hidden"')).toBe(3);
     expect(first).toContain('no data memory written');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The transport bar — 23px (81.4 → 104.4px), and the only offender here that is not a panel.
+//
+// It is also the one that moved EVERY surface at once: the bar is `position: sticky`, so a second
+// row eats 23px of viewport on every scroll and shoves the whole stack down the page. The cause was
+// three cursor-dependent texts in a `flexWrap` row whose available width is a constant 1168px: the
+// row wanted 888 … 1218px over one run (measured in the shipped bundle at 1500/1400/1300/1240/1200/
+// 920/900/880/840px, all of which showed BOTH heights). The fix moved them to the scrub row, which
+// never wraps, and holds each of them at this recording's peak text so the SLIDER beside them does
+// not resize either.
+//
+// What that leaves for a headless guard is the reserve, and the rule this file opened with applies
+// hardest here: the reserve numbers are read back out of the RENDER, and the fold is only ever the
+// expected value.
+// ---------------------------------------------------------------------------------------------
+
+describe('transport readout: identical geometry at every cursor', () => {
+  const WIDE: ProcessorConfig = { ...defaultConfig(), issueWidth: 2, forwarding: true };
+  const recorded = record('paired-branches', WIDE, () => new SuperscalarProcessor());
+  const lastCycle = recorded.length - 1;
+  const reserve = readoutReserve(recorded, false);
+  /** The readout as the shell draws it, at the pre-run cursor and then at every recorded cycle. */
+  const htmls = cursors(recorded).map((trace, i) => {
+    const cursor = i - 1;
+    return renderToStaticMarkup(
+      <TransportReadout
+        cursor={cursor}
+        lastCycle={lastCycle}
+        atEnd={cursor === lastCycle}
+        inFlight={shownInstruction(trace?.instructions ?? [], null)}
+        inFlightCount={trace?.instructions.length ?? 0}
+        following={false}
+        reserve={reserve}
+      />,
+    );
+  });
+
+  /** Every reserved span of one render, as (characters reserved, text actually drawn). */
+  const spans = (html: string): { ch: number; text: string }[] =>
+    [...html.matchAll(/<span[^>]*min-width:(\d+)ch[^>]*>(.*?)<\/span>/g)].map((m) => ({
+      ch: Number(m[1]),
+      text: m[2]!,
+    }));
+
+  it('the fixture really does exercise all three moving texts', () => {
+    // Non-vacuity, and every clause is one a run could fail to reach: a recording that never halts,
+    // never fills two lanes, or is one cycle long would make the guards below agree with almost any
+    // implementation. Note the FIRST entry is the pre-run cursor.
+    const texts = htmls.map((html) => spans(html).map((s) => s.text));
+    expect(texts[0]![0], 'the pre-run cursor').toBe('start (pre-run)');
+    expect(texts[0]![1], 'nothing is in flight before the run').toBe('');
+    expect(texts.at(-1)![0], 'the halted cursor').toContain('— halted');
+    expect(texts.filter((t) => t[2] !== '').length, 'cursors with >1 in flight').toBeGreaterThan(0);
+    expect(
+      texts.filter((t) => t[2] === '').length,
+      'cursors with 1 or 0 in flight',
+    ).toBeGreaterThan(0);
+  });
+
+  it('every cursor draws the same three spans with the same reserves', () => {
+    // The floor first: three spans, none of them zero-width. "The same at every cursor" is what a
+    // readout that draws nothing satisfies most easily.
+    for (const html of htmls) {
+      const drawn = spans(html);
+      expect(drawn).toHaveLength(3);
+      for (const s of drawn) expect(s.ch).toBeGreaterThan(0);
+    }
+    const shapes = htmls.map((html) => spans(html).map((s) => s.ch));
+    expect(distinct(shapes).size, 'the reserved geometry must not move with the cursor').toBe(1);
+    // The fold appears here only as the expected value of what the markup already proved constant.
+    expect(shapes[0]).toEqual([reserve.counter, reserve.instruction, reserve.chip]);
+  });
+
+  it('no cursor overflows its reserve', () => {
+    // A `min-width` a text outgrows is not a reserve — the span grows, the readout grows, and the
+    // slider beside it shrinks by exactly that much on that one step. Both numbers come out of the
+    // markup: the reserve from the style attribute, the text from between the tags.
+    for (const html of htmls) {
+      for (const s of spans(html)) {
+        expect(s.text.length, `"${s.text}" must fit ${s.ch}ch`).toBeLessThanOrEqual(s.ch);
+      }
+    }
+    // ...and the peak is actually REACHED, or an over-large constant would pass the loop above.
+    const widest = Math.max(...htmls.flatMap((html) => spans(html).map((s) => s.text.length)));
+    expect(widest).toBe(Math.max(reserve.counter, reserve.instruction, reserve.chip));
+  });
+
+  it('a run that never has two in flight omits the chip at every cursor, not at some', () => {
+    // The chip's existence is a property of the RECORDING (its reserve is zero), so it appears and
+    // disappears when the model or program changes — a deliberate act — and never on a step. This is
+    // the same gate shape as the map's, and the reason it is not `inFlightCount > 1` any more.
+    const solo = record('sum-loop', defaultConfig(), () => new SingleCycleProcessor());
+    const soloReserve = readoutReserve(solo, false);
+    expect(soloReserve.chip).toBe(0);
+    const soloHtmls = cursors(solo).map((trace, i) =>
+      renderToStaticMarkup(
+        <TransportReadout
+          cursor={i - 1}
+          lastCycle={solo.length - 1}
+          atEnd={i - 1 === solo.length - 1}
+          inFlight={shownInstruction(trace?.instructions ?? [], null)}
+          inFlightCount={trace?.instructions.length ?? 0}
+          following={false}
+          reserve={soloReserve}
+        />,
+      ),
+    );
+    for (const html of soloHtmls) expect(spans(html)).toHaveLength(2);
+    expect(distinct(soloHtmls.map((html) => spans(html).map((s) => s.ch))).size).toBe(1);
+  });
+
+  it('the scrub row cannot become two rows', () => {
+    // The reserves above keep the readout's BOX still; this is what keeps the bar's HEIGHT still,
+    // and no render can show it — `.transport-scrub-row` must not wrap, or the readout is back to
+    // being able to push the slider onto a line of its own. Asserted on the stylesheet with comments
+    // stripped, because a rule quoted inside prose is documentation and not a rule (the trap
+    // `play-control.test.tsx` records).
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    );
+    const row = /\.transport-scrub-row \{([^}]*)\}/.exec(css);
+    expect(row, 'styles.css should carry a .transport-scrub-row rule').not.toBeNull();
+    expect(row![1]).toContain('display: flex');
+    expect(row![1]).not.toContain('flex-wrap');
+    // And the slider is the element that absorbs the leftover, so the readout never needs the space
+    // a wrap would give it.
+    const scrub = /\.transport-scrub \{([^}]*)\}/.exec(css);
+    expect(scrub![1]).toContain('flex: 1 1 0');
   });
 });
