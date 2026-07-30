@@ -1,10 +1,10 @@
 ---
 name: m14-width-lessons-step0
-description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0–4 done, all three lessons authored (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work`) and the track's order pinned; only step 5 (the browser pass) is open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, before writing a number into prose a reader can see at more than one config, before assuming a lesson HAS a config-exclusive step to hang its ask on, and before adding or trusting a lesson-ORDER pin (an `indexOf` one is vacuous under a rename)."
+description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). ✅ COMPLETE 2026-07-30, all six steps: three lessons authored (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work`), the track's order pinned, and the browser pass driven over the shipped bundle (110 checks, two breaks). Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, before writing a number into prose a reader can see at more than one config, before assuming a lesson HAS a config-exclusive step to hang its ask on, before adding or trusting a lesson-ORDER pin (an `indexOf` one is vacuous under a rename), and before a browser pass whose acceptance one subject cannot satisfy."
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T03:04:10.702Z
+  modified: 2026-07-30T09:18:52.804Z
   originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
@@ -277,14 +277,45 @@ an asserted link never broken is the shape this milestone kept catching. Five th
   1–3 DID, and reading the current file cannot settle it — checked on `git diff 458b4ce~1..HEAD`
   hunk offsets.
 
-## What is left
+## Step 5 SHIPPED — the browser pass, and M14 is COMPLETE (repo 7125)
 
-⚠ **Step 5's stated acceptance is UNSATISFIABLE for lesson 3, and the plan now says so** — "the
-rail's count changes across the flip and the surviving steps are not the same set" cannot hold for a
-lesson with no width-exclusive step. Its substitute is stricter, not weaker: **the dots MOVE and the
-count does not** (crux c4→c3 on the flip to 3, closing c6→c5 on the flip to 4, five dots throughout).
-Written down BEFORE the browser pass, because relaxing an acceptance mid-run is how
-`deep-bet-pays-double` justified a gap with prose that did not exist.
+110 checks green on the SHIPPED `vite preview` bundle
+(`M:/claud_projects/temp/m14-step5/s5-width-lessons.mjs`; temp is sweepable, so the transferable
+parts are here).
 
-**Only step 5** — the browser pass driving the real ISSUE control. [[browser-is-the-only-net]], and
-the only net that can see a learner who never flips.
+⚠ **Step 5's stated acceptance was UNSATISFIABLE for lesson 3, the plan said so BEFORE the run, and
+the run honored it** — "the rail's count changes and the surviving steps are not the same set" cannot
+hold for a lesson with no width-exclusive step. The substitute is stricter, not weaker: **the dots
+MOVE and the count does not**, and it measured exactly as predicted — anchor vector
+`[0,1,2,4,6] → [0,1,2,3,6] → [0,1,2,3,5]`, five dots and the same five narration texts throughout.
+Read live by clicking each rail dot and reading the transport, since the dot's `onSeek(s.cycle)` is
+the only place an anchor cycle reaches the screen. Writing the substitute down in advance is what
+stopped it being discovered as a convenience mid-run — `deep-bet-pays-double`'s failure mode.
+
+**The two run-1 failures were BOTH the rig, and one is a new trap class**: a height reserve
+manufactures new decoys for every document-wide selector — see [[browser-rig-vacuity-traps]] and
+[[panel-jitter-and-height-reserves]]. The other was the wide track's lesson list written from memory
+(`work-slides-ahead` is the OUT-OF-ORDER opener; the real fifth member is `one-door`) — **read a list
+from `content/lessons/index.json`, never recall it.**
+
+**Two breaks, both against the built bundle** (commit before breaking; restore from a temp copy, not
+`git checkout --`). (A) drop the two lines where `startLesson` applies `opening.issueWidth` → 9 red:
+all three lessons open 1-wide and record 56 / 44 / 9 instead of 44 / 35 / 7. Its incidental finding is
+the ask's point from the other side — **at 1-wide `width-moved-the-work` LOSES a step**, because the
+`branch-slot` refusal does not exist on a machine that issues one at a time. (B) `setTier('expert')`,
+M12's shipped defect restored → exactly the 3 declared-depth checks red, and the tier sweep stays
+green, correctly: it drives the dial itself. Break A also taught the rig a rule — **a hard-coded dot
+count CRASHES on a broken app and aborts every later section; read the count and assert it.**
+
+**A widened machine does not leak into the next lesson** — leave lesson 3 at 4-wide, open lesson 1,
+and it asserts its own declared 2-wide and its own 44 cycles. Nobody had driven that, and a leak
+would have been the M4-step-4 trap on the width axis: a lesson quoting 44 over a transport reading 43.
+
+**Sweep the tiers over EVERY new lesson, not a sample** — resolvability is a question about the
+lesson (headless), the dial is a question about the shell (browser only), and this plan's own rule is
+that a box ticked ahead of the net that can see it is `deep-bet-pays-double` in miniature.
+
+The five UNCHANGED criteria all held, checked as a **git range** (`458b4ce~1..HEAD`) rather than from
+memory: nothing under `packages/trace`, `packages/engine`, `packages/curriculum` or
+`content/programs` changed at all, and `index.json` gained exactly three ids inside the existing wide
+track. M14 cost **no engine change, no trace change, no new program and no new lesson-format field**.

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1159b994-75bd-457b-95ff-85fe2ac2c2bf
-  modified: 2026-07-30T08:42:28.342Z
+  modified: 2026-07-30T09:17:21.642Z
 ---
 
 Stepping the clock resized five panels, and since the shell is a vertical stack each one shoved every
@@ -79,6 +79,15 @@ condition is a lesson property and not a cursor one) and both the first and last
 single narration height across every cursor — but that was measured, not assumed, and only after a
 reviewer pointed out the sweep drove Model+Program and left `Lesson: — none —` alone. The omission
 [[browser-rig-vacuity-traps]] already records against four consecutive passes.
+
+**⚠ A HEIGHT RESERVE MANUFACTURES NEW DECOYS FOR EVERY DOCUMENT-WIDE RIG SELECTOR** (found three days
+later, M14 step 5). The idiom above — a hidden/placeholder element stacked at `gridArea: '1 / 1'` — is
+exactly the shape M12's narration reader keyed on (`the visible <p> at grid cell 1/1`), and the Data
+memory panel's new "no data memory written" placeholder is VISIBLE on every program that writes no
+data. A rig that was correct on 2026-07-27 reported `MULTIPLE:2` on all thirteen lesson walks, and it
+was the rig every time. When you add a reserve, ask which existing selectors its new element answers
+to; when you write one, scope to the section's own `aria-label`. Recorded in
+[[browser-rig-vacuity-traps]] as its own trap class.
 
 **Scope: cursor-driven change only.** A width flip, the depth dial and picking a lesson are deliberate
 acts and a panel may resize on them — the line the narration panel's own comment already drew. Also

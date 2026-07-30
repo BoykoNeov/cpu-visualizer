@@ -6,13 +6,15 @@ offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-o
 shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
 FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
-with a lesson track. Repo **6996 tests**, five gates green. **M13 has now been code-reviewed and all
+with a lesson track. **M13 has now been code-reviewed and all
 5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is IN PROGRESS**: steps 0–4 are done, so all three lessons are authored
+DELTA lesson track — is ✅ COMPLETE (2026-07-30)**: all three lessons authored
 (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work` — the wide track now has SEVEN
-lessons and the repo 7107 tests) and the track's within-track ORDER is pinned on the four
-cross-references that lie without it; **only step 5 (the browser pass) remains**
-([M14](m14-width-lessons-step0.md)). No other milestone is in progress. Outside the milestones, the
+lessons), the within-track ORDER pinned on the four cross-references that lie without it, and the
+browser pass driven over the shipped bundle — 110 checks, two breaks, and the one acceptance a
+subject could not satisfy honored in its stricter substitute form
+([M14](m14-width-lessons-step0.md)). Repo **7125 tests**, five gates green.
+**NO milestone is in progress.** Outside the milestones, the
 shell's **step-JITTER class is closed** (2026-07-30, repo **7125 tests**): five panels changed height
 as the cursor moved and every surface below them moved with it —
 [panel jitter](panel-jitter-and-height-reserves.md).
@@ -78,8 +80,10 @@ as the cursor moved and every surface below them moved with it —
     by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
     source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
     commit before you break.**
-- [M14 width lessons — steps 0–3](m14-width-lessons-step0.md) — the width DELTA track: **steps 0–3
-  DONE (all three lessons authored), steps 4–5 open**. Step 3's sharpest find: **a lesson can have NO
+- [M14 width lessons — COMPLETE](m14-width-lessons-step0.md) — the width DELTA track, all six steps.
+  Step 5 (the browser pass) found that **both its run-1 failures were the rig** — one of them a new
+  trap class, since a height RESERVE manufactures decoys for every document-wide selector — and that
+  a lesson's declared width does not leak into the next lesson. Step 3's sharpest find: **a lesson can have NO
   config-exclusive step**, which inverts where the ask's protection comes from — `paired-branches`
   emits an IDENTICAL event multiset at w2/w3/w4 while running 7, 7, 6, so every step anchors
   everywhere and **nothing structural notices if the ask is deleted**. Pin it by literal step index,

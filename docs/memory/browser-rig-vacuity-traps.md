@@ -1,11 +1,11 @@
 ---
 name: browser-rig-vacuity-traps
-description: 'The ways a CPU Visualizer browser check passes while measuring nothing — assert the negative state first or a broken selector passes the positive check for free; too-broad and too-narrow selectors both bite; a production CSS hash makes every ABSENCE assertion pass; and a rig pinning a temporary scope decision reports a regression against a deliberately improved machine. In two M11 runs, ALL failures were the rig, not the app.'
+description: "The ways a CPU Visualizer browser check passes while measuring nothing — assert the negative state first or a broken selector passes the positive check for free; too-broad and too-narrow selectors both bite; a production CSS hash makes every ABSENCE assertion pass; a rig pinning a temporary scope decision reports a regression against a deliberately improved machine; and a HEIGHT RESERVE grows new elements that answer to an old rig's selectors. In two M11 runs and again in M14 step 5, ALL failures were the rig, not the app."
 metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-29T01:06:37.280Z
+  modified: 2026-07-30T09:20:07.035Z
 ---
 
 Once you can drive the app ([[browser-rig-cdp-recipe]]), the remaining failure mode is a check that
@@ -42,6 +42,18 @@ must differ between two different instructions. Isolate the thing the claim is a
 ALU operands = numeric wire texts only, `/^-?\d+$/`), read the specific panel's table rows
 (`section.panel` whose `h2` names it → `tr` → cells), and when the selector fights back, **stop scraping
 and look at the image** ([[browser-rig-screenshot-limits]]).
+
+**A RIG SELECTOR EXPIRES WHEN THE APP GROWS A NEW ELEMENT OF THE SAME SHAPE — and a HEIGHT RESERVE is
+a factory for them** (2026-07-30, M14 step 5). M12's `__narration()` read "the visible `<p>` stacked at
+`gridArea: '1 / 1'`" over the WHOLE document, which was unique when written. Three days before this
+run the panel-jitter fix ([[panel-jitter-and-height-reserves]]) gave the Data memory panel a reserve
+whose "no data memory written" placeholder is exactly that shape — and it is VISIBLE on every program
+that writes no data, which is every program in the width track. Result: `MULTIPLE:2` on all thirteen
+lesson walks, and it was the rig every time. This is the "a rig that pins a scope lever expires when
+the lever moves" rule below, in its other direction: there the APP's contract moved, here
+the app grew a NEIGHBOUR. Before re-running an old rig after any layout work, ask what new elements
+answer to its selectors. The fix is the scoping rule below, stated on the component's own ARIA
+(`section[aria-label="Lesson narration"]`).
 
 **Scope every panel read to its own `<section>`.** An unscoped search for a leaf whose text is a
 data-memory ADDRESS finds the REGISTERS panel first, where a register holds that same address as a

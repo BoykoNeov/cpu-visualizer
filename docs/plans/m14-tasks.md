@@ -1,12 +1,15 @@
 # Milestone 14 — The width delta lesson track
 
-**Status: IN PROGRESS — steps 0, 1, 2, 3 and 4 DONE (`458b4ce`, `58ff293` 2026-07-29; `2720e62`,
-`50c50db`+`56ac7cf`, `16b596c` 2026-07-30). Step 1 shipped `where-widening-stops`, the thesis; step 2
-shipped `four-in-a-row`, the flagship; step 3 shipped `width-moved-the-work`, the CONDITIONAL — which
-resolved to SHIP, with no new event, field, program or engine change. All three subjects are
-authored, and step 4 pinned the track's within-track ORDER — five ordering claims, each asserted
+**Status: ✅ COMPLETE 2026-07-30 — all six steps DONE (`458b4ce`, `58ff293` 2026-07-29; `2720e62`,
+`50c50db`+`56ac7cf`, `16b596c` 2026-07-30, and this closing pass). Step 1 shipped
+`where-widening-stops`, the thesis; step 2 shipped `four-in-a-row`, the flagship; step 3 shipped
+`width-moved-the-work`, the CONDITIONAL — which resolved to SHIP, with no new event, field, program
+or engine change. Step 4 pinned the track's within-track ORDER — five ordering claims, each asserted
 beside the sentence that goes false without it, with three references rejected as invitations rather
-than lies. **Only step 5 remains** — the browser pass. Original step-0 note follows.**
+than lies. Step 5 drove the whole track through `startLesson` and the real ISSUE control on the
+SHIPPED bundle: 110 checks green, two breaks reddening exactly what they should, and every acceptance
+box below closed against the net that can see it. Repo 7125 tests, five gates green. Original step-0
+note follows.**
 
 **Step 0 DONE 2026-07-29. The dump is run
 (`M:\claud_projects\temp\m14-step0\dump.txt`) and the pre-milestone defect it uncovered is ALREADY
@@ -425,7 +428,44 @@ is exactly why it is written down here instead of discovered in step 3.
       lessons in this track" without naming either, so the same assertion made library-wide would be
       false).
 
-- [ ] **5. Browser pass — the only net that sees this.** The step the headline decision's price is
+- [x] **5. Browser pass — the only net that sees this. ✅ DONE 2026-07-30.** Driven over the
+      SHIPPED `vite preview` bundle: **110 checks, all green**, rig at
+      `M:/claud_projects/temp/m14-step5/s5-width-lessons.mjs` (temp is sweepable — the techniques
+      below are written so they survive its absence). What the step found:
+      **The stated-unsatisfiable acceptance held in its strict form, and nothing was relaxed.**
+      `width-moved-the-work`'s anchor vector, read live by clicking each rail dot and reading the
+      transport, is `[0,1,2,4,6] → [0,1,2,3,6] → [0,1,2,3,5]` across the two flips — five dots
+      throughout, the same five steps by narration text, one anchor moving per flip and a different
+      one each time. The two siblings changed count and set as predicted (3→4 dots at 44→43 cycles;
+      4→4→5 at 35→34→33, with `liveAt(3) === liveAt(2)` visible as an identical rail).
+      **BOTH run-1 failures were the rig, continuing the house record** — and one of them is a new
+      trap class. `__narration()` came from M12 step 5 and read "the visible `<p>` stacked at
+      `gridArea: 1/1`" over the WHOLE document; it was correct on 2026-07-27 and reported
+      `MULTIPLE:2` on all thirteen walks here, because the panel-jitter fix three days ago gave the
+      Data memory panel a height reserve whose "no data memory written" placeholder is exactly that
+      shape and is VISIBLE on every program in this track. **A height reserve manufactures new
+      decoys for every document-wide rig selector**; the fix is to scope to the section's own
+      `aria-label`. The other failure was the wide track's lesson list written from memory —
+      `work-slides-ahead` is the OUT-OF-ORDER track's opener, and the real fifth member is
+      `one-door`. Read the list from `content/lessons/index.json`.
+      **Two breaks run against the built bundle, both reddening exactly the intended checks.**
+      (A) delete the two lines where `startLesson` applies `opening.issueWidth` → 9 checks red: all
+      three lessons open `1-wide` and record 56 / 44 / 9 instead of 44 / 35 / 7. Its incidental
+      finding is the ask's whole point arriving from the other side: at 1-wide `width-moved-the-work`
+      loses a step, because the `branch-slot` refusal does not exist on a machine that issues one at
+      a time. (B) `setTier(lesson.depthDefault)` → `setTier('expert')`, M12's shipped defect
+      restored → exactly the 3 declared-depth checks red, and §2b stays green, correctly: it drives
+      the dial itself. Break A also improved the rig — a hard-coded dot count CRASHED on a broken app
+      ("no rail dot 4") and aborted every later section, so the count is read and asserted instead.
+      **A widened machine does not leak into the next lesson** (§4, a question nobody had driven):
+      leave `width-moved-the-work` at 4-wide, open `where-widening-stops`, and it asserts its own
+      declared 2-wide and its own 44 cycles. A leak here would have been the M4-step-4 trap on the
+      width axis — a lesson quoting 44 over a transport reading 43.
+      The tier sweep (§2b) covers **all three lessons × three tiers**, not a sample: each renders
+      distinct prose per step at every tier, and the three tiers differ step for step, which is what
+      stops a shell that ignores the dial from passing.
+
+- [x] **5 (as planned).** The step the headline decision's price is
       paid in. Drive each new lesson through `startLesson` on the **shipped bundle**, starting from
       a different model so every assertion is about what the lesson dragged, then **flip ISSUE with
       the real control** and assert the rail re-anchors and the step count changes. Read
@@ -449,23 +489,34 @@ is exactly why it is written down here instead of discovered in step 3.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [~] "The wide machine" track shows seven lessons; the three new ones open on the superscalar at
-  `issueWidth: 2` and at their declared depth tier. **Structural half green at step 4** — the
-  by-name membership `toEqual`, the library-wide `issueWidth`/`depthDefault` pins and the new
-  order pin all hold. The word in this criterion is **picker**, and no headless test here sees a
-  render (`browser-is-the-only-net`), so the other half is step 5's to close. Left unchecked
-  deliberately: a box checked ahead of the net that can see it is `deep-bet-pays-double` in
-  miniature.
-- [ ] Each new lesson's steps anchor in order, in at least one config position, with narration
-      resolvable at all three tiers.
-- [ ] Every cycle count and IPC figure in narration is pinned by an oracle against a recording at
-      the lesson's own config — none computed in prose.
-- [ ] Each lesson's width discriminator is recorded: setting `issueWidth` back to 2 makes its
-      narration false. For lesson 3 the discriminator is on the anchored CYCLE, and the file says so.
-- [ ] Every config-exclusive step is REQUESTED by the step before it, in prose.
-- [ ] All five gates green (`test`, `typecheck`, `lint`, `format:check`, `build`).
-- [ ] The browser pass drove `startLesson` and the real ISSUE control on the shipped bundle.
-- [ ] The five UNCHANGED criteria above all held, or the exception is written up.
+- [x] "The wide machine" track shows seven lessons; the three new ones open on the superscalar at
+      `issueWidth: 2` and at their declared depth tier. Structural half green at step 4 — the
+      by-name membership `toEqual`, the library-wide `issueWidth`/`depthDefault` pins and the new
+      order pin. **The picker half closed at step 5**: the live `<optgroup>` reads
+      `two-at-once, pair-that-cant, one-door, one-branch-unit, where-widening-stops, four-in-a-row,
+width-moved-the-work`, and each new lesson opens at `2-wide` / `detailed` on the shipped bundle
+      from a different starting model (single-cycle, multi-cycle, out-of-order).
+- [x] Each new lesson's steps anchor in order, in at least one config position, with narration
+      resolvable at all three tiers. Headless for the anchoring; step 5 swept all three lessons ×
+      three tiers RENDERED, since resolvability is a question about the lesson and the dial is a
+      question about the shell.
+- [x] Every cycle count and IPC figure in narration is pinned by an oracle against a recording at
+      the lesson's own config — none computed in prose. Steps 1–3; the browser re-read 44/43/43,
+      35/34/33 and 7/7/6 off the live transport at the three width positions.
+- [x] Each lesson's width discriminator is recorded: setting `issueWidth` back to 2 makes its
+      narration false. For lesson 3 the discriminator is on the anchored CYCLE, and the file says so
+      — driven live at step 5 as `[0,1,2,4,6] → [0,1,2,3,6] → [0,1,2,3,5]`.
+- [x] Every config-exclusive step is REQUESTED by the step before it, in prose. Two lessons have
+      one; `width-moved-the-work` has none, and its ask is pinned positionally instead (step 3).
+- [x] All five gates green (`test`, `typecheck`, `lint`, `format:check`, `build`) — **7125 tests**,
+      re-run at step 5 on the restored tree after both breaks.
+- [x] The browser pass drove `startLesson` and the real ISSUE control on the shipped bundle.
+- [x] The five UNCHANGED criteria above all held. Checked as a git range
+      (`458b4ce~1..HEAD`), not from memory: nothing under `packages/trace`, `packages/engine`,
+      `packages/curriculum` or `content/programs` changed at all, so criteria 1–4 hold by absence
+      (step 0's `CONFIG_AXES` fix lives in `lessons.test.ts`, which is a test); and
+      `content/lessons/index.json` gained exactly three ids inside the existing wide track, with no
+      new track.
 
 ## How this milestone can lie to itself
 
