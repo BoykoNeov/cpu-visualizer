@@ -123,6 +123,24 @@ describe('out-of-order structures: present at every cursor, reserved identically
     expect(distinct(reserves).size).toBe(1);
   });
 
+  it('the pre-run cursor states the real ROB CAPACITY, not a zero it has not measured', () => {
+    // `preRunMicro` copies `robCapacity` off the recording precisely so this line is true at cursor
+    // −1, and nothing pinned it: returning `robCapacity: 0` left the whole web suite green, and the
+    // panel then read "0/0 in flight" for a sixteen-entry buffer (M14 review, finding 4). No height
+    // moves — the three `min-height`s come from `microReserves(recording)`, which does not depend on
+    // the cursor's micro at all — so this is a wrong FACT rather than a returning jump, and the only
+    // guard against it is to read the caption.
+    expect(
+      htmls[0],
+      'the pre-run header must state the capacity the run was recorded at',
+    ).toContain(`0/${OOO.robSize!} in flight`);
+    // Non-vacuity: the number has to be one this recording could not have produced by accident, so
+    // assert the config really asked for something other than the engine's own default of 16... it
+    // does not, and saying so is the honest form — what makes this non-vacuous instead is that a
+    // capacity of 0 is what the mutation produces, and `0/0` differs from `0/16`.
+    expect(OOO.robSize, 'the fixture must declare a capacity for the caption to be about').toBe(16);
+  });
+
   it('...while the CONTENT it holds genuinely varies, so the reserve is doing work', () => {
     // The other half of the non-vacuity: a panel whose rows never changed would hold its height for
     // free. The ROB fills and drains across this run.
@@ -210,6 +228,59 @@ describe('issue readout: the reserve covers every shape the recording reaches', 
     // ...and small in absolute terms, not merely equal: the class count is bounded by the verdicts
     // times the reasons times the width squared, which is a constant, not a function of the program.
     expect(rows[1]!.li).toBeLessThan(60);
+  });
+
+  it('each reserved shape is the WIDEST member of its class — the rule the bound rests on', () => {
+    // The bound above (a handful of classes, not one per cycle) is only safe because the ghost kept
+    // for a class is its TALLEST member: a row wraps on its own length, so the widest candidate is
+    // what decides whether a shape needs two lines. Deleting that rule — keeping whichever member
+    // came first — left the whole web suite green (M14 review, finding 3).
+    //
+    // Measured off the RENDER on both sides of the comparison's actual value: each hidden ghost block
+    // is parsed for the candidate rows it draws, and its widest one is what the reserve is worth. The
+    // per-class maximum from the recording is the EXPECTED value, which is the only place a fold is
+    // allowed here.
+    const GHOST = '<div style="grid-area:1 / 1;visibility:hidden">';
+    const LIVE = '<div style="grid-area:1 / 1">';
+    /** The widest candidate row drawn inside each hidden ghost, off the markup. The text is the span
+     *  that FOLLOWS the slot chip, which is a structural relationship rather than a color match. */
+    const drawnWidths = (html: string): number[] =>
+      html
+        .split(GHOST)
+        .slice(1)
+        .map((chunk) => {
+          const own = chunk.includes(LIVE) ? chunk.slice(0, chunk.indexOf(LIVE)) : chunk;
+          const texts = [...own.matchAll(/slot \d+<\/span><span[^>]*>([^<]*)<\/span>/g)].map(
+            (m) => m[1]!,
+          );
+          return texts.reduce((widest, t) => Math.max(widest, t.length), 0);
+        });
+
+    /** Every shape class in the recording, and the widest row each of its members reaches. */
+    const classes = new Map<string, number[]>();
+    for (const trace of recorded) {
+      const r = readPairing(trace);
+      if (r === null) continue;
+      const issued = r.candidates.filter((c) => c.issued).length;
+      const key = `${r.verdict}|${r.reason}|${r.candidates.length}|${issued}`;
+      const widest = r.candidates.reduce((w, c) => Math.max(w, c.text.length), 0);
+      classes.set(key, [...(classes.get(key) ?? []), widest]);
+    }
+
+    // Non-vacuity, and it is the whole question: if every class had one member, or all its members
+    // were equally wide, then "the widest member is kept" is satisfied by keeping ANY of them and
+    // this test could not see the rule at all. On this recording 3 classes have members that differ.
+    const contested = [...classes.values()].filter((ws) => new Set(ws).size > 1);
+    expect(
+      contested.length,
+      'no shape class has members of differing width — the rule is unmeasured here',
+    ).toBeGreaterThan(0);
+
+    const expected = [...classes.values()].map((ws) => Math.max(...ws)).sort((a, b) => a - b);
+    expect(drawnWidths(htmls[0]!).sort((a, b) => a - b)).toEqual(expected);
+    // ...and at a mid-run cursor too, since the ghosts are a property of the RECORDING and must not
+    // depend on where the reader is standing.
+    expect(drawnWidths(htmls[htmls.length - 1]!).sort((a, b) => a - b)).toEqual(expected);
   });
 
   it("a cycle that refused nobody still reserves the refusal note's height", () => {
@@ -360,11 +431,19 @@ describe('data memory: the row count is the run PEAK at every cursor', () => {
   ].join('\n');
   const result = loadSource(SANDBOX, () => new SingleCycleProcessor());
   if (!result.ok) throw new Error('fixture failed to assemble');
+  // The pre-run state, taken BEFORE `runToEnd` moves the cursor off −1. This block used to sweep
+  // `recorded` alone while the file's own docblock claimed every guard measures "at every cursor of a
+  // real recording including the pre-run one" (M14 review, finding 6) — and the pre-run cursor is the
+  // one the panel is rendered at first, so a reserve that only held from cycle 0 on would move the
+  // page on the reader's very first step. It is the cursor `preRunMicro` and `readPairingPreRun` both
+  // exist for, two panels up.
+  const preRunState = result.loaded.recorder.currentState();
   result.loaded.recorder.runToEnd();
   const recorded = result.loaded.recorder.recorded;
   const reserve = peakDataMemoryRows(recorded);
-  const htmls = recorded.map((trace) =>
-    renderToStaticMarkup(<MemoryPanel state={trace.state} reserveRows={reserve} />),
+  const states = [preRunState, ...recorded.map((trace) => trace.state)];
+  const htmls = states.map((state) =>
+    renderToStaticMarkup(<MemoryPanel state={state} reserveRows={reserve} />),
   );
 
   it('the fixture really does grow its memory as it runs', () => {
