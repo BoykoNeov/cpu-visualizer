@@ -6,11 +6,11 @@ offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-o
 shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
 FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
-with a lesson track. Repo **6887 tests**, five gates green. **M13 has now been code-reviewed and all
+with a lesson track. Repo **6996 tests**, five gates green. **M13 has now been code-reviewed and all
 5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is IN PROGRESS**: steps 0 and 1 are done (`where-widening-stops` ships, the wide
-track now has five lessons), steps 2–5 open ([M14](m14-width-lessons-step0.md)). No other milestone
-is in progress.
+DELTA lesson track — is IN PROGRESS**: steps 0, 1 and 2 are done (`where-widening-stops` and
+`four-in-a-row` ship, the wide track now has six lessons), steps 3–5 open
+([M14](m14-width-lessons-step0.md)). No other milestone is in progress.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -70,8 +70,14 @@ is in progress.
     by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
     source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
     commit before you break.**
-- [M14 width lessons — steps 0+1](m14-width-lessons-step0.md) — the width DELTA track: **steps 0
-  and 1 DONE, steps 2–5 open**. Read before authoring a width lesson. Its shipped find:
+- [M14 width lessons — steps 0–2](m14-width-lessons-step0.md) — the width DELTA track: **steps 0, 1
+  and 2 DONE, steps 3–5 open**. Read before authoring a width lesson, and before choosing between a
+  striking event and a safe anchor — step 2's sharpest find is that **when they differ, anchor on the
+  one whose existence conditions match the prose**: the vivid `reg-read{reg:6,value:0}` is alive in
+  45 of 48 positions on a DIFFERENT instruction, while the forward that repairs it is alive in
+  exactly 9. Also: write a width claim on issue-group MEMBERSHIP (one exhaustive pin became the
+  evidence for six sentences), the two M14 lessons have **opposite discriminators** and both oracles
+  say so, and refusals here are **not even monotonic** (6→13→12 against 35→34→33). Step 1's find:
   `lessons.test.ts` swept the wide lessons at 2 of the 4 widths the shell offers (fixed, +576
   assertions) — and the fix makes that sweep a **weaker** net for a config-exclusive step. Step 1
   shipped `where-widening-stops` and added three: **diff retire-cycle MAPS, not cycle totals** (one

@@ -1,11 +1,11 @@
 ---
 name: m14-width-lessons-step0
-description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-29: steps 0 and 1 done (`where-widening-stops` ships), steps 2–5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, and before writing a number into prose a reader can see at more than one config."
+description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0, 1 and 2 done (`where-widening-stops` and `four-in-a-row` ship), steps 3–5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, and before writing a number into prose a reader can see at more than one config."
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-29T19:27:39.413Z
-  originSessionId: 65f78fd8-0a6b-4187-a611-6595cf485bd4
+  modified: 2026-07-30T02:02:51.370Z
+  originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
 M13 delivered widths 1/2/3/4 but deferred the lesson track by name ("the existing 'The wide machine'
@@ -130,7 +130,57 @@ caught first by the sweep's order check), so its comment says so rather than ove
 lesson file touches **three** places or the suite reddens: `index.json`, the by-name track-membership
 `toEqual`, and `LESSONS.length`.
 
+## Step 2 SHIPPED — `four-in-a-row` (`2720e62`, repo 6887 → 6996)
+
+"Four in a row": `slow-op-loop`, five steps, position 6. Declares w2, asks the learner to flip ISSUE
+to **4**. The `static-taken` mirror was NOT taken (no step earned it; the beat belongs to
+`paired-branches`, which is step 3's program). Six things worth carrying:
+
+- **Write a width lesson on issue-group MEMBERSHIP, not on cycles and not on events.** Every sentence
+  of this lesson is a claim about which instructions share a group; `groupPcs` (ID/EX occupancy read
+  out as pcs) is the only channel that sees one. Pinning the whole sequence at all three widths made
+  ONE assertion the evidence for six sentences:
+  `w2 [t1 a0][t5 t6] 6×([sll][add addi][bnez a7]) [ecall]` = 21 groups; `w3 [t1 a0 t5][t6] 6×(…a7
+ecall)` = 20; `w4 [t1 a0 t5 t6] 6×(…)` = 19. Cycles 35/34/33, and **cycles = groups + 14 at every
+  width**, so "one group removed, one cycle saved" is arithmetic rather than two totals coinciding.
+- ⚠ **The plan's "the loop body is byte-identical at w3 and w4" was FALSE as an event claim** — a
+  wider machine fetches wider, so the fetch stream differs every cycle. Identical is the loop's GROUP
+  SHAPE (three groups a pass at w2/w3/w4) and its retire spacing. Same class as M13's "a
+  measurement's glob is part of its claim": name the channel the invariance holds on.
+- **Three wide takes the same TWO prologue groups as two wide** (three heads, then the fourth alone
+  with two slots idle, plus a refusal the widest machine lacks). So this is **the library's only ask a
+  learner can HALF-SATISFY** — flipping to 3 leaves the width-exclusive step as silent as never
+  flipping. The ask names the number and the oracle asserts `liveAt(3) === liveAt(2)`.
+- **The gain's signature is a UNIFORM SHIFT, not a speedup**: 27 of 30 instructions retire exactly one
+  cycle earlier at w4 than w3, the other three unmoved. The machine started sooner; it did not run
+  faster. That is what stops a reader generalising the prologue's group of four to the loop.
+- ⚠ **When the striking event and the safe anchor differ, anchor on the one whose existence conditions
+  match the prose.** The vivid fact is the register file answering **0** for a counter that says 6 —
+  but `reg-read{reg:6,value:0}` is alive in **45 of 48** positions, and with forwarding OFF it is the
+  FINAL `bnez` (~c55), so a step anchored there narrates the prologue while pointing at the last
+  branch. Anchored the REPAIR instead (`forward{MEM/WB→EX.rs1, value 6}`, alive in exactly **9 of
+  48**), which cannot exist with forwarding off — **the prose is protected by the step's own anchor
+  rather than by an author remembering.**
+- ⚠ **Refusals here are not even MONOTONIC**: 6 → 13 → 12 against 35 → 34 → 33, so the fastest machine
+  is neither the least- nor the most-refused. Step 1's version only had them rising with the speedup.
+- ⚠ **An advisor caught an off-by-one the plan's own step text would have shipped**: "the wider
+  machine's extra loop slot holds work the flush throws away" is true on **five of six passes** — on
+  the sixth the branch falls through and those two instructions are the program's exit, in the group
+  the closing step walks past. Measured per pass, NOT off `flush.stages` (which does shift
+  `EX,ID`→`EX` here and is a casualty list, not a cost).
+
+Method notes: the six helpers step 1 left as `describe`-locals were **hoisted to module scope first,
+unchanged, as a separate mechanical move** — a claim measured differently in two lessons is two
+claims; `retireCycles` became `retireCycleById` because `deep-drain` has its own returning a list.
+**8 breaks run, 8 reddened the intended test** — the load-bearing ones: a de-attributed closing
+sentence (identical tokens, only `statesNumberBeside` sees it), `nth: 1` (reddens the dedicated test
+AND the generic sweep's order check in the 9 live positions), and mutating `groupPcs` to drop each
+group's last member. The two M14 lessons have **OPPOSITE discriminators** (w4 is not one for lesson
+1; w3 is one for lesson 2) and both oracles say so, because a later "strengthening" pass will want to
+flatten them.
+
 ## Not yet decided (content calls, deliberately left to the user)
 
-Which subjects ship, how many lessons, and their order. See [[m12-deep-pipeline-lessons]] for the
-delta-track precedent and the authoring traps that apply unchanged.
+Step 3's `paired-branches` lesson is the remaining content call (it is CONDITIONAL in M12's sense).
+See [[m12-deep-pipeline-lessons]] for the delta-track precedent and the authoring traps that apply
+unchanged.

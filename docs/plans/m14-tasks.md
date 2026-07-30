@@ -1,7 +1,8 @@
 # Milestone 14 — The width delta lesson track
 
-**Status: IN PROGRESS — steps 0 and 1 DONE 2026-07-29 (`458b4ce`, `58ff293`). Step 1 shipped
-`where-widening-stops`, the thesis lesson; steps 2–5 remain. Original step-0 note follows.**
+**Status: IN PROGRESS — steps 0, 1 and 2 DONE (`458b4ce`, `58ff293` 2026-07-29; `2720e62`
+2026-07-30). Step 1 shipped `where-widening-stops`, the thesis; step 2 shipped `four-in-a-row`, the
+flagship. Steps 3–5 remain. Original step-0 note follows.**
 
 **Step 0 DONE 2026-07-29. The dump is run
 (`M:\claud_projects\temp\m14-step0\dump.txt`) and the pre-milestone defect it uncovered is ALREADY
@@ -223,7 +224,66 @@ is exactly why it is written down here instead of discovered in step 3.
       makes the narration false (recorded, not argued) — and the file records that w4 is NOT a
       discriminator for this lesson, so nobody later "strengthens" it into one.
 
-- [ ] **2. Lesson — four in a row (the flagship).** `slow-op-loop`, the only subject with
+- [x] **2. Lesson — four in a row (the flagship). ✅ DONE 2026-07-30**, `2720e62` —
+      `four-in-a-row`, "Four in a row", five steps, appended to "The wide machine" at position 6.
+      Repo 6887 → **6996**; all five gates green; **8 breaks run, 8 reddened the intended test**.
+      The `static-taken` mirror was NOT taken (decision below closed): the lesson earned its five
+      steps on the width axis alone, and a second config axis would double the ask-for-the-flip
+      burden for a beat that belongs to lesson 3's subject.
+      What the step found, beyond what the plan predicted:
+      **Write it on issue-group MEMBERSHIP, not on cycles and not on events.** Every sentence in
+      this lesson is a claim about which instructions share a group, and `groupPcs` (ID/EX
+      occupancy, by pc) is the only channel that can see one. The whole sequence is pinned
+      exhaustively at all three widths, and that ONE assertion is the evidence for six separate
+      sentences:
+      `w2 [t1 a0][t5 t6] 6×([sll][add addi][bnez a7]) [ecall]` — 21 groups;
+      `w3 [t1 a0 t5][t6] 6×([sll][add addi][bnez a7 ecall])` — 20;
+      `w4 [t1 a0 t5 t6] 6×([sll][add addi][bnez a7 ecall])` — 19.
+      ⚠ **The plan's "the loop body is byte-identical at w3 and w4" is FALSE as an event claim** —
+      a wider machine fetches wider, so the fetch stream differs every cycle. What is identical is
+      the loop's GROUP SHAPE (three groups a pass at w2, w3 and w4 alike) and its retire spacing.
+      The corrected claim is the stronger one, and it is the one asserted.
+      **Three wide takes the same TWO prologue groups as two wide** — three heads then the fourth
+      alone with two slots idle, plus a refusal (the `sll` offered to that leftover group) that the
+      widest machine does not have. That is why the ask is for **4 and not 3**, and it is invisible
+      in the cycle total. Which makes this **the library's only ask a learner can half-satisfy**:
+      flipping to 3 leaves the width-exclusive step as silent as never flipping at all, so the ask
+      names the number and the oracle asserts `liveAt(3) === liveAt(2)`.
+      **The run is its group count plus fourteen idle cycles, at every width** (21+14=35, 20+14=34,
+      19+14=33 — cycle 0, two per taken branch, three draining). So "one group removed, one cycle
+      saved" is arithmetic, not a coincidence of totals: the third slot buys the ENDING, the fourth
+      buys the BEGINNING, and neither comes out of the loop, which is 30 of the 35 cycles.
+      **The gain's signature is a UNIFORM SHIFT, not a speedup.** 27 of the 30 instructions retire
+      exactly one cycle earlier at w4 than w3 and the other three do not move — the machine started
+      sooner, it did not run faster. No cycle total can express that, and it is what stops a reader
+      generalising the group of four to the loop.
+      ⚠ **THE DECOY, and it is the natural choice.** The vivid fact is the register file answering
+      **0** for a counter that says 6 — but `reg-read{reg:6,value:0}` is alive in **45 of the 48
+      positions**, and with forwarding OFF it is the FINAL `bnez` (pc 28, ~c55) where the counter
+      legitimately reaches zero. A step anchored there narrates the prologue while pointing at the
+      last branch. The anchor used is the REPAIR instead — `forward{MEM/WB→EX.rs1, value 6}`, alive
+      in exactly **9 of 48** — which cannot exist with forwarding off, so **the prose is protected
+      by the step's own anchor rather than by an author remembering.** Generalises: when the
+      striking event and the safe anchor differ, anchor on the one whose existence conditions match
+      the prose's.
+      ⚠ **The refusals here are not even MONOTONIC**: 6 → 13 → 12 against 35 → 34 → 33 cycles, so
+      the fastest machine is neither the least- nor the most-refused. Finding 3 with no reading of
+      the count as a cost left standing.
+      ⚠ **The advisor caught an off-by-one this plan's own step text would have shipped.** "The
+      wider machine's extra loop slot holds work the flush throws away" is true on **five of the six
+      passes** — on the sixth the branch falls through and those same two instructions are the
+      program's exit, in the very group the closing step walks past. Measured per pass, and
+      deliberately NOT off `flush.stages` (which does shift `EX,ID`→`EX` across this width change
+      and is a casualty list, not a cost — M12's trap).
+      `nth: 2` on the loop step is measured: `nth: 1` anchors before the step above it in exactly
+      the nine positions where that step lives, and nowhere else.
+      Method note: the six helpers `where-widening-stops` had as locals were **hoisted to module
+      scope first, unchanged, in the same commit but as a separate mechanical move** — a claim
+      measured differently in two lessons is two claims. `retireCycles` became `retireCycleById`
+      because `deep-drain` has its own `retireCycles` returning a list rather than a map.
+      The original plan text for this step follows.
+
+- [x] **2 (as planned). The flagship.** `slow-op-loop`, the only subject with
       w4-exclusive anchors (finding 2), and M13 step 3's own "honest lesson": four independent `li`s
       form **one group of four exactly ONCE in six iterations**, the loop body is byte-identical at
       w3 and w4, so the gain is **1 cycle and not 6**. The beat is a prologue effect and the lesson
@@ -309,6 +369,6 @@ is exactly why it is written down here instead of discovered in step 3.
 | **A new track vs extending "The wide machine"** | **Extend.** Same model, different knob; extending touches neither the exhaustive track-NAME `toEqual` nor the pairwise order pin, while a new track makes both a hard edit. M12 minted a track because its delta was a different MODEL                                                                                             | **Extend** — pinned by the argument here, because step 4 and its acceptance already assume it. A step written against an `_open_` row is the "pinned decision with no net is a comment" defect inverted: an answer with no decision. Reopen deliberately if the picker gets crowded                                                             |
 | **Which width each lesson flips TO**            | **Per-subject, from the dump, not a house rule.** `sum-loop` → **w3** (its 0.02 IPC gain is entirely w2→w3; w4 is the same 43 cycles and is NOT a discriminator for it); `slow-op-loop` → **w4** (the only w4-exclusive anchors in the corpus); `paired-branches` → **w4** (7 → 7 → 6, so w3 is not a discriminator for it either) | **As seeded** — pinned by measurement, since step 1's arithmetic and step 3's discriminator both depend on it. Any change needs a new recording, not an edit                                                                                                                                                                                    |
 | Within-track order of the three                 | Thesis → flagship → conditional, appended after `one-branch-unit`. Pin a sequence test ONLY if a prose sentence lies when reordered (the cache track's discriminator)                                                                                                                                                              | _open_ — gates step 4. Step 1 shipped `where-widening-stops` at position 5, immediately after `one-branch-unit`; the other two append behind it unless step 4 finds a sentence that lies when reordered                                                                                                                                         |
-| The `static-taken`-spends-the-width mirror      | **Available, not required.** A second config axis inside one lesson doubles the ask-for-the-flip burden; take it only if a step earns it                                                                                                                                                                                           | _open_ — step 2                                                                                                                                                                                                                                                                                                                                 |
+| The `static-taken`-spends-the-width mirror      | **Available, not required.** A second config axis inside one lesson doubles the ask-for-the-flip burden; take it only if a step earns it                                                                                                                                                                                           | **NOT taken** (step 2, 2026-07-30). No step earned it: `four-in-a-row` filled five steps on the width axis alone, and the beat's subject — a bet ending its group — belongs to `paired-branches`, which is step 3's program                                                                                                                     |
 | A new trace event or field                      | **No** — predicted, not assumed (UNCHANGED criterion 1). If lesson 3 seems to need one, the answer is M12's: dropping the beat is a success, inventing an event is the only failure                                                                                                                                                | _open_                                                                                                                                                                                                                                                                                                                                          |
 | Depth tier each lesson declares                 | `detailed`, matching all 22 shipped lessons — and it is now actually READ (M12's headline fix). Assert the declared tier selects different prose from `expert`, or the fix is invisible again                                                                                                                                      | **`detailed`** (step 1, and the library-wide `new Set([...depthDefault])` pin makes it not a choice a lesson can quietly make differently). Step 1 found the sharper consequence: because `resolveNarration` falls back DOWNWARD, an ASK written only at `detailed` is invisible to an `expert` reader — so the ask goes in every authored tier |
