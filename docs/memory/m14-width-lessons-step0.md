@@ -230,7 +230,24 @@ width-exclusive step, no anchor keeps any prose off the wrong machine, so `state
 over every figure in every step. Step 2 deliberately reuses `one-branch-unit`'s anchor (nothing pins
 cross-lesson anchor uniqueness) — there the refusal is introduced, here re-read as width-invariant.
 
+A closing advisor pass found three unmeasured prose claims and one **unsatisfiable future
+acceptance**, all fixed (4 more breaks, 4 reddened): the closing step's punchline is the
+CO-VARIANCE of two arrays pinned independently, so `cycles − groups === [4,4,4,4]` is now asserted
+(the sibling's `idle === [14,14,14]` on a program with no flush shadow); the opening tier's only
+FETCH claim had no pin, since every other pin reads ID/EX occupancy and it names instructions rather
+than digits so `statesNumberBeside` could not reach it; and the crux step's bare "7 cycles" is the
+step that SENDS the reader to width 4 (where it is 6), so it is now scoped and attribution-checked.
+**Generalises: the step most likely to be misread is the one that asks for the flip, not the one
+after it.**
+
 ## What is left
+
+⚠ **Step 5's stated acceptance is UNSATISFIABLE for lesson 3, and the plan now says so** — "the
+rail's count changes across the flip and the surviving steps are not the same set" cannot hold for a
+lesson with no width-exclusive step. Its substitute is stricter, not weaker: **the dots MOVE and the
+count does not** (crux c4→c3 on the flip to 3, closing c6→c5 on the flip to 4, five dots throughout).
+Written down BEFORE the browser pass, because relaxing an acceptance mid-run is how
+`deep-bet-pays-double` justified a gap with prose that did not exist.
 
 Steps 4 and 5. **Step 4 is now VERIFICATION, not wiring** — each lesson wired its own id as it
 landed, so the picker already shows seven; what remains is the within-track order pin, and step 3
