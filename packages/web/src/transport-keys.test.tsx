@@ -12,6 +12,7 @@
  * the buttons ADVERTISE the keys; that pressing one moves the clock is step 2's browser pass.
  */
 
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TransportButtons } from './App';
@@ -71,6 +72,25 @@ describe('the legend lists every binding', () => {
       expect(html).toContain(KEY_HINTS[action]);
     }
     expect(transportLegend().split(' · ')).toHaveLength(Object.keys(TRANSPORT_KEYS).length);
+  });
+
+  it('carries the class the stylesheet hides it by, at the width that was measured', () => {
+    // The legend is 251px in a wrapping flex row inside a `position: sticky` bar. Measured in the
+    // browser on out-of-order mid-run: one line at 1024px, two at 900px, and removing the legend
+    // at 900px puts it back to one — so it is the cause. A second line is 23px of permanently
+    // eaten viewport on every scroll.
+    //
+    // Neither half of that fix is visible to `renderToStaticMarkup` — it renders no stylesheet —
+    // so this asserts the two halves still refer to each other: the class is on the element, and a
+    // max-width rule in the sheet names it. Delete either and this fails; the browser rig is what
+    // proves the rule actually stops the wrap.
+    expect(midRun()).toContain('class="transport-keys"');
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
+    expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
+    expect(Number(block![1])).toBe(1023); // the measured threshold, not a round guess
+    expect(block![2]).toContain('.transport-keys');
+    expect(block![2]).toContain('display: none');
   });
 
   it('says the same thing at every point in the run — no per-step reflow', () => {

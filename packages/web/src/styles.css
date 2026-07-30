@@ -295,6 +295,23 @@ input[type='range'] {
   border-bottom: 1px solid var(--line);
 }
 
+/* The keyboard legend under the clock buttons, and the width it stops being free at.
+   Measured 2026-07-30 in the browser, with the row at its most crowded (out-of-order, mid-run, an
+   in-flight instruction and a `N in flight` readout): the row is ONE line at 1024px and TWO at
+   900px, and removing the legend at 900px puts it back to one — so the legend is the cause, not a
+   passenger. The cost of letting it wrap is not cosmetic: this bar is `position: sticky`, so a
+   second line means 81px of permanently-eaten viewport becoming 104px on every scroll, in an app
+   whose whole point is watching the surfaces BELOW it.
+   So the caption goes away where it would cost a row. Nothing else does: the keys keep working and
+   every button's `title` still names its key. The threshold is a viewport width, never a piece of
+   state, so this cannot reintroduce the per-step jitter class. (At 700px the bar wraps with or
+   without it — that one is pre-existing and not this feature's to fix.) */
+@media (max-width: 1023px) {
+  .transport-keys {
+    display: none;
+  }
+}
+
 .panel-heading {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;

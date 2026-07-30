@@ -1588,7 +1588,11 @@ export function TransportButtons(props: {
           {b.face}
         </button>
       ))}
+      {/* `transport-keys` is not decoration — it is what the stylesheet's max-width rule hides
+          below 1024px, where this 251px caption is measurably what wraps the sticky bar onto a
+          second line. See the comment on that rule for the numbers. */}
       <span
+        className="transport-keys"
         style={{ fontFamily: MONO, fontSize: '0.75rem', color: T.ink3 }}
         title="Keyboard shortcuts for the clock. They work anywhere on the page except while you are typing in the program editor, the instruction filter, or a picker."
       >

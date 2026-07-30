@@ -6,7 +6,7 @@ untouched — the keyboard adds no action, only a new trigger for the four `useS
 the buttons already call). PROVEN headlessly: the keymap and guard (48 tests, each guard sweep
 paired with its control cell, all 8 mutations of the module caught) and the discoverability half
 (13 render assertions on `TransportButtons`). Repo 7132 → 7200 tests; five gates green.
-BROWSER-VERIFIED on the shipped bundle: 38 checks, 0 failures, and the rig was itself validated
+BROWSER-VERIFIED on the shipped bundle: **59 checks across two passes** (38 + 21), 0 failures, and the rig was itself validated
 against a broken app twice (below). The headline measurement of the whole feature: **with the
 `addEventListener` line removed — the feature not existing at all — all 68 new headless tests still
 pass, and the browser pass fails 6.**
@@ -133,7 +133,7 @@ guard behaves the same on real events as on the synthetic ones.
       **exactly one failure**, the check written for it (`scrollTop=630` — End scrolled the page).
       Tree restored byte-identical to HEAD and re-run: 38/38.
       ⚠ Confirming [[browser-rig-chrome-cleanup]] again: the rig's `finally { chrome.kill();
-  preview.kill(); }` left **5 preview servers and 35 Chromes** alive across five runs.
+preview.kill(); }` left **5 preview servers and 35 Chromes** alive across five runs.
       `rig-sweep.ps1` cleared them, re-counted 0/0/0/0, user's 38 Chromes untouched.
 
 ## Acceptance criteria
@@ -163,6 +163,32 @@ guard behaves the same on real events as on the synthetic ones.
 | **Within-cycle phase stepper keys**                        | **Not taken, on an architectural reason, not burden.** The phase cursor is view-local state in `DatapathView` (`useState<Phase>`), deliberately so — the recorder has no sub-cycle index. A document handler would have to lift it. Revisit only if the phase stepper is lifted for another reason                                                                                             | **NOT TAKEN** on the architectural reason as seeded. Unchanged by the build: the phase cursor is still `useState<Phase>` inside `DatapathView`                                                                                   |
 | **Arrows while a step-rail dot (`role="tab"`) is focused** | **Fire the transport.** The ARIA tablist pattern expects arrows to move between tabs, but this app implements no roving tabindex, so nothing is overridden — and a dead zone exactly where a lesson reader's focus lands after clicking a dot is worse. Pin it with a TEST, not a comment: if the rail ever gets real tablist keyboard behaviour, that test must be the thing that objects     | **FIRE**, as seeded, and pinned by a test rather than this row — `keyboard.test.ts`'s `PINNED: arrows on a lesson step-rail dot drive the clock`. That assertion is what a future roving-tabindex implementation must argue with |
 | **URL permalinks / play / persistence**                    | Deferred, not rejected — the other three confirmed gaps. Permalinks are the next best pick and its real work is a decision, not code: a link carrying `forwarding=false&model=out-of-order` must be honored as **inert** the way `ProcessorCapabilities` does, neither rejected nor silently applied                                                                                           | **Still deferred.** Permalinks remain the next best pick, and this build did not touch the decision they turn on                                                                                                                 |
+
+- [x] ✅ **3. The wrap check the first browser pass did not run** (added 2026-07-30 after review).
+      The legend is a 251px span in a `flexWrap: 'wrap'` row inside a `position: sticky` bar, and
+      step 2 measured it at 1400px on the two models with the FEWEST chips in that row. Re-run at
+      **stated** viewports on out-of-order mid-run — the crowded case: 4 buttons + legend + cycle
+      readout + in-flight instruction + `in ROB#5 · 6 in flight`.
+      **A real defect, found by the counterfactual rather than by the wrap alone.** The row is one
+      line at 1024px and TWO at 900px and 800px — and hiding the legend at those widths put it back
+      to one (bar **104px → 81px**), so the legend was the cause, not a passenger. That is 23px of
+      _permanently eaten_ viewport on every scroll, in an app whose whole point is the surfaces
+      below the bar. Fixed with a `@media (max-width: 1023px)` rule on a new `transport-keys` class
+      — a threshold in VIEWPORT WIDTH, never in state, so it cannot reintroduce the jitter class;
+      the keys keep working and every button title still names its key. Re-measured: 81px and one
+      line at every width from 1400 down to 800.
+      At **700px the bar wraps with the legend hidden too** (104px either way) — pre-existing, from
+      four buttons plus two chips, and recorded rather than quietly folded into this feature's
+      numbers. **The wrap metric itself was wrong first:** comparing children's `rect.top` reported
+      4 rows on a plainly-single line, because `alignItems: 'center'` centers children of different
+      heights. The honest discriminator is _row box taller than its tallest child_.
+      Also measured here, because headless Chrome reports `prefers-color-scheme: dark` and step 2's
+      screenshot was therefore dark-only: the legend's contrast in **both** explicit palettes —
+      **3.41:1 in light**, 5.41:1 in dark, on backgrounds proven different so it is not dark
+      measured twice. ⚠ 3.41:1 clears the 3:1 floor but is under AA's 4.5:1 for 12px text. It is
+      `T.ink3`, the same tertiary ink as the sibling `N in flight` chip, so raising it is a
+      house-palette decision rather than this feature's to take unilaterally — flagged, not
+      changed. Acceptance: 21 checks, 0 failures.
 
 ## How this feature can lie to itself
 
