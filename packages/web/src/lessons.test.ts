@@ -798,6 +798,82 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     );
   });
 
+  it('teaches the wide track in an order four of its own sentences depend on (M14 step 4)', () => {
+    // The wide machine is the first track that GREW after its lessons had already cross-referenced
+    // each other — M8 shipped four beats, M14 appended three delta lessons that talk about them and
+    // about each other. So its within-track order stopped being an authoring choice and became a
+    // claim, and this is the pin.
+    //
+    // The discriminator is the cache track's, applied reference by reference rather than to the
+    // track as a whole: **a link earns a pin only if a sentence goes FALSE when the two lessons
+    // swap — not merely unexplained.** That is the judgement the docblock above records for
+    // `deep-drain`, and applying it here rejects three of the seven cross-references outright:
+    //
+    //   • `pair-that-cant` ← `where-widening-stops` (step 2, expert) and ← `four-in-a-row` (step 3,
+    //     expert). Both read "Compare "The pair that can't", where the same event with the same
+    //     reason string splits work…" — an INVITATION to another lesson, equally true whether or not
+    //     it has been read. Unexplained is not a lie, so `pair-that-cant`'s position is unpinned.
+    //   • `four-in-a-row` ← `width-moved-the-work` step 1's expert tier (""Four in a row" goes 6,
+    //     13, 12"). A fact about another lesson's measurements, not about the reader's history. That
+    //     link IS pinned below — but on step 2's `detailed` tier, which is past tense and does lie.
+    //   • `one-door` is named by nothing and names nothing. It earns no pin and may float freely
+    //     among the four M8 beats; a rule with nothing behind it is what this test refuses to be.
+    //
+    // Each surviving link is asserted TOGETHER WITH the sentence that makes it true, so deleting the
+    // reference reddens this test rather than leaving the ordering rule standing on nothing (the
+    // deeper-machine precedent above). And each sentence is asserted at the TIER it occupies:
+    // `width-moved-the-work`'s expert tier says "the other two lessons in this track" without naming
+    // either, so the same assertion made library-wide would be false.
+    const wide = LESSON_TRACKS.find((t) => t.track === 'The wide machine')!;
+    const at = (id: string): number => {
+      const i = wide.lessons.indexOf(id);
+      // `indexOf` returns -1 for an id that no longer exists, and -1 is less than everything: without
+      // this guard a rename would leave every comparison below green while the sentences point at
+      // nothing. The cache pin above still has that hole; the OoO one (its `toBeGreaterThan(0)`)
+      // does not, and this follows the OoO one.
+      expect(i, `${id} is in the wide machine track`).toBeGreaterThanOrEqual(0);
+      return i;
+    };
+    const says = (id: string, step: number, tier: 'detailed' | 'expert', quote: string): void => {
+      expect(
+        resolveNarration(byId(id).steps[step]!.narration, tier),
+        `${id} step ${step} (${tier}) is what forces its position`,
+      ).toContain(quote);
+    };
+
+    // 1. `two-at-once` before `where-widening-stops`. The delta lesson opens by spending the
+    //    flagship's own measurement as something the reader already owns — and then contradicts the
+    //    natural extrapolation from it, which only lands in this direction.
+    expect(at('two-at-once')).toBeLessThan(at('where-widening-stops'));
+    says('where-widening-stops', 0, 'detailed', '"Two at once" measured what that width was worth');
+
+    // 2. `where-widening-stops` before `four-in-a-row`. "Left you at four slots" is a claim about
+    //    where the reader is STANDING, and the sixth lesson's whole opening is the answer to a
+    //    dissatisfaction the fifth deliberately created.
+    expect(at('where-widening-stops')).toBeLessThan(at('four-in-a-row'));
+    says('four-in-a-row', 0, 'detailed', '"Where widening stops paying" left you at four slots');
+
+    // 3. `one-branch-unit` before `width-moved-the-work`. The strongest link in the track: the
+    //    seventh lesson reuses the fourth's PROGRAM and its anchor, and says so in the second person
+    //    twice — introduced there, re-read here as width-invariant.
+    expect(at('one-branch-unit')).toBeLessThan(at('width-moved-the-work'));
+    says('width-moved-the-work', 0, 'detailed', 'You met `paired-branches` in "One branch unit"');
+    says('width-moved-the-work', 1, 'detailed', '"One branch unit" told you what this refusal is');
+
+    // 4. Both siblings before `width-moved-the-work`, on ONE sentence that names both in the past
+    //    tense: the third delta lesson's crux is that this program has neither of the things that
+    //    were competing with the extra slots in the other two. Reordered, it describes lessons the
+    //    reader has not met — which is exactly why the milestone's order question resolved to a pin.
+    expect(at('where-widening-stops')).toBeLessThan(at('width-moved-the-work'));
+    expect(at('four-in-a-row')).toBeLessThan(at('width-moved-the-work'));
+    says(
+      'width-moved-the-work',
+      2,
+      'detailed',
+      'In "Where widening stops paying" the extra slots were competing with a mispredict shadow, and in "Four in a row" with a dependence chain',
+    );
+  });
+
   it('files each lesson under the track its SUBJECT belongs to — asserted by name', () => {
     // What the grouped index buys in structure it must pay for here, and the payment is the same
     // coin the project keeps spending: **track membership is pedagogy, so it is not derivable.**
