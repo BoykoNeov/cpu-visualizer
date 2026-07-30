@@ -4,7 +4,7 @@ description: "M14 (the width DELTA lesson track — new lessons in the existing 
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T02:58:15.488Z
+  modified: 2026-07-30T03:04:10.702Z
   originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
@@ -242,12 +242,13 @@ after it.**
 
 ## Step 4 SHIPPED — the order pin (`16b596c`, repo 7106 → 7107)
 
-Wiring was already done; the live work was the WITHIN-track order pin. 4 breaks, 4 intended results
-(3 reddened, 1 deliberately green). Four things worth carrying:
+Wiring was already done; the live work was the WITHIN-track order pin. **7 breaks, 7 intended results**
+(6 reddened, 1 deliberately green) — every one of the five ordering claims violated ON ITS OWN, since
+an asserted link never broken is the shape this milestone kept catching. Five things worth carrying:
 
-- **Apply the "does a sentence LIE when reordered" discriminator per REFERENCE, not per track.** The
-  wide lessons name each other **seven** times and only **four** are claims about what the reader has
-  already done. "Compare \"The pair that can't\", where the same event…" is an INVITATION — true
+- **Apply the "does a sentence LIE when reordered" discriminator per MENTION, not per track.** The
+  seven wide lessons name each other **eleven** times; **five** mentions are pinned (the rest restate
+  a link already pinned) and only claims about what the reader has ALREADY done qualify. "Compare \"The pair that can't\", where the same event…" is an INVITATION — true
   whether or not that lesson was read — so `pair-that-cant`'s position stays UNPINNED; and
   `width-moved-the-work`'s expert "\"Four in a row\" goes 6, 13, 12" is a fact about another lesson's
   numbers, so that link is pinned on step 2's `detailed` tier instead (past tense, and it does lie).
@@ -259,8 +260,14 @@ Wiring was already done; the live work was the WITHIN-track order pin. 4 breaks,
   shape) is load-bearing here; the cache track's pin above it still has the hole. It is NOT the sole
   net for a rename though — 3 other tests catch one — so the comment says so.
 - **The order pin IS the sole net for a REORDER — the opposite of step 1's `nth` result.** Swapping
-  two ids reddens exactly 1 test of 7107; deleting a referring sentence reddens exactly 1. Nothing
-  else in the suite sees either, which is why the sentence is asserted BESIDE the index.
+  each of the five orderings alone reddens exactly 1 test of 7107; so does deleting a referring
+  sentence. Nothing else in the suite sees any of them, which is why the sentence is asserted BESIDE
+  the index.
+- ⚠ **Pinning that a sentence EXISTS is not pinning that it is TRUE, and a false one made
+  load-bearing is worse than an unpinned one** (advisor's catch). `four-in-a-row` says
+  `where-widening-stops` "left you at four slots" while that lesson's ask is for **three** — checked,
+  and its closing step does say "set the ISSUE control to 4 and watch the count refuse to move". Read
+  the predecessor before pinning a sentence about it.
 - **The pinned chain is broader than the decision row asked about**: `two-at-once` <
   `where-widening-stops` < `four-in-a-row` < `width-moved-the-work`, plus `one-branch-unit` <
   `width-moved-the-work`. Two of the four earned links reach back into the M8 four, so "the order of

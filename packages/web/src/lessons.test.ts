@@ -798,16 +798,18 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     );
   });
 
-  it('teaches the wide track in an order four of its own sentences depend on (M14 step 4)', () => {
+  it('teaches the wide track in the order its own cross-references require (M14 step 4)', () => {
     // The wide machine is the first track that GREW after its lessons had already cross-referenced
     // each other — M8 shipped four beats, M14 appended three delta lessons that talk about them and
     // about each other. So its within-track order stopped being an authoring choice and became a
     // claim, and this is the pin.
     //
-    // The discriminator is the cache track's, applied reference by reference rather than to the
-    // track as a whole: **a link earns a pin only if a sentence goes FALSE when the two lessons
-    // swap — not merely unexplained.** That is the judgement the docblock above records for
-    // `deep-drain`, and applying it here rejects three of the seven cross-references outright:
+    // The discriminator is the cache track's, applied mention by mention rather than to the track as
+    // a whole: **a link earns a pin only if a sentence goes FALSE when the two lessons swap — not
+    // merely unexplained.** That is the judgement the docblock above records for
+    // `deep-drain`. The seven lessons name each other eleven times; five of those mentions are
+    // pinned below (the rest restate a link already pinned), and applying the rule rejects three
+    // outright:
     //
     //   • `pair-that-cant` ← `where-widening-stops` (step 2, expert) and ← `four-in-a-row` (step 3,
     //     expert). Both read "Compare "The pair that can't", where the same event with the same
