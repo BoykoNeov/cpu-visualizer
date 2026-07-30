@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-28T07:20:23.326Z
+  modified: 2026-07-30T09:50:27.140Z
 ---
 
 The launch/attach mechanics for driving the real app, split out of [[browser-is-the-only-net]] (which
@@ -30,7 +30,13 @@ those files' absence; adapt them rather than rebuilding):
   profile" because a new profile's welcome tab wins `list.find(t => t.type === 'page')`. The welcome
   tab is real; reusing the profile was the wrong fix (it re-introduces stale-profile locks). Filter on
   the app instead — `list.find(t => t.type === 'page' && t.url.includes('localhost:<PORT>'))` — and
-  the welcome tab stops mattering.
+  the welcome tab stops mattering. **Put that profile under
+  `M:\claud_projects\temp\rig-chrome\<rig>-<pid>`, never `os.tmpdir()`** — it is the standing temp
+  rule, it makes the sweep predicate ("`--user-data-dir` under the temp root") unfalsifiable rather
+  than name-based, and it turns an invisible AppData leak into a visible one.
+  `mkdtempSync(join(tmpdir(), …))` leaked 2.6 GB of profiles across sessions before anyone looked
+  ([[browser-rig-chrome-cleanup]] — and **sweep at the START of a pass**, since the teardown that
+  leaked them was a `finally` that never ran).
 - **Poll for the SPECIFIC element, not `#root.innerHTML.length`.** Measured 2026-07-17: the length
   check goes green before the toolbar mounts, so the very next `querySelector('label')` returns
   undefined and the script dies with a `Cannot read properties of undefined` that reads like a product

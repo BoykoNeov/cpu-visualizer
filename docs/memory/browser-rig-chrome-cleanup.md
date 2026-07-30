@@ -1,11 +1,11 @@
 ---
 name: browser-rig-chrome-cleanup
-description: "Killing a CPU Visualizer browser rig safely: `taskkill //IM chrome.exe` closed the USER'S own Chrome twice, `chrome.kill()` does not kill the browser (21 then 66 leftovers survived and the next run inherited the previous page's state), so kill the tree by PID and sweep by --user-data-dir path, never by image name or port."
+description: "Killing a CPU Visualizer browser rig safely, and the sweep script that does it: `taskkill //IM chrome.exe` closed the USER'S own Chrome twice, `chrome.kill()` does not kill the browser (21 then 66 leftovers), and a teardown that lives only in a `finally` leaked 13 previews + 91 Chromes + 7GB of profiles. Match by COMMAND LINE, kill each PID, then RE-RUN THE SAME PREDICATE AND COUNT - a cleanup you did not re-count is a claim, not a result. Sweep at the START of a pass. Run M:\\claud_projects\\temp\\rig-sweep.ps1."
 metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-28T07:19:39.508Z
+  modified: 2026-07-30T09:49:23.162Z
 ---
 
 Teardown rules for the CDP browser rigs described in [[browser-is-the-only-net]] and
@@ -37,3 +37,59 @@ dev server you started — filter `node.exe` on a `CommandLine` containing both 
 Kill the preview server **by PID read from its command line**, never by port
 ([[never-kill-dev-servers-by-port]]), and pass `--port N --strictPort` so it cannot silently climb
 onto someone else's number.
+
+## The missing half: RE-RUN THE PREDICATE AND COUNT (2026-07-30)
+
+Everything above was right and still leaked **13 preview trees, 91 Chrome processes, 2.6 GB of
+AppData profiles and ~4.6 GB of profiles inside the temp tree** — found only because the user asked
+"you sure these are yours?". The rule this memory was missing is the verification, not the kill:
+
+**A CLEANUP YOU DID NOT RE-COUNT IS A CLAIM, NOT A RESULT.** The session that leaked all of the
+above reported "49 rig Chromes swept, 0 remained" — a number never measured. State the count only
+after re-running the **same predicate** that selected the kills. Four counts close it: rig chrome,
+preview processes, listening 4xxx ports, and profile dirs on disk. Print the user's total
+`chrome.exe` too and require it **> 0** — it is the guard that the sweep did not hit their browser.
+
+**Use `M:\claud_projects\temp\rig-sweep.ps1`** (self-tested by seeding a deliberate leak, then
+confirming 1→0 / 10→0 / ports 1→0 while the user's 40 Chromes survived; the `-DryRun` pass proves
+it finds them and changes nothing). Its own first self-test caught a bug worth naming: **the verify
+block re-ran a NARROWER predicate than the sweep** and printed `0` over a directory it never looked
+at. One predicate, one function, both callers.
+
+**Sweep at the START of a pass, not only at the end.** End-of-pass teardown is exactly what fails
+when the rig dies badly, which is the failure mode. A start-of-pass sweep is self-healing: today's
+13 orphans would have died at 11:03 instead of surviving four hours.
+
+**Put rig profiles under `M:\claud_projects\temp\rig-chrome\`, not `os.tmpdir()`.** This is the
+standing global temp rule, and it also makes the predicate **unfalsifiable rather than heuristic** —
+"any `chrome.exe` whose `--user-data-dir` is under the temp root" cannot match the user's real
+Chromes under any future naming — and it turns an invisible AppData leak into a visible one in the
+directory the user already inspects. `mkdtempSync(join(tmpdir(), ...))` is the line to change.
+
+**Why the leak happened, both causes Windows-specific:**
+
+- **A teardown that lives only in a `finally` does not run.** The rig had
+  `finally { chrome.kill(); preview.proc.kill(); }` and leaked anyway — the preview and its profile
+  share a creation timestamp to the second, thirteen times over, so the block never fired. It cannot
+  survive an external kill of the node script, and `attach()` can **throw after spawning Chrome but
+  before returning a handle**, at which point no `finally` anywhere can reach the process. Process
+  handlers (`exit`/`SIGINT`/`uncaughtException`) narrow this but do not close it. **The sweep script
+  is the fix; teardown is the optimization.**
+- **`child.kill()` does not kill a tree on Windows.** `spawn('npm', …, { shell: true })` yields a
+  chain `npm → cmd.exe → node vite.js`; the signal reaches one link and the rest hold the port.
+
+**Do NOT generalise this to "always `taskkill /T`."** A tree kill walks **live** parent links, so it
+is least reliable in exactly the orphan case being fixed — here the ancestry walk landed on
+**recycled PIDs**, which is itself the proof the real parents were gone. What worked: match every
+link of the chain **on its command line** (`run preview --workspace`, `cmd.exe … vite preview`,
+`vite.js preview`), kill each matched PID individually, re-count.
+
+**The preview predicate is the weaker one, knowingly.** A random 4300–4600 port with `--strictPort`
+is how every rig here launches and a hand-run preview is 4173 — a convention, not a guarantee. So
+the script **prints pid / port / age / served `<title>` before killing** and stays eyeballable;
+`<title>` is the identification rule from [[never-kill-dev-servers-by-port]]. Pass `-KeepPort N` to
+spare the pass in flight.
+
+⚠ **Keep `rig-sweep.ps1` pure ASCII.** Windows PowerShell 5.1 reads a BOM-less `.ps1` as ANSI, so an
+em-dash becomes `Missing closing '}'`. Same hazard as the `Set-Content` mojibake in
+[[m13-width-planned]].

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-07-28T07:21:48.520Z
+  modified: 2026-07-30T09:49:41.091Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
@@ -31,8 +31,16 @@ measured WRONG:**
   server, and the (sweepable) rig inventory under `M:/claud_projects/temp/`.
 - [[browser-rig-chrome-cleanup]] — tearing it down without damage. **Never** `taskkill //IM
 chrome.exe` (it closed the user's real Chrome twice); `chrome.kill()` does not kill the browser
-  (21, then 66, leftovers survived and the next run inherited the previous page's state); kill the
-  tree by PID and sweep by `--user-data-dir` path.
+  (21, then 66, leftovers survived and the next run inherited the previous page's state); match by
+  **command line**, kill each PID, then **re-run the same predicate and count** — a cleanup you did
+  not re-count is a claim, not a result.
+
+**START every browser pass by running `M:\claud_projects\temp\rig-sweep.ps1`** (and again at the
+end). Not a nicety: end-of-pass teardown is precisely what fails when a rig dies badly, and on
+2026-07-30 a `finally`-only teardown was found to have leaked 13 preview servers, 91 Chrome
+processes and ~7 GB of profiles across sessions. The script prints four counts and refuses to
+report clean without them.
+
 - [[browser-rig-vacuity-traps]] — how a green check measures nothing. Assert the negative state
   first, use the ARIA the component exposes, scope every read to its own `<section>`, read every
   number from a dump, and expect a rig that pinned a scope lever to expire. **In two M11 runs, every

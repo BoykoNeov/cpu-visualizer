@@ -55,7 +55,8 @@ as the cursor moved and every surface below them moved with it —
   `renderToStaticMarkup` with no jsdom, so **no test can see a click**; 9 of 10 view
   steps shipped a defect only the browser caught. **Hub** — read before any browser pass.
   - [CDP recipe](browser-rig-cdp-recipe.md) — launch & attach; target by URL, no fallback.
-  - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; kill the tree by PID.
+  - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; match by command line,
+    then **RE-COUNT**. Run `M:\claud_projects\temp\rig-sweep.ps1` at the START of every pass.
   - [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
   - [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
   - [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either:
