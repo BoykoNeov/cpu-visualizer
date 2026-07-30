@@ -790,12 +790,37 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // it ("the first pass fills the cache line by line, exactly as the last lesson showed") and adds
     // reuse; `cache-conflict` ASSUMES that reuse ("the reuse the last lesson made free") and takes it
     // away by shrinking the cache. Each lesson defines what the next spends.
-    expect(LESSON_ORDER.indexOf('cache-spatial')).toBeLessThan(
-      LESSON_ORDER.indexOf('cache-temporal'),
-    );
-    expect(LESSON_ORDER.indexOf('cache-temporal')).toBeLessThan(
-      LESSON_ORDER.indexOf('cache-conflict'),
-    );
+    //
+    // Both halves below were missing until the M14 review (finding 5), and the wide-track pin further
+    // down had already named the first of them. `indexOf` returns −1 for an id that no longer exists,
+    // and −1 is less than everything: renaming `cache-spatial` left the first comparison green while
+    // its sentences pointed at nothing. And the ORDER was asserted without the PROSE that forces it,
+    // which is the shape the deeper-machine pin above and the wide-track pin below both refuse —
+    // deleting "exactly as the last lesson showed" left this rule standing on nothing.
+    const at = (id: string): number => {
+      const i = LESSON_ORDER.indexOf(id);
+      expect(i, `${id} is in the lesson order`).toBeGreaterThanOrEqual(0);
+      return i;
+    };
+    const says = (id: string, step: number, quote: string): void => {
+      expect(
+        resolveNarration(byId(id).steps[step]!.narration, 'detailed'),
+        `${id} step ${step} is what forces its position`,
+      ).toContain(quote);
+    };
+    expect(at('cache-spatial')).toBeLessThan(at('cache-temporal'));
+    expect(at('cache-temporal')).toBeLessThan(at('cache-conflict'));
+    // The sentences that actually force the order, asserted where they live — and finding them is
+    // its own small lesson in why this half was worth adding. The comment above quotes
+    // `cache-conflict` as spending "the reuse the last lesson made free"; **that sentence is not in
+    // the lesson.** It reads well, it states the real pedagogical dependency, and it was written into
+    // a justification rather than read out of the narration — which is the M13 review's "do not trust
+    // a docblock's stated reason" appearing inside a comment about prose. What IS there is a program
+    // named as already-met and a machine compared against by memory, both past tense, both false to a
+    // reader who has not met `cache-temporal`.
+    says('cache-temporal', 0, 'exactly as the last lesson showed');
+    says('cache-conflict', 0, "This is the last lesson's program, unchanged");
+    says('cache-conflict', 2, 'which hit on the larger cache');
   });
 
   it('teaches the wide track in the order its own cross-references require (M14 step 4)', () => {
