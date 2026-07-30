@@ -12,7 +12,10 @@ DELTA lesson track — is IN PROGRESS**: steps 0–4 are done, so all three less
 (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work` — the wide track now has SEVEN
 lessons and the repo 7107 tests) and the track's within-track ORDER is pinned on the four
 cross-references that lie without it; **only step 5 (the browser pass) remains**
-([M14](m14-width-lessons-step0.md)). No other milestone is in progress.
+([M14](m14-width-lessons-step0.md)). No other milestone is in progress. Outside the milestones, the
+shell's **step-JITTER class is closed** (2026-07-30, repo **7125 tests**): five panels changed height
+as the cursor moved and every surface below them moved with it —
+[panel jitter](panel-jitter-and-height-reserves.md).
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +
   package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
@@ -53,6 +56,9 @@ cross-references that lie without it; **only step 5 (the browser pass) remains**
   - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; kill the tree by PID.
   - [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
   - [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
+  - [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either:
+    five panels resized per step, the biggest because one VANISHED at cursor −1. The reserve idiom,
+    and the fix that passed its own guard while the browser measured no change at all.
 - [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — several vite
   projects climb past each other on 5173+; **a port never tells you whose server it is**
   — identify by served `<title>`. Applies to CDP debug ports too.
