@@ -192,45 +192,51 @@ swap failed exactly one test, the literal `toEqual`).
       nodes — i.e. the render, not the timer, is what bounds the top rung. The rung stays: it is still
       the fastest position and it is honestly the fastest the app can SHOW a cycle. That number is
       the plan's "record the observed effective speed" resolved by measurement.
-
-      **The four rig lies, each a fresh instance of "a green check measures nothing":**
-      1. The forwarding selector searched `textContent` for /forward/ — but those buttons read `on`
-         and `off`; the word is on a sibling `<span>` and in the `title`. It found nothing and
-         reported **3 further failures that were really this one**, in the section testing the
-         re-record trap.
-      2. §6 then reported two more failures that were §5's leak: play was still running, so the
-         section's opening "start play" click **paused** it instead. **A toggle's click is not
-         idempotent**, so "click to stop" is only true if you know it was running — fixed with an
-         `ensureStopped()` that asserts what it found.
-      3. The same non-idempotence bit again in §8: the closing click meant to pause **re-started**
-         play, because at `max` the run finishes inside the 2-second measurement window and had
-         already auto-stopped. §9 then measured the wrap on the row reading
-         `cycle 55 / 55 — halted | ecall` — the LIGHTEST row in the app — under a comment claiming
-         the heaviest, and every width check passed. Caught by PRINTING the row rather than trusting
-         the greens; the crowding is now its own control cell.
-      4. §7 leaves focus on the speed `<select>` **on purpose**, so §9's `Home` and eight arrows were
-         correctly GUARDED and moved the clock zero times. The guard working is why the rig has to
-         blur before it can drive keys again.
+      **The four rig lies, each a fresh instance of "a green check measures nothing".**
+      **(a)** The forwarding selector searched `textContent` for /forward/ — but those buttons read
+      `on` and `off`; the word is on a sibling `<span>` and in the `title`. It found nothing and
+      reported **3 further failures that were really this one**, in the section testing the
+      re-record trap.
+      **(b)** §6 then reported two more failures that were §5's leak: play was still running, so the
+      section's opening "start play" click **paused** it instead. **A toggle's click is a FLIP**, so
+      "click to start" is only right if you know it was stopped — fixed with an `ensureStopped()`
+      that reads the face first and logs when it acted. Probed for all three states
+      (`probe-toggle.mjs`): mid-run playing → stops; mid-run stopped → starts; **at the halted end
+      the button is `disabled`, so a click does nothing at all**.
+      **(c)** §9 measured the wrap on the row reading `cycle 55 / 55 — halted | ecall` — the
+      LIGHTEST row in the app — under a comment claiming the heaviest, and every width check passed.
+      Caught by PRINTING the row rather than trusting the greens; the crowding is now its own
+      control cell. ⚠ **The first explanation written for this was WRONG, and that is worth
+      recording as its own finding:** it blamed §8's closing click for re-starting play.
+      `probe-toggle.mjs` falsifies it — at the halted end the toggle is `disabled=true` and a
+      `.click()` there does **nothing** (33/33 before, after, and 1.2s later). The real cause is (d)
+      below. A plausible mechanism nobody probed is the same defect class as a green check that
+      measures nothing — and it had already been written into the memory file before being caught.
+      **(d)** §7 leaves focus on the speed `<select>` **on purpose**, so §9's `Home` and eight arrows
+      were correctly GUARDED and moved the clock zero times. The guard working is why the rig has to
+      blur before it can drive keys again.
       Also: the probe script's regex was mangled by a shell heredoc (`/cycle (\d+)/` →
       `/cycle (d+)/`), which surfaced only as "page threw" — index arithmetic needs no escapes and
       cannot be mangled that way.
 
-      **THE HEADLINE MEASUREMENT — broken 4 ways, headless saw NOTHING at all.**
-      | mutation | headless | browser |
-      | --- | --- | --- |
-      | the timer never arms (the feature does not exist) | **47 / 47 green** | **5 failures** |
-      | the auto-stop removed (ticks forever at the end) | **47 / 47 green** | 4 failures |
-      | stop-on-re-record removed | **47 / 47 green** | 3 failures |
-      | the interval effect depends on the cursor | **47 / 47 green** | **0 failures** |
-      The first row is this repo's standing lesson restated on a second feature (keyboard's was 68 of
-      68). The LAST row is the new one, and it is the more interesting: **the one failure mode the
-      design was built around is invisible to every net available here.** Probed directly rather than
-      assumed — baseline vs broken, same heavy config: rung 20 read **19.93/s vs 17.92/s** (a ~10%
-      signal, one sample) and `max` read **18.78/s vs 19.14/s**, with the signal INVERTED. Re-arming
-      per tick makes the period `interval + render`, which at slow rungs is lost in a 1000ms wait and
-      at fast rungs is lost in the render cost that already dominates. So there is no check to write:
-      the cursor lives in a ref **by construction**, and that is the only thing standing between this
-      code and a silently irregular clock. A comment on `cursorRef` says so.
+## The headline measurement — broken 4 ways, headless saw NOTHING at all
+
+| mutation                                          | headless          | browser        |
+| ------------------------------------------------- | ----------------- | -------------- |
+| the timer never arms (the feature does not exist) | **47 / 47 green** | **5 failures** |
+| the auto-stop removed (ticks forever at the end)  | **47 / 47 green** | 4 failures     |
+| stop-on-re-record removed                         | **47 / 47 green** | 3 failures     |
+| the interval effect depends on the cursor         | **47 / 47 green** | **0 failures** |
+
+The first row is this repo's standing lesson restated on a second feature (keyboard's was 68 of 68).
+The LAST row is the new one, and it is the more interesting: **the one failure mode the design was
+built around is invisible to every net available here.** Probed directly rather than assumed —
+baseline vs broken, same heavy config: rung 20 read **19.93/s vs 17.92/s** (a ~10% signal, one
+sample) and `max` read **18.78/s vs 19.14/s**, with the signal INVERTED. Re-arming per tick makes
+the period `interval + render`, which at slow rungs is lost in a 1000ms wait and at fast rungs is
+lost in the render cost that already dominates. So there is no check to write: the cursor lives in a
+ref **by construction**, and that is the only thing standing between this code and a silently
+irregular clock. A comment on `cursorRef` says so.
 
 ## Acceptance criteria
 

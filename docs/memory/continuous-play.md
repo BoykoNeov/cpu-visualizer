@@ -11,8 +11,8 @@ metadata:
 **Shipped 2026-07-30**, plan `docs/plans/continuous-play.md` (COMPLETE). One `▶ play` / `⏸ pause`
 toggle plus a speed picker at **1 / 4 / 10 / 20 / 60 cyc/s**, opening at 4. Repo 7200 → **7248
 tests**; 40 browser checks, 0 failures. The second post-M14 UX gap built, after
-[[keyboard-clock-control]] — which still indexes the **two now-open gaps** (URL permalinks, session
-persistence).
+[[keyboard-clock-control]], which holds the survey of all four gaps. **Still open: URL permalinks
+(the next best pick) and session persistence.**
 
 ## The reframe that sized the whole feature
 
@@ -48,27 +48,41 @@ check to write: the cursor lives in a **ref by construction**, and that is the o
 this code and a silently irregular clock. When a defect is genuinely unobservable, say so and make
 the code shape carry it — do not ship a test that only looks like a net.
 
-## A toggle's click is NOT idempotent — it lied to three rig sections
+## A rig inherits state from the section before it — two ways, both measured
 
-The single most productive bug of the pass. "Click the play button to stop it" is only true **if you
-know it was running**; on an already-stopped toggle the same click STARTS it.
+Four of the five runs failed on the rig rather than the app, and the failures cluster into two
+mechanisms. Both are about a section trusting a machine the previous section left behind.
 
-- §5's real bug (a selector that found nothing) left play running, so §6's opening click **paused**
-  instead of starting and reported 2 failures that were really §5's.
-- §8's closing click meant to pause **re-started** play, because at `max` the run finishes inside the
-  2-second measurement window and had already auto-stopped. §9 then measured the sticky-bar wrap on
-  the row reading `cycle 55 / 55 — halted | ecall` — **the lightest row in the app, under a comment
-  claiming the heaviest** — and every width check passed. Caught only by PRINTING the row.
-- Fix: an `ensureStopped(where)` that reads the face first and logs when it acted, plus **the
-  crowding asserted as its own control cell** before any width is measured.
+**1. A toggle's click is a FLIP, so "click to stop" is only right if you know the state.** Probed
+directly rather than reasoned about (`probe-toggle.mjs`):
 
-Two more rig traps from the same pass:
+| where             | face      | `disabled` | a `.click()` does |
+| ----------------- | --------- | ---------- | ----------------- |
+| mid-run, playing  | `⏸ pause` | false      | stops it          |
+| mid-run, stopped  | `▶ play`  | false      | **starts it**     |
+| at the halted end | `▶ play`  | **true**   | **nothing**       |
 
-- **§7 leaves focus on the speed `<select>` on purpose**, so the next section's `Home` + arrows were
-  correctly GUARDED and moved the clock zero times. The guard working is why a rig must `blur()`
-  before it can drive keys again.
-- A **shell heredoc ate a backslash level** in a probe script: `/cycle (\d+)/` became `/cycle (d+)/`,
-  surfacing only as "page threw". Index arithmetic needs no escapes and cannot be mangled that way.
+So the rig's blind `clickPlay()` could either invert the state or silently do nothing, and neither
+reports anything. Observed: §5's real bug (a selector that matched no button) left play running, so
+§6's opening click **paused** instead of starting — 2 of its reported failures were really §5's.
+Fixed with an `ensureStopped(where)` that reads the face first and logs when it acted.
+
+⚠ Note the third row, because it corrects a plausible story this memory first recorded: at the
+halted end the toggle is **disabled**, so a stray click there cannot restart play. Any explanation
+that needs it to is wrong — which is how the real cause of §9 below got found.
+
+**2. Focus survives a section, and the app's own guard then eats every keystroke.** §7 leaves focus
+on the speed `<select>` **on purpose** (that is its subject), so §9's `Home` and eight arrows were
+correctly GUARDED and moved the clock **zero times** — leaving whatever cursor §8 had ended on. §9
+then measured the sticky-bar wrap on the row reading `cycle 55 / 55 — halted | ecall`, **the
+lightest row in the app, under a comment claiming the heaviest**, and every width check passed.
+Caught only by PRINTING the row; the crowding is now asserted as its own **control cell** before any
+width is measured, and the rig `blur()`s before driving keys. **The guard working is exactly what
+made the rig wrong** — a passing app feature is a rig precondition.
+
+A third, smaller: a **shell heredoc ate a backslash level** in a probe script, turning
+`/cycle (\d+)/` into `/cycle (d+)/` and surfacing only as "page threw". Index arithmetic needs no
+escapes and cannot be mangled that way.
 
 ## Chrome throttles setInterval — prove it isn't biting BEFORE trusting any period
 

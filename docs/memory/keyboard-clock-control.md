@@ -1,6 +1,6 @@
 ---
 name: keyboard-clock-control
-description: "The CPU Visualizer's keyboard clock control (arrows/Home/End, shipped 2026-07-30) and the four UX gaps found by surveying the shell after M14 — keyboard, URL permalinks, continuous play, session persistence, three still open. Its headline measurement: removing the addEventListener line leaves ALL 68 of the feature's own headless tests green while the browser pass fails 6. Also: a synthetic KeyboardEvent makes an input-guard check vacuous, and a disabled button cannot take focus (a check passed while reporting focus=BODY)."
+description: "The CPU Visualizer's keyboard clock control (arrows/Home/End, shipped 2026-07-30) and the four UX gaps found by surveying the shell after M14 — keyboard and continuous play are DONE, URL permalinks and session persistence still open. Its headline measurement: removing the addEventListener line leaves ALL 68 of the feature's own headless tests green while the browser pass fails 6. Also: a synthetic KeyboardEvent makes an input-guard check vacuous, and a disabled button cannot take focus (a check passed while reporting focus=BODY)."
 metadata:
   node_type: memory
   type: project
@@ -12,7 +12,7 @@ metadata:
 resets, `End` runs to completion. Repo 7132 → 7200 tests; 38 browser checks. Not a milestone — a
 feature, and the first work here after M1–M14 all closed.
 
-## The four UX gaps in the shell, measured not guessed (2026-07-30)
+## The four UX gaps in the shell, measured not guessed (2026-07-30) — TWO now closed
 
 Confirmed absent by grep over `packages/web/src` — and the naive greps had holes, so use these:
 `keydown|onkeydown` (only `Reorderable.tsx`, drag a11y); `location\.(hash|search)|replaceState|
@@ -20,16 +20,18 @@ pushState|URLSearchParams` (**zero hits**); `setTimeout|setInterval|requestAnima
 `rAF`, for a caret); `localStorage` (theme only).
 
 - **Keyboard control** — DONE (this memory).
-- **URL permalinks** — open, and the next best pick.
-- **Continuous play at a speed** — open. `run ⏭` jumps straight to the end; timer-driven, so
-  browser-net only, and it interacts with the phase stepper (does play walk phases or cycles?).
-- **Session persistence** — open, and nearly free once permalinks exist.
+- **URL permalinks** — **STILL OPEN**, and the next best pick.
+- **Continuous play at a speed** — **DONE 2026-07-30** ([[continuous-play]]). The prediction that it
+  is browser-net-only held exactly: 47 headless tests stayed green under every mutation, including
+  the timer never arming. The phase question resolved to CYCLES on a structural reason — the phase
+  cursor is view-local to `DatapathView`.
+- **Session persistence** — **STILL OPEN**, and nearly free once permalinks exist.
 
 Two things NOT gaps, checked before proposing them: the §11 sandbox-fork criterion is shipped and
 tested end-to-end (`sandbox.test.ts`, `forkToSandbox`), and the within-cycle phase stepper exists
 (`phaseVisibleAt`, view-local `useState<Phase>` in `DatapathView`).
 
-**The sorting constraint for the remaining three:** does the headless suite net it, or only a
+**The sorting constraint for the remaining two:** does the headless suite net it, or only a
 browser pass? Keyboard and play are ~100% interaction surface; permalinks and persistence are pure
 encode/decode — this repo's sweet spot — plus one thin wiring check. For permalinks the real work
 is a decision, not code: a link carrying `forwarding=false&model=out-of-order` must be honored as

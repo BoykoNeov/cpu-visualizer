@@ -126,6 +126,56 @@ describe('the speed control offers every position', () => {
     }
   });
 
+  /**
+   * EVERY max-width block in the sheet, as `{ width, rules }` with comments stripped — not
+   * `regex.exec(css)`, which returns only the FIRST.
+   *
+   * That distinction is a defect this file shipped: both CSS assertions below used `exec`, so they
+   * only ever saw the 1199 block, and the entire `@media (max-width: 899px)` block that hides the
+   * play button's word could be **deleted with all 7248 tests green** — while the narrow-width
+   * crossover silently moved 880 → 900px. A measured threshold with no assertion is this repo's
+   * "a pinned decision with no net is a comment", one layer down in the stylesheet.
+   */
+  const mediaBlocks = (): { width: number; rules: string }[] => {
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    return [...css.matchAll(/@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/g)].map((m) => ({
+      width: Number(m[1]),
+      // Comments stripped: a check that reads prose as a rule reports the documentation as the
+      // defect, and would equally miss a real rule buried in `/* … */`.
+      rules: m[2]!.replace(/\/\*[\s\S]*?\*\//g, ''),
+    }));
+  };
+
+  /** The one block that names `selector`, or undefined — so a test names the rule it means rather
+   *  than an index into the file, which any later block would shift. */
+  const blockNaming = (selector: string): { width: number; rules: string } | undefined =>
+    mediaBlocks().find((b) => b.rules.includes(selector));
+
+  it('hides the play button’s WORD below the width that was measured, keeping its glyph', () => {
+    // The second measured threshold, and it had no net at all until this test existed. 899 is where
+    // the 1500→620px sweep put the crossover once both captions were already gone: the row holds one
+    // line to 880px with play against 760px without it.
+    expect(render(false, true)).toContain('class="play-word"');
+    const block = blockNaming('.play-word');
+    expect(block, 'styles.css should carry a block hiding .play-word').toBeDefined();
+    expect(block!.width).toBe(899);
+    expect(block!.rules).toContain('display: none');
+    // And it is a SECOND block, not the legend's — the two thresholds are different measurements and
+    // folding them together would move one of them by editing the other.
+    expect(block!.width).not.toBe(blockNaming('.transport-keys')!.width);
+  });
+
+  it('the glyph is NOT inside the span the stylesheet hides', () => {
+    // Otherwise the narrow-width fix deletes the whole face and the toggle renders empty — the
+    // failure that turns "tidy the label" into "remove the control", which no width sweep would
+    // report as anything but a narrower row.
+    const inside = /<span class="play-word">([^<]*)<\/span>/.exec(render(false, true));
+    expect(inside, 'the word should render in its own span').not.toBeNull();
+    expect(inside![1]).toBe(' play');
+    expect(inside![1]).not.toContain('▶');
+    expect(/<span class="play-word">([^<]*)<\/span>/.exec(render(true, true))![1]).toBe(' pause');
+  });
+
   it('carries the class the stylesheet hides its caption by — and the sheet names it', () => {
     // The `transport-keys` treatment, applied because the same trap applies: neither half of a
     // media-query fix is visible to `renderToStaticMarkup`, which renders no stylesheet. A class on
@@ -136,12 +186,13 @@ describe('the speed control offers every position', () => {
     // `display: none` at narrow widths the way the legend does — the reader would lose the ability
     // to choose a speed, not just the label for it.
     expect(render(false, true)).toContain('class="play-speed-label"');
-    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
-    const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
-    expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
-    expect(Number(block![1])).toBe(1199); // the SAME threshold as the legend, not a second staircase
-    expect(block![2]).toContain('.play-speed-label');
-    expect(block![2]).toContain('display: none');
+    const block = blockNaming('.play-speed-label');
+    expect(block, 'styles.css should carry a block hiding .play-speed-label').toBeDefined();
+    expect(block!.width).toBe(1199);
+    // The SAME block as the legend's, asserted rather than described: two nearby captions vanishing
+    // at two different widths would make the bar's narrow-width behaviour a staircase.
+    expect(block!.width).toBe(blockNaming('.transport-keys')!.width);
+    expect(block!.rules).toContain('display: none');
   });
 
   it('keeps the control itself reachable at every width — only the caption is hidden', () => {
@@ -153,13 +204,18 @@ describe('the speed control offers every position', () => {
     // first run against prose in the block explaining why a `<select>` is exactly what must not be
     // hidden. A check that reads a comment as if it were a rule reports the documentation as the
     // defect — and would equally miss a real rule hidden inside `/* … */`.
-    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
-    const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/
-      .exec(css)![2]!
-      .replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(block).toContain('.play-speed-label'); // the strip did not eat the rules themselves
-    expect(block).not.toContain('select');
-    expect(block).not.toContain('.btn');
+    // EVERY block, not just the first: a rule taking the control away could be added in any of
+    // them, and `exec` would only ever have looked at the 1199 one.
+    const blocks = mediaBlocks();
+    expect(blocks.length).toBeGreaterThanOrEqual(2); // else the loop below proves nothing
+    for (const b of blocks) {
+      expect(b.rules, `@media (max-width: ${b.width}px) must not hide a control`).not.toContain(
+        'select',
+      );
+      expect(b.rules).not.toContain('.btn');
+    }
+    // ...and the comment strip did not eat the rules themselves, which would make the loop vacuous.
+    expect(blocks.some((b) => b.rules.includes('display: none'))).toBe(true);
   });
 
   it('names the speeds in the reader’s own unit', () => {
