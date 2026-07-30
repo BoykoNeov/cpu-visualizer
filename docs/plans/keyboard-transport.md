@@ -1,13 +1,15 @@
 # Keyboard clock control — driving the transport from the keys
 
-**Status: steps 0 and 1 COMPLETE, step 2 (browser pass) PENDING, 2026-07-30. Scope is a feature,
+**Status: ✅ COMPLETE, 2026-07-30. Scope is a feature,
 not a milestone: no engine, trace, curriculum or content change, and no new trace field (INV-3
 untouched — the keyboard adds no action, only a new trigger for the four `useSimulator` callbacks
 the buttons already call). PROVEN headlessly: the keymap and guard (48 tests, each guard sweep
 paired with its control cell, all 8 mutations of the module caught) and the discoverability half
 (13 render assertions on `TransportButtons`). Repo 7132 → 7200 tests; five gates green.
-NOT yet proven, and unprovable here: that the listener is attached at all, that `preventDefault`
-fires, and that a real event's `target` is the focused element — step 2 is the only net for those.
+BROWSER-VERIFIED on the shipped bundle: 38 checks, 0 failures, and the rig was itself validated
+against a broken app twice (below). The headline measurement of the whole feature: **with the
+`addEventListener` line removed — the feature not existing at all — all 68 new headless tests still
+pass, and the browser pass fails 6.**
 The module shipped as `keyboard.ts`, not the `keys.ts` this plan first named (a CPU simulator has
 cache keys; the file is about a keyboard).**
 
@@ -103,7 +105,7 @@ guard behaves the same on real events as on the synthetic ones.
       13 assertions, incl. the disabled-parity table at both ends of the run and at the pre-run
       cursor where both ends are true at once.
 
-- [ ] **2. Browser pass — the only net for the dispatch.** Per
+- [x] ✅ **2. Browser pass — the only net for the dispatch.** Per
       `browser-rig-cdp-recipe` / `browser-rig-chrome-cleanup`: run `rig-sweep.ps1` first, target by
       served `<title>`, never by port. Drive the **shipped bundle**. Checks: each key moves the
       cycle readout; `→` at the halted end and `←` at start are no-ops (parity with the disabled
@@ -112,6 +114,27 @@ guard behaves the same on real events as on the synthetic ones.
       exactly one**, not two; a focused `<select>` still changes model on arrows.
       Acceptance: every check named above run and recorded, with its observed value — a check
       whose evidence is "looked right" is not a check.
+      **Landed: 38 checks, 0 failures** (`M:/claud_projects/temp/kbd-browser/eyeball.mjs`). Keys are
+      dispatched with **`Input.dispatchKeyEvent`, not a synthetic `KeyboardEvent`** — that is what
+      makes the slider check mean anything, since a synthetic event runs the handler and nothing
+      else, so "advanced by one" would have been true whether or not the native scrub still
+      happened. Observed: slider focused, one `→`, **1 → 2, delta 1**. The editor check is paired
+      with its own control (`selectionStart` 0 → 1, so the keystroke provably ARRIVED before the
+      clock provably did not move), and Space measures both halves of its pinned decision — clock
+      unchanged, `scrollTop` **100 → 630**.
+      **Two rig findings, both the rig, per the house record:** 1. `arrows still work while a transport button holds focus` passed while reporting
+      `focus=BODY`. The run was at its END, where `step ▶` is **disabled — and a disabled button
+      cannot take focus**, so the check silently re-proved §1. Fixed by resetting first and
+      asserting `activeElement` is a BUTTON as its own control cell. 2. The model-picker check first asserted only "not one step on". Sharpened to `=== -1`: a
+      model change re-records to pre-run, so **-1 is the guard holding and 0 is a leaked step** —
+      two distinguishable values, which is the difference between an assertion and a shrug.
+      **The rig was then broken twice to see if it could fail.** BREAK 1, `addEventListener`
+      removed: headless **68/68 green**, browser **6 failures**. BREAK 2, `preventDefault` removed:
+      **exactly one failure**, the check written for it (`scrollTop=630` — End scrolled the page).
+      Tree restored byte-identical to HEAD and re-run: 38/38.
+      ⚠ Confirming [[browser-rig-chrome-cleanup]] again: the rig's `finally { chrome.kill();
+    preview.kill(); }` left **5 preview servers and 35 Chromes** alive across five runs.
+      `rig-sweep.ps1` cleared them, re-counted 0/0/0/0, user's 38 Chromes untouched.
 
 ## Acceptance criteria
 
