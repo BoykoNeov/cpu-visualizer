@@ -312,8 +312,8 @@ is exactly why it is written down here instead of discovered in step 3.
       exclusive-step search both siblings hang their ask on (`exclusive === [2]`) returns `[]` here.
       Good for the reader — `runner.ts` can never silently skip a step in this lesson — and bad for
       the net: **strip the ask and nothing anchoring, ordering or sweeping notices.** It is pinned
-      positionally, by literal step index, at all three tiers, and the equality `liveAt(2) ===
-  liveAt(3) === liveAt(4)` is asserted so nobody later "strengthens" the lesson by inventing an
+      positionally, by literal step index, at all three tiers, and the equality of the live-step sets
+      at widths 2, 3 and 4 is asserted so nobody later "strengthens" the lesson by inventing an
       exclusive step. Break-harnessed: deleting the ask from `expert` alone reddens exactly one test.
       **The ask is TWO-STAGE (3, then 4), and the decision table's stated REASON was falsified.**
       The row said w4 "because 7 → 7 → 6, so w3 is not a discriminator for it either." Measured, w3
