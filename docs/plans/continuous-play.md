@@ -95,7 +95,7 @@ swap failed exactly one test, the literal `toEqual`).
       cannot see it), and `max` respelled as a rate **2**. Harness:
       `M:\claud_projects\temp\play-break\break.py`.
 
-- [ ] **1. `usePlayback` — the timer, owned in one place.** A hook in `packages/web/src` taking the
+- [x] ✅ **1. `usePlayback` — the timer, owned in one place.** A hook in `packages/web/src` taking the
       transport slice it needs (`cursor`, `lastCycle`, `scrubTo`, and the recording identity), and
       returning `{ playing, speed, toggle, setSpeed }`. Three things it must get right, none of them
       discoverable later.
@@ -115,8 +115,15 @@ swap failed exactly one test, the literal `toEqual`).
       button never returns to `▶`.
       Acceptance: suites/typecheck/lint green. The hook is jsdom-less like everything else here, so
       its net is thin **by admission, not by accident** — which is what step 3 is for.
+      **Landed** as `usePlayback.ts`, all three musts as planned. Two things the build added: the
+      run's LENGTH is read through a ref as well as the cursor (`lastCycleRef`) — it changes on every
+      load, so leaving it in the closure reintroduces (a) through the other argument — and `scrubTo`
+      is too, not because it moves today (it is a `useCallback` on `rerender` alone) but because a
+      future edit making it cursor-dependent would convert this into the re-arming bug **silently and
+      at a distance**. `toggle` refuses to start from a position play cannot move from, using
+      `canPlay` on the same refs, so the button and the tick cannot disagree about where the run ends.
 
-- [ ] **2. The control, and the discoverability half.** One button in `TRANSPORT_BUTTONS`'s row that
+- [x] ✅ **2. The control, and the discoverability half.** One button in `TRANSPORT_BUTTONS`'s row that
       toggles face (`▶ play` / `⏸ pause`), plus a speed control beside it. One button, not two:
       `TRANSPORT_BUTTONS`'s `deadAt: 'start' | 'end'` cannot express "pause is dead when not
       playing", and a toggle keeps that binary intact.
@@ -126,6 +133,23 @@ swap failed exactly one test, the literal `toEqual`).
       ⚠ **This is the third thing added to the `flexWrap` row inside `position: sticky`** that a
       251px legend already wrapped at 900px last week. The wrap check is an acceptance criterion of
       this step, not a browser-pass discovery — see below.
+      **Landed: 16 render assertions, five gates green, repo 7200 → 7246 tests.** `PlayControl` is a
+      separate exported component rather than a fifth `TRANSPORT_BUTTONS` entry, and it renders in a
+      new `children` SLOT between the buttons and the legend — the legend is a caption for the KEYED
+      verbs and play has no binding, so putting it after would list play among the things the caption
+      names. Every existing `TransportButtons` test renders with no slot and is untouched.
+      **One assertion was VACUOUS on first write and is the finding of this step.** "lights the
+      selected position" was `toContain('value="60"')` — which passes at **every** speed, because
+      `renderToStaticMarkup` puts the selection on the `<option>` as `selected=""` and never on the
+      `<select>` as a `value` attribute, while `value="60"` is on that option always. Caught by
+      dumping the actual markup rather than trusting the green. It is an extractor now, asking which
+      option carries `selected`, plus a sweep asserting exactly one is lit at every position.
+      **Broken 6 ways, 6 caught**: the select stuck on one value **2**, `disabled` ignoring `playing`
+      **1** (the case that strands a running clock with no way to pause it), `disabled` dropped **1**,
+      the two faces swapped **3**, the slot moved after the legend **1**, and the title no longer
+      naming `run ⏭` **1**. Harness: `M:\claud_projects\temp\play-break\break2.py`. ⚠ Its console
+      printing crashed on `▶` under cp1252 — the `finally` had already restored the tree, confirmed
+      by `git status`, but encode findings ASCII-safe when re-running it.
 
 - [ ] **3. Browser pass — the only net for the whole feature.** Per `browser-rig-cdp-recipe` /
       `browser-rig-chrome-cleanup`: run `M:\claud_projects\temp\rig-sweep.ps1` FIRST, target by
