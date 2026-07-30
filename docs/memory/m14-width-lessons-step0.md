@@ -4,7 +4,7 @@ description: "M14 (the width DELTA lesson track — new lessons in the existing 
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T02:02:51.370Z
+  modified: 2026-07-30T02:03:56.462Z
   originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
@@ -70,8 +70,12 @@ That is [[m11-m12-review-resolved]]'s finding 2 one axis over, and it is **struc
 - **`slow-op-loop` has genuinely w4-EXCLUSIVE events** — `forward{from=MEM/WB,to=EX.rs1,value=0,
 instr=i5}` and `reg-read{reg=6,value=0,instr=i6}` both go 0 → 0 → 1. It is the only candidate with
   an anchorable w4-only beat, which (with step 3 calling it "the width axis's honest lesson") makes
-  it the flagship: four independent `li`s form one group of four ONCE in six iterations, the loop
-  body is byte-identical at w3/w4, so the gain is **1 cycle, not 6**.
+  it the flagship: four independent `li`s form one group of four ONCE in six iterations, so the gain
+  is **1 cycle, not 6**. ⚠ This bullet originally added "the loop body is byte-identical at w3/w4" —
+  **step 2 measured that FALSE** as an event claim (a wider machine fetches wider, so the fetch
+  stream differs every cycle). What is identical is the loop's GROUP SHAPE. See step 2 below.
+  ⚠ Step 2 also found the `reg-read{reg=6,value=0}` named here is a **decoy as an anchor** — alive in
+  45 of 48 config positions, on a different instruction.
 - **`sum-loop` gains 11 `intra-pair-raw` stalls at w3** (0 → 1 → 1 each, so the delta is w2→**w3**,
   not w2→w4). ⚠ **A refusal count is NOT a penalty** — its `groupHist(w4)` is `{"0":22,"2":11,"3":10}`
   with no 1s and no 4s, so those refusals CAP groups at 2–3 rather than splitting a pair at a cycle
