@@ -28,10 +28,12 @@ import { MicroTablePanel, hasMicroTables } from './MicroTablePanel';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { PairingReadout } from './PairingReadoutView';
+import { PLAY_SPEEDS, SPEED_LABELS, type PlaySpeed } from './playback';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
 import { predictsTaken, type BranchPrediction } from './session';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
+import { usePlayback, type Playback } from './usePlayback';
 import { useSimulator } from './useSimulator';
 
 /** Sentinel `<select>` value for the sandbox state — no corpus program is selected. */
@@ -162,6 +164,13 @@ export function App(): React.JSX.Element {
 
   const atStart = sim.cursor < 0;
   const lastCycle = sim.recordedCycles - 1;
+
+  // Continuous play (`docs/plans/continuous-play.md`). The timer walks the CURSOR over a recording
+  // that is already complete — `loadInto` runs the program to the end before anything can play — so
+  // the engine never sees a wall-clock and INV-1 is untouched. `sim.recorded` is passed for exactly
+  // one job: its identity changes on every fresh load, which is how play stops when a knob flip
+  // re-records the program underneath it (the same signal `followed` is cleared by, above).
+  const play = usePlayback(sim.cursor, lastCycle, sim.scrubTo, sim.recorded);
 
   // The lesson play-through view-model (INV-6): which anchored step is active at the cursor and
   // what narration to show at the current depth tier. Re-resolves on scrub or tier change (the
@@ -385,6 +394,7 @@ export function App(): React.JSX.Element {
         <>
           <Transport
             sim={sim}
+            play={play}
             atStart={atStart}
             lastCycle={lastCycle}
             inFlight={inFlight}
@@ -1573,8 +1583,16 @@ export function TransportButtons(props: {
   onAction: (action: TransportAction) => void;
   atStart: boolean;
   atEnd: boolean;
+  /**
+   * Controls that belong with the clock buttons but carry no key binding — today
+   * {@link PlayControl}. A slot rather than a fifth entry in {@link TRANSPORT_BUTTONS} because the
+   * legend BELOW is a caption for the keyed verbs: an unkeyed control rendered after it would read
+   * as one of the things the legend is naming, and a keyed one placed after the caption would look
+   * detached from it. So the order is buttons → unkeyed controls → the caption for the buttons.
+   */
+  children?: React.ReactNode;
 }): React.JSX.Element {
-  const { onAction, atStart, atEnd } = props;
+  const { onAction, atStart, atEnd, children } = props;
   return (
     <>
       {TRANSPORT_BUTTONS.map((b) => (
@@ -1588,6 +1606,7 @@ export function TransportButtons(props: {
           {b.face}
         </button>
       ))}
+      {children}
       {/* `transport-keys` is not decoration — it is what the stylesheet's max-width rule hides
           below 1024px, where this 251px caption is measurably what wraps the sticky bar onto a
           second line. See the comment on that rule for the numbers. */}
@@ -1602,8 +1621,64 @@ export function TransportButtons(props: {
   );
 }
 
+/**
+ * The play toggle and its speed, split out pure for the same reason {@link TransportButtons} is:
+ * `renderToStaticMarkup` cannot watch a timer, so the only headless evidence this feature exists is
+ * the text it puts on screen — the button's two faces and a speed option per offered position.
+ *
+ * One button that changes face, not a play button beside a pause button. That is not tidiness:
+ * `TRANSPORT_BUTTONS`'s `deadAt: 'start' | 'end'` can express "dead at the halted end" but has no
+ * way to say "pause is dead unless playing", so a second button would need a third disabled rule
+ * that the row's own vocabulary cannot state. A toggle keeps that binary intact.
+ */
+export function PlayControl(props: {
+  playing: boolean;
+  speed: PlaySpeed;
+  canStart: boolean;
+  onToggle: () => void;
+  onSpeed: (speed: PlaySpeed) => void;
+}): React.JSX.Element {
+  const { playing, speed, canStart, onToggle, onSpeed } = props;
+  return (
+    <>
+      <button
+        className="btn"
+        onClick={onToggle}
+        // Dead only when play could not move from here AND is not already running — the running case
+        // must stay clickable or there is no way to pause. `canStart` is `canPlay(...)`, the very
+        // predicate the tick stops on, so a live button whose first tick halts cannot exist.
+        disabled={!playing && !canStart}
+        title={
+          playing
+            ? 'Pause — the clock stops where it is'
+            : `Play — run the clock forward at ${SPEED_LABELS[speed]}, stopping at the end. Use ${ACTION_WORDS.runToEnd} ⏭ to jump there instantly.`
+        }
+      >
+        {playing ? '⏸ pause' : '▶ play'}
+      </button>
+      <label style={{ fontSize: '0.8rem', color: T.ink2 }}>
+        <span className="play-speed-label">speed </span>
+        <select
+          value={speed}
+          onChange={(e) => onSpeed(Number(e.target.value) as PlaySpeed)}
+          aria-label="Play speed"
+          title="How fast play advances the clock, in cycles per second. `max` is one cycle per screen refresh — the fastest a cycle can be shown at all."
+          style={{ fontSize: '0.8rem' }}
+        >
+          {PLAY_SPEEDS.map((s) => (
+            <option key={s} value={s}>
+              {SPEED_LABELS[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
 function Transport(props: {
   sim: ReturnType<typeof useSimulator>;
+  play: Playback;
   atStart: boolean;
   lastCycle: number;
   inFlight: InstructionInstance | null;
@@ -1611,7 +1686,7 @@ function Transport(props: {
    *  the qualifier below must not call it "nearest retirement" when the user picked it. */
   following: boolean;
 }): React.JSX.Element {
-  const { sim, atStart, lastCycle, inFlight, following } = props;
+  const { sim, play, atStart, lastCycle, inFlight, following } = props;
   const inFlightCount = sim.cycleTrace?.instructions.length ?? 0;
   return (
     // PINNED to the top of the viewport (`transport--sticky`). The clock controls are the one
@@ -1622,11 +1697,15 @@ function Transport(props: {
     // hand. The bar carries the slider too: scrubbing while watching is the same act.
     <div className="transport--sticky">
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <TransportButtons
-          onAction={(action) => sim[action]()}
-          atStart={atStart}
-          atEnd={sim.atEnd}
-        />
+        <TransportButtons onAction={(action) => sim[action]()} atStart={atStart} atEnd={sim.atEnd}>
+          <PlayControl
+            playing={play.playing}
+            speed={play.speed}
+            canStart={play.canStart}
+            onToggle={play.toggle}
+            onSpeed={play.setSpeed}
+          />
+        </TransportButtons>
         <span style={{ marginLeft: '0.5rem', fontFamily: MONO, color: T.ink2 }}>
           {atStart ? 'start (pre-run)' : `cycle ${sim.cursor} / ${lastCycle}`}
           {sim.atEnd ? '  — halted' : ''}
