@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7a08f63d-9b74-4a38-9f4c-0f590e4ba634
-  modified: 2026-07-30T13:12:12.623Z
+  modified: 2026-07-30T13:22:44.007Z
 ---
 
 **Shipped 2026-07-30**, plan `docs/plans/keyboard-transport.md` (COMPLETE). `→`/`←` step, `Home`
@@ -63,8 +63,36 @@ left unwatched is attach / look up / dispatch.
 - **Prefer a value a broken app could not also produce.** The model-picker check first asserted "not
   one step on"; sharpened to `=== -1`, because a model change re-records to pre-run, so **-1 is the
   guard holding and 0 is a leaked step**.
+- **A row is wrapped when its BOX is taller than its tallest child — never by comparing children's
+  `rect.top`.** `alignItems: 'center'` centers children of different heights, so a plainly-single
+  line reports four distinct tops. That metric produced 4 false failures before the real one.
 - The rig's `finally { chrome.kill(); preview.kill(); }` left **5 previews + 35 Chromes** across five
   runs — [[browser-rig-chrome-cleanup]] confirmed again. Sweep, then re-count.
+- ⚠ **The transport bar gained a span.** `.transport--sticky`'s `innerText` now reads
+  `…run ⏭ | → step · ← back · Home reset · End run | cycle N / M`. Any older rig under `temp/` doing
+  an equality on that bar's text, or picking its spans positionally, is now wrong — the
+  "a rig selector expires when the app grows a neighbour" trap in [[browser-rig-vacuity-traps]],
+  fresh instance. A `/cycle (\d+) \/ (\d+)/` regex is safe.
+
+## The defect the first browser pass missed, and how it was caught
+
+A **251px caption added to a `flexWrap` row inside a `position: sticky` bar** — measured only at
+1400px, on the two models with the FEWEST chips in that row. On out-of-order mid-run it wrapped the
+bar onto a second line at **900px and 800px**: 81px of permanently-eaten viewport became 104px, on
+every scroll, in an app whose whole point is the surfaces below the bar. Fixed by
+`@media (max-width: 1023px)` on a `transport-keys` class.
+
+Two transferable rules from it:
+
+- **Measure a new element at a STATED narrow viewport, in the app's most CROWDED state** — the model
+  with the most chips, mid-run, not the default one at the widest window.
+- **A wrap is only YOUR wrap if the counterfactual says so.** Hiding the element and re-measuring is
+  what separated "the legend causes it" (900/800px, 104 → 81px) from "wraps either way, pre-existing"
+  (700px). Without it the 700px result would have been reported as this feature's defect.
+- Headless Chrome opens **dark**, so a first screenshot is dark-only — the light palette needs an
+  explicit theme drive. Measured on the legend: **3.41:1 light**, 5.41:1 dark (over 3:1, under AA's
+  4.5:1 for 12px; it is `T.ink3`, the same ink as the sibling `N in flight` chip, so raising it is a
+  house-palette call rather than one feature's).
 
 ## Design notes that survive the feature
 

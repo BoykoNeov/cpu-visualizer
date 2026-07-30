@@ -142,7 +142,11 @@ as the cursor moved and every surface below them moved with it —
   headline is that deleting the one `addEventListener` line leaves **all 68 of the feature's own
   headless tests green while the browser fails 6**. Also the CDP keyboard traps — a synthetic
   `KeyboardEvent` makes an input-guard check vacuous, and **a disabled button cannot take focus**
-  (a check passed while reporting `focus=BODY`).
+  (a check passed while reporting `focus=BODY`) — and the defect its FIRST browser pass missed: a
+  251px caption added to a `flexWrap` row inside a **sticky** bar, measured only at 1400px on the
+  models with the fewest chips, wrapped the bar at 900px. **A wrap is only yours if the
+  counterfactual says so**; and a row is wrapped when its BOX exceeds its tallest child, never by
+  comparing children's `rect.top`.
 - [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
   keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
   each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
