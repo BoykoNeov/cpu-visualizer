@@ -1,6 +1,6 @@
 # Continuous play — running the clock at a speed instead of a keystroke per cycle
 
-**Status: PLANNED, 2026-07-30.** Scope is a **feature, not a milestone**: no engine, no trace, no
+**Status: ✅ COMPLETE, 2026-07-30.** Repo **7200 → 7248 tests**, five gates green, **40 browser checks / 0 failures** on the shipped bundle. The measurement that says what those 40 are for: **broken 4 ways, the headless suite stayed 47/47 green every time — including with the timer never armed at all.** The browser caught 3 of the 4; the fourth (a `cursor` dependency in the interval effect) is invisible to every net available, probed and recorded below, which is why the cursor lives in a ref by construction. Scope is a **feature, not a milestone**: no engine, no trace, no
 curriculum, no content. INV-3 is untouched in the strictest sense — play adds no data to the trace
 and reads nothing new from it; it only calls `scrubTo` on a recording that is already complete.
 
@@ -151,7 +151,7 @@ swap failed exactly one test, the literal `toEqual`).
       printing crashed on `▶` under cp1252 — the `finally` had already restored the tree, confirmed
       by `git status`, but encode findings ASCII-safe when re-running it.
 
-- [ ] **3. Browser pass — the only net for the whole feature.** Per `browser-rig-cdp-recipe` /
+- [x] ✅ **3. Browser pass — the only net for the whole feature.** Per `browser-rig-cdp-recipe` /
       `browser-rig-chrome-cleanup`: run `M:\claud_projects\temp\rig-sweep.ps1` FIRST, target by
       served `<title>` never by port, drive the **shipped bundle**, and re-count Chromes after.
       Checks, each recorded with its observed value: - Press play: the cycle readout advances **unaided**, and the observed count over a stated
@@ -174,22 +174,92 @@ swap failed exactly one test, the literal `toEqual`).
       equality on that bar or picking its spans positionally expires — a fresh instance of the
       "a rig selector expires when the app grows a neighbour" trap. A `/cycle (\d+) \/ (\d+)/` regex
       is safe and is what this pass should use.
+      **Landed: 40 checks, 0 failures**, on the shipped bundle
+      (`M:\claud_projects	emp\play-browser\eyeball.mjs`). It took FIVE runs, and four of the five
+      were the rig lying rather than the app failing — recorded below because each is a fresh trap.
+      Headline observations: play walks the cursor unaided (−1 → 7 in 2007ms at 4×/s); pause holds a
+      cycle for 1509ms; the run auto-stops at `33 / 33 — halted` and the button returns to `▶` with
+      **`dead=true`**, re-queried after the stop; a forwarding flip mid-play stops it at `cycle=-1`
+      and it does not resume (delta 0 over 1508ms); `Home` mid-play resets and play **continues**
+      (delta 6 in 1511ms), the pinned behaviour, measured rather than assumed.
+      **The throttle control is the check that made every other number mean something.** Chrome
+      clamps `setInterval` to ~1/s in a backgrounded renderer, and a CDP-driven headless tab is one
+      unless launched with `--disable-background-timer-throttling
+--disable-renderer-backgrounding --disable-backgrounding-occluded-windows`. Proven not biting
+      by measuring the SLOW rung first and requiring the fast one to differ: **1.00/s and 3.98/s**.
+      Without it, `max` reading ~1/s would have been filed as a render-cost ceiling.
+      **`max` measured at 24.3 cycles/s** against a theoretical 60, on out-of-order with 910 DOM
+      nodes — i.e. the render, not the timer, is what bounds the top rung. The rung stays: it is still
+      the fastest position and it is honestly the fastest the app can SHOW a cycle. That number is
+      the plan's "record the observed effective speed" resolved by measurement.
+
+      **The four rig lies, each a fresh instance of "a green check measures nothing":**
+      1. The forwarding selector searched `textContent` for /forward/ — but those buttons read `on`
+         and `off`; the word is on a sibling `<span>` and in the `title`. It found nothing and
+         reported **3 further failures that were really this one**, in the section testing the
+         re-record trap.
+      2. §6 then reported two more failures that were §5's leak: play was still running, so the
+         section's opening "start play" click **paused** it instead. **A toggle's click is not
+         idempotent**, so "click to stop" is only true if you know it was running — fixed with an
+         `ensureStopped()` that asserts what it found.
+      3. The same non-idempotence bit again in §8: the closing click meant to pause **re-started**
+         play, because at `max` the run finishes inside the 2-second measurement window and had
+         already auto-stopped. §9 then measured the wrap on the row reading
+         `cycle 55 / 55 — halted | ecall` — the LIGHTEST row in the app — under a comment claiming
+         the heaviest, and every width check passed. Caught by PRINTING the row rather than trusting
+         the greens; the crowding is now its own control cell.
+      4. §7 leaves focus on the speed `<select>` **on purpose**, so §9's `Home` and eight arrows were
+         correctly GUARDED and moved the clock zero times. The guard working is why the rig has to
+         blur before it can drive keys again.
+      Also: the probe script's regex was mangled by a shell heredoc (`/cycle (\d+)/` →
+      `/cycle (d+)/`), which surfaced only as "page threw" — index arithmetic needs no escapes and
+      cannot be mangled that way.
+
+      **THE HEADLINE MEASUREMENT — broken 4 ways, headless saw NOTHING at all.**
+      | mutation | headless | browser |
+      | --- | --- | --- |
+      | the timer never arms (the feature does not exist) | **47 / 47 green** | **5 failures** |
+      | the auto-stop removed (ticks forever at the end) | **47 / 47 green** | 4 failures |
+      | stop-on-re-record removed | **47 / 47 green** | 3 failures |
+      | the interval effect depends on the cursor | **47 / 47 green** | **0 failures** |
+      The first row is this repo's standing lesson restated on a second feature (keyboard's was 68 of
+      68). The LAST row is the new one, and it is the more interesting: **the one failure mode the
+      design was built around is invisible to every net available here.** Probed directly rather than
+      assumed — baseline vs broken, same heavy config: rung 20 read **19.93/s vs 17.92/s** (a ~10%
+      signal, one sample) and `max` read **18.78/s vs 19.14/s**, with the signal INVERTED. Re-arming
+      per tick makes the period `interval + render`, which at slow rungs is lost in a 1000ms wait and
+      at fast rungs is lost in the render cost that already dominates. So there is no check to write:
+      the cursor lives in a ref **by construction**, and that is the only thing standing between this
+      code and a silently irregular clock. A comment on `cursorRef` says so.
 
 ## Acceptance criteria
 
-- [ ] With a program loaded, one click on `▶ play` walks the cursor forward one cycle at a time at
-      the selected speed, with no further input, and every panel animates as it does when stepping.
-- [ ] Play **stops by itself** at the halted end, and the button shows `▶` again.
-- [ ] Play never drives the cursor outside `[-1, lastCycle]`, and refuses to start on a recording
-      with no cycles.
-- [ ] Changing any config knob, model, program, or lesson while playing **stops** play, at the
-      pre-run cursor the re-record parks at.
-- [ ] The engine is untouched: no wall-clock, no timer, and no new field reaches `ProcessorConfig`
-      or `SessionKnobs`. Checked as a diff, not asserted in prose.
-- [ ] The sticky transport bar is still ONE line at 1024px and above, measured with the
-      counterfactual on the most crowded model mid-run.
-- [ ] Nothing outside `packages/web` and this plan changes, checked as a git range.
-- [ ] All five gates green, with the repo's test count before → after recorded.
+- [x] ✅ With a program loaded, one click on `▶ play` walks the cursor forward one cycle at a time at
+      the selected speed, with no further input. Observed −1 → 7 in 2007ms at 4×/s, and 1.00/s vs
+      3.98/s vs 9.96/s vs 24.3/s across the rungs.
+- [x] ✅ Play **stops by itself** at the halted end, and the button shows `▶` again. Observed
+      `33 / 33 — halted`, face `▶ play`, `dead=true`, re-queried after the stop; and reached a second
+      way, by pressing `End` mid-play.
+- [x] ✅ Play never drives the cursor outside `[-1, lastCycle]`, and refuses to start on a recording
+      with no cycles — the same `canPlay` predicate as the tick's stop, swept over every cell of
+      `cursor × lastCycle` headlessly and observed as `dead=true` at the end in the browser.
+- [x] ✅ Changing a config knob while playing **stops** play at the pre-run cursor. Observed on the
+      forwarding flip: mid-play at cycle 3 → face `▶ play`, `cycle=-1`, delta 0 over 1508ms.
+- [x] ✅ The engine is untouched. Checked as the git range `0eb14b1..HEAD`: **8 files, all of them
+      `packages/web/src` plus this plan**, zero under `packages/{engine,trace,curriculum,isa,assembler}`
+      or `content/`. No `setInterval`/`setTimeout` outside `usePlayback.ts`; nothing reaches
+      `ProcessorConfig` or `SessionKnobs`.
+- [x] ✅ — **after a real defect, found and fixed here.** Play costs 169px in that row, which wrapped
+      the bar across the whole 1040–1180px band. Thresholds re-measured by a 1500→620px sweep and
+      moved (legend + `speed` caption 1023 → 1199px; the play button's WORD drops below 899px). Now
+      one line from 1500px to 880px on out-of-order at cycle 7, counterfactual-confirmed at every
+      width. ⚠ **Residual, stated rather than buried:** below 880px play may still cost a row (the
+      crossover is content-dependent — 760px on the crowded row, 700px on a lighter one), and closing
+      it needs ~100px, which only the speed `<select>` has. That is a control, not a caption, so it
+      stays; a test asserts no rule hides it.
+- [x] ✅ Nothing outside `packages/web` and this plan changed — the same `0eb14b1..HEAD` range above.
+- [x] ✅ All five gates green. Repo **7200 → 7248 tests** (+29 `playback.test.ts`, +18
+      `play-control.test.tsx`, +1 in `transport-keys.test.tsx`'s re-measured threshold).
 
 ## Decisions to pin (seeded with recommended answers)
 
