@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7a08f63d-9b74-4a38-9f4c-0f590e4ba634
-  modified: 2026-07-30T13:11:17.415Z
+  modified: 2026-07-30T13:12:12.623Z
 ---
 
 **Shipped 2026-07-30**, plan `docs/plans/keyboard-transport.md` (COMPLETE). `→`/`←` step, `Home`
@@ -19,9 +19,11 @@ Confirmed absent by grep over `packages/web/src` — and the naive greps had hol
 pushState|URLSearchParams` (**zero hits**); `setTimeout|setInterval|requestAnimationFrame` (one
 `rAF`, for a caret); `localStorage` (theme only).
 
-1. **Keyboard control — DONE.** 2. **URL permalinks — open, and the next best pick.** 3. **Continuous
-   play at a speed — open** (`run ⏭` jumps straight to the end; timer-driven, so browser-net only).
-2. **Session persistence — open**, and nearly free once permalinks exist.
+- **Keyboard control** — DONE (this memory).
+- **URL permalinks** — open, and the next best pick.
+- **Continuous play at a speed** — open. `run ⏭` jumps straight to the end; timer-driven, so
+  browser-net only, and it interacts with the phase stepper (does play walk phases or cycles?).
+- **Session persistence** — open, and nearly free once permalinks exist.
 
 Two things NOT gaps, checked before proposing them: the §11 sandbox-fork criterion is shipped and
 tested end-to-end (`sandbox.test.ts`, `forkToSandbox`), and the within-cycle phase stepper exists
