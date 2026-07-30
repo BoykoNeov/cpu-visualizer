@@ -81,15 +81,18 @@ swap failed exactly one test, the literal `toEqual`).
 - [ ] **1. `usePlayback` — the timer, owned in one place.** A hook in `packages/web/src` taking the
       transport slice it needs (`cursor`, `lastCycle`, `scrubTo`, and the recording identity), and
       returning `{ playing, speed, toggle, setSpeed }`. Three things it must get right, none of them
-      discoverable later: 1. **The interval effect depends on `playing` and `speed` and nothing that changes per tick.**
+      discoverable later.
+      **(a) The interval effect depends on `playing` and `speed` and nothing that changes per tick.**
       A `cursor` dependency tears down and re-arms the timer every cycle, which makes the period
-      silently irregular — and there is no headless net for a period. Read the cursor through a
-      ref inside the tick. 2. **Stop on re-record.** Every knob (`setModel`, `setForwarding`, `setCache`, `setIssueWidth`,
-      `setOutOfOrderIssue`, `setRobSize`, `select`, `startLesson`, `loadEdited`) routes to
-      `loadInto`, which builds a **fresh recorder parked at −1**. A live timer would silently
-      resume play on a different machine, from the start, with no user action. Ride the idiom
-      `App.tsx:147` already uses for `followed`: an effect keyed on `sim.recorded`, whose identity
-      changes per load. 3. **Stop at the end**, from inside the tick. `recorder.stepForward()` returns `null` at a
+      silently irregular — and there is no headless net for a period. Read the cursor through a ref
+      inside the tick.
+      **(b) Stop on re-record.** Every knob (`setModel`, `setForwarding`, `setCache`,
+      `setIssueWidth`, `setOutOfOrderIssue`, `setRobSize`, `select`, `startLesson`, `loadEdited`)
+      routes to `loadInto`, which builds a **fresh recorder parked at −1**. A live timer would
+      silently resume play on a different machine, from the start, with no user action. Ride the
+      idiom `App.tsx:147` already uses for `followed`: an effect keyed on `sim.recorded`, whose
+      identity changes per load.
+      **(c) Stop at the end**, from inside the tick. `recorder.stepForward()` returns `null` at a
       halted end and does not advance (`recorder.test.ts:162`), so nothing throws — which is
       precisely the danger: without an explicit stop the timer ticks forever doing nothing and the
       button never returns to `▶`.
