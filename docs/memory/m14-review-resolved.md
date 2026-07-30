@@ -39,7 +39,7 @@ table claimed it). Fix commits `2c9cb71`, `4d7601d`, `c4c570e`, `3f3bfc4`; doc `
   free"_. **That sentence is not in the lesson.** It reads well, states the real dependency, and was
   written into a justification rather than read out of the narration. Inverts nothing about
   [M13's](m13-review-resolved.md) "don't trust a docblock's stated reason" — it extends it to prose.
-- **A docblock claiming coverage the code lacks is its own defect class**, and three of the six
+- **A docblock claiming coverage the code lacks is its own defect class**, and three of the
   findings were that: the reserve's stated purpose, `session.ts`'s "watching `engine-config.test.ts`
   name it", and `layout-stability.test.tsx`'s "every cursor … including the pre-run one" over a
   sweep that skipped it (finding 6, added during the fix pass).
