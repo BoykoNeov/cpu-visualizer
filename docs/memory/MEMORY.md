@@ -6,8 +6,10 @@ each with a lesson track. **NO milestone is in progress.**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
-corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7563
-tests**, five gates green. **Open work: dynamic branch prediction (plan written, STEPS 0 AND 0b DONE
+corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7589
+tests**, five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
+jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
+caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic branch prediction (plan written, STEPS 0 AND 0b DONE
 2026-07-30, no engine code yet — the only thing in flight), URL permalinks, session persistence, and
 the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles the
 local branch and needs no PR).
@@ -33,7 +35,10 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 - [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — **a port never tells you
   whose server it is**; identify by served `<title>`. Applies to CDP debug ports too.
 - [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either; the
-  reserve idiom, and a fix that passed its own guard while the browser measured no change.
+  reserve idiom, and a fix that passed its own guard while the browser measured no change. **The
+  class reopened 2026-07-30: the sticky BAR was stepping 81.4 ↔ 104.4px and the panel sweep never
+  looked at it, because a bar is not a panel.** Read before touching the transport bar, any caption
+  threshold, or anything whose width moves with the cursor.
 
 ## Post-M14 work
 

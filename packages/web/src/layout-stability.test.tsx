@@ -488,6 +488,13 @@ describe('data memory: the row count is the run PEAK at every cursor', () => {
 // What that leaves for a headless guard is the reserve, and the rule this file opened with applies
 // hardest here: the reserve numbers are read back out of the RENDER, and the fold is only ever the
 // expected value.
+//
+// ⚠ AND WHAT IT DOES NOT LEAVE, stated rather than implied: nothing below can see WHERE the readout
+// is rendered. Move `<TransportReadout>` back into the bar's `flexWrap` control row and every test
+// in this block still passes — it renders the same markup wherever it is mounted. The six mutations
+// that were verified to redden it (`temp/jitter2/break.mjs`) are all about the reserve and the
+// stylesheet; placement is the browser's to catch, and the sweep that catches it is
+// `temp/jitter2/transport-sweep.mjs`, which walks every cursor at fourteen viewport widths.
 // ---------------------------------------------------------------------------------------------
 
 describe('transport readout: identical geometry at every cursor', () => {

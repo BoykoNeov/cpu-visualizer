@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1159b994-75bd-457b-95ff-85fe2ac2c2bf
-  modified: 2026-07-30T09:17:21.642Z
+  modified: 2026-07-30T18:07:57.440Z
 ---
 
 Stepping the clock resized five panels, and since the shell is a vertical stack each one shoved every
@@ -88,6 +88,36 @@ data. A rig that was correct on 2026-07-27 reported `MULTIPLE:2` on all thirteen
 was the rig every time. When you add a reserve, ask which existing selectors its new element answers
 to; when you write one, scope to the section's own `aria-label`. Recorded in
 [[browser-rig-vacuity-traps]] as its own trap class.
+
+**⚠ THE CLASS WAS NOT CLOSED: THE STICKY BAR ITSELF WAS STILL DOING IT, and the user found it, not
+the sweep** (2026-07-30, fixed). The sweep above measures PANELS; `.transport--sticky` is not one,
+and it was the worst offender left — **81.4px ↔ 104.4px depending on the cursor**, on every surface
+at once, at 1500/1400/1300/1240/1200/920/900/880/840px. Three cursor-dependent texts sat in its
+`flexWrap` control row (`start (pre-run)` 132px ↔ `cycle 58 / 58 — halted` 193px; the instruction
+span, absent pre-run; the `in WB.0 · 3 in flight` chip, absent when one is in flight): the row wanted
+**888 … 1218px** over one run against a **constant 1168px** — `main` is capped at `maxWidth: 1200`,
+so every viewport ≥1200px is ONE layout and sweeping wider widths measures the same thing repeatedly.
+
+- **A fixed threshold plus a moving content width is the same defect as a moving threshold.**
+  `styles.css` argued in prose that state could not reintroduce jitter because every media threshold
+  is a viewport width. True, and irrelevant: the content crossing them was the variable. **A
+  comment's reasoning can be valid about the thing it names and silent about the thing that bites.**
+- **The fix was to move the cursor-dependent text out of the wrapping row** (onto the scrub row,
+  which never sets `flex-wrap`), not to reserve inside it. Reserving there was measured and REJECTED:
+  it makes every cursor as wide as the peak, so the crowded models would have wrapped at ALL cursors
+  instead of some — stable and stably worse. Ask what the reserve costs at the peak before choosing it.
+- **`ch` is an exact reserve when the span is mono, and it beats a ghost here** — verified rather than
+  assumed (8.795 / 7.476 / 7.04 px per char, identical for `—`, `·`, `(`, `#`). A ghost carrying
+  `cycle 99 / 99` inside that bar would answer to the rig selectors that read it, the decoy class
+  below.
+- **The move gave 400px back and invalidated two measured thresholds** (1199 → 789, 899 → 499): the
+  play-word rule had been firing 300px above the state it was measured for. Re-measure every
+  threshold whose row you touch — and read the boundary from BOTH sides: 490px still wrapped, so the
+  rule engages at 499, not at 489 where "one line to 500px" naively pointed.
+- Guards: reserves read back out of the render at every cursor, plus the fold swept over four models
+  × both follow states. Six mutations verified red (`temp/jitter2/break.mjs`). **None of them can see
+  WHERE the readout is mounted** — put it back in the wrapping row and all of them pass. Rigs:
+  `temp/jitter2/{transport-sweep,budget-probe,threshold-probe,verify-thresholds,narrow-probe}.mjs`.
 
 **Scope: cursor-driven change only.** A width flip, the depth dial and picking a lesson are deliberate
 acts and a panel may resize on them — the line the narration panel's own comment already drew. Also

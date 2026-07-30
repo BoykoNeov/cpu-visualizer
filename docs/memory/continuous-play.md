@@ -4,7 +4,7 @@ description: "CPU Visualizer's continuous play (▶/⏸ + a 5-position speed pic
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T14:30:48.582Z
+  modified: 2026-07-30T18:08:10.737Z
   originSessionId: 823f17b5-0e3b-4e2a-b23c-453d671e0d71
 ---
 
@@ -103,13 +103,17 @@ Measured by sweeping **1500 → 620px in 20px steps** on out-of-order at cycle 7
 
 - **The legend's 1023px threshold became 1199px**, and `transport-keys.test.tsx`'s pinned number
   moved with it. **A measured threshold is not a constant — it moves when the row's occupants do**,
-  which is the argument for asserting it rather than commenting it.
+  which is the argument for asserting it rather than commenting it. ⚠ **BOTH NUMBERS HAVE SINCE MOVED
+  AGAIN — 1199 → 789 and 899 → 499** (2026-07-30), when the cursor readout left this row for the
+  scrub row; see [[panel-jitter-and-height-reserves]]. The lesson landed twice in three days.
 - Below 899px the play button drops its **word**, keeping the glyph that says which state it is in.
-- ⚠ **A caption can vanish; a control cannot.** The residual — below 880px play may still cost a row
-  — is left OPEN and stated, because closing it needs ~100px and only the speed `<select>` is that
-  big. A test asserts no rule hides it. Also: the crossover is **content-dependent** (760px crowded,
-  700px lighter), so the honest claim is a bound, not a closed window — a tighter-sounding band was
-  falsified by the very next state.
+  (Now 499px.)
+- ⚠ **A caption can vanish; a control cannot.** A test asserts no rule hides the speed `<select>`.
+  The residual this recorded — "below 880px play may still cost a row", crossover content-dependent
+  at 760/700px — **is CLOSED and its content-dependence is gone**: with the readout out of the row
+  the bar measures 81.4px at every cursor from 1500px down to 470px, and the row is a constant
+  740.4px on every model. What is left is that below ~460px it wraps with every caption already
+  hidden.
 - `.play-speed-label` shipped for one commit as **a class with no rule in the stylesheet** — a
   half-finished decision that looks finished. The `transport-keys` idiom (assert the class on the
   element AND a rule in the sheet naming it) is what catches it.
