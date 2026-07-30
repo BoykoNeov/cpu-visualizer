@@ -152,13 +152,16 @@ describe('the speed control offers every position', () => {
     mediaBlocks().find((b) => b.rules.includes(selector));
 
   it('hides the play button’s WORD below the width that was measured, keeping its glyph', () => {
-    // The second measured threshold, and it had no net at all until this test existed. 899 is where
-    // the 1500→620px sweep put the crossover once both captions were already gone: the row holds one
-    // line to 880px with play against 760px without it.
+    // The second measured threshold, and it had no net at all until this test existed. It moved
+    // 899 → 489 when the cursor readout left the control row: re-measured by applying each caption
+    // state by hand, the row with the legend and the "speed" label already hidden wants 444.3px and
+    // holds one line to 500px (490px wraps, so the rule engages at 499), and 899 was firing 300px above
+    // the state it was measured for — taking
+    // the word away while the 251px legend was still on screen beside it.
     expect(render(false, true)).toContain('class="play-word"');
     const block = blockNaming('.play-word');
     expect(block, 'styles.css should carry a block hiding .play-word').toBeDefined();
-    expect(block!.width).toBe(899);
+    expect(block!.width).toBe(499);
     expect(block!.rules).toContain('display: none');
     // And it is a SECOND block, not the legend's — the two thresholds are different measurements and
     // folding them together would move one of them by editing the other.
@@ -188,7 +191,7 @@ describe('the speed control offers every position', () => {
     expect(render(false, true)).toContain('class="play-speed-label"');
     const block = blockNaming('.play-speed-label');
     expect(block, 'styles.css should carry a block hiding .play-speed-label').toBeDefined();
-    expect(block!.width).toBe(1199);
+    expect(block!.width).toBe(789); // was 1199; re-measured when the readout left this row
     // The SAME block as the legend's, asserted rather than described: two nearby captions vanishing
     // at two different widths would make the bar's narrow-width behaviour a staircase.
     expect(block!.width).toBe(blockNaming('.transport-keys')!.width);

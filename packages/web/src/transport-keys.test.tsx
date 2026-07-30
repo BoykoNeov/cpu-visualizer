@@ -87,12 +87,15 @@ describe('the legend lists every binding', () => {
     const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
     const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
     expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
-    // 1199, not the 1023 this shipped with. RE-MEASURED when continuous play added a button and a
-    // speed picker to the same row: play is worth 169px (row content 896 → 1065px), which moved the
-    // narrowest one-line width from 1180 to 1200 and wrapped the bar across the whole 1040–1180px
-    // band. The number is a measurement and moves when the row's occupants do — which is exactly
-    // why it is asserted rather than left as a comment.
-    expect(Number(block![1])).toBe(1199);
+    // 789 — the THIRD value this has held (1023 → 1199 → 789), and each move is the same lesson.
+    // 1023 was the legend alone; 1199 was play joining the row (169px); 789 is the cursor readout
+    // LEAVING it for the scrub row, which was the row's other 400px. Re-measured with the media
+    // blocks dropped from the live sheet: with every caption visible the row now holds one line to
+    // 790px and first wraps at 780px. The number is a measurement and moves when the row's occupants
+    // do — which is exactly why it is asserted rather than left as a comment, and holding 1199 after
+    // the occupants changed would have hidden this caption across the whole 800–1199px band for
+    // nothing.
+    expect(Number(block![1])).toBe(789);
     expect(block![2]).toContain('.transport-keys');
     expect(block![2]).toContain('display: none');
   });

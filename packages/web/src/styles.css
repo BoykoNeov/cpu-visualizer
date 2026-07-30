@@ -338,22 +338,32 @@ input[type='range'] {
    viewport becomes ~105px on every scroll, in an app whose whole point is watching the surfaces
    BELOW it. So captions go away where they would cost a row; controls never do.
 
-   Measured 2026-07-30 in the browser, row at its most crowded (out-of-order, mid-run, an in-flight
-   instruction and a `N in flight` chip), by sweeping the viewport 1500 → 620px in 20px steps and
-   asking "is the row box taller than its tallest child" — never by comparing children's `rect.top`,
-   which `alignItems: center` makes meaningless.
+   Measured in the browser by sweeping the viewport and asking "is the row box taller than its
+   tallest child" — never by comparing children's `rect.top`, which `alignItems: center` makes
+   meaningless.
 
-   THE THRESHOLD MOVED FROM 1023 TO 1199 WHEN PLAY SHIPPED, and the sweep is why. The keyboard
-   legend alone wrapped the row below 1024px, which is where 1023 came from. Continuous play then
-   added a button and a speed picker worth **169px** (row content 896 → 1065px), and the narrowest
-   one-line width went 1180 → 1200px: the row wrapped across the whole 1040–1180px band, which is
-   ordinary laptop territory. A caption cannot be worth a permanent row there. Both captions now go
-   at the same width — two nearby elements vanishing at two different widths would make the bar's
-   narrow-width behaviour a staircase nobody can reason about.
+   THIS NUMBER HAS MOVED TWICE, AND BOTH MOVES SAY THE SAME THING: it is a measurement of what is in
+   the row, not a constant.
+     1023 — the keyboard legend alone wrapped the row below 1024px.
+     1199 — continuous play added a button and a speed picker worth 169px (row content 896 →
+            1065px), taking the narrowest one-line width from 1180 to 1200 and wrapping the bar
+            across the whole 1040–1180px band, which is ordinary laptop territory.
+      789 — the cursor readout LEFT this row (2026-07-30, see `.transport-scrub-row` above). It was
+            the row's other 400px, and with it gone the row is a constant 740.4px on every model at
+            every cursor. Re-measured with the media blocks dropped from the live sheet and each
+            caption state re-applied by hand: with every caption visible the row holds one line down
+            to 790px and first wraps at 780px. Keeping 1199 would have hidden a caption across the
+            entire 800–1199px band where it now costs nothing — the same mistake as never measuring
+            it, arrived at by not re-measuring.
 
-   Every threshold here is a VIEWPORT WIDTH, never a piece of state, so none of this can reintroduce
-   the per-step jitter class. */
-@media (max-width: 1199px) {
+   Both captions still go at the same width: two nearby elements vanishing at two different widths
+   would make the bar's narrow-width behaviour a staircase nobody can reason about.
+
+   Every threshold here is a VIEWPORT WIDTH, never a piece of state. That is necessary and it was
+   never sufficient — the per-step jitter this bar shipped in 2026-07 was a CONTENT width crossing a
+   fixed threshold, and no rule in this block could have prevented it. What does is that nothing
+   left in this row changes with the cursor. */
+@media (max-width: 789px) {
   .transport-keys {
     display: none;
   }
@@ -375,23 +385,26 @@ input[type='range'] {
   }
 }
 
-/* The second measured band. With both captions gone the row still wrapped from 880px down, while
-   the SAME row without the play control held one line to 780px — so play was costing 120px of
-   usable width at the narrow end too. The word on the play button is the last caption-ish thing
-   left to give back: `▶` and `⏸` are the universal transport glyphs, the button keeps its title
-   ("Play — run the clock forward at …" / "Pause — …") and its face still changes, so nothing about
-   what it does or which state it is in depends on the word.
-   What this does NOT close, stated as a number rather than left to be discovered: after the fix the
-   row holds one line down to **880px** with play, against **760px** without it. Below 880px play may
-   still cost a second row — where exactly depends on how crowded the row is (measured: the crossover
-   is 760px on out-of-order at cycle 7, and 700px on a lighter row at cycle 4, so it is a property of
-   the content and not a single width). Closing that would take ~100px more, and the only thing left
-   that big is the speed `<select>` — which is a CONTROL, not a caption: hiding it removes the
-   reader's ability to choose a speed rather than tidying the label for one. That is the line this
-   stylesheet does not cross, and `play-control.test.tsx` asserts no such rule exists.
-   Below ~740px the bar wraps with or WITHOUT play — pre-existing, from four buttons plus two chips,
-   and recorded rather than quietly folded into this feature's numbers. */
-@media (max-width: 899px) {
+/* The second measured band, and it moved with the first: 899 → 499.
+   The word on the play button is the last caption-ish thing this row has left to give back — `▶` and
+   `⏸` are the universal transport glyphs, the button keeps its title ("Play — run the clock forward
+   at …" / "Pause — …") and its face still changes, so nothing about what it does or which state it
+   is in depends on the word.
+   Re-measured 2026-07-30 with the readout gone from the row, by applying each caption state by hand
+   over a sheet with the media blocks dropped: with the legend and the "speed" label already hidden
+   the row wants 444.3px and holds one line down to 500px; hiding the word takes it to 413.8px and
+   470px. So the word buys 30px, and it buys it at a width where the app is one narrow column.
+   899 was NOT that width any more — it fired 300px above the state it was measured for, taking the
+   word away while the 251px legend beside it was still on screen.
+   499 and not 489: the shipped staircase was then re-driven at its own boundaries, and 490px wrapped
+   with the word still on. A threshold read off a 10px sweep is a bound on both sides — the last
+   width that FITS is not the width to hide at.
+   What this still does not do, stated rather than left to be discovered: below ~460px the row wraps
+   with every caption already gone. Closing that needs ~60px more and the only thing left that big is
+   the speed `<select>` — a CONTROL, not a caption: hiding it removes the reader's ability to choose a
+   speed rather than tidying the label for one. That is the line this stylesheet does not cross, and
+   `play-control.test.tsx` asserts no such rule exists. */
+@media (max-width: 499px) {
   .play-word {
     display: none;
   }
