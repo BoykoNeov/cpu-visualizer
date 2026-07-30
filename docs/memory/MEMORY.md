@@ -1,158 +1,103 @@
 # Project memory — CPU Visualizer
 
-A pedagogical RV32I simulator. **M1–M13 ALL COMPLETE** (spec §12's roadmap finished at M10;
-M11/M12/M13 came from the don't-foreclose flag). M13 delivered issue width > 2: the ISSUE control
-offers widths 1/2/3/4, `MAX_ISSUE_WIDTH` lives in `engine-common` so the **out-of-order model
-shares the bound and is netted at it**, the **datapath draws N lanes** (its geometry became a
-FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GROUPS rather than
-pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
-with a lesson track. **M13 has now been code-reviewed and all
-5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is ✅ COMPLETE (2026-07-30)**: all three lessons authored
-(`where-widening-stops`, `four-in-a-row`, `width-moved-the-work` — the wide track now has SEVEN
-lessons), the within-track ORDER pinned on the four cross-references that lie without it, and the
-browser pass driven over the shipped bundle — 110 checks, two breaks, and the one acceptance a
-subject could not satisfy honored in its stricter substitute form
-([M14](m14-width-lessons-step0.md)). **M14 has now been code-reviewed and all 5 findings are fixed**
-([M14 review resolved](m14-review-resolved.md), 2026-07-30) — repo **7132 tests**, five gates green.
-**NO milestone is in progress.** Work since M14 has moved to **UX/product gaps in the shell** rather
-than microarchitectures: a survey after M14 found four, and **keyboard clock control is ✅ COMPLETE
-(2026-07-30, repo 7200 tests)** — [keyboard clock control](keyboard-clock-control.md), which also
-holds the other **three still-open gaps** (URL permalinks, continuous play, session persistence) and
-the greps that confirm each absent. Named open work: those three, plus the `/code-review ultra`
-fan-out over `89bb26e..HEAD` (user-triggered; the no-arg form bundles the local branch and needs no
-PR). Outside the milestones, the
-shell's **step-JITTER class is closed** (2026-07-30, repo **7125 tests**): five panels changed height
-as the cursor moved and every surface below them moved with it —
-[panel jitter](panel-jitter-and-height-reserves.md).
+A pedagogical RV32I simulator. **M1–M14 ALL COMPLETE** (spec §12's roadmap finished at M10; M11–M14
+came from the don't-foreclose flag), each code-reviewed with every finding fixed. Six models ship,
+each with a lesson track. **NO milestone is in progress.**
 
-- [Project overview](project-overview.md) — what it is, the spec contract, the stack +
-  package DAG, and the index into the milestone logs. **Hub — start here.** The log was one
-  242KB file until 2026-07-28; now one file per milestone, each recallable on its own
-  `description`. Read the relevant one before touching that package.
-  - [M1 engine + web shell](m1-engine-and-web-shell.md) — through the first datapath.
-  - [M2 multi-cycle](m2-multi-cycle.md) — incl. steps 5C/5D/5E.
-  - [Web visual layer](web-visual-layer.md) — theme, palette, `DatapathDiagram`, templates.
-  - [M3 pipeline](m3-pipeline-engine.md) + [web](m3-pipeline-web.md) — the 5-stage machine.
-  - [M4 branch prediction + ISA panel](m4-branch-prediction-and-isa-panel.md)
-  - [M5 ISA lesson track](m5-isa-lesson-track.md)
-  - [M6 caches](m6-caches-engine.md) + [corpus/web](m6-caches-corpus-and-web.md)
-  - [M7 superscalar](m7-superscalar-engine.md) + [web](m7-superscalar-web.md) — **INV-8 is
-    a FALSE net here.**
-  - [M9 out-of-order](m9-out-of-order.md) + [M10 lessons](m10-ooo-lesson-track.md)
-  - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
-- [M11 deep pipeline — plan + engine](m11-deep-pipeline-planned.md) — the 7-stage machine,
-  steps 0–5 + every pinned decision. Read before touching `engine/deep-pipeline`.
-  - [M11 cache, datapath, closing pass](m11-deep-pipeline-view-and-cache.md) — steps 6–8.
-- [M12 deep-pipeline lessons](m12-deep-pipeline-lessons.md) — the "deeper machine" track;
-  the first lesson track whose subject is a DELTA against a machine already met. Read
-  before authoring ANY lesson: the flush-`stages`-is-not-the-penalty trap, the
-  un-anchorable beat's lawful home, and "which fields of a declarative format does the
-  app actually read?" (its browser pass found `Lesson.depthDefault` dead since M1).
-- [M11+M12 review resolved](m11-m12-review-resolved.md) — **✅ all 5 findings FIXED
-  2026-07-28** (4466→4498 tests; 2 browser-verified). Bug classes to check before adding
-  a model, a field a view reads, or a config-exclusive lesson. Its sharpest method
-  lesson: **run every new test against the BROKEN code before trusting it** — one
-  property sweep passed 8/8 on the bug it was written for. Write-up at
-  `docs/reviews/m11-m12-review-findings.md`.
-- [M9+M10 review resolved](m9-m10-review-resolved.md) — ✅ all 10 findings fixed
-  2026-07-24; guardrails for expanding the OoO corpus/models/knobs.
-  `docs/reviews/m9-m10-review-findings.md`.
-- [The browser is the only net](browser-is-the-only-net.md) — headless tests here are
-  `renderToStaticMarkup` with no jsdom, so **no test can see a click**; 9 of 10 view
-  steps shipped a defect only the browser caught. **Hub** — read before any browser pass.
-  - [CDP recipe](browser-rig-cdp-recipe.md) — launch & attach; target by URL, no fallback.
-  - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; match by command line,
-    then **RE-COUNT**. Run `M:\claud_projects\temp\rig-sweep.ps1` at the START of every pass.
-  - [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
-  - [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
-  - [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either:
-    five panels resized per step, the biggest because one VANISHED at cursor −1. The reserve idiom,
-    and the fix that passed its own guard while the browser measured no change at all.
-- [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — several vite
-  projects climb past each other on 5173+; **a port never tells you whose server it is**
-  — identify by served `<title>`. Applies to CDP debug ports too.
-- [Cycles cannot see a lost forward](cycles-cannot-see-a-lost-forward.md) — verify engine
-  changes on the EVENT MULTISET under hand-built adversarial programs: a cycles-only
-  identity held in every cell while two `forward` events silently vanished.
-- [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED**: depth delivered by
-  M11, width by M13, so nothing here is open work. Read it for the predictions that held and the
-  one that was FALSE — its claim that the pairing rules are pair-shaped paraphrased the guard's
-  ERROR MESSAGE, not the code.
-  - [M13 width — COMPLETE](m13-width-planned.md) — all ten steps, step by step, with every finding
-    and pinned decision. **Read before touching `engine/superscalar`, the width control, or the lane
-    hues** (the lane tints are a SECOND validated channel, not `PHASE_COLORS` — they share no
-    constraint). Its transferable ones: the milestone's signature defect is **a test that keys off a
-    pure fold rather than the render**, which recurred 8 times and twice inside the fix written to
-    stop it; **a measurement's glob is part of its claim**; **INV-8 is a FALSE net for width** (proved
-    by experiment — 147 of 180 timing cells vs **0 of 807** conformance); ⚠ `Set-Content` mojibakes
-    source files here, and **a break harness using `git checkout --` destroyed the uncommitted tree —
-    commit before you break.**
-- [M14 width lessons — COMPLETE](m14-width-lessons-step0.md) — the width DELTA track, all six steps.
-  Step 5 (the browser pass) found that **both its run-1 failures were the rig** — one of them a new
-  trap class, since a height RESERVE manufactures decoys for every document-wide selector — and that
-  a lesson's declared width does not leak into the next lesson. Step 3's sharpest find: **a lesson can have NO
-  config-exclusive step**, which inverts where the ask's protection comes from — `paired-branches`
-  emits an IDENTICAL event multiset at w2/w3/w4 while running 7, 7, 6, so every step anchors
-  everywhere and **nothing structural notices if the ask is deleted**. Pin it by literal step index,
-  and pin the live-step sets EQUAL. Also: the discriminator is the lesson's own ANCHOR VECTOR (each
-  flip moves exactly one anchor, a different one); the refusal count is FLAT at 0/1/1/1 while cycles
-  fall 9/7/7/6, so **the machine WITH the refusal is the faster one**; the plan's own decision-table
-  REASON was falsified by measurement (a pinned reason goes stale like a pinned answer); and a config
-  mirror is rejected on a MECHANISM (a `static-taken` ask would kill step 2 in silence), not on
-  burden. Read before authoring a width lesson, and before choosing between a
-  striking event and a safe anchor — step 2's sharpest find is that **when they differ, anchor on the
-  one whose existence conditions match the prose**: the vivid `reg-read{reg:6,value:0}` is alive in
-  45 of 48 positions on a DIFFERENT instruction, while the forward that repairs it is alive in
-  exactly 9. Also: write a width claim on issue-group MEMBERSHIP (one exhaustive pin became the
-  evidence for six sentences), the two M14 lessons have **opposite discriminators** and both oracles
-  say so, and refusals here are **not even monotonic** (6→13→12 against 35→34→33). Step 1's find:
-  `lessons.test.ts` swept the wide lessons at 2 of the 4 widths the shell offers (fixed, +576
-  assertions) — and the fix makes that sweep a **weaker** net for a config-exclusive step. Step 1
-  shipped `where-widening-stops` and added three: **diff retire-cycle MAPS, not cycle totals** (one
-  instruction moves w2→w3, none at all w3→w4); an ask written only at `detailed` is **invisible to
-  an `expert` reader**, so it goes in every tier; and a step live at more than one config needs its
-  numbers **attributed to a named position** — `toContain` cannot tell "two wide it takes 44, three
-  wide 43" from "44 cycles, down to 43". Also: `paired-branches` has an identical event multiset at
-  w2/w3/w4 while its cycles differ, so **the events cannot see a won cycle**; and a refusal count is
-  not a penalty.
-- [M14 review resolved](m14-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-30**
-  (7125→7132 tests). Read before trusting a reserve, a docblock's coverage claim, a comment that
-  QUOTES prose, or running a break harness on a dirty tree. Its sharpest lesson: **moving untestable
-  code somewhere callable does not always close its class** — M13's fix relocated the shell→engine
-  copy, and `forwarding: forwardingRef` has the same transposition surface as
-  `forwarding: forwardingRef.current`, so the real fix was to REMOVE the field names (one ref, a
-  spread, a rest-destructure). Also: a reserve's MAX-ness needs a net that does not name the constant
-  on both sides; a same-typed swap is invisible to `tsc` and to any fixture with repeated values; **a
-  comment that quotes a lesson's prose is a claim about a file** (the cache order pin quoted a
-  sentence that does not exist in the lesson); and ⚠ a `git checkout --` break harness destroyed this
-  review's own uncommitted refactor — recovered from a dangling stash commit.
-- [M13 review resolved](m13-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-29**
-  (6189→6203 tests; 21 browser checks on the shipped bundle). Read before trusting a docblock's
-  stated reason, writing a range claim, or adding a knob to the shell→engine seam. Its sharpest
-  lesson **inverts** one this repo already had: a signed overlap is a pointer, not a verdict — and
-  here it pointed the **WRONG way**. A 16-of-70-unit overlap was graded LOW as a corner clip; the
-  5× crop showed the EX/MEM bar through the **middle** of a hex value. Also: code can be
-  untestable **by POSITION** (a config literal inside a `useCallback` — three milestones each
-  measured the same hole and each answered it with a browser pass), and **a pinned decision with
-  no net is a comment** (deleting the OoO default-width decision leaves all 4400 engine tests
-  green).
-- [Keyboard clock control — COMPLETE](keyboard-clock-control.md) — the first post-M14 work, and the
-  index of the shell's **four UX gaps** (three still open). Read before any interaction feature: its
-  headline is that deleting the one `addEventListener` line leaves **all 68 of the feature's own
-  headless tests green while the browser fails 6**. Also the CDP keyboard traps — a synthetic
-  `KeyboardEvent` makes an input-guard check vacuous, and **a disabled button cannot take focus**
-  (a check passed while reporting `focus=BODY`) — and the defect its FIRST browser pass missed: a
-  251px caption added to a `flexWrap` row inside a **sticky** bar, measured only at 1400px on the
-  models with the fewest chips, wrapped the bar at 900px. **A wrap is only yours if the
-  counterfactual says so**; and a row is wrapped when its BOX exceeds its tallest child, never by
-  comparing children's `rect.top`.
-- [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
-  keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
-  each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
-- [Workflow rituals](workflow-rituals.md) — batch-end / "session end" = update
-  memory+docs, commit, push.
-- [Commit and push preference](feedback_commit_and_push.md) — always commit and push
-  after every change, no confirmation needed.
-- [Best-practices source](best-practices-source.md) — the guide the user asked to apply,
-  and what was adopted/skipped.
+Work since M14 is **UX/product gaps in the shell**, not microarchitectures. A survey after M14 found
+four; **two are done** — keyboard clock control and continuous play (both 2026-07-30, repo **7248
+tests**, five gates green). **Open work: URL permalinks (the next best pick), session persistence,
+and the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles
+the local branch and needs no PR).
+
+Each entry below links a topic file that holds the detail — read the relevant one before touching
+that area. Keep this index to one line per entry; detail belongs in the file, never here.
+
+## Start here
+
+- [Project overview](project-overview.md) — what it is, the spec contract, the stack + package DAG,
+  and the index into the milestone logs. **Hub.**
+- [The browser is the only net](browser-is-the-only-net.md) — headless tests are
+  `renderToStaticMarkup` with no jsdom, so **no test can see a click**; 9 of 10 view steps shipped a
+  defect only the browser caught. **Hub — read before any browser pass.**
+
+## Browser rig
+
+- [CDP recipe](browser-rig-cdp-recipe.md) — launch & attach; target by served `<title>`, no fallback.
+- [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; match by command line then
+  **RE-COUNT**. Run `M:\claud_projects\temp\rig-sweep.ps1` at the START of every pass.
+- [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
+- [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
+- [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — **a port never tells you
+  whose server it is**; identify by served `<title>`. Applies to CDP debug ports too.
+- [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either; the
+  reserve idiom, and a fix that passed its own guard while the browser measured no change.
+
+## Post-M14 shell work
+
+- [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
+  four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
+  feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
+  failed 6**. Also the CDP keyboard traps and the sticky-bar wrap its first pass missed.
+- [Continuous play](continuous-play.md) — the ▶/⏸ toggle and its 5-position speed picker. Read
+  before any timer, before adding anything to the transport row, and before writing a rig that clicks
+  a toggle. Headline: broken 4 ways, headless stayed **47/47 green every time**, and the 4th break is
+  invisible to the **browser too** — so the fix is structural and no test pretends otherwise.
+
+## Method lessons that outlived their milestone
+
+- [Cycles cannot see a lost forward](cycles-cannot-see-a-lost-forward.md) — verify engine changes on
+  the EVENT MULTISET under adversarial programs: a cycles-only identity held in every cell while two
+  `forward` events silently vanished.
+- [M13 review resolved](m13-review-resolved.md) — read before trusting a docblock's stated reason,
+  writing a range claim, or adding a knob to the shell→engine seam. **A signed overlap is a pointer,
+  not a verdict — and here it pointed the WRONG way**; code can be untestable **by POSITION**; and a
+  pinned decision with no net is a comment.
+- [M14 review resolved](m14-review-resolved.md) — read before trusting a reserve, a docblock's
+  coverage claim, a comment that QUOTES prose, or running a break harness on a dirty tree. **Moving
+  untestable code somewhere callable does not always close its class.**
+- [M11+M12 review resolved](m11-m12-review-resolved.md) — bug classes to check before adding a model,
+  a field a view reads, or a config-exclusive lesson. **Run every new test against the BROKEN code
+  before trusting it** — one property sweep passed 8/8 on the bug it was written for.
+- [M9+M10 review resolved](m9-m10-review-resolved.md) — guardrails for expanding the OoO
+  corpus/models/knobs.
+- [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim, keep the
+  original name as the hub, verify blank-lines-INCLUDED against git. `docs/memory` is a git junction.
+
+## Milestone logs
+
+- [M1 engine + web shell](m1-engine-and-web-shell.md) — through the first datapath.
+- [M2 multi-cycle](m2-multi-cycle.md) — incl. steps 5C/5D/5E.
+- [Web visual layer](web-visual-layer.md) — theme, palette, `DatapathDiagram`, templates.
+- [M3 pipeline](m3-pipeline-engine.md) + [web](m3-pipeline-web.md) — the 5-stage machine.
+- [M4 branch prediction + ISA panel](m4-branch-prediction-and-isa-panel.md)
+- [M5 ISA lesson track](m5-isa-lesson-track.md)
+- [M6 caches](m6-caches-engine.md) + [corpus/web](m6-caches-corpus-and-web.md)
+- [M7 superscalar](m7-superscalar-engine.md) + [web](m7-superscalar-web.md) — **INV-8 is a FALSE net
+  here.**
+- [M9 out-of-order](m9-out-of-order.md) + [M10 lessons](m10-ooo-lesson-track.md)
+- [M11 deep pipeline](m11-deep-pipeline-planned.md) — the 7-stage machine, steps 0–5 + every pinned
+  decision; read before touching `engine/deep-pipeline`.
+  [Cache, datapath, closing pass](m11-deep-pipeline-view-and-cache.md) — steps 6–8.
+- [M12 deep-pipeline lessons](m12-deep-pipeline-lessons.md) — the first track whose subject is a
+  DELTA against a machine already met. **Read before authoring ANY lesson.**
+- [M13 width](m13-width-planned.md) — **read before touching `engine/superscalar`, the width control,
+  or the lane hues.** Its signature defect: **a test that keys off a pure fold rather than the
+  render**, which recurred 8 times and twice inside the fix written to stop it. ⚠ `Set-Content`
+  mojibakes source files here, and **a `git checkout --` break harness destroyed the uncommitted
+  tree — commit before you break.**
+- [M14 width lessons](m14-width-lessons-step0.md) — the width DELTA track. **Read before authoring a
+  width lesson**, and before choosing between a striking event and a safe anchor: **anchor on the one
+  whose existence conditions match the prose.** Also: a lesson can have NO config-exclusive step.
+- [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
+  M13). Read for the predictions that held and the one that was FALSE.
+- [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
+
+## Preferences
+
+- [Workflow rituals](workflow-rituals.md) — batch-end / "session end" = update memory+docs, commit,
+  push.
+- [Commit and push preference](feedback_commit_and_push.md) — always commit and push after every
+  change, no confirmation needed.
+- [Best-practices source](best-practices-source.md) — the guide the user asked to apply, and what was
+  adopted/skipped.
