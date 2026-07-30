@@ -6,7 +6,7 @@
  */
 
 import { DATA_BASE, TEXT_BASE, type AssembledProgram } from '@cpu-viz/assembler';
-import type { MachineState } from '@cpu-viz/trace';
+import type { CycleTrace, MachineState } from '@cpu-viz/trace';
 import { ABI_REGISTER_NAMES, hex32 } from './format';
 import { MONO, T } from './theme';
 
@@ -112,19 +112,36 @@ export function RegisterPanel(props: {
  * includes text") — windowing that out is the view's job (INV-2/INV-3). We show only the
  * data region (`addr >= DATA_BASE`); the instruction words already appear in the source panel.
  */
-export function MemoryPanel(props: { state: MachineState }): React.JSX.Element {
+export function MemoryPanel(props: {
+  state: MachineState;
+  /** How many rows to hold the panel open for — see {@link peakDataMemoryRows}. */
+  reserveRows: number;
+}): React.JSX.Element {
   // `definedAddresses()` already returns a sorted array and `.filter` copies it, so the data
   // window is sorted without a further `.slice().sort()`.
-  const addrs = props.state.memory.definedAddresses().filter((a) => a >= DATA_BASE);
+  const addrs = dataAddresses(props.state);
+  const ghosts = Math.max(0, props.reserveRows - addrs.length);
   return (
     <section className="panel">
       <h2 className="panel-heading">Data memory</h2>
-      {addrs.length === 0 ? (
-        <p style={{ ...mono, fontSize: '0.8rem', color: T.ink3, margin: 0 }}>
-          no data memory written
-        </p>
-      ) : (
-        <table style={{ ...mono, borderCollapse: 'collapse', fontSize: '0.8rem', width: '100%' }}>
+      {/* One grid cell holding the table and the empty message, so the panel is the height of the
+          run's PEAK row count at every cursor instead of growing a row each time a store defines a
+          new address. On the shipped corpus this reserves nothing at all — every example declares
+          its data in `.data`, so the addresses are defined before cycle 0 and the count never moves
+          (measured across all eleven programs, 2026-07-30). It is the SANDBOX that reaches it: a
+          hand-typed `sw` to an address no directive mentioned adds a row mid-run, and the editor is
+          a shipped feature. Reserving derived-and-invisible beats a panel that only twitches for the
+          reader who wrote their own program. */}
+      <div style={{ display: 'grid' }}>
+        <table
+          style={{
+            ...mono,
+            gridArea: '1 / 1',
+            borderCollapse: 'collapse',
+            fontSize: '0.8rem',
+            width: '100%',
+          }}
+        >
           <tbody>
             {addrs.map((addr) => {
               const word = props.state.memory.readWord(addr);
@@ -136,9 +153,53 @@ export function MemoryPanel(props: { state: MachineState }): React.JSX.Element {
                 </tr>
               );
             })}
+            {/* The reserve, drawn as REAL rows rather than a `min-height`: the height is then
+                whatever this table's own font and padding make a row, at the current window width,
+                rather than a pixel constant that a font change silently invalidates. `visibility`
+                (not `display`) is what makes them occupy space, and it takes them out of the
+                accessibility tree, so a screen reader still reads only the words that are true. */}
+            {Array.from({ length: ghosts }, (_, i) => (
+              <tr key={`reserve-${i}`} style={{ visibility: 'hidden' }} aria-hidden>
+                <td style={{ paddingRight: 12 }}>{hex32(0)}</td>
+                <td style={{ textAlign: 'right', paddingRight: 12 }}>{hex32(0)}</td>
+                <td style={{ textAlign: 'right' }}>0</td>
+              </tr>
+            ))}
           </tbody>
         </table>
-      )}
+        <p
+          style={{
+            ...mono,
+            gridArea: '1 / 1',
+            fontSize: '0.8rem',
+            color: T.ink3,
+            margin: 0,
+            visibility: addrs.length === 0 ? 'visible' : 'hidden',
+          }}
+        >
+          no data memory written
+        </p>
+      </div>
     </section>
   );
+}
+
+/** The data-memory window the panel draws — everything at or above `DATA_BASE`. The flat memory
+ *  model stores instruction words too, and windowing those out is the view's job (INV-2/INV-3). */
+function dataAddresses(state: MachineState): readonly number[] {
+  return state.memory.definedAddresses().filter((a) => a >= DATA_BASE);
+}
+
+/**
+ * The most rows {@link MemoryPanel} will ever show over a recording — what it holds itself open to,
+ * so stepping never resizes it.
+ *
+ * Read off the LAST cycle rather than swept over every one, and that is a claim about the machine
+ * rather than an optimization: a word is defined by being written and is never un-written, so the
+ * defined-address set only ever grows and the final state's count is the peak by construction. A
+ * sweep would compute the same number and invite a reader to wonder which cycle won it.
+ */
+export function peakDataMemoryRows(recording: readonly CycleTrace[]): number {
+  const last = recording[recording.length - 1];
+  return last === undefined ? 0 : dataAddresses(last.state).length;
 }

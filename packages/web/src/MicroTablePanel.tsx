@@ -55,6 +55,10 @@ const mono = { fontFamily: MONO } as const;
 // cursor's count. No headless test can see a height (`renderToStaticMarkup`, no jsdom), so this is a
 // browser-verified fix, like the map's follow-readout reserve.
 //
+// Reserving heights inside the panel is only half of it: a panel that VANISHES reserves nothing at
+// all, which is what cursor −1 used to do here (see {@link preRunMicro}) and the larger of the two
+// jumps by a wide margin.
+//
 // The ROB spine is reserved to its full `robCapacity`, not the peak occupancy actually seen: the
 // user wants the out-of-order structures panel to read as ALWAYS EXPANDED — a fully-present
 // structure at every cursor — rather than shrinking to a couple of rows for a program that never
@@ -106,6 +110,31 @@ function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
   return Array.isArray(m?.rob) ? (m as OutOfOrderMicro) : null;
 }
 
+/**
+ * The EMPTY micro to draw at the pre-run cursor — nothing in flight, nothing renamed, and the
+ * capacity the recording was made at so the ROB spine still reserves its full height.
+ *
+ * There is no trace at cursor −1, so {@link oooMicro} folds to null there and this panel used to
+ * return null with it — which took the whole panel out of the flow and dropped the datapath and all
+ * three bottom panels **526px** up the page (measured in the shipped bundle, 2026-07-30). Stepping
+ * off the start, or pressing reset, therefore moved every surface below it by more than half a
+ * screen: the largest single jump in the shell, and the one the reserves inside this file were
+ * already written to prevent within the run.
+ *
+ * The gate stays a TRACE fact (INV-3): a recording with no out-of-order `micro` anywhere still folds
+ * to null and the panel still never appears for another model. This is the same shape as
+ * `readPairingPreRun` in `pairing-readout.ts`, which solved the identical pre-run hole for the issue
+ * readout — the panel is a property of the RECORDING, and only its contents are a property of the
+ * cursor.
+ */
+function preRunMicro(recording: readonly CycleTrace[]): OutOfOrderMicro | null {
+  for (const trace of recording) {
+    const m = oooMicro(trace);
+    if (m !== null) return { robCapacity: m.robCapacity, rob: [], rename: [] };
+  }
+  return null;
+}
+
 /** Does this recording ever carry an out-of-order `micro`? The App-level gate for the whole panel. */
 export function hasMicroTables(recording: readonly CycleTrace[]): boolean {
   return recording.some((t) =>
@@ -147,7 +176,10 @@ export function MicroTablePanel(props: {
 }): React.JSX.Element | null {
   const { trace, recording, followed, onFollow } = props;
   const reserves = useMemo(() => microReserves(recording), [recording]);
-  const micro = oooMicro(trace);
+  // The cursor's micro, or the empty one at the pre-run cursor — see {@link preRunMicro}. The panel
+  // is present for as long as the RECORDING has an out-of-order micro; only its rows are a function
+  // of where the cursor is.
+  const micro = oooMicro(trace) ?? preRunMicro(recording);
   if (micro === null) return null;
 
   // The tag the followed instruction currently owns — for lighting its rename-map row(s). A

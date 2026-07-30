@@ -71,10 +71,37 @@ describe('MicroTablePanel — the gate is a TRACE fact', () => {
     ).toBe(false);
   });
 
-  it('renders nothing for a non-OoO trace or pre-run', () => {
+  it('renders nothing for a non-OoO trace, or with no recording at all', () => {
     const pipeline = record('array-sum', defaultConfig(), () => new PipelineProcessor());
     expect(render(pipeline[3]!)).toBe('');
+    // No trace AND no recording: there is nothing anywhere saying this is an out-of-order run.
     expect(render(null)).toBe('');
+    // A pipeline RECORDING at the pre-run cursor is the same answer for the same reason — the gate
+    // is a trace fact, and the reserve below must not smuggle the panel into another model's shell.
+    expect(
+      renderToStaticMarkup(
+        <MicroTablePanel trace={null} recording={pipeline} followed={null} onFollow={noop} />,
+      ),
+    ).toBe('');
+  });
+
+  it('DOES render at the pre-run cursor of an out-of-order recording — empty, not absent', () => {
+    // The panel is a property of the RECORDING; only its rows are a property of the cursor. It used
+    // to fold to `''` here (no trace ⇒ no micro), which took a 526px panel out of the flow and moved
+    // the datapath and all three bottom panels up the page the instant you stepped off the start —
+    // measured in the shipped bundle, 2026-07-30. See `preRunMicro`.
+    const recorded = record('array-sum', OOO);
+    const html = renderToStaticMarkup(
+      <MicroTablePanel trace={null} recording={recorded} followed={null} onFollow={noop} />,
+    );
+    expect(html).not.toBe('');
+    // All three tables are present and reserved, and each says its own empty state rather than
+    // showing rows from a cycle that has not happened.
+    expect(html).toContain('Reorder buffer');
+    expect(html).toContain('Reservation stations');
+    expect(html).toContain('Rename map');
+    expect(html).toContain('empty — nothing in flight');
+    expect(html).not.toContain('ROB#');
   });
 });
 

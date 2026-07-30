@@ -16,7 +16,7 @@ import { PipelineDatapath } from './PipelineDatapathView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { OutOfOrderDatapath } from './OutOfOrderDatapathView';
 import { narrationView, type NarrationView } from './narration';
-import { MemoryPanel, RegisterPanel, SourcePanel } from './panels';
+import { MemoryPanel, peakDataMemoryRows, RegisterPanel, SourcePanel } from './panels';
 import { MicroTablePanel, hasMicroTables } from './MicroTablePanel';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
@@ -592,7 +592,9 @@ export function App(): React.JSX.Element {
                 {
                   key: 'memory',
                   label: 'data memory',
-                  node: <MemoryPanel state={sim.state} />,
+                  node: (
+                    <MemoryPanel state={sim.state} reserveRows={peakDataMemoryRows(sim.recorded)} />
+                  ),
                 },
               ]}
             />

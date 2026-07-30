@@ -20,7 +20,7 @@ import { Datapath } from './DatapathView';
 import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
-import { SuperscalarDatapath } from './SuperscalarDatapathView';
+import { LONGEST_REFUSAL_TEXT, SuperscalarDatapath } from './SuperscalarDatapathView';
 import { loadSource } from './simulator';
 
 /** Assemble `source`, step `cycles` on the chosen engine, and return the trace at the cursor. */
@@ -313,7 +313,23 @@ describe('superscalar wrapper × shared renderer (M7 step 7)', () => {
     // It is a STATUS, so it wears the warn family and not a lane hue — a magenta badge would read
     // as "lane 1" to a reader who has just learned that magenta means lane 1.
     expect(refused).toContain('dp-verdict');
-    expect(render(ssAt(FILL, 4, 2), 'detailed', 2)).not.toContain('dp-verdict');
+    // ...and it is VISIBLE, which since the layout-stability fix is the half that carries the claim.
+    expect(refused).not.toContain('visibility:hidden');
+
+    // A paired cycle SAYS nothing — but the chip is still in the markup, holding the header's height
+    // open (see `LONGEST_REFUSAL_TEXT`). This read `.not.toContain('dp-verdict')` until then, which
+    // was the same assertion one layer too shallow: it could not tell "no verdict is shown" from "no
+    // space is reserved for one", and those became different things the moment the reserve landed.
+    // What replaces it is the pair — the element is present, and it is hidden — because either one
+    // alone passes for the wrong reason (absence passes the second, an always-visible chip the
+    // first).
+    const paired = render(ssAt(FILL, 4, 2), 'detailed', 2);
+    expect(paired).toContain('dp-verdict');
+    expect(paired).toContain('visibility:hidden');
+    // The reserved placeholder is the LONGEST refusal the chip can ever say, not the one that would
+    // have applied here: a reserve sized to the current cycle reserves nothing.
+    expect(paired).toContain(LONGEST_REFUSAL_TEXT);
+    expect(paired).not.toContain('one data-memory port');
   });
 
   it('strokes one cycle in MANY stage hues while TWO instructions share a stage', () => {

@@ -143,9 +143,75 @@ export function PairingReadout(props: {
         </span>
       </div>
 
-      <Verdict readout={readout} />
-      <Candidates readout={readout} followed={followed ?? null} />
+      <ReservedBody readout={readout} recording={recording} followed={followed ?? null} />
     </section>
+  );
+}
+
+/**
+ * The cursor-dependent half of the panel — the verdict line, the candidate rows and the refusal note
+ * — held at a CONSTANT height by stacking every shape the recording can produce in one grid cell and
+ * showing only the live one.
+ *
+ * **Why it needs holding.** All three parts change size as you step: the candidate list is 0 to
+ * `width` rows, the empty-decode message replaced the whole list, and the refusal note exists only on
+ * a refusal cycle. Measured in the shipped bundle (2026-07-30), this panel swung **98.8→198.3px** at
+ * width 4 on `array-sum` and 98.8→148.8px at width 2 on `paired-branches`, and everything below it —
+ * the source, register and memory panels — moved by the same ~100px on the steps where it changed.
+ * A reader stepping the clock is comparing one cycle's picture against the last one's, and a surface
+ * that relocates under them on the step is the surface failing at the job it was added for.
+ *
+ * **Grid, not a `min-height`.** The reserve is then DERIVED — the tallest shape this recording
+ * actually reaches, at the current window width, with the current fonts — rather than a magic number
+ * that a longer instruction, a fourth issue slot or a narrower window silently outgrows. That matters
+ * here and is not theory: at a 980px window the same recording's swing measured 124.9px rather than
+ * 99.5px, because the verdict line wraps at one width and not the other. Nothing here counts lines or
+ * knows what a line is. This is the narration panel's mechanism (`NarrationPanel` in `App.tsx`),
+ * applied to the other surface that puts a variable-length sentence above the fold.
+ *
+ * `visibility: hidden`, not `display: none`: hidden is what makes a ghost occupy the cell — the
+ * reserve IS the mechanism — and it takes the ghosts out of the accessibility tree on the way, so a
+ * screen reader reads exactly one verdict and one candidate list.
+ *
+ * The ghosts are deduped on everything that can affect their height (verdict, reason, and each
+ * candidate's slot/text/issued), so a long recording stacks a handful of shapes rather than one per
+ * cycle. The LIVE readout is drawn on top of them rather than selected from among them: at the
+ * pre-run cursor it comes from `readPairingPreRun` and so is not one of the recorded shapes at all.
+ */
+function ReservedBody(props: {
+  readout: Readout;
+  recording: readonly CycleTrace[];
+  followed: string | null;
+}): React.JSX.Element {
+  const { readout, recording, followed } = props;
+  const ghosts = useMemo(() => {
+    const byShape = new Map<string, Readout>();
+    for (const trace of recording) {
+      const r = readPairing(trace);
+      if (r === null) continue;
+      const key = JSON.stringify([
+        r.verdict,
+        r.reason,
+        r.candidates.map((c) => [c.slot, c.text, c.issued]),
+      ]);
+      if (!byShape.has(key)) byShape.set(key, r);
+    }
+    return [...byShape.values()];
+  }, [recording]);
+
+  return (
+    <div style={{ display: 'grid' }}>
+      {ghosts.map((ghost, i) => (
+        <div key={`ghost-${i}`} style={{ gridArea: '1 / 1', visibility: 'hidden' }}>
+          <Verdict readout={ghost} />
+          <Candidates readout={ghost} followed={null} />
+        </div>
+      ))}
+      <div style={{ gridArea: '1 / 1' }}>
+        <Verdict readout={readout} />
+        <Candidates readout={readout} followed={followed} />
+      </div>
+    </div>
   );
 }
 

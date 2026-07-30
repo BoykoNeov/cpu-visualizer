@@ -148,11 +148,18 @@ export function CacheGrid(props: {
 }
 
 /** The one-line status of THIS cycle's access — the caption that names what just happened. Reads the
- *  same fold the grid does, so the two never disagree about which line was touched. */
+ *  same fold the grid does, so the two never disagree about which line was touched.
+ *
+ *  **Both states are set in the SAME font size, and that is load-bearing rather than tidiness.** The
+ *  caption sits in a baseline-aligned flex row with the panel heading, so the row is as tall as its
+ *  tallest item — and the idle state was 0.75rem against the access state's 0.78rem, which made the
+ *  cache panel 143.2px on a cycle with no memory access and 144.4px on a cycle with one. Measured in
+ *  the shipped bundle at 1400px and 980px (2026-07-30): 1.2px, on every load and store, moving every
+ *  panel below it. Too small to see as a size and exactly big enough to see as a twitch. */
 function AccessCaption(props: { grid: CacheGridView }): React.JSX.Element {
   const { access, lineSize } = props.grid;
   if (access === null) {
-    return <span style={{ fontSize: '0.75rem', color: T.ink3 }}>no memory access this cycle</span>;
+    return <span style={{ fontSize: '0.78rem', color: T.ink3 }}>no memory access this cycle</span>;
   }
   const style = STATE_STYLE[access.state];
   return (

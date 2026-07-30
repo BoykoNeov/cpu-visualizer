@@ -77,6 +77,20 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   'intra-pair-raw': 'refused: it reads what an older group-mate writes',
 };
 
+/**
+ * The widest thing the verdict chip can say — what the header reserves on a cycle that refused
+ * nobody, so the panel is the same height at every cursor.
+ *
+ * DERIVED from {@link REFUSAL_TEXT} rather than typed: a fourth refusal reason with a longer sentence
+ * must widen the reserve by existing, or the header would go back to changing height on precisely the
+ * cycle the new reason fires. Longest by character count, which is the right proxy at one font: the
+ * chip is a single line and every glyph in these strings comes from the same face.
+ */
+export const LONGEST_REFUSAL_TEXT: string = Object.values(REFUSAL_TEXT).reduce(
+  (longest, text) => (text.length > longest.length ? text : longest),
+  '',
+);
+
 export function SuperscalarDatapath(props: {
   trace: CycleTrace | null;
   cycleKey: number;
@@ -150,11 +164,26 @@ export function SuperscalarDatapath(props: {
       markerPrefix="ss"
       legend={legend}
       headerRight={
-        refusalText ? (
-          <span className="dp-verdict" title={`Issue refusal: ${act.refusal!.reason}`}>
-            {refusalText}
-          </span>
-        ) : undefined
+        /* ALWAYS rendered, and merely hidden on a cycle that refused nobody — the header is a flex
+           row, and a chip that carries a border and 0.78rem text is taller than the `panel-heading`
+           beside it, so drawing it conditionally grew the whole datapath panel by 4.2px on exactly
+           the cycles a reader is studying (measured in the shipped bundle at 1400px and at 980px,
+           2026-07-30). Small, but it lands on top of the issue readout's own jump directly below and
+           moves every panel under both.
+
+           The hidden state carries {@link LONGEST_REFUSAL_TEXT} rather than an empty string: the
+           reserve has to be the height of the WIDEST thing this chip can say, or the header would
+           still change height on the day one refusal reason wraps and another does not. Same
+           mechanism as the pipeline map's follow readout — `visibility: hidden` holds the layout open
+           and takes the placeholder out of the accessibility tree, so nothing reads out a refusal
+           that did not happen. */
+        <span
+          className="dp-verdict"
+          style={refusalText ? undefined : { visibility: 'hidden' }}
+          title={act.refusal ? `Issue refusal: ${act.refusal.reason}` : undefined}
+        >
+          {refusalText ?? LONGEST_REFUSAL_TEXT}
+        </span>
       }
     />
   );
