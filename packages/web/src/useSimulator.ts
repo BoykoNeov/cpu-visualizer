@@ -9,12 +9,7 @@
 
 import type { AssembledProgram, AssemblerError } from '@cpu-viz/assembler';
 import { anchorLesson, type AnchoredStep, type Lesson } from '@cpu-viz/curriculum';
-import {
-  defaultConfig,
-  type CacheConfig,
-  type CycleTrace,
-  type MachineState,
-} from '@cpu-viz/trace';
+import { type CacheConfig, type CycleTrace, type MachineState } from '@cpu-viz/trace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_MODEL_ID, engineConfigOf, modelById, type ModelChoice } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
@@ -25,6 +20,8 @@ import {
   lessonOpening,
   lessonSession,
   originNameOf,
+  OPENING_KNOBS,
+  openingKnobs,
   predictsTaken,
   type BranchPrediction,
   type Session,
@@ -234,7 +231,7 @@ export interface Simulator {
    * {@link setForwarding}, for the same reason: the trace genuinely changes (a different geometry
    * hits and misses differently, changing the cycle count), so a fresh recording IS the mechanism.
    *
-   * The no-op guard is plain identity (`geometry === cacheRef.current`) rather than a deep compare,
+   * The no-op guard is plain identity (`geometry === knobs.current.cache`) rather than a deep compare,
    * because the shell only ever sets one of the three stable module constants
    * (`null` / `CACHE_SMALL` / `CACHE_LARGE`) — it never builds a fresh `CacheConfig`, so referential
    * equality already answers "is this the machine we are running". (Deep-comparing geometry is
@@ -325,83 +322,76 @@ export function useSimulator(): Simulator {
   // rendering (the toggle's position), the ref is what `loadInto` reads at call time so the load
   // path takes no dependency on it. Starts OFF — the pedagogically right opening move is to watch
   // a RAW hazard stall first, THEN flip it on and watch the bubble vanish (§12.2).
-  const [forwarding, setForwardingState] = useState(false);
-  const forwardingRef = useRef(forwarding);
+  const [forwarding, setForwardingState] = useState(OPENING_KNOBS.forwarding);
   // Prediction, mirroring forwarding exactly (M4 step 4). Opens on `defaultConfig()`'s value rather
   // than a scheme named here: the shell's job is to hold the config, not to re-decide its default.
   // That value is `'none'`, whose behavior is not-taken — the pedagogically right opening move for
   // the same reason forwarding starts off: watch the machine pay for every taken branch FIRST, then
   // bet and watch the penalty fall (and, on `call-return`, RISE).
   const [branchPrediction, setBranchPredictionState] = useState<BranchPrediction>(
-    defaultConfig().branchPrediction,
+    OPENING_KNOBS.branchPrediction,
   );
-  const branchPredictionRef = useRef(branchPrediction);
   // The cache geometry, mirroring forwarding/prediction exactly (M6 step 5). Opens on
   // `defaultConfig()`'s `null` (no cache) — the pedagogically right first move for the same reason
   // forwarding starts off and prediction starts not-taken: watch the machine with no cache first,
   // then add one and watch the misses appear, then flip the size and watch the straddler slow down.
-  const [cache, setCacheState] = useState<CacheConfig | null>(defaultConfig().cache);
-  const cacheRef = useRef(cache);
+  const [cache, setCacheState] = useState<CacheConfig | null>(OPENING_KNOBS.cache);
   // Issue width, mirroring the three knobs above (M7 step 6). Opens on 1 — but written as a literal
   // rather than read from `defaultConfig()`, unlike prediction and the cache, and the difference is
   // real: `issueWidth` is OPTIONAL in `ProcessorConfig`, so `defaultConfig()` leaves it `undefined`,
   // and "undefined" is not a position a two-position toggle can be lit in. The shell holds a
   // position; the engine's own `?? 1` is what makes that position agree with the default.
-  const [issueWidth, setIssueWidthState] = useState(1);
-  const issueWidthRef = useRef(issueWidth);
+  const [issueWidth, setIssueWidthState] = useState(OPENING_KNOBS.issueWidth);
   // Out-of-order issue, mirroring the four knobs above (M9 step 5). Opens FALSE (in-order) — the
   // flagship's degenerate position is the machine the reader just learned, so the first picture
   // matches it and the flip to out-of-order is the reveal (independent work slides ahead of a stall,
   // cycles drop). A literal `false` rather than `defaultConfig()`, like `issueWidth`: the field is
   // OPTIONAL, so `defaultConfig()` leaves it undefined and "undefined" is not a togglable position.
-  const [outOfOrderIssue, setOutOfOrderIssueState] = useState(false);
-  const outOfOrderIssueRef = useRef(outOfOrderIssue);
+  const [outOfOrderIssue, setOutOfOrderIssueState] = useState(OPENING_KNOBS.outOfOrderIssue);
   // ROB size, the secondary structural lever (M9 step 5). Opens at 16 — the engine's own default
   // (`config.robSize ?? 16`), the position where the money shot is visible once OoO is flipped on;
   // shrinking it is the follow-up experiment. A literal, same reasoning as `issueWidth`/OoO above.
-  const [robSize, setRobSizeState] = useState(16);
-  const robSizeRef = useRef(robSize);
+  const [robSize, setRobSizeState] = useState(OPENING_KNOBS.robSize);
   // Slow-op latency (M10 step 3) — the OoO engine's `slowOpLatency` knob. A REF ONLY, no React
   // state, no interface field, no control: it is honored by the engine but neither swept nor
   // user-adjustable (step 0b), so nothing renders it and nothing re-renders when it moves. Its ONLY
   // writers are `startLesson` (from the lesson's declared opening) and the free-play loads
   // (`select` / `loadEdited`), which reset it to 1 so a lesson's latency cannot leak into a program
   // the user picks next — there is no toggle to undo it. Opens at 1 (the engine's `?? 1`, no slow op).
-  const slowOpLatencyRef = useRef(1);
   // MSHR count (M9's `numMshrs`) — the second uncontrolled knob, threaded and reset exactly like
   // `slowOpLatency` above (M9+M10 review finding 5): honored by the OoO engine, no state/control, its
   // only writers `startLesson` and the free-play loads (which reset it to 2 so a lesson's declared
   // value can't leak into the next program). Opens at 2 (the engine's `?? 2`).
-  const numMshrsRef = useRef(2);
+  //
+  /**
+   * **The session's whole opinion about the machine, in ONE ref** (M14 review, finding 2).
+   *
+   * This was eight separate `useRef`s, each mirroring the `useState` above it, and two eight-field
+   * literals that copied them field by field — one to build the engine config, one in `startLesson`
+   * to take a lesson's opening. Every one of those literals mapped eight NAMES onto eight sources
+   * inside a `useCallback`, which is code no headless test in this repo can invoke. The review
+   * measured the cost: reading `robSize` off the slow-op ref, hardcoding `numMshrs`, and pinning
+   * `issueWidth` to 2 — verbatim the M13 step 6 defect, one layer above where that milestone fixed
+   * it — were each green on the whole web suite AND on `tsc`, since five of the eight knobs share a
+   * type with a sibling.
+   *
+   * M13's fix moved the config expression out to {@link engineConfigOf}, which made the SEAM
+   * testable and left the copying behind. One ref removes the copying instead of relocating it:
+   * `sessionKnobs()` is now a spread with no field names in it, and `startLesson` takes a lesson's
+   * whole opening through {@link openingKnobs} (a rest-destructure, also nameless). There is no
+   * transposition left anywhere in the shell for a test to have to catch.
+   *
+   * A ref rather than state, deliberately and for the reason `activeModel` is a ref: it is read at
+   * CALL time, so a knob set moments earlier in the same handler is already current here, where the
+   * corresponding `useState` would still hold the previous render's value. The states above remain —
+   * they are what the CONTROLS render from, and that half is still browser-only.
+   */
+  const knobs = useRef<SessionKnobs>({ ...OPENING_KNOBS });
   const rerender = useCallback(() => setTick((t) => t + 1), []);
 
-  /**
-   * The session's whole opinion about the machine, read off the refs at call time — the ONE place
-   * the eight knobs are enumerated (M13 review, finding 5).
-   *
-   * There used to be two hand-written copies of this literal, in `loadInto` and in `startLesson`,
-   * and they had to agree by vigilance: a ninth knob added to one and not the other would have
-   * meant a lesson opening on a machine the free-play path could not reproduce, with nothing
-   * failing. `slowOpLatency` and `numMshrs` are the two that make that concrete — they have no
-   * control, so a reader could never have seen the difference.
-   *
-   * Refs rather than state, deliberately and for the reason `activeModel` is a ref: this is read at
-   * CALL time, so a knob set moments earlier in the same handler is already current here, where the
-   * corresponding `useState` would still hold the previous render's value.
-   */
-  const sessionKnobs = useCallback(
-    (): SessionKnobs => ({
-      forwarding: forwardingRef.current,
-      branchPrediction: branchPredictionRef.current,
-      cache: cacheRef.current,
-      issueWidth: issueWidthRef.current,
-      outOfOrderIssue: outOfOrderIssueRef.current,
-      robSize: robSizeRef.current,
-      slowOpLatency: slowOpLatencyRef.current,
-      numMshrs: numMshrsRef.current,
-    }),
-    [],
-  );
+  /** The knobs as a plain value for `loadInto` / `lessonOpening` — copied so neither can reach back
+   *  into the session's own state through the object it was handed. */
+  const sessionKnobs = useCallback((): SessionKnobs => ({ ...knobs.current }), []);
 
   // Assemble + record `source`, parking the cursor at the pre-run state. Shared by every entry
   // point (`select` / `startLesson` / `loadEdited`) — the mode differs only in the `session`
@@ -466,9 +456,11 @@ export function useSimulator(): Simulator {
       // Free-play: no lesson to declare the uncontrolled knobs, and no control to adjust them, so
       // reset BOTH to their defaults (slow-op latency 1, MSHRs 2). This is what stops a lesson's
       // declared value leaking into the next program the user picks — the knobs with no toggle to
-      // undo them (see the refs' declarations).
-      slowOpLatencyRef.current = 1;
-      numMshrsRef.current = 2;
+      // undo them (see the `knobs` ref's docblock). The values come from `OPENING_KNOBS` rather
+      // than two literals here: a reset that quietly disagreed with the opening position would
+      // make the first free-play load a different machine from the shell's own opening state.
+      knobs.current.slowOpLatency = OPENING_KNOBS.slowOpLatency;
+      knobs.current.numMshrs = OPENING_KNOBS.numMshrs;
       setSession(exampleSession(name));
       setLoadGen((g) => g + 1);
       loadInto(example.source);
@@ -482,31 +474,31 @@ export function useSimulator(): Simulator {
       if (!example) return; // a lesson referencing a program not in the corpus — ignore (INV-7)
       // Open the lesson on the model it was AUTHORED against, in the config it declares — see
       // `lessonOpening`, which owns that decision and its reasoning. Both fields were
-      // declared-and-ignored until M3 step 8. The refs are what `loadInto` reads at call time, so
-      // they must be set BEFORE it runs; the states drive the picker + toggle. Deliberately not
+      // declared-and-ignored until M3 step 8. The ref is what `loadInto` reads at call time, so it
+      // must be set BEFORE it runs; the states drive the picker + toggle. Deliberately not
       // routed through `setModel`/`setForwarding`: each of those re-loads on its own, so a lesson
       // that changed both would record the program three times over.
       const opening = lessonOpening(lesson, sessionKnobs());
       const choice = modelById(opening.modelId);
       activeModel.current = choice;
       setModelState(choice.id);
-      forwardingRef.current = opening.forwarding;
+      // ONE assignment, and `openingKnobs` names no field (M14 review, finding 2). This was eight
+      // lines of `knobs.current.x = opening.x`, which is where two of the review's three invisible
+      // mutations lived: a lesson could have opened at the wrong width or the wrong ROB size with the
+      // whole suite green, because the knobs that share a type are transposable and nothing here is
+      // reachable from a headless test. There is now nothing to transpose. The uncontrolled two
+      // (`slowOpLatency`, `numMshrs`) ride along in the same assignment rather than trailing it — a
+      // config-less lesson resets both via `lessonOpening`, so neither leaks lesson-to-lesson.
+      knobs.current = openingKnobs(opening);
+      // The states, which the CONTROLS render from — a different claim from the ref above, and the
+      // only reason the two still exist side by side. Six of the eight knobs have a control; the
+      // other two are honored by the engine and rendered by nothing.
       setForwardingState(opening.forwarding);
-      branchPredictionRef.current = opening.branchPrediction;
       setBranchPredictionState(opening.branchPrediction);
-      cacheRef.current = opening.cache;
       setCacheState(opening.cache);
-      issueWidthRef.current = opening.issueWidth;
       setIssueWidthState(opening.issueWidth);
-      outOfOrderIssueRef.current = opening.outOfOrderIssue;
       setOutOfOrderIssueState(opening.outOfOrderIssue);
-      robSizeRef.current = opening.robSize;
       setRobSizeState(opening.robSize);
-      // No state/control for these two (see the refs' declarations) — the lesson's declared latency
-      // and MSHR count just become what `loadInto` records with, below. A config-less lesson resets
-      // both to default via `lessonOpening`, so an uncontrolled knob never leaks lesson-to-lesson.
-      slowOpLatencyRef.current = opening.slowOpLatency;
-      numMshrsRef.current = opening.numMshrs;
       setSession(lessonSession(lesson));
       setLoadGen((g) => g + 1);
       loadInto(example.source); // once — the refs above are already the new model/config
@@ -520,8 +512,8 @@ export function useSimulator(): Simulator {
       // update so the origin is derived from whatever session was current. Reset the uncontrolled
       // knobs to their defaults for the same reason `select` does — a sandbox is free-play, with no
       // control to adjust them.
-      slowOpLatencyRef.current = 1;
-      numMshrsRef.current = 2;
+      knobs.current.slowOpLatency = OPENING_KNOBS.slowOpLatency;
+      knobs.current.numMshrs = OPENING_KNOBS.numMshrs;
       setSession((prev) => forkToSandbox(prev));
       loadInto(source);
     },
@@ -547,8 +539,8 @@ export function useSimulator(): Simulator {
 
   const setForwarding = useCallback(
     (on: boolean) => {
-      if (on === forwardingRef.current) return; // already there — keep the cursor where it is
-      forwardingRef.current = on; // read by loadInto below (and every later load)
+      if (on === knobs.current.forwarding) return; // already there — keep the cursor where it is
+      knobs.current.forwarding = on; // read by loadInto below (and every later load)
       setForwardingState(on);
       // Re-record whatever is loaded under the new config. Same shape as `setModel`: the source
       // is the exact running text (corpus program or sandbox edit), so re-loading keeps the
@@ -566,8 +558,8 @@ export function useSimulator(): Simulator {
       // Guarded on BEHAVIOR, not on the string — see `setBranchPrediction` in the interface. The
       // state still moves to the requested name so the config reads as what the user asked for; it
       // is only the RE-RECORD that is skipped, because there is no different timeline to build.
-      const same = predictsTaken(scheme) === predictsTaken(branchPredictionRef.current);
-      branchPredictionRef.current = scheme; // read by loadInto below (and every later load)
+      const same = predictsTaken(scheme) === predictsTaken(knobs.current.branchPrediction);
+      knobs.current.branchPrediction = scheme; // read by loadInto below (and every later load)
       setBranchPredictionState(scheme);
       if (same) return; // same machine — keep the cursor where it is
       const source = loaded.current?.source;
@@ -578,8 +570,8 @@ export function useSimulator(): Simulator {
 
   const setCache = useCallback(
     (geometry: CacheConfig | null) => {
-      if (geometry === cacheRef.current) return; // already there — keep the cursor where it is
-      cacheRef.current = geometry; // read by loadInto below (and every later load)
+      if (geometry === knobs.current.cache) return; // already there — keep the cursor where it is
+      knobs.current.cache = geometry; // read by loadInto below (and every later load)
       setCacheState(geometry);
       // Re-record whatever is loaded under the new cache. Same shape as `setForwarding`: the source
       // is the exact running text, so re-loading keeps the session and any active lesson intact
@@ -593,8 +585,8 @@ export function useSimulator(): Simulator {
 
   const setIssueWidth = useCallback(
     (width: number) => {
-      if (width === issueWidthRef.current) return; // already there — keep the cursor where it is
-      issueWidthRef.current = width; // read by loadInto below (and every later load)
+      if (width === knobs.current.issueWidth) return; // already there — keep the cursor where it is
+      knobs.current.issueWidth = width; // read by loadInto below (and every later load)
       setIssueWidthState(width);
       // Re-record whatever is loaded at the new width. Same shape as `setForwarding`: the source is
       // the exact running text, so re-loading keeps the session and any active lesson intact while
@@ -610,8 +602,8 @@ export function useSimulator(): Simulator {
 
   const setOutOfOrderIssue = useCallback(
     (on: boolean) => {
-      if (on === outOfOrderIssueRef.current) return; // already there — keep the cursor where it is
-      outOfOrderIssueRef.current = on; // read by loadInto below (and every later load)
+      if (on === knobs.current.outOfOrderIssue) return; // already there — keep the cursor where it is
+      knobs.current.outOfOrderIssue = on; // read by loadInto below (and every later load)
       setOutOfOrderIssueState(on);
       // Re-record whatever is loaded under the new issue policy. Same shape as `setForwarding`: the
       // source is the exact running text, so re-loading keeps the session and any active lesson
@@ -626,8 +618,8 @@ export function useSimulator(): Simulator {
 
   const setRobSize = useCallback(
     (size: number) => {
-      if (size === robSizeRef.current) return; // already there — keep the cursor where it is
-      robSizeRef.current = size; // read by loadInto below (and every later load)
+      if (size === knobs.current.robSize) return; // already there — keep the cursor where it is
+      knobs.current.robSize = size; // read by loadInto below (and every later load)
       setRobSizeState(size);
       // Re-record whatever is loaded at the new ROB size. Same shape as `setIssueWidth`. Unlike a
       // width change this may re-record a byte-identical timeline (the conditional-lever caveat — the

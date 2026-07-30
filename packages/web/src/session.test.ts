@@ -13,9 +13,13 @@ import {
   forkToSandbox,
   lessonOpening,
   lessonSession,
+  OPENING_KNOBS,
+  openingKnobs,
   originNameOf,
   predictsTaken,
   type BranchPrediction,
+  type LessonOpening,
+  type SessionKnobs,
 } from './session';
 
 /**
@@ -416,5 +420,105 @@ describe('the two engines that read issueWidth default it differently (M13 revie
     );
     // ...and non-vacuously: there ARE such lessons to check.
     expect(LESSONS.filter((l) => WIDTH_HONORING.has(l.model)).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the shell holds its knobs with no field names to transpose (M14 review finding 2)', () => {
+  /**
+   * Eight values no two of which are equal — the whole trick, and the reason this fixture is spelled
+   * out rather than borrowed from `MOVED` in `engine-config.test.ts`.
+   *
+   * The defect this file is here for is a TRANSPOSITION: `robSize` read off the slow-op ref,
+   * `numMshrs` off the MSHR one. A fixture that gave two same-typed knobs the same value could not
+   * see it — the swap would produce an identical object. So the three unconstrained numbers are 3, 4
+   * and 5, all distinct, and the two booleans differ from each other.
+   */
+  const SENTINELS: LessonOpening = {
+    modelId: 'superscalar',
+    forwarding: true,
+    branchPrediction: 'static-taken',
+    cache: CACHE_SMALL,
+    issueWidth: 3,
+    outOfOrderIssue: false,
+    robSize: 4,
+    slowOpLatency: 5,
+    numMshrs: 6,
+  };
+
+  it('the fixture really is transposition-sensitive — no two numeric knobs agree', () => {
+    // The non-vacuity clause, and it comes first because the whole point of the fixture is that a
+    // swap changes the answer. `forwarding`/`outOfOrderIssue` are the boolean pair and must differ
+    // too, or swapping THOSE would also be invisible.
+    const numbers = [SENTINELS.issueWidth, SENTINELS.robSize, SENTINELS.slowOpLatency, SENTINELS.numMshrs]; // prettier-ignore
+    expect(new Set(numbers).size, 'two numeric knobs share a value — a swap would be invisible').toBe(numbers.length); // prettier-ignore
+    expect(SENTINELS.forwarding, 'the two booleans agree — a swap would be invisible').not.toBe(
+      SENTINELS.outOfOrderIssue,
+    );
+  });
+
+  it('openingKnobs carries every knob to its OWN field, and drops only the model id', () => {
+    const knobs: SessionKnobs = openingKnobs(SENTINELS);
+    expect(knobs).toEqual({
+      forwarding: true,
+      branchPrediction: 'static-taken',
+      cache: CACHE_SMALL,
+      issueWidth: 3,
+      outOfOrderIssue: false,
+      robSize: 4,
+      slowOpLatency: 5,
+      numMshrs: 6,
+    });
+    // ...and the model id is GONE, not merely unread: `knobs` is spread into a `ProcessorConfig`, so
+    // a stray `modelId` would ride into the engine's config object.
+    expect(Object.keys(knobs)).not.toContain('modelId');
+  });
+
+  it('LessonOpening is exactly SessionKnobs plus modelId — the property the rest-destructure rides on', () => {
+    // `openingKnobs` names no field, which is what makes a transposition impossible; the price is
+    // that it is only CORRECT while the two types line up. This is that assumption, asserted: split
+    // them and this reddens instead of a knob silently vanishing from every lesson opening.
+    expect(Object.keys(SENTINELS).sort()).toEqual(
+      ['modelId', ...Object.keys(OPENING_KNOBS)].sort(),
+    );
+  });
+
+  it('OPENING_KNOBS is the machine a lesson-less shell opens on, and the reset target', () => {
+    // Pinned by name rather than by shape: these eight values are what a reader sees before touching
+    // anything, and `select` / `loadEdited` reset the two uncontrolled knobs to them. A drift here is
+    // a different opening machine for every reader, which no test that only checks self-consistency
+    // would notice.
+    expect(OPENING_KNOBS).toEqual({
+      forwarding: false,
+      branchPrediction: defaultConfig().branchPrediction,
+      cache: defaultConfig().cache,
+      issueWidth: 1,
+      outOfOrderIssue: false,
+      robSize: 16,
+      slowOpLatency: 1,
+      numMshrs: 2,
+    });
+    // The two that are NOT `defaultConfig()`'s, and why — both are optional on `ProcessorConfig`, so
+    // the default leaves them undefined and "undefined" is not a position a control can be lit in.
+    expect(defaultConfig().issueWidth).toBeUndefined();
+    expect(defaultConfig().outOfOrderIssue).toBeUndefined();
+  });
+
+  it('a config-less lesson keeps the six CONTROLLED knobs and resets the two that have no control', () => {
+    // The round trip both shell paths now share, and the asymmetry inside it is the point: a lesson
+    // declaring no config leaves the user's six controlled knobs exactly where they were, and resets
+    // `slowOpLatency`/`numMshrs` to `OPENING_KNOBS` — because those two have no control, so a value a
+    // previous lesson declared would have no way back. That is `lessonOpening`'s own rule; what is new
+    // is that one ref makes the free-play machine and the lesson machine the same object's contents,
+    // where eight refs and two copies of the literal could disagree with nothing failing.
+    const lesson = { id: 'x', title: 'x', program: 'sum-loop', model: 'superscalar', steps: [] } as unknown as Lesson; // prettier-ignore
+    const knobs = openingKnobs(SENTINELS);
+    expect(openingKnobs(lessonOpening(lesson, knobs))).toEqual({
+      ...knobs,
+      slowOpLatency: OPENING_KNOBS.slowOpLatency,
+      numMshrs: OPENING_KNOBS.numMshrs,
+    });
+    // Non-vacuity: the sentinels really did differ from the reset target, or "reset" is unmeasured.
+    expect(knobs.slowOpLatency).not.toBe(OPENING_KNOBS.slowOpLatency);
+    expect(knobs.numMshrs).not.toBe(OPENING_KNOBS.numMshrs);
   });
 });

@@ -12,7 +12,7 @@
  */
 
 import type { Lesson } from '@cpu-viz/curriculum';
-import type { ProcessorConfig } from '@cpu-viz/trace';
+import { defaultConfig, type ProcessorConfig } from '@cpu-viz/trace';
 
 export type Session =
   | { kind: 'example'; programName: string }
@@ -85,6 +85,57 @@ export interface SessionKnobs {
   robSize: number;
   slowOpLatency: number;
   numMshrs: number;
+}
+
+/**
+ * The machine the shell OPENS on, and the position every free-play load resets the uncontrolled
+ * knobs to — one named value rather than eight `useState` seeds and two reset pairs (M14 review,
+ * finding 2).
+ *
+ * Every entry is the reading its own docblock on {@link LessonOpening} argues for, and the two that
+ * differ from `defaultConfig()` differ deliberately: `issueWidth` and `outOfOrderIssue` are OPTIONAL
+ * on `ProcessorConfig`, so the default leaves them `undefined`, and "undefined" is not a position a
+ * control can be lit in. The shell holds a position; the engine's own `??` is what makes that
+ * position agree with the default.
+ *
+ * `forwarding` opens OFF, prediction on `defaultConfig()`'s `'none'` and the cache on its `null`
+ * for one pedagogical reason stated three ways: the reader should watch the machine PAY first, then
+ * flip the knob and watch the cost fall.
+ */
+export const OPENING_KNOBS: SessionKnobs = {
+  forwarding: false,
+  branchPrediction: defaultConfig().branchPrediction,
+  cache: defaultConfig().cache,
+  issueWidth: 1,
+  outOfOrderIssue: false,
+  robSize: 16,
+  slowOpLatency: 1,
+  numMshrs: 2,
+};
+
+/**
+ * A {@link LessonOpening}'s knobs, without its model id — **written as a rest-destructure so that no
+ * field name is mapped to another field name anywhere in the shell** (M14 review, finding 2).
+ *
+ * `startLesson` used to write the eight refs one at a time (`forwardingRef.current =
+ * opening.forwarding`, eight times), inside a `useCallback`. That is a mapping of eight names onto
+ * eight sources in code no headless test can invoke, and the review measured what that costs: reading
+ * `robSize` off the slow-op ref, hardcoding `numMshrs`, and pinning `issueWidth` to 2 — verbatim the
+ * M13 step 6 defect — were each green on the whole web suite AND on `tsc`, because five of the eight
+ * knobs share a type with a sibling.
+ *
+ * Moving the mapping somewhere callable would only have made it TESTABLE. Removing the names makes
+ * the class impossible: there is nothing here to transpose. It works because `LessonOpening` is
+ * exactly these knobs plus `modelId`, which is a property of the two types rather than a coincidence
+ * — `session.test.ts` pins it, so splitting them later reddens instead of silently dropping a knob.
+ */
+export function openingKnobs(opening: LessonOpening): SessionKnobs {
+  // The point of naming `modelId` is to REMOVE it — the rest IS the return value, and there is no
+  // other way to spell "everything else" without listing the eight names this function exists to
+  // avoid listing.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { modelId, ...knobs } = opening;
+  return knobs;
 }
 
 export interface LessonOpening {
