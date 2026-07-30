@@ -1,8 +1,15 @@
 # Keyboard clock control — driving the transport from the keys
 
-**Status: NOT STARTED, 2026-07-30. Nothing built. Scope is a feature, not a milestone: no engine,
-trace, curriculum or content change, and no new trace field (INV-3 untouched — the keyboard adds
-no action, only a new trigger for the four `useSimulator` callbacks the buttons already call).**
+**Status: steps 0 and 1 COMPLETE, step 2 (browser pass) PENDING, 2026-07-30. Scope is a feature,
+not a milestone: no engine, trace, curriculum or content change, and no new trace field (INV-3
+untouched — the keyboard adds no action, only a new trigger for the four `useSimulator` callbacks
+the buttons already call). PROVEN headlessly: the keymap and guard (48 tests, each guard sweep
+paired with its control cell, all 8 mutations of the module caught) and the discoverability half
+(13 render assertions on `TransportButtons`). Repo 7132 → 7200 tests; five gates green.
+NOT yet proven, and unprovable here: that the listener is attached at all, that `preventDefault`
+fires, and that a real event's `target` is the focused element — step 2 is the only net for those.
+The module shipped as `keyboard.ts`, not the `keys.ts` this plan first named (a CPU simulator has
+cache keys; the file is about a keyboard).**
 
 Source of truth for scope: this is not on `cpu-visualizer-spec.md` §12's roadmap, which is complete
 through M10 and extended by M11–M14. It is a **product gap in the shell**, found by surveying the
@@ -44,7 +51,7 @@ focusable surfaces that natively consume the keys a transport wants:
 | any focused `<button>`                      | Space/Enter activate it → double-fire if those are bound |
 | the page itself                             | Home/End/arrows scroll                                   |
 
-So the decision: **the keymap and its guard live in a new pure module `packages/web/src/keys.ts`,
+So the decision: **the keymap and its guard live in a new pure module `packages/web/src/keyboard.ts`,
 as `transportActionFor(event-like) → TransportAction | null`**, and `App.tsx` gets a thin
 `useEffect` that calls it and dispatches. The reason is this repo's oldest constraint — headless
 tests here are `renderToStaticMarkup` with no jsdom, so **no test can see a keypress.** A pure
@@ -59,17 +66,24 @@ guard behaves the same on real events as on the synthetic ones.
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. `keys.ts` — the keymap and its guard, as a pure function.** New module exporting
+- [x] ✅ **0. `keyboard.ts` — the keymap and its guard, as a pure function.** New module exporting
       `TransportAction = 'stepForward' | 'stepBack' | 'reset' | 'runToEnd'`, a structural
       `TransportKeyEvent` (`key`, `ctrlKey`, `metaKey`, `altKey`, `shiftKey`, `defaultPrevented`,
       `target`), and `transportActionFor()`. Guard order: `defaultPrevented` → any of
       ctrl/meta/alt → shift → editable/native-consumer target (`TEXTAREA`, `INPUT`, `SELECT`,
-      `isContentEditable`) → keymap lookup. Colocated `keys.test.ts` enumerates every cell,
+      `isContentEditable`) → keymap lookup. Colocated `keyboard.test.ts` enumerates every cell,
       including the slider trap and each unbound key that must stay unbound.
       Acceptance: `npm test` green with the (key × surface × modifier) sweep; `npm run typecheck`
       and `npm run lint` green. No `.tsx` touched yet.
+      **Landed:** 48 tests. Then broken 8 ways — each guard rung deleted, shift unguarded, Space
+      bound, `INPUT` dropped from the consuming tags, `toUpperCase` dropped, `Home`/`End` swapped —
+      and every mutation was caught. The swap is the one worth recording: it failed exactly ONE
+      test, the literal `toEqual` on the map, because the three `it.each(BOUND)` sweeps derive
+      their expectation FROM the map and would re-derive any remap green. That is this repo's
+      signature defect (a test keyed off a fold, not the artifact) appearing inside the suite
+      written to avoid it; the finding is now a comment on `BOUND` naming the count it measured.
 
-- [ ] **1. Wire it, and make it discoverable in the same commit.** `App.tsx` gains one
+- [x] ✅ **1. Wire it, and make it discoverable in the same commit.** `App.tsx` gains one
       `useEffect` (document `keydown`, `transportActionFor`, dispatch to `sim.*`,
       `preventDefault()` only when an action came back) and the existing `title=` strings on
       reset/back/step/run gain their key hint (`Step forward one cycle (→)`), plus a compact
@@ -79,6 +93,15 @@ guard behaves the same on real events as on the synthetic ones.
       Acceptance: render tests assert each of the four buttons' `title` names its key and that the
       legend lists exactly the bound keys — so a keymap change that forgets the hint fails. Suites,
       typecheck, lint, build green.
+      **Landed:** the four buttons came OUT of `Transport` into an exported pure
+      `TransportButtons`, because a render test needs a component that does not demand a whole
+      simulator. Dispatch is `sim[action]()` and the effect's verb table is shorthand properties,
+      so no field name is written twice anywhere on this path. `KEY_HINTS` is typed total over
+      `TransportAction` (a fifth verb cannot reach a button unspelled) and the legend is folded
+      over `TRANSPORT_KEYS` (a fifth binding cannot ship invisible); what neither can check — that
+      `→` is what `ArrowRight` looks like — is pinned as literal data on both sides in the tests.
+      13 assertions, incl. the disabled-parity table at both ends of the run and at the pre-run
+      cursor where both ends are true at once.
 
 - [ ] **2. Browser pass — the only net for the dispatch.** Per
       `browser-rig-cdp-recipe` / `browser-rig-chrome-cleanup`: run `rig-sweep.ps1` first, target by

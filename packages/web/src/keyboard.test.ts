@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTION_WORDS,
   consumesItsOwnKeys,
+  KEY_HINTS,
   transportActionFor,
+  transportLegend,
   TRANSPORT_KEYS,
   type TransportAction,
   type TransportKeyEvent,
@@ -44,6 +47,13 @@ function focused(tagName: string, extra: Record<string, unknown> = {}): EventTar
   return { tagName, ...extra } as unknown as EventTarget;
 }
 
+/**
+ * The bound pairs, read FROM the map — so every sweep below is about the guard, never about which
+ * key means what. Measured, not assumed: swapping `Home` and `End` in the source fails exactly one
+ * test in this file, the literal `toEqual` right below. That equality is the whole net on the
+ * binding itself; these `it.each(BOUND)` sweeps would happily re-derive a remap and stay green,
+ * which is this repo's oldest defect shape — a test keyed off a fold instead of the artifact.
+ */
 const BOUND = Object.entries(TRANSPORT_KEYS) as [string, TransportAction][];
 
 describe('the keymap itself', () => {
@@ -189,6 +199,45 @@ describe('elements that type their own keys keep them', () => {
     // gains real tablist keyboard behaviour, THIS is the assertion that must object first.
     const dot = focused('BUTTON', { role: 'tab', ariaSelected: 'true' });
     expect(transportActionFor(press('ArrowRight', { target: dot }))).toBe('stepForward');
+  });
+});
+
+describe('what the reader is told the keys are', () => {
+  /** Every binding, paired with how it is written for a reader. Literal data on BOTH sides,
+   *  because "`→` is what `ArrowRight` looks like" is the one correspondence in this feature that
+   *  no type and no fold can check — derive it and the pin becomes the map agreeing with itself. */
+  const SPELLING: readonly [string, string][] = [
+    ['ArrowRight', '→'],
+    ['ArrowLeft', '←'],
+    ['Home', 'Home'],
+    ['End', 'End'],
+  ];
+
+  it.each(SPELLING)('%s is shown to the reader as %p', (key, hint) => {
+    const action = TRANSPORT_KEYS[key];
+    expect(action, `${key} should be bound`).toBeDefined();
+    expect(KEY_HINTS[action!]).toBe(hint);
+  });
+
+  it('spells every bound key and invents none', () => {
+    expect(Object.keys(KEY_HINTS)).toHaveLength(Object.keys(TRANSPORT_KEYS).length);
+    // …and the table above covers the whole map, so the `it.each` above is not a sample.
+    expect(SPELLING).toHaveLength(Object.keys(TRANSPORT_KEYS).length);
+  });
+
+  it('gives every verb a word of its own', () => {
+    expect(ACTION_WORDS).toEqual({
+      stepForward: 'step',
+      stepBack: 'back',
+      reset: 'reset',
+      runToEnd: 'run',
+    });
+    // Two verbs sharing a word would make the legend ambiguous about which button it points at.
+    expect(new Set(Object.values(ACTION_WORDS)).size).toBe(4);
+  });
+
+  it('folds the legend to one entry per binding', () => {
+    expect(transportLegend()).toBe('→ step · ← back · Home reset · End run');
   });
 });
 

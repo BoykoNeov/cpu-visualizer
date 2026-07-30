@@ -99,3 +99,45 @@ export function transportActionFor(e: TransportKeyEvent): TransportAction | null
   if (consumesItsOwnKeys(e.target)) return null;
   return TRANSPORT_KEYS[e.key] ?? null;
 }
+
+/**
+ * How each verb's key is written for a reader — the arrows as glyphs, the named keys as their
+ * names. A shortcut nobody can find is not a fix, so this is not decoration: it is the half of the
+ * feature a headless test can actually see, since `title` text and the legend both survive
+ * `renderToStaticMarkup` while a keypress does not.
+ *
+ * Typed total over {@link TransportAction}, so a fifth verb cannot reach the buttons without a
+ * spelling. That the spellings match {@link TRANSPORT_KEYS} — that `→` really is what `ArrowRight`
+ * looks like — is the one correspondence no type can check, and it is pinned as literal data in
+ * the tests instead.
+ */
+export const KEY_HINTS: Readonly<Record<TransportAction, string>> = {
+  stepForward: '→',
+  stepBack: '←',
+  reset: 'Home',
+  runToEnd: 'End',
+};
+
+/** The one word each verb goes by. Used for BOTH the button faces and the legend below them, so
+ *  the hint always names the button it points at — a legend saying "step" beside a button reading
+ *  "advance" would be a second vocabulary for the reader to reconcile. */
+export const ACTION_WORDS: Readonly<Record<TransportAction, string>> = {
+  stepForward: 'step',
+  stepBack: 'back',
+  reset: 'reset',
+  runToEnd: 'run',
+};
+
+/**
+ * The one-line key legend under the transport buttons, e.g. `→ step · ← back · …`.
+ *
+ * Folded over {@link TRANSPORT_KEYS} rather than written out, so a binding cannot ship invisible:
+ * a new key appears here the moment it exists. Constant for the life of the app — it names keys,
+ * not state — so it adds no per-step height change to a bar that five panels' jitter class already
+ * taught this repo to watch.
+ */
+export function transportLegend(): string {
+  return Object.values(TRANSPORT_KEYS)
+    .map((action) => `${KEY_HINTS[action]} ${ACTION_WORDS[action]}`)
+    .join(' · ');
+}

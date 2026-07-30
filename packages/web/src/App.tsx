@@ -9,6 +9,13 @@ import { Datapath } from './DatapathView';
 import { DeepPipelineDatapath } from './DeepPipelineDatapathView';
 import { formatInstruction } from './format';
 import { IsaReference } from './IsaReference';
+import {
+  ACTION_WORDS,
+  KEY_HINTS,
+  transportActionFor,
+  transportLegend,
+  type TransportAction,
+} from './keyboard';
 import { LESSONS, lessonSections } from './lessons';
 import { MODELS, modelById } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
@@ -72,6 +79,32 @@ export function shownInstruction(
  */
 export function App(): React.JSX.Element {
   const sim = useSimulator();
+
+  // Keyboard clock control (`docs/plans/keyboard-transport.md`). The transport bar is pinned to the
+  // top because the reader needs the clock while looking at a surface below the fold; these keys
+  // finish that fix by taking the mouse trip out of the app's primary verb entirely.
+  //
+  // Every decision about WHICH keystroke means what — modifiers, the focused element, the unbound
+  // keys — lives in `transportActionFor`, where it can be swept exhaustively; no test in this repo
+  // can see a keypress, so anything decided here would be decided unwatched. What is left here is
+  // the part that has no headless net at all and so is kept as small as it can be: attach, look
+  // up, dispatch. `preventDefault` fires only for a key that was ours, so Home/End keep scrolling
+  // the page whenever the transport passed on them.
+  const { stepForward, stepBack, reset, runToEnd } = sim;
+  useEffect(() => {
+    // Shorthand properties: the four names are written once, so there is no way to wire `Home` to
+    // `runToEnd` by transposition — the same-typed-swap defect this repo has already shipped twice.
+    const verbs: Record<TransportAction, () => void> = { stepForward, stepBack, reset, runToEnd };
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const action = transportActionFor(e);
+      if (action === null) return;
+      e.preventDefault();
+      verbs[action]();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [stepForward, stepBack, reset, runToEnd]);
+
   // Explanation depth (axis B, handoff §4) — a view/curriculum concern only; the engine is
   // oblivious (INV-2). On single-cycle the tier changes the datapath's representational detail:
   // `essentials` shows the bare lit path, `detailed` adds the value on each active wire,
@@ -1497,6 +1530,74 @@ function ThemeToggle(): React.JSX.Element {
 }
 
 /** Transport controls: step/back/run/reset buttons, a status line, and the scrub slider. */
+/** The four clock buttons, in reading order, each with the end of the run it is dead at. `face`
+ *  and the legend below draw their word from the same {@link ACTION_WORDS} entry, so the hint
+ *  `→ step` always names the button reading `step ▶`. */
+const TRANSPORT_BUTTONS: readonly {
+  readonly action: TransportAction;
+  readonly face: string;
+  readonly title: string;
+  readonly deadAt: 'start' | 'end';
+}[] = [
+  { action: 'reset', face: `⏮ ${ACTION_WORDS.reset}`, title: 'Back to start', deadAt: 'start' },
+  {
+    action: 'stepBack',
+    face: `◀ ${ACTION_WORDS.stepBack}`,
+    title: 'Step back one cycle',
+    deadAt: 'start',
+  },
+  {
+    action: 'stepForward',
+    face: `${ACTION_WORDS.stepForward} ▶`,
+    title: 'Step forward one cycle',
+    deadAt: 'end',
+  },
+  {
+    action: 'runToEnd',
+    face: `${ACTION_WORDS.runToEnd} ⏭`,
+    title: 'Run to completion',
+    deadAt: 'end',
+  },
+];
+
+/**
+ * The clock buttons and the keys that do the same thing — split out of {@link Transport} as a pure
+ * component so both halves are renderable without a simulator.
+ *
+ * That split is the point rather than tidiness: `renderToStaticMarkup` cannot press a key, so the
+ * ONLY headless evidence this feature exists at all is the text it puts on screen — each button's
+ * title naming its key, and a legend listing every binding. Rendering that from the same maps the
+ * handler dispatches on is what stops a fifth shortcut from shipping invisible.
+ */
+export function TransportButtons(props: {
+  onAction: (action: TransportAction) => void;
+  atStart: boolean;
+  atEnd: boolean;
+}): React.JSX.Element {
+  const { onAction, atStart, atEnd } = props;
+  return (
+    <>
+      {TRANSPORT_BUTTONS.map((b) => (
+        <button
+          key={b.action}
+          className="btn"
+          onClick={() => onAction(b.action)}
+          disabled={b.deadAt === 'start' ? atStart : atEnd}
+          title={`${b.title} (${KEY_HINTS[b.action]})`}
+        >
+          {b.face}
+        </button>
+      ))}
+      <span
+        style={{ fontFamily: MONO, fontSize: '0.75rem', color: T.ink3 }}
+        title="Keyboard shortcuts for the clock. They work anywhere on the page except while you are typing in the program editor, the instruction filter, or a picker."
+      >
+        {transportLegend()}
+      </span>
+    </>
+  );
+}
+
 function Transport(props: {
   sim: ReturnType<typeof useSimulator>;
   atStart: boolean;
@@ -1517,33 +1618,11 @@ function Transport(props: {
     // hand. The bar carries the slider too: scrubbing while watching is the same act.
     <div className="transport--sticky">
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="btn" onClick={sim.reset} disabled={atStart} title="Back to start">
-          ⏮ reset
-        </button>
-        <button
-          className="btn"
-          onClick={sim.stepBack}
-          disabled={atStart}
-          title="Step back one cycle"
-        >
-          ◀ back
-        </button>
-        <button
-          className="btn"
-          onClick={sim.stepForward}
-          disabled={sim.atEnd}
-          title="Step forward one cycle"
-        >
-          step ▶
-        </button>
-        <button
-          className="btn"
-          onClick={sim.runToEnd}
-          disabled={sim.atEnd}
-          title="Run to completion"
-        >
-          run ⏭
-        </button>
+        <TransportButtons
+          onAction={(action) => sim[action]()}
+          atStart={atStart}
+          atEnd={sim.atEnd}
+        />
         <span style={{ marginLeft: '0.5rem', fontFamily: MONO, color: T.ink2 }}>
           {atStart ? 'start (pre-run)' : `cycle ${sim.cursor} / ${lastCycle}`}
           {sim.atEnd ? '  — halted' : ''}
