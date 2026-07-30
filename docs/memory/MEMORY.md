@@ -15,8 +15,13 @@ browser pass driven over the shipped bundle — 110 checks, two breaks, and the 
 subject could not satisfy honored in its stricter substitute form
 ([M14](m14-width-lessons-step0.md)). **M14 has now been code-reviewed and all 5 findings are fixed**
 ([M14 review resolved](m14-review-resolved.md), 2026-07-30) — repo **7132 tests**, five gates green.
-**NO milestone is in progress**, and the only named open work is the `/code-review ultra` fan-out over
-`89bb26e..HEAD` (user-triggered; needs a PR to point at). Outside the milestones, the
+**NO milestone is in progress.** Work since M14 has moved to **UX/product gaps in the shell** rather
+than microarchitectures: a survey after M14 found four, and **keyboard clock control is ✅ COMPLETE
+(2026-07-30, repo 7200 tests)** — [keyboard clock control](keyboard-clock-control.md), which also
+holds the other **three still-open gaps** (URL permalinks, continuous play, session persistence) and
+the greps that confirm each absent. Named open work: those three, plus the `/code-review ultra`
+fan-out over `89bb26e..HEAD` (user-triggered; the no-arg form bundles the local branch and needs no
+PR). Outside the milestones, the
 shell's **step-JITTER class is closed** (2026-07-30, repo **7125 tests**): five panels changed height
 as the cursor moved and every surface below them moved with it —
 [panel jitter](panel-jitter-and-height-reserves.md).
@@ -132,6 +137,12 @@ as the cursor moved and every surface below them moved with it —
   measured the same hole and each answered it with a browser pass), and **a pinned decision with
   no net is a comment** (deleting the OoO default-width decision leaves all 4400 engine tests
   green).
+- [Keyboard clock control — COMPLETE](keyboard-clock-control.md) — the first post-M14 work, and the
+  index of the shell's **four UX gaps** (three still open). Read before any interaction feature: its
+  headline is that deleting the one `addEventListener` line leaves **all 68 of the feature's own
+  headless tests green while the browser fails 6**. Also the CDP keyboard traps — a synthetic
+  `KeyboardEvent` makes an input-guard check vacuous, and **a disabled button cannot take focus**
+  (a check passed while reporting `focus=BODY`).
 - [Splitting an oversized memory](splitting-an-oversized-memory.md) — move bytes verbatim,
   keep the original name as the hub, verify blank-lines-INCLUDED against git; two splits
   each shipped a defect their own net was blind to. `docs/memory` is a git-tracked junction.
