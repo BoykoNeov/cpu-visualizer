@@ -8,9 +8,10 @@ FUNCTION of the width — `geometryFor`), and the **pairing readout speaks in GR
 pairs**, its count glosses DERIVED and its vocabulary pinned as a property. Six models ship, each
 with a lesson track. Repo **6996 tests**, five gates green. **M13 has now been code-reviewed and all
 5 findings are fixed** ([M13 review resolved](m13-review-resolved.md), 2026-07-29). **M14 — the width
-DELTA lesson track — is IN PROGRESS**: steps 0–3 are done, so all three lessons are authored
+DELTA lesson track — is IN PROGRESS**: steps 0–4 are done, so all three lessons are authored
 (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work` — the wide track now has SEVEN
-lessons and the repo 7105 tests); steps 4 (order pin) and 5 (browser pass) remain
+lessons and the repo 7107 tests) and the track's within-track ORDER is pinned on the four
+cross-references that lie without it; **only step 5 (the browser pass) remains**
 ([M14](m14-width-lessons-step0.md)). No other milestone is in progress.
 
 - [Project overview](project-overview.md) — what it is, the spec contract, the stack +

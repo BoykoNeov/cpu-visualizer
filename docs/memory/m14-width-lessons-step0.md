@@ -1,10 +1,10 @@
 ---
 name: m14-width-lessons-step0
-description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0–3 done, all three lessons authored (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work`); steps 4 and 5 open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, before writing a number into prose a reader can see at more than one config, and before assuming a lesson HAS a config-exclusive step to hang its ask on."
+description: "M14 (the width DELTA lesson track — new lessons in the existing 'The wide machine' track, teaching widths 3/4 against the width-2 machine the learner already met). IN PROGRESS as of 2026-07-30: steps 0–4 done, all three lessons authored (`where-widening-stops`, `four-in-a-row`, `width-moved-the-work`) and the track's order pinned; only step 5 (the browser pass) is open. Read before authoring any width lesson, before trusting `lessons.test.ts`'s sweep as a net for a config-exclusive step, before choosing between a striking event and a safe anchor, before writing a number into prose a reader can see at more than one config, before assuming a lesson HAS a config-exclusive step to hang its ask on, and before adding or trusting a lesson-ORDER pin (an `indexOf` one is vacuous under a rename)."
 metadata:
   node_type: memory
   type: project
-  modified: 2026-07-30T05:40:00.000Z
+  modified: 2026-07-30T02:58:15.488Z
   originSessionId: b34af334-e8a5-4166-b2fa-2bd6ee320a8a
 ---
 
@@ -240,6 +240,36 @@ step that SENDS the reader to width 4 (where it is 6), so it is now scoped and a
 **Generalises: the step most likely to be misread is the one that asks for the flip, not the one
 after it.**
 
+## Step 4 SHIPPED — the order pin (`16b596c`, repo 7106 → 7107)
+
+Wiring was already done; the live work was the WITHIN-track order pin. 4 breaks, 4 intended results
+(3 reddened, 1 deliberately green). Four things worth carrying:
+
+- **Apply the "does a sentence LIE when reordered" discriminator per REFERENCE, not per track.** The
+  wide lessons name each other **seven** times and only **four** are claims about what the reader has
+  already done. "Compare \"The pair that can't\", where the same event…" is an INVITATION — true
+  whether or not that lesson was read — so `pair-that-cant`'s position stays UNPINNED; and
+  `width-moved-the-work`'s expert "\"Four in a row\" goes 6, 13, 12" is a fact about another lesson's
+  numbers, so that link is pinned on step 2's `detailed` tier instead (past tense, and it does lie).
+  `one-door` is named by nothing and earns nothing. The rejected candidates go IN the comment — that
+  record is what keeps the pin defensible under its own rule.
+- ⚠ **`indexOf` makes an order pin VACUOUS under a rename — measured, not reasoned.** It returns -1,
+  and -1 is less than every real index. Rename `two-at-once` in the index with the guard removed and
+  the pin is **green on an id that no longer exists**. `toBeGreaterThanOrEqual(0)` (the OoO pin's
+  shape) is load-bearing here; the cache track's pin above it still has the hole. It is NOT the sole
+  net for a rename though — 3 other tests catch one — so the comment says so.
+- **The order pin IS the sole net for a REORDER — the opposite of step 1's `nth` result.** Swapping
+  two ids reddens exactly 1 test of 7107; deleting a referring sentence reddens exactly 1. Nothing
+  else in the suite sees either, which is why the sentence is asserted BESIDE the index.
+- **The pinned chain is broader than the decision row asked about**: `two-at-once` <
+  `where-widening-stops` < `four-in-a-row` < `width-moved-the-work`, plus `one-branch-unit` <
+  `width-moved-the-work`. Two of the four earned links reach back into the M8 four, so "the order of
+  the three" was never answerable among the three. And the unpinned positions are a KNOWN hole:
+  shuffling the four M8 beats among themselves leaves all 1926 tests in the file green.
+- Method: "the track-name `toEqual` and the pairwise pins are untouched" is a claim about what steps
+  1–3 DID, and reading the current file cannot settle it — checked on `git diff 458b4ce~1..HEAD`
+  hunk offsets.
+
 ## What is left
 
 ⚠ **Step 5's stated acceptance is UNSATISFIABLE for lesson 3, and the plan now says so** — "the
@@ -249,8 +279,5 @@ count does not** (crux c4→c3 on the flip to 3, closing c6→c5 on the flip to 
 Written down BEFORE the browser pass, because relaxing an acceptance mid-run is how
 `deep-bet-pays-double` justified a gap with prose that did not exist.
 
-Steps 4 and 5. **Step 4 is now VERIFICATION, not wiring** — each lesson wired its own id as it
-landed, so the picker already shows seven; what remains is the within-track order pin, and step 3
-supplied the sentence that decides it (its prose names both siblings and leans on them, so reordering
-makes them forward references). Step 5 is the browser pass driving the real ISSUE control —
-[[browser-is-the-only-net]], and the only net that can see a learner who never flips.
+**Only step 5** — the browser pass driving the real ISSUE control. [[browser-is-the-only-net]], and
+the only net that can see a learner who never flips.
