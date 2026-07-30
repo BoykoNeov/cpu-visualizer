@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1159b994-75bd-457b-95ff-85fe2ac2c2bf
-  modified: 2026-07-30T18:07:57.440Z
+  modified: 2026-07-30T18:19:46.254Z
 ---
 
 Stepping the clock resized five panels, and since the shell is a vertical stack each one shoved every
@@ -114,10 +114,25 @@ so every viewport ≥1200px is ONE layout and sweeping wider widths measures the
   play-word rule had been firing 300px above the state it was measured for. Re-measure every
   threshold whose row you touch — and read the boundary from BOTH sides: 490px still wrapped, so the
   rule engages at 499, not at 489 where "one line to 500px" naively pointed.
+- **⚠ THE FIX REINTRODUCED THE CLASS IN THE ONE STATE NO SWEEP ENTERED, and a review caught it, not
+  a rig.** `following` reads like a mode the reader switches on; it is
+  `shownInstruction(...)?.id === followed`, **true only at the cursors where that instruction is in
+  flight**, so with a map cell clicked it FLIPS AS YOU STEP. The reserve took it as an argument to
+  pick the chip's verb (`following` 9 chars vs `in` 2) — 49px appearing and disappearing mid-run. Fix:
+  reserve the wider verb always, take no such argument. **Before keying a reserve on a boolean, ask
+  what that boolean is DERIVED from** — every sweep here ran with `followed === null`, and both
+  guards passed a fixed flag for a whole run, so nothing modelled the flip.
+- Two smaller ones from the same review: a **reserve that is silent must not carry a title** (the
+  empty chip's tooltip read "0 instructions are in flight … is in **undefined**"), and
+  **`text-overflow: ellipsis` does nothing on a `display: flex` element** — the
+  `.play-speed-label`-with-no-rule smell inverted.
 - Guards: reserves read back out of the render at every cursor, plus the fold swept over four models
-  × both follow states. Six mutations verified red (`temp/jitter2/break.mjs`). **None of them can see
-  WHERE the readout is mounted** — put it back in the wrapping row and all of them pass. Rigs:
-  `temp/jitter2/{transport-sweep,budget-probe,threshold-probe,verify-thresholds,narrow-probe}.mjs`.
+  × both follow states, plus a guard that DRIVES the follow flip the way `App` derives it. Seven
+  mutations verified red (`temp/jitter2/break.mjs`). **None of them can see WHERE the readout is
+  mounted** — put it back in the wrapping row and all of them pass. Rigs under `temp/jitter2/`:
+  `transport-sweep` (14 widths × every cursor), `budget-probe`, `threshold-probe`,
+  `verify-thresholds`, `narrow-probe`, `follow-and-lesson` (the follow flip AND both ends of the
+  lesson list — the path four consecutive passes forgot), `shot-bar`.
 
 **Scope: cursor-driven change only.** A width flip, the depth dial and picking a lesson are deliberate
 acts and a panel may resize on them — the line the narration panel's own comment already drew. Also

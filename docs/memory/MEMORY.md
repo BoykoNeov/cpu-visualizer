@@ -6,7 +6,7 @@ each with a lesson track. **NO milestone is in progress.**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
-corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7589
+corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7591
 tests**, five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
 jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
 caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic branch prediction (plan written, STEPS 0 AND 0b DONE
