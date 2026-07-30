@@ -1,11 +1,11 @@
 ---
 name: dynamic-branch-prediction
-description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 AND 0b DONE 2026-07-30, no engine code written). Read before adding ANY corpus program: nested-loop.s cost SIX pinned sites, not the three the plan priced, and its layout had to be redesigned twice for a rule — a dependence must be distance-1 within a basic block or its stall cost changes with the prediction scheme. Also the reusable method for pricing an unbuilt config knob offline."
+description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 AND 0b DONE 2026-07-30, no engine code written). Read before adding ANY corpus program: nested-loop.s cost SIX pinned sites, not the three the plan priced, and its layout was redesigned twice because a program's stall histogram must not move with the prediction scheme — screen a candidate with the scratch harness before hand-deriving anything. Also the reusable method for pricing an unbuilt config knob offline."
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-07-30T17:09:22.569Z
+  modified: 2026-07-30T17:15:09.212Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 AND 0b complete 2026-07-30; steps 1–8
@@ -18,25 +18,32 @@ the plan; only what a future session would otherwise re-derive is here.
 
 4 outer passes × a 6-iteration inner loop, register-only, plus a never-taken `bne x0, x0` guard at
 the head of each pass. Measured (fwd off): **182 / 177 / 174 / 171** for not-taken / taken / 1-bit /
-2-bit — the **only program in the corpus where a dynamic scheme beats `static-taken`** (+6), and the
-1→2-bit delta is the projected 3. Corpus-wide the 2-bit margin went from 1 cycle to 7. The guard is
-what makes the ORDERING textbook: without it `static-taken` still won and the feature would have
+2-bit — the only program whose four schemes come out **strictly ordered with 2-bit fastest**, no ties
+(+6 over `static-taken`), and the 1→2-bit delta is the projected 3. ⚠ It is NOT "the only program
+where a dynamic scheme beats `static-taken`" — `paired-branches` +4, `call-return` +2 and
+`branch-flavors` +1 all do, but on those the two dynamic columns TIE and the win comes from a branch
+that falls through, which is `static-not-taken`'s bias rather than a counter's memory. The guard is
+what makes the ordering textbook: without it `static-taken` still won and the feature would have
 demonstrated hysteresis while losing on the clock.
 
-⚠ **The design rule that cost two redraws, and it generalizes to any future corpus program:**
+⚠ **The layout constraint that cost two redraws — and it is NOT a distance rule.** The shipped
+program's biggest stall site is a distance-2 RAW and is perfectly scheme-invariant. All three timing
+tables pin ONE stall histogram per forwarding position for ALL schemes, so a retired-path stall that
+moves with the scheme changes their SHAPE rather than adding a row. Exactly two things do that:
 
-> **A register dependence must be distance-1 from a producer in the same basic block, or its stall
-> cost is not the same under every prediction scheme.**
+1. **A RAW that SPANS a branch** — its distance depends on what that branch predicted, and the
+   7-stage inserts 4 correction cycles for a lost bet. Draft 1 put the guard between `li t1` and its
+   consumer.
+2. **A bet that RE-TIMES a producer against its consumer** — at width 2 a bet from slot 0 kills its
+   mate and re-partitions the groups behind it, so an instruction can change which issue GROUP it
+   lands in. Draft 2's `li t1` paired with the guard under `static-not-taken` and was killed and
+   re-paired under `static-taken`: superscalar `L` **60 vs 64**. The surviving distance-2 site is
+   safe because its two predecessors pair in every scheme, so the branch is consistently one group
+   behind.
 
-A RAW reaching **across a branch** is re-timed by that branch's prediction (the 7-stage inserts 4
-correction cycles for a lost bet). A **distance-2** RAW is re-timed by the 2-wide machine, which
-re-partitions its issue groups around a bet that kills its mate. Either produces a stall that exists
-under one scheme and vanishes under another **on an instruction that RETIRES** — and all three
-timing tables pin ONE stall histogram per forwarding position for ALL schemes, so such a program
-changes their SHAPE rather than adding a row. Draft 1 put the guard after `li t1`; draft 2 put the
-accumulate before the decrement and measured the superscalar's `L` at **60 under `static-not-taken`
-vs 64 under `static-taken`**. Screen for this with a scratch harness BEFORE hand-deriving anything —
-`M:\claud_projects\temp\bp-step0\screen.test.ts` dumps every histogram × scheme × width in one run.
+**The transferable part is the procedure, not a heuristic — neither hazard is visible by reading.**
+`M:\claud_projects\temp\bp-step0\screen.test.ts` dumps every stall histogram × scheme × forwarding
+position × width in one run. Screen a candidate layout there BEFORE hand-deriving any table row.
 
 ⚠ **SIX pinned sites moved, not the three the plan priced.** The three timing rows were the easy
 part and each was green on the first hand-derivation. The three nobody predicts are SHAPE claims,

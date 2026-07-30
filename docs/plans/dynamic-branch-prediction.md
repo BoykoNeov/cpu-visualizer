@@ -4,9 +4,8 @@
 (see the step-0 results section) and `content/programs/nested-loop.s` is authored, hand-derived into
 three timing tables and three shape tables, and committed; steps 1–8 are untouched. Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
-dynamic predictor will _do_ is
-a prediction, and the ones worth being wrong about are called out as step-0 measurements rather
-than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
+dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
+step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
 don't-foreclose flag. This is a feature, in the same class as `keyboard-transport.md` and
 `continuous-play.md`.
 
@@ -361,7 +360,13 @@ the eleven that were already there:
 | `dynamic-1bit`     |                       174 |              **+3** |          10 |
 | `dynamic-2bit`     |                       171 |              **+6** |       **7** |
 
-**It is the only program in the corpus where a dynamic scheme beats `static-taken`,** and the
+**It is the only program in the corpus whose four schemes come out STRICTLY ORDERED with
+`dynamic-2bit` fastest** — 2-bit > 1-bit > `static-taken` > not-taken, no ties anywhere. Three other
+programs do beat `static-taken` under a dynamic scheme (`paired-branches` +4, `call-return` +2,
+`branch-flavors` +1, per step 0's own delta table), but on every one of them the two dynamic columns
+TIE each other, and the win comes from a branch that habitually falls through — which is
+`static-not-taken`'s bias, not a counter's memory. This is the only row where the win comes from a
+branch that is mostly **taken** and where the second bit is what buys it. And the
 1-bit → 2-bit delta is exactly the projected 3 — the three re-entry mispredicts, gone. Corpus-wide,
 `dynamic-2bit`'s margin over `static-taken` goes from **1 cycle to 7** (814 → 807 off, 591 → 584 on).
 That is still a small number, and it should stay stated: this feature's case is per-program, not
@@ -373,24 +378,33 @@ dynamic schemes nothing (they start weakly-not-taken and are immediately right),
 46 / 41 / 38 / 35. Without it `static-taken` still won this program and the feature would have
 demonstrated hysteresis while losing on the clock.
 
-### Two ordering decisions that were MEASURED, and a rule that came out of them
+### Two ordering decisions that were MEASURED — and the constraint is narrower than it first looked
 
-> **A register dependence must be distance-1 from a producer in the same basic block, or its stall
-> cost is not the same under every prediction scheme.**
+Both drafts tripped the same wire. All three timing tables pin **one stall histogram per forwarding
+position for ALL schemes**, so a program whose retired-path stalls move with the prediction scheme
+changes their _shape_ rather than adding a row to them. There are exactly two ways to do that, and
+neither is "distance-2 is unsafe" — the shipped program's biggest stall site (`{24: 24}`) IS a
+distance-2 RAW and is perfectly scheme-invariant:
 
-A RAW reaching **across a branch** has a distance that depends on what that branch predicted — the
-7-stage inserts 4 correction cycles for a lost bet. A **distance-2** RAW is re-timed by the 2-wide
-machine, which re-partitions its issue groups around a bet that kills its mate. Either one produces
-a stall that exists under one scheme and vanishes under another, on an instruction that **retires** —
-and all three timing tables pin ONE stall histogram per forwarding position for ALL schemes, so such
-a program would change their shape rather than just add a row to them.
+1. **A RAW that spans a branch.** Its distance depends on what that branch predicted; the 7-stage
+   inserts 4 correction cycles for a lost bet. Draft 1 put the guard between `li t1` and its
+   consumer, and the 7-stage charged a retired stall under `static-not-taken` that vanished under
+   `static-taken`.
+2. **A bet that re-times the producer relative to the consumer.** At width 2 a bet from slot 0 kills
+   its mate, which re-partitions the groups behind it — so an instruction can change which issue
+   GROUP it lands in. Draft 2's `li t1`@12 paired with the guard under `static-not-taken` and was
+   killed and re-paired with its own consumer's neighbour under `static-taken`, moving `addi t1`@20
+   two cycles. Measured: the 2-wide machine's `L` at **60 under `static-not-taken` and 64 under
+   `static-taken`**. The shipped `{24: 24}` site is safe by contrast because `addi t1`@16 and
+   `addi a0`@20 pair in _every_ scheme, so `bne`@24 sits consistently one group behind its producer.
 
-Both drafts of this program hit it, and the second was caught by measurement rather than by reading:
+So: the guard sits **ahead** of `li t1, 6` (nothing reads across it), and `addi t1, t1, -1` comes
+**before** `addi a0, a0, 1`.
 
-- the guard sits **ahead** of `li t1, 6`, so nothing reads across it;
-- `addi t1, t1, -1` comes **before** `addi a0, a0, 1`, putting the decrement adjacent to the `li`.
-  The other order measured the 2-wide machine's `L` at **60 under `static-not-taken` and 64 under
-  `static-taken`**.
+**The transferable part is the procedure, not a distance heuristic.** Neither hazard is visible by
+reading, and both are cheap to measure: `M:\claud_projects\temp\bp-step0\screen.test.ts` dumps every
+stall histogram × scheme × forwarding position × width in one run. Screen a candidate layout there
+**before** hand-deriving any table row.
 
 ### What it actually cost — six sites, not the three priced above
 
@@ -453,7 +467,7 @@ corpus has its first aliasing witness — reachable if the table is ever drawn a
 | Does the OoO model share one predictor across lanes? | Yes, one table per machine — a per-lane table is a different (and unrealistic) machine                                                                                                                                                                                                                                                                                                                                                                     | _(open)_      |
 | BTB / `jalr` predictability                          | **Out of scope**; `jalr` keeps paying full EX resolution under every scheme                                                                                                                                                                                                                                                                                                                                                                                | _(open)_      |
 | Global history / gshare                              | **Out of scope**                                                                                                                                                                                                                                                                                                                                                                                                                                           | _(open)_      |
-| Does the corpus need a new program?                  | **ANSWERED — yes, and it is written.** `content/programs/nested-loop.s`, 4 passes × 6 iterations, landed at step 0b: a 3-cycle 1-bit-vs-2-bit delta and the only program in the corpus where a dynamic scheme beats `static-taken` (+6). It cost six sites, not the three this plan priced. See the step-0b section                                                                                                                                        | **CLOSED**    |
+| Does the corpus need a new program?                  | **ANSWERED — yes, and it is written.** `content/programs/nested-loop.s`, 4 passes × 6 iterations, landed at step 0b: a 3-cycle 1-bit-vs-2-bit delta, and the only program whose four schemes come out strictly ordered with 2-bit fastest (+6 over `static-taken`, no ties). It cost six sites, not the three this plan priced. See the step-0b section                                                                                                    | **CLOSED**    |
 
 ## Risks, stated before they bite
 

@@ -1139,6 +1139,16 @@ const TIMING: Readonly<Record<string, Timing>> = {
    *      `bne`@24 reads that same `addi t1` two ahead of it — the DISTANCE-2 branch-operand RAW ⇒ 1,
    *      every iteration, ×24 = 24. Outer `bne`@32 has no such gap ⇒ 2, ×4 = 8. S = 40.
    * ON:  no loads anywhere ⇒ S = 0.
+   *
+   * ⚠ **PROVENANCE — this row is weaker than the header's claim, and says so.** The file's header
+   * promises every number was hand-derived before being compared to the engine. Every cell below
+   * WAS hand-derived, group by group from the pinned pairing rules — but not BLIND: the program's
+   * layout had to be screened against a trace dump first, because two of its candidate layouts made
+   * the stall histogram move with the prediction scheme (see the `.s` docblock), which this table's
+   * one-histogram-per-position shape cannot express. So the dump was read before the derivation,
+   * and a derivation that agrees with a number already seen is a weaker check than one that
+   * predicts it. The derivation is still independent in the way that matters — it walks the
+   * partition rather than reading `G` off the trace — and it did catch its own arithmetic twice.
    */
   'nested-loop.s': {
     retires: 92,

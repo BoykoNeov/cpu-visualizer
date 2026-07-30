@@ -29,22 +29,25 @@
 #
 # ## Two ordering decisions that are load-bearing, and were MEASURED
 #
-# Both exist to keep every register dependence here at distance 1 from a producer
-# in the SAME basic block, because that is the only shape whose stall cost is the
-# same under every prediction scheme. A dependence at distance 2, or one reaching
-# across a branch, is re-timed by what that branch predicted — the 7-stage pays 4
-# cycles for a lost bet, and the 2-wide machine re-partitions its issue groups
-# around one — so the same stall appears under one scheme and vanishes under
-# another. Three pinned timing tables state ONE stall histogram per forwarding
-# position for ALL schemes, and a program that broke that would change their
-# shape rather than just add a row.
+# Three pinned timing tables state ONE stall histogram per forwarding position
+# for ALL prediction schemes, so a program whose retired-path stalls move with
+# the scheme changes their SHAPE rather than adding a row. Exactly two things do
+# that, and neither is "distance 2" — this program's biggest stall site is the
+# distance-2 RAW at 24 and it is perfectly scheme-invariant:
 #
-#   * The guard sits AHEAD of `li t1, 6`, so nothing reads across it.
-#   * `addi t1, t1, -1` comes BEFORE `addi a0, a0, 1` — the decrement hoisted
-#     above the accumulate, the way a scheduler would, so it is adjacent to the
-#     `li` that produces t1. The other order was written first and measured: it
-#     put the 2-wide machine's blocking stalls at 60 under `static-not-taken` and
-#     64 under `static-taken`, which is exactly the invariant described above.
+#   * A RAW that SPANS a branch. Its distance depends on what that branch
+#     predicted, and the 7-stage inserts 4 correction cycles for a lost bet. So
+#     the guard sits AHEAD of `li t1, 6`, and nothing here reads across it.
+#   * A bet that RE-TIMES a producer against its consumer. At width 2 a bet from
+#     slot 0 kills its mate and re-partitions the groups behind it, so an
+#     instruction can change which issue group it lands in. That is why
+#     `addi t1, t1, -1` comes BEFORE `addi a0, a0, 1` — the decrement hoisted
+#     above the accumulate, the way a scheduler would. The other order was
+#     written first and measured: `li t1` paired with the guard under
+#     static-not-taken and was killed and re-paired under static-taken, putting
+#     the 2-wide machine's blocking stalls at 60 against 64. The site at 24
+#     survives the same pressure because 16 and 20 pair in EVERY scheme, so the
+#     branch sits consistently one group behind its producer.
 #
 # The three branch sites are 8 / 24 / 32, so a pc-indexed table gives them
 # distinct entries at 16 and 8. At 4 entries the guard and the inner branch

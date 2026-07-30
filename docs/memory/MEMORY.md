@@ -39,9 +39,9 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 
 - [Dynamic branch prediction](dynamic-branch-prediction.md) — **the only thing in flight.** Steps 0
   and 0b done; `nested-loop.s` is now in the corpus. **Read before adding ANY corpus program** — it
-  cost SIX pinned sites, not the three the plan priced, and its layout was redesigned twice around a
-  rule: a dependence must be distance-1 within a basic block or its stall cost moves with the
-  prediction scheme. Also the method for pricing an unbuilt timing knob offline.
+  cost SIX pinned sites, not the three the plan priced, and its layout was redesigned twice because a
+  program's stall histogram must not move with the prediction scheme. **Screen a candidate with the
+  scratch harness before hand-deriving anything.** Also the method for pricing an unbuilt timing knob.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
