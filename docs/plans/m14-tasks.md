@@ -384,8 +384,19 @@ is exactly why it is written down here instead of discovered in step 3.
       `browser-rig-vacuity-traps` and `never-kill-dev-servers-by-port` first.
       ⚠ §0 must select a model that HAS the width control before checking a known-present control —
       M12's rig reported itself broken when its own premise was wrong.
-      Acceptance: every new lesson opens at its declared width and depth; the flip re-anchors; the
-      rail's count changes across the flip and the surviving steps are not the same set.
+      ⚠ **The stated acceptance is UNSATISFIABLE for the third lesson, and step 3 is what proved
+      it — recorded here so the browser pass cannot quietly relax it mid-run** (which is how
+      `deep-bet-pays-double` justified a gap with prose that did not exist).
+      `width-moved-the-work` has NO width-exclusive step: its oracle asserts the live-step sets at
+      widths 2, 3 and 4 are EQUAL, because the event multiset is identical there. So for that lesson
+      the rail's count CANNOT change and the surviving steps ARE the same set. Its substitute
+      observable is stricter, not weaker: **the dots MOVE and the count does not** — the crux step
+      slides from cycle 4 to cycle 3 on the flip to 3, and the closing step from 6 to 5 on the flip
+      to 4, with five dots on the rail throughout.
+      Acceptance: every new lesson opens at its declared width and depth; the flip re-anchors. For
+      `where-widening-stops` and `four-in-a-row`, the rail's count changes across the flip and the
+      surviving steps are not the same set. For `width-moved-the-work`, the count HOLDS at five and
+      the two named dots move — asserted in that form, not relaxed to "it re-anchors".
 
 ## Acceptance criteria (mirror the spec §11 shape)
 

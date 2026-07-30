@@ -3560,6 +3560,47 @@ describe('width-moved-the-work — the slot that filled and paid nothing (M14 st
     // moved one and not the other reddens here and not only in the prose.
     expect([1, 2, 3, 4].map((w) => groupPcs(record(w)).length)).toEqual([5, 3, 3, 2]);
     expect([1, 2, 3, 4].map((w) => record(w).length)).toEqual([9, 7, 7, 6]);
+
+    // ...asserted as the DIFFERENCE too, because the two arrays above are independent and the
+    // closing step's punchline — "they step down together, and they step down in the same two
+    // places" — is the CO-VARIANCE, which two independent pins leave to a reader to notice. This
+    // run is its group count plus four, at every width the control offers: cycle 0 before anything
+    // has decoded, and three at the end while the last group drains. So "one group removed, one
+    // cycle saved" is arithmetic here rather than a coincidence of totals — `four-in-a-row`'s
+    // `idle === [14, 14, 14]` on a program with no flush shadow at all, and over four widths
+    // instead of three. Step 3's expert tier states the 4 in words.
+    expect(
+      [1, 2, 3, 4].map((w) => record(w).length - groupPcs(record(w)).length),
+      'fill and drain are width-invariant, so cycles track GROUPS and nothing else',
+    ).toEqual([4, 4, 4, 4]);
+  });
+
+  it('THE FETCH WIDTH is what cycle 0 already shows, and the opening step names it', () => {
+    // Step 1's expert tier is the one paragraph in this lesson that makes a claim about FETCH rather
+    // than about issue, and every other pin here reads `ID/EX` occupancy — so without this the
+    // sentence is prose-only, the class `two-at-once`'s oracle exists to prevent. It names its
+    // instructions in words rather than digits, so `statesNumberBeside` does not reach it either.
+    const fetchedAt = (trace: readonly CycleTrace[], cycle: number): number[] =>
+      trace
+        .find((c) => c.cycle === cycle)!
+        .events.filter((e) => e.type === 'instr-fetch')
+        .map((e) => (e as TraceEvent & { pc: number }).pc);
+    expect(fetchedAt(record(2), 0), 'two wide, cycle 0 holds the two branches').toEqual([
+      BNE_ELDER,
+      BNE_YOUNGER,
+    ]);
+    expect(fetchedAt(record(4), 0), 'four wide, it holds those two and both constants').toEqual([
+      BNE_ELDER,
+      BNE_YOUNGER,
+      LI_A0,
+      LI_A7,
+    ]);
+    const opening = lesson().steps[0]!.narration.expert!;
+    for (const named of ['li a0, 42', 'li a7, 10']) {
+      expect(opening, `the opening's expert tier names ${named} as fetched in cycle 0`).toContain(
+        named,
+      );
+    }
   });
 
   it('THE ASK is protected by NOTHING but its own prose — so it is pinned by position', () => {
@@ -3721,6 +3762,24 @@ describe('width-moved-the-work — the slot that filled and paid nothing (M14 st
     const crux = lesson().steps[3]!.narration;
     expect(statesNumberBeside(crux.essentials!, 'Two wide', 'cycle 4')).toBe(true);
     expect(statesNumberBeside(crux.essentials!, 'Three wide', 'cycle 3')).toBe(true);
+    // The crux is the step that SENDS the reader to width 4, where the run takes 6 — so its
+    // punchline ("the run did not get shorter for it") is the one bare cycle count in the lesson
+    // most likely to be read on the wrong machine. Scoped to the two widths it is true of, and
+    // checked at both tiers that state it, rather than left to the paragraph's context.
+    for (const tier of ['essentials', 'detailed'] as const) {
+      for (const width of ['Two wide', 'Three wide']) {
+        expect(
+          statesNumberBeside(crux[tier]!, width, cycles[1]!),
+          `the crux's [${tier}] must scope its unchanged cycle count to "${width}"`,
+        ).toBe(true);
+      }
+    }
+    // ...and step 3's expert tier states the fill-and-drain constant the whole identity rests on.
+    const constant = String(record(2).length - groupPcs(record(2)).length);
+    expect(
+      lesson().steps[2]!.narration.expert!,
+      'the flush-free step must quote the measured fill-and-drain cost',
+    ).toContain(`${constant} cycles of the pipeline's own fill and drain`);
     for (const [width, size] of [
       ['Two wide', '2'],
       ['Three wide', '3'],
