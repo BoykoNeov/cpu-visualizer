@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1159b994-75bd-457b-95ff-85fe2ac2c2bf
-  modified: 2026-07-30T08:33:10.508Z
+  modified: 2026-07-30T08:42:28.342Z
 ---
 
 Stepping the clock resized five panels, and since the shell is a vertical stack each one shoved every
@@ -62,6 +62,23 @@ fold agrees with itself while the component renders something else), and **asser
 the equality**, since "the same at every cursor" is what a panel drawing nothing satisfies most
 easily. Where a fold appears it is only the EXPECTED value. All seven guards were verified by
 reverting each fix and confirming its own guard reddened (`break.mjs`) — commit before breaking.
+
+**A reserve is only free if it is BOUNDED.** The ghost stack first keyed on every distinct instruction
+tuple — exact, and one class per candidate row: 35 rows / 24KB on the corpus, **802 rows / 455KB for
+one panel** on a straight-line 800-instruction program, re-rendered every step. Same failure
+`MAX_MAP_CYCLES` exists for, same trigger (something a sandbox user types in a minute). Key on what
+decides the LINE COUNT instead — (verdict, reason, candidate count, issued count) — and within a class
+keep the member whose widest single row is widest, since a row wraps on its own length. 800
+instructions then render 6 rows, identical to 200. **When you add a derived reserve, measure its
+fan-out on a synthetic worst case, not on the corpus.**
+
+**The LESSON path is a separate net and neither the picker sweep nor any headless test covers it.**
+The narration panel sits ABOVE the whole stack, so anything it did would move every surface at once —
+and `App.tsx` renders it conditionally. It is safe (`narrationView` always returns an object, so the
+condition is a lesson property and not a cursor one) and both the first and last lesson measure a
+single narration height across every cursor — but that was measured, not assumed, and only after a
+reviewer pointed out the sweep drove Model+Program and left `Lesson: — none —` alone. The omission
+[[browser-rig-vacuity-traps]] already records against four consecutive passes.
 
 **Scope: cursor-driven change only.** A width flip, the depth dial and picking a lesson are deliberate
 acts and a panel may resize on them — the line the narration panel's own comment already drew. Also
