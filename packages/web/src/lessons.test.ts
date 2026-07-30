@@ -3485,7 +3485,9 @@ describe('width-moved-the-work — the slot that filled and paid nothing (M14 st
 
     // And the one event the width control DOES move, which is the whole delta between 1 and 2: the
     // refusal itself. Named here because the closing step's expert tier claims the multiset identity
-    // holds "at two, three and four wide" — the narrower claim, and the true one.
+    // holds "at two, three and four wide" — the narrower claim, and the true one. It is also the
+    // NON-VACUITY of the two assertions above: without it `multisetDiff` could be a function that
+    // returns `[]`, and an empty diff would be proving nothing at all.
     expect(multisetDiff(record(1), record(2))).toEqual([
       JSON.stringify({ instr: 'i1', reason: 'branch-slot', stage: 'ID', type: 'stall' }, [
         'instr',
@@ -3586,10 +3588,17 @@ describe('width-moved-the-work — the slot that filled and paid nothing (M14 st
     // Two asks, because the lesson has two flips and each precedes the step that needs it: step 3
     // asks for 3 and step 4 is where the third slot shows; step 4 asks for 4 and step 5 is the
     // payoff.
-    for (const [index, width] of [
-      [2, 3],
-      [3, 4],
-    ] as const) {
+    //
+    // Both target widths are DERIVED rather than written as a 3 and a 4 — the first ask is "one
+    // notch wider than where the lesson opens", the second is "the widest the control offers". So a
+    // declaration that drifted to 3 (making the first ask a no-op) reddens HERE as well as in the
+    // opening test, which is the one break in the harness that otherwise had a single net.
+    const declaredWidth = declared().issueWidth!;
+    const asks: readonly { index: number; width: number }[] = [
+      { index: 2, width: declaredWidth + 1 },
+      { index: 3, width: MAX_ISSUE_WIDTH },
+    ];
+    for (const { index, width } of asks) {
       const tiers = Object.entries(lesson().steps[index]!.narration);
       expect(tiers.length, `step ${index} authors all three tiers`).toBe(3);
       for (const [tier, text] of tiers) {
