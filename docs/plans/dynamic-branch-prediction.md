@@ -61,9 +61,10 @@ change a program's result (it changes _when_ things happen, never _what_), so al
 "correct" — the choice is pedagogy plus how much of the repo moves.
 
 - **MVP — a 2-bit saturating BHT, indexed by pc, in `engine/common`.** One shared, tested,
-  stateful class. Schemes: add `'bht-1bit'` and `'bht-2bit'` to the union. The 1-bit variant is not
-  filler: **the 1-bit-vs-2-bit delta on a doubly-entered loop is the entire lesson**, and without
-  both positions the reader has nothing to A/B.
+  stateful class. Schemes: two new variants on the union (**named in the decisions table** — the
+  seed is `'dynamic-1bit'` / `'dynamic-2bit'`; do not hardcode `'bht-*'` anywhere before that row is
+  pinned). The 1-bit variant is not filler: **the 1-bit-vs-2-bit delta on a doubly-entered loop is
+  the entire lesson**, and without both positions the reader has nothing to A/B.
 - **Deferred fidelity 1 — a BTB**, so `jalr` becomes predictable. Today `jalr` is unpredictable
   _by construction_ (`predict.ts` excludes it from `PC_RELATIVE_TRANSFERS` because its target is
   `rs1 + imm` and does not exist until EX). This is a real second tier, not a polish pass: it
@@ -98,7 +99,7 @@ copy makes every recorded cycle show the fully-trained table**, and time-travel 
 end state at cycle 0. This is a named step below, with a break harness, because it is the defect
 this design is most likely to ship.
 
-## The multiplier nobody should discover in step 3
+## The multiplier nobody should discover mid-build (it bites at steps 5 AND 6)
 
 `configurableBranchPrediction: true` on **four** models — `pipeline:220`, `deep-pipeline:313`,
 `superscalar:255`, `out-of-order:98`. Each sets its own `predictTaken` boolean at reset and consults
@@ -120,7 +121,7 @@ logic four times.
       shows **no difference at all**; `array-sum-twice.s` ("the repeat pass re-reads the same
       addresses", `conformance.ts:119`) is the candidate. **(b)** the signed per-program delta of
       each scheme against `static-taken`, the way M4 pinned `sum-loop −7, array-sum −2, call-return
-  +1`. Acceptance: a committed table of (program × scheme) cycle counts, **with at least one
++1`. Acceptance: a committed table of (program × scheme) cycle counts, **with at least one
       program where 1-bit and 2-bit differ**. If no such program exists, the corpus needs a new
       one and that becomes step 0b — a doubly-entered loop, authored before any engine work.
 
