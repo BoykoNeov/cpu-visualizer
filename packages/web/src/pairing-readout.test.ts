@@ -454,7 +454,7 @@ describe('the IPC tile', () => {
   /**
    * **The tile at four positions, and the claim had to be NARROWED rather than swept wider** (M13
    * step 8). The test above asserts a STRICT rise 1 → 2 on every program; the obvious extension —
-   * strict rise at every position — is simply false. Measured across the corpus: nine of eleven
+   * strict rise at every position — is simply false. Measured across the corpus: nine of twelve
    * programs are IPC-identical at widths 3 and 4, and `add`/`paired-branches` are already flat from
    * 2 to 3. Relaxing the strict `>` to `>=` corpus-wide would not rescue it either, and this
    * milestone has paid for that once already (step 6: `<=` between widths 3 and 4 is satisfied by an
@@ -548,8 +548,11 @@ describe('the IPC tile', () => {
       'strided-sum',
       'sum-loop',
     ]);
-    // The complement, said explicitly: exactly two programs pay for the fourth slot.
-    expect(EXAMPLE_PROGRAMS.length - flat.length).toBe(2);
+    // The complement, said explicitly: exactly three programs pay for the fourth slot. `nested-loop`
+    // is the third, added at step 0b of the dynamic-branch-prediction plan — its prologue is the
+    // corpus's only HEAD group of four, so the fourth slot buys it a cycle where the other nine see
+    // nothing.
+    expect(EXAMPLE_PROGRAMS.length - flat.length).toBe(3);
   });
 
   it('divides by the recording LENGTH, not the last cycle number', () => {

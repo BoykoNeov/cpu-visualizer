@@ -480,6 +480,45 @@ const TIMING: Readonly<Record<string, Timing>> = {
     stalls: { off: { 8: 3, 16: 30 }, on: { 8: 1, 16: 10 } },
     haltFlushes: 0,
   },
+
+  /**
+   * The corpus's RE-ENTERED loop: 4 outer passes over a 6-iteration inner loop, written for the
+   * dynamic-branch-prediction plan (step 0b) and the only program here whose subject is a predictor
+   * rather than a hazard. 2 prologue + 4 × (2 header + 6 × 3 inner + 2 footer) + 2 epilogue = 92
+   * retires; 24 inner iterations. Nothing is loaded or stored.
+   *
+   *    0 addi a0,x0,0   4 addi t2,x0,4
+   *    8 bne x0,x0,done ← the guard that never fires, once per pass   12 addi t1,x0,6
+   *   16 addi t1,t1,-1  20 addi a0,a0,1  24 bne t1,x0,inner
+   *   28 addi t2,t2,-1 32 bne t2,x0,outer   36 addi a7,x0,10  40 ecall
+   *
+   * OFF: `addi t1`@16 reads t1 from `li t1`@12 at distance 1 ⇒ 3, on the FIRST iteration of each
+   *   pass only (every later one reads its own previous `addi t1` across the branch's gap), ×4 = 12.
+   *   `bne`@24 reads that `addi t1` at distance 2 ⇒ 2, ×24 = 48 — the same distance-2 site
+   *   `array-sum-twice`'s first `lw` pays, and one the 5-stage charges only 1 for. Outer `bne`@32 on
+   *   `addi t2`@28 at distance 1 ⇒ 3, ×4 = 12. `addi a0`@20 is free everywhere: on pass 1's first
+   *   iteration its producer is `li a0`@0 at distance 5, and afterwards it reads its own previous
+   *   iteration across the branch's stall and penalty. S = 12+48+12 = **72**.
+   * ON: `bne`@24 at distance 2 now meets its requirement ⇒ free — **the inner loop's branch stops
+   *   stalling entirely**, where `sum-loop`'s adjacent one still costs 1 a lap. What survives is the
+   *   pass header (`addi t1`@16 ⇒ 1 ×4 = 4) and the outer `bne`@32 (1 ×4 = 4). S = **8**.
+   *
+   * **The guard's POSITION is what keeps this row one histogram per position.** It sits ahead of
+   * `li t1, 6` so that no RAW reaches across it. A dependence spanning a branch has a distance that
+   * depends on what the branch PREDICTED — a lost bet inserts 4 correction cycles — so a stall
+   * across it would exist under `static-not-taken` and vanish under `static-taken`, on an
+   * instruction that RETIRES. That is not {@link SHADOW} (which costs nothing and is charged to a
+   * squashed instruction); it would be a genuine per-scheme `S`, and this table has no shape for it.
+   */
+  'nested-loop.s': {
+    retires: 92,
+    // Three branch sites: `bne t1`@24 goes 5 times per pass and declines on the 6th (20 taken, 4
+    // declined); `bne t2`@32 goes 3 times and declines once; `bne x0,x0`@8 never goes, once per
+    // pass. No `jalr`. P: not-taken 4·23 = 92; taken 2·23 + 4·9 = 82.
+    transfers: { takenPredictable: 23, notTaken: 9, takenUnpredictable: 0 },
+    stalls: { off: { 16: 12, 24: 48, 32: 12 }, on: { 16: 4, 32: 4 } },
+    haltFlushes: 0,
+  },
 };
 
 function asm(source: string): AssembledProgram {
@@ -741,7 +780,7 @@ describe('the flagship — the ALU→ALU bubble forwarding cannot remove', () =>
     expect(eventsOf(ts, 'forward').map((e) => e.from)).toContain('EX2/MEM');
   });
 
-  it('is the common case, not a fixture: 8 of the 11 corpus programs stall with forwarding ON', () => {
+  it('is the common case, not a fixture: 9 of the 12 corpus programs stall with forwarding ON', () => {
     // A single hand-built witness could be a special case. This is the claim at corpus scale — and
     // the three exceptions are named, because "all of them" would be the overclaim.
     const withExLatency = Object.keys(TIMING).filter((file) =>
@@ -756,6 +795,9 @@ describe('the flagship — the ALU→ALU bubble forwarding cannot remove', () =>
       'store-forward.s',
       'strided-sum.s',
       'sum-loop.s',
+      // Not its inner branch — that RAW is at distance 2 and already met. It qualifies on the pass
+      // header: `addi t1`@16 reads the `li t1` right in front of it, once per pass.
+      'nested-loop.s',
     ]);
     // The three that do not: `branch-flavors.s`'s only RAW is at distance 2 (already met);
     // `call-return.s`'s are all across flush gaps; `paired-branches.s` reads nothing but x0.
@@ -1011,7 +1053,14 @@ describe('the crown jewel — the same program, the same answer, fewer cycles', 
   // The spec's flagship §12 interaction on the real corpus, asserted WITHOUT reference to the closed
   // form. It is also precisely the claim INV-8 structurally cannot make, since it compares only the
   // left-hand side of "same answer".
-  const RAW_CHAINED = ['add.s', 'array-sum.s', 'byte-loads.s', 'store-forward.s', 'sum-loop.s'];
+  const RAW_CHAINED = [
+    'add.s',
+    'array-sum.s',
+    'byte-loads.s',
+    'store-forward.s',
+    'sum-loop.s',
+    'nested-loop.s',
+  ];
 
   it.each(RAW_CHAINED)(
     '%s: strictly fewer cycles with forwarding on, identical final state',

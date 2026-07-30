@@ -484,6 +484,10 @@ describe('width 2 is a real machine', () => {
       'branch-flavors.s': { w1: 15, w2: 11 },
       'byte-loads.s': { w1: 10, w2: 9 },
       'call-return.s': { w1: 17, w2: 14 },
+      // Step 0b of the dynamic-branch-prediction plan: a six-iteration loop entered four times.
+      // The largest width-2 win in the table, 34 cycles — and the one program whose blocking stalls
+      // GROW with the second slot (`timing.test.ts`'s `w2` entry derives why, and it still wins).
+      'nested-loop.s': { w1: 142, w2: 108 },
       // M8 step 0: two adjacent never-taken branches. Width 2 pairs the tail behind the one solo
       // `branch-slot` refusal (9 → 7); the refusal is the free slot-1 kind, so the gain is real.
       'paired-branches.s': { w1: 9, w2: 7 },

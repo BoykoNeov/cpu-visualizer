@@ -545,6 +545,51 @@ const TIMING: Readonly<Record<string, Timing>> = {
     // every miss is compulsory — 6 at BOTH sizes, no reuse for a bigger cache to buy back.
     misses: { small: 6, large: 6 },
   },
+
+  /**
+   * The corpus's only RE-ENTERED loop, and the only program written for a predictor rather than a
+   * hazard (the dynamic-branch-prediction plan, step 0b). 2 prologue + 4 passes × (2 header +
+   * 6 × 3 inner + 2 footer) + 2 epilogue = 92 retires. `outer` = pc 8, `inner` = pc 16, `done` = 36.
+   *    0 addi a0,x0,0   4 addi t2,x0,4
+   *    8 bne x0,x0,done ← NEVER taken, once per pass    12 addi t1,x0,6
+   *   16 addi t1,t1,-1  20 addi a0,a0,1   24 bne t1,x0,inner
+   *   28 addi t2,t2,-1 32 bne t2,x0,outer
+   *   36 addi a7,x0,10 40 ecall
+   *
+   * `array-sum-twice` is also nested, but ITS subject is the data the second pass re-reads; this
+   * one touches no memory at all and its subject is the branch the second pass re-enters. What that
+   * buys is invisible at this milestone — every scheme here is static, and a static predictor cannot
+   * tell pass 1 from pass 4 — so this row pins the machine the dynamic schemes will later be
+   * measured against, and nothing more.
+   *
+   * OFF: `addi t1` at 16 reads t1 from the `li t1` right before it — a distance-1 RAW, 2 cycles, on
+   *      the FIRST iteration of each pass only; every later iteration reads t1 from its own previous
+   *      `addi t1` three back, across the taken branch's gap. 2 × 4 = 8. `bne t1` at 24 reads t1
+   *      from that same `addi t1`, now two ahead of it — the DISTANCE-2 form of the branch-operand
+   *      RAW, 1 cycle, on every one of the 24 inner iterations = 24. That pairing is the point of
+   *      the body's order: `sum-loop` pays 2 for the same dependence because its `bne` sits adjacent
+   *      to the decrement, and this loop pays 1 because the accumulate is hoisted between them, the
+   *      way a scheduler would. The OUTER `bne t2` at 32 has no such gap and pays the full 2 against
+   *      the `addi t2` before it, ×4 = 8 — so one program exhibits both distances of the same hazard
+   *      at once. `addi a0` at 20 is free everywhere: on pass 1's first iteration its producer is
+   *      the `li a0` five back, and afterwards it is the previous iteration's own `addi a0`. S = 40.
+   * ON:  no loads anywhere ⇒ every RAW is on a non-load producer, so forwarding covers all of them
+   *      and the load-use rule never fires. S = 0. Inner steady period = 5 = N_iter(3) + 2·T(1),
+   *      exactly `sum-loop`'s.
+   */
+  'nested-loop.s': {
+    retires: 92,
+    // THREE branch sites, and the mix is the point. `bne t1` at 24 goes 5 times per pass and
+    // declines on the 6th (20 taken, 4 declined); `bne t2` at 32 goes 3 times and declines once;
+    // `bne x0,x0` at 8 compares x0 to x0 and NEVER goes, once per pass. No `jalr`.
+    // P: not-taken 2·23 = 46; taken 23·1 + 9·2 = 41. So a taken-bet still wins here — the four
+    // never-taken transfers cost it 8, but the 23 taken ones would cost not-taken 46.
+    transfers: { takenPredictable: 23, notTaken: 9, takenUnpredictable: 0 },
+    flushes: { branchTaken: 23, halt: 0 }, // every taken branch has live code behind it; ecall is last
+    stalls: { off: { 16: 8, 24: 24, 32: 8 }, on: {} },
+    // A register-only counter: no loads or stores ⇒ M = 0 at every size, like `sum-loop`.
+    misses: { small: 0, large: 0 },
+  },
 };
 
 function asm(source: string): AssembledProgram {

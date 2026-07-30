@@ -949,7 +949,8 @@ const TIMING: Readonly<Record<string, Timing>> = {
      *   OFF: L = 22 (2 for the prologue's `add`, 2 per iteration for the `bne`) ⇒ **65**.
      * The tail group is 3 at width 4 too — `ecall` is the last word of `.text`. **`sizes` has no
      * key 4 at width 4**, which is the dump's "nine of eleven are identical at 3 and 4" in its
-     * purest form, and the histogram proves it where the equal cycle counts merely suggest it.
+     * purest form (nine of TWELVE since `nested-loop.s` landed — it is not one of the nine), and
+     * the histogram proves it where the equal cycle counts merely suggest it.
      * BETTING: the `bne` bets from slot 0, so `killedRest` kills `addi a7` and `ecall` in ID — the
      *   bne group collapses 3 → 1 and **doomed goes 18 → 0**. The period drops 4 → 3, but the
      *   epilogue now needs a group of its own after the tenth bne mispredicts.
@@ -1121,6 +1122,109 @@ const TIMING: Readonly<Record<string, Timing>> = {
       4: {
         base: { groups: 19, sizes: { 1: 7, 2: 5, 3: 7 }, doomed: 4, blocked: { off: 28, on: 5 } },
         taken: { groups: 20, sizes: { 1: 13, 3: 7 }, doomed: 0, blocked: { off: 28, on: 5 } },
+      },
+    },
+  },
+
+  /**
+   * The corpus's RE-ENTERED loop — 4 outer passes over a 6-iteration inner loop, written for the
+   * dynamic-branch-prediction plan (step 0b). 2 prologue + 4 × (2 header + 6 × 3 inner + 2 footer)
+   * + 2 epilogue = 92 retires; 24 inner iterations, no memory touched at all.
+   *    0 addi a0,x0,0   4 addi t2,x0,4
+   *    8 bne x0,x0,done ← the guard that never fires, once per pass   12 addi t1,x0,6
+   *   16 addi t1,t1,-1  20 addi a0,a0,1  24 bne t1,x0,inner
+   *   28 addi t2,t2,-1 32 bne t2,x0,outer   36 addi a7,x0,10  40 ecall
+   *
+   * OFF: `addi t1`@16 on the `li t1` right before it ⇒ 2, first iteration of each pass only, ×4 = 8.
+   *      `bne`@24 reads that same `addi t1` two ahead of it — the DISTANCE-2 branch-operand RAW ⇒ 1,
+   *      every iteration, ×24 = 24. Outer `bne`@32 has no such gap ⇒ 2, ×4 = 8. S = 40.
+   * ON:  no loads anywhere ⇒ S = 0.
+   */
+  'nested-loop.s': {
+    retires: 92,
+    // `bne t1`@24 goes 5 times per pass and declines on the 6th (20 taken, 4 declined); `bne t2`@32
+    // goes 3 times and declines once; `bne x0,x0`@8 NEVER goes, once per pass. No `jalr`.
+    // P: not-taken 2·23 = 46; taken 23·1 + 9·2 = 41.
+    transfers: { takenPredictable: 23, notTaken: 9, takenUnpredictable: 0 },
+    flushes: { branchTaken: 23, halt: 0 },
+    stalls: { off: { 16: 8, 24: 24, 32: 8 }, on: {} },
+    misses: { small: 0, large: 0 }, // register-only counter
+    /**
+     * WIDTH 2 — **the program where pairing makes the interlock WORSE, and still wins.** The
+     * partition is the same in both positions, which no other program in the table manages:
+     *   1 {addi a0@0, addi t2@4}
+     *   2 {bne@8, addi t1@12}    — one transfer, and the guard declines: nothing is killed.
+     *   3 {addi t1@16, addi a0@20}  — `bne@24` reads the t1 @16 writes: INTRA-PAIR RAW.
+     *   4 {bne@24, addi t2@28}   — taken, mispredicts ⇒ the target leaves ID at d_b + 3, and @28 is
+     *                              stranded. **INNER PERIOD = 4** (2 groups + 2 penalty).
+     *   The sixth `bne` declines, so @28 survives and the footer is {bne@32, addi a7@36} — taken on
+     *   passes 1–3 (stranding @36), declining on pass 4 so `ecall` gets a group of its own.
+     *   G = 1 + 4×14 + 1 = **58**, Q = 57 (every group but `{ecall}` is a pair).
+     *   doomed = 20 (@28) + 3 (@36) = 23, and G + Q = 115 = 92 + 23 ✓.
+     *   ON: L = 0 ⇒ cycles = 58 + 0 + 46 + 0 + 4 = **108**, against 142 at width 1.
+     * OFF: the partition does NOT change — but `L = 64` where the width-1 machine's `S` is only 40,
+     *      and the extra 24 are the whole point. @16 and @20 now issue in the SAME cycle, so
+     *      `bne@24` is one GROUP behind its producer rather than two instructions behind, and its
+     *      distance-2 interlock costs 2 cycles a lap instead of 1. **Pairing tightened the
+     *      interlock.** It still wins: 58 + 64 + 46 + 4 = **172** against 182.
+     * BETTING: the guard @8 bets from slot 0 and is WRONG every pass — it kills @12, which re-issues
+     *      alone (its consumer @16 cannot pair with it) and pushes @16/@20 into a group of their
+     *      own: G +2, Q −1 per pass before the loop is even reached. Inside the loop each of the 24
+     *      `bne@24` bets kills @28, collapsing the tail group to a single: Q −6 per pass. The three
+     *      correct footer bets kill @36; pass 4's wrong one hands @36 back, re-paired with `ecall`.
+     *      Totals: **G +8, Q −31** ⇒ cycles ON = 66 + 0 + 41 + 4 = **111**. Betting is a LOSS at
+     *      width 2 here (111 against 108) where it was a win at width 1 (137 against 142) — the
+     *      corpus's clearest case of a scheme whose sign flips with width.
+     */
+    w2: {
+      groups: { off: 58, on: 58 },
+      pairs: { off: 57, on: 57 },
+      blocked: { off: 64, on: 0 },
+      doomed: { off: 23, on: 23 },
+      betting: { off: { groups: 8, pairs: -31 }, on: { groups: 8, pairs: -31 } },
+    },
+    /**
+     * WIDTHS 3 AND 4 — the extra slots buy 1 cycle and 2, and the histogram says exactly why.
+     * The inner loop is cut in two at EVERY width by a dependency no width can cross: `bne@24`
+     * reads the t1 that `addi t1@16` writes, so `intra-pair-raw` refuses it from the body group,
+     * and `bne@32` behind it is refused for `branch-slot`. Two groups a lap, for ever.
+     *   W3 base: prologue {@0,@4,@8} = 3 — the guard rides along, and it declines. Then {@12} alone
+     *     (@16 reads the t1 it writes), then per iteration {@16,@20} and {@24,@28}, then the footer
+     *     {@32,@36,@40} — the halt CO-ISSUING with an unresolved branch, three times fatally.
+     *     Passes 2–4 enter AT @8, so their header is {@8,@12} rather than a 3 and a 1.
+     *     G = 15 + 3×14 = **57**, sizes {1: 1, 2: 51, 3: 5}, slots = 118 = 92 + **26 doomed** (20 ×
+     *     @28, plus 3 × the TWO mates @36/@40 stranded beside the outer branch).
+     *     ON: cycles = 57 + 0 + 46 + 0 + 4 = **107**.
+     *   W4 base: the prologue takes {@0,@4,@8,@12} — **the corpus's only group of four that is not
+     *     a tail**, and this program's sole reason to appear in the fills-four list. Everything else
+     *     is width 3's shape. G = **56**, sizes {2: 51, 3: 4, 4: 1} ⇒ cycles = **106**.
+     *   BETTING, and it is the SAME cell at both widths: the guard bets from slot 2 of the width-3
+     *     prologue and so kills nothing, but from slot 2 of the width-4 one it kills @12 — which is
+     *     why the group of four disappears the moment betting is on, and why width 4's `taken` cell
+     *     is identical to width 3's. Every later group is cut to a single by a bet or an intra-pair
+     *     refusal. G = **65**, sizes {1: 39, 2: 25, 3: 1}, doomed **0**, cycles ON = **110**.
+     *     So at widths 3 and 4 the taken scheme loses by 3 and 4 — the same sign flip as width 2.
+     * `blocked` is 64 in every one of these cells, base and betting alike, exactly as at width 2:
+     * the extra slots re-partition the groups but never move a producer relative to its consumer.
+     */
+    wide: {
+      3: {
+        base: { groups: 57, sizes: { 1: 1, 2: 51, 3: 5 }, doomed: 26, blocked: { off: 64, on: 0 } },
+        taken: {
+          groups: 65,
+          sizes: { 1: 39, 2: 25, 3: 1 },
+          doomed: 0,
+          blocked: { off: 64, on: 0 },
+        },
+      },
+      4: {
+        base: { groups: 56, sizes: { 2: 51, 3: 4, 4: 1 }, doomed: 26, blocked: { off: 64, on: 0 } },
+        taken: {
+          groups: 65,
+          sizes: { 1: 39, 2: 25, 3: 1 },
+          doomed: 0,
+          blocked: { off: 64, on: 0 },
+        },
       },
     },
   },
@@ -2259,7 +2363,7 @@ describe('what the histogram says that the cycle counts cannot', () => {
    * does fill four slots, MEASURE which programs do — and name the ones that never do. Every one of
    * their width-4 cells above is honestly a width-3 measurement, and this is where that is stated.
    */
-  it('names exactly which programs ever fill four slots — EIGHT of eleven never do', () => {
+  it('names exactly which programs ever fill four slots — EIGHT of twelve never do', () => {
     const groupsOfFour = (file: string): number =>
       measure(run(file, configAt(4, 'on')), 4).sizes[4] ?? 0;
     const fillsFour = Object.keys(TIMING).filter((file) => groupsOfFour(file) > 0);
@@ -2267,13 +2371,17 @@ describe('what the histogram says that the cycle counts cannot', () => {
     // Measured from the traces, then compared to the names — never read off the table, which would
     // re-bless whatever the table says.
     expect([...fillsFour].sort()).toEqual(
-      ['branch-flavors.s', 'paired-branches.s', 'slow-op-loop.s'].sort(),
+      // The first three fill four in their TAIL — the drain group, where `ecall` rides along behind
+      // whatever is left. `nested-loop.s` is the one that does it at the HEAD: its prologue is four
+      // independent instructions ending in the pass guard, so the four is a real dispatch rather
+      // than a program running out. It joined at step 0b and kept the complement at eight.
+      ['branch-flavors.s', 'nested-loop.s', 'paired-branches.s', 'slow-op-loop.s'].sort(),
     );
     // ...and the complement, stated as a count rather than a hand-picked subset. The first draft of
     // this half read `TIMING[file].wide[4].base.sizes[4]` and asserted `undefined` — a property of
     // the literal three hundred lines above it, which no engine change could ever falsify. It is
     // the same shape step 2 caught and replaced, and it survived to a passing test twice now.
-    expect(Object.keys(TIMING).length - fillsFour.length, 'eight of eleven').toBe(8);
+    expect(Object.keys(TIMING).length - fillsFour.length, 'eight of twelve').toBe(8);
     for (const file of Object.keys(TIMING).filter((f) => !fillsFour.includes(f))) {
       expect(groupsOfFour(file), `${file} never reaches a group of 4`).toBe(0);
     }
