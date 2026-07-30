@@ -2940,6 +2940,12 @@ describe('four-in-a-row — the one group of four, and it is in the prologue (M1
     return found;
   };
 
+  /** Cycles between consecutive branch resolutions — the loop's cost per pass. */
+  const spacing = (trace: readonly CycleTrace[]): number[] =>
+    resolveCycles(trace)
+      .slice(1)
+      .map((cycle, i) => cycle - resolveCycles(trace)[i]!);
+
   it('opens on the superscalar at width 2, on the corpus program with four independent heads', () => {
     expect(lesson().model).toBe('superscalar');
     expect(lesson().program).toBe('slow-op-loop');
@@ -3065,10 +3071,6 @@ describe('four-in-a-row — the one group of four, and it is in the prologue (M1
     // Why the loop cannot be helped, on the channel the prose cites: every branch resolves on the
     // identical cycle at widths 2 and 3, and one cycle earlier — uniformly — at width 4. Five cycles
     // a pass, six passes, at all three widths. The loop is 30 of the 35 cycles and width owns none.
-    const spacing = (trace: readonly CycleTrace[]): number[] =>
-      resolveCycles(trace)
-        .slice(1)
-        .map((cycle, i) => cycle - resolveCycles(trace)[i]!);
     expect(resolveCycles(w3), 'width 3 does not move a single branch').toEqual(resolveCycles(w2));
     expect(resolveCycles(w4), 'width 4 moves every branch by the one prologue cycle').toEqual(
       resolveCycles(w2).map((cycle) => cycle - 1),
@@ -3254,25 +3256,69 @@ describe('four-in-a-row — the one group of four, and it is in the prologue (M1
 
     // The refusal counts, likewise, in the tier that names them — the sentence whose whole point is
     // that the three numbers do not line up with the three cycle counts.
-    const loop = lesson().steps[3]!.narration.expert!;
+    const loop = lesson().steps[3]!.narration;
     for (const [width, count] of [
       ['Two wide', '6'],
       ['Three wide', '13'],
       ['Four wide', '12'],
     ] as const) {
       expect(
-        statesNumberBeside(loop, width, count),
+        statesNumberBeside(loop.expert!, width, count),
         `the loop step must state ${count} refusals as a property of "${width}"`,
       ).toBe(true);
     }
+
+    // The loop step's OTHER figures are width-INVARIANT, so they need no attribution — five cycles a
+    // pass is five at every width, which is the sentence's whole point. What they do need is TYING to
+    // the measurement. Without that, a corpus or engine change that made the loop cost something else
+    // would redden THE GAIN above (which measures it) while these two sentences went stale in
+    // silence — the figure and its source have to fail in the same test.
+    const perPass = new Set([2, 3, 4].flatMap((w) => spacing(record(w))));
+    expect(perPass, 'one per-pass cost, at every width').toEqual(new Set([5]));
+    const passes = spacing(w2).length + 1;
+    expect(passes, 'six passes').toBe(6);
+    expect(loop.essentials!, 'the essentials tier states the measured per-pass cost').toContain(
+      'five cycles a pass',
+    );
+    expect(loop.detailed!, 'the detailed tier states the product of the two').toContain(
+      `${passes * 5} of this run's cycles`,
+    );
+    // ...and the group count per pass, off the same channel the GROUPS test pins exhaustively: the
+    // groups whose first member is a loop instruction, over six passes.
+    const loopGroups = groupPcs(record(4)).filter((g) => [SLL, ADD, BNEZ].includes(g[0]!));
+    expect(loopGroups.length / passes, 'three issue groups a pass').toBe(3);
+    expect(loop.essentials!).toContain('Three issue groups a pass');
+
+    // The closing step's expert tier is the densest paragraph in the lesson and every figure in it is
+    // measured above EXCEPT the flush count, which is asserted here for the first time — the sixth
+    // branch falls through, so it is five taken branches and not six, and that is the number the
+    // width-invariance of the whole paragraph rests on.
+    const flushes = [2, 3, 4].map((w) => eventCount(record(w), (e) => e.type === 'flush'));
+    expect(flushes, 'five flushes at every width — the sixth branch falls through').toEqual([
+      5, 5, 5,
+    ]);
+    const closingExpert = closing.expert!;
+    expect(closingExpert).toContain('five taken branches');
+    expect(closingExpert).toContain('five copies');
+    for (const measured of [
+      String(w2.length - groupPcs(w2).length), // the 14 cycles that issue nothing
+      String(eventCount(w2, (e) => e.type === 'instr-fetch')), // the 40 fetched
+      String(
+        eventCount(w2, (e) => e.type === 'instr-fetch') - retireCycleById(w2).size, // the 10 discarded
+      ),
+    ]) {
+      expect(closingExpert, `the closing expert tier must quote ${measured}`).toContain(measured);
+    }
   });
 
-  it('the loop-step `nth` is measured, and the first occurrence is the WRONG one', () => {
+  it('the loop-step `nth` is measured, and the slip is INVISIBLE at the declared width', () => {
     // `nth: 2` on the loop step is not a preference. The first `sll` executes in cycle 3 at width 4,
-    // BEFORE the width-exclusive step's cycle 4 — so `nth: 1` puts the steps out of order in exactly
-    // the nine positions where that step is alive, and nowhere else. Recorded here rather than in a
-    // comment, because it is the kind of claim a later edit makes false silently.
-    const withNth = (nth: number): AnchoredStep[] =>
+    // BEFORE the width-exclusive step's cycle 4, so `nth: 1` puts the two out of order — and the
+    // sharp part is where it does NOT. At the width the lesson opens at, the step above is dead, so
+    // there is nothing to anchor before and `nth: 1` reads as perfectly ordered. An author checking
+    // their work by opening the lesson would see nothing wrong; only recording it at the width the
+    // lesson asks for shows the slip. That asymmetry is the reason this test exists.
+    const withNth = (nth: number, issueWidth: number): AnchoredStep[] =>
       anchorLesson(
         {
           ...lesson(),
@@ -3280,14 +3326,20 @@ describe('four-in-a-row — the one group of four, and it is in the prologue (M1
             index === 3 ? { ...step, trigger: { ...step.trigger, nth } } : step,
           ),
         },
-        record(4),
+        record(issueWidth),
       );
-    expect(anchorOrderViolations(withNth(1)), '`nth: 1` anchors before the step above it').toEqual([
-      3,
-    ]);
-    expect(anchorOrderViolations(withNth(2)), 'and `nth: 2` is the first that clears it').toEqual(
-      [],
-    );
+    expect(
+      anchorOrderViolations(withNth(1, 4)),
+      '`nth: 1` anchors before the step above it, once that step is alive',
+    ).toEqual([3]);
+    expect(
+      anchorOrderViolations(withNth(2, 4)),
+      'and `nth: 2` is the first that clears it',
+    ).toEqual([]);
+    expect(
+      anchorOrderViolations(withNth(1, 2)),
+      'the same slip is clean at the DECLARED width — nothing above it anchors there',
+    ).toEqual([]);
     // ...and the anchor is the loop's shift, not the prologue's — the same instruction either way
     // here (one `sll` in the source), so the guard is the ORDER above and the cycle below, and this
     // says so rather than pinning a pc that cannot distinguish them.
