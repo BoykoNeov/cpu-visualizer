@@ -1,0 +1,62 @@
+{
+  "id": "four-in-a-row",
+  "title": "Four in a row",
+  "program": "slow-op-loop",
+  "model": "superscalar",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "static-not-taken",
+    "cache": null,
+    "issueWidth": 2
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": { "event": "instr-fetch", "nth": 1 },
+      "narration": {
+        "essentials": "Cycle 0 on the two-wide machine, with a program that has something the last one did not: four instructions in a row that need nothing from each other.",
+        "detailed": "`slow-op-loop` shifts a constant, adds it into a running total and counts down — six passes, 72 at the end. Look at the top of it: `li t1, 6`, `li a0, 0`, `li t5, 3`, `li t6, 2`. Four instructions, and not one of them reads a register another of them writes. That is exactly what a wide machine is built for, and it is the only run of four like it in the program. \"Where widening stops paying\" left you at four slots watching a cycle count refuse to move; this program has one thing for that fourth slot to do, and it is here at the top.",
+        "expert": "Fetch takes as many instructions per cycle as the machine is wide, so how many of the four `li`s cycle 0 holds is a property of the ISSUE control and of nothing else. Fetching them is not issuing them, either — the group is formed one stage later, in decode, and that is where width is actually spent. The rest of the program is a dependence chain by construction: `sll` produces `t3`, `add` consumes it and carries `a0` across passes, and the `bnez` reads the counter the `addi` beside it writes. Four independent instructions at the top, and nothing independent anywhere after them."
+      }
+    },
+    {
+      "trigger": { "event": "alu-op", "where": { "op": "add", "a": 0, "b": 2, "result": 2 } },
+      "narration": {
+        "essentials": "The fourth `li` executes here. Two wide, four independent instructions take 2 issue groups. Three wide: 2 issue groups again. Set the ISSUE control to 4 and run the program again.",
+        "detailed": "`li t6, 2` writes 2, and it is the last of the four to execute. Two wide, the four `li`s take 2 issue groups — `li t1` with `li a0`, then `li t5` with `li t6` — and nothing refused: a group of two is simply full after two. Here is why this lesson asks for four slots rather than three. Three wide, that is still 2 issue groups. The first group takes three of the `li`s, the fourth is left over in a group of its own with two slots empty, and the `sll` behind it is refused for the `t6` that group is writing. A slot the machine cannot fill is worth nothing. Set the ISSUE control to 4 and run the program again.",
+        "expert": "Two wide, 2 issue groups, and the reason is structural: the group ends because the width ends, so no `stall` is emitted — nothing was rejected. Three wide, still 2 issue groups, and now the reason is a hazard. The leftover `li t6` is offered the `sll`, which reads both `t5` and `t6`, and `t6` is written by the `li` in the group with it: an `intra-pair-raw` refusal, so that group closes at one member with two slots idle. Different limit, same count, and the third slot bought this prologue nothing. Four is the first width at which those four instructions are one group, so set the ISSUE control to 4 and run the program again, then look at cycle 1."
+      }
+    },
+    {
+      "trigger": {
+        "event": "forward",
+        "where": { "from": "MEM/WB", "to": "EX.rs1", "value": 6 }
+      },
+      "narration": {
+        "essentials": "Four wide, and the counter had to be forwarded. All four `li`s issued as one group back at cycle 1, so `addi t1, t1, -1` read the register file a cycle before `li t1, 6` wrote it.",
+        "detailed": "This step exists only on a four-wide machine, and it is the fingerprint of the group you asked for. At cycle 1 all four `li`s issued together — the one group of four this program ever forms. Everything behind them moved up a cycle, and `addi t1, t1, -1` moved up far enough to break something: it read `t1` from the register file in cycle 3, and `li t1, 6` did not write `t1` until cycle 4. The register file handed it a 0 for a counter that says 6. What you are looking at is the repair — that 6 arriving from the writeback stage over the bypass network, in time for Execute. Two and three wide, this instruction read 6 out of the register file and needed no forward at all. Widening the machine did not create work here; it created a hazard.",
+        "expert": "Two things happen at once and are worth separating. The group of four is an issue-stage event: four instructions with no register dependence between them, so nothing refuses and one cycle of issue does the work of two. The forward is a consequence one stage downstream — a wider group drains the front of the program faster than writeback can bring the register file up to date behind it, and every slot you add makes that likelier. Width paying for itself and width raising the pressure on the bypass network, in the same cycle. There is a second forward beside this one: `add a0, a0, t3` takes `a0` from writeback too, the 0 that `li a0, 0` has not committed yet. Neither of them exists at two or three wide."
+      }
+    },
+    {
+      "trigger": {
+        "event": "alu-op",
+        "where": { "op": "sll", "a": 3, "b": 2, "result": 12 },
+        "nth": 2
+      },
+      "narration": {
+        "essentials": "Second pass through the loop — and the loop does not care how wide the machine is. Three issue groups a pass, five cycles a pass, at two, three and four wide alike.",
+        "detailed": "`sll t3, t5, t6` shifts 3 left by 2 for the second of six times, and this is where the lesson has to be honest with you. The group of four happened once, in the prologue, and it never happens again — because the loop body is three instructions and they are a chain. The `sll` issues alone; the `add` behind it is refused for the `t3` the `sll` has not produced yet. The `add` and the `addi` go together in the next group. Then the `bnez`. Three groups, five cycles, and that is the shape two wide, three wide and four wide alike. Six passes at five cycles is 30 of this run's cycles, and no amount of width touched one of them.",
+        "expert": "The refusal counts are the trap this track keeps setting. Two wide, this run refuses 6 times. Three wide, 13. Four wide, 12 — and the fastest of the three machines is not the one that refuses least. A refusal that stops a group growing costs nothing when the instruction it rejected had nowhere earlier to go; compare \"The pair that can't\", where the same event with the same reason string splits work that would otherwise have shared a cycle. And the slots the wider machine does fill inside the loop are not doing what they appear to be doing: three and four wide, the branch's own group also carries `li a7, 10` and `ecall`, fetched past a branch that has not resolved. On five of the six passes the flush kills them. On the sixth the branch falls through and they are the program's exit."
+      }
+    },
+    {
+      "trigger": { "event": "reg-write", "where": { "reg": 10, "value": 72 } },
+      "narration": {
+        "essentials": "72 on every machine — width never changes an answer. Two wide: 35 cycles. Three wide: 34. Four wide: 33.",
+        "detailed": "Six passes adding 12 is 72, and `a0` holds it at every width. The clock is the only thing that moved, and it moved twice. Two wide, this run takes 35 cycles and forms 21 issue groups. Three wide, 34 cycles and 20 groups. Four wide, 33 cycles and 19 groups. One group removed and one cycle saved each time — and neither cycle came out of the loop. The third slot bought the ending: the closing `bnez`, `li a7, 10` and `ecall` leave as one group instead of two. The fourth slot bought the beginning: the four `li`s leave as one group instead of two. Thirty instructions retire whatever you do. Two wide, 0.86 instructions per cycle. Three wide, 0.88. Four wide, 0.91.",
+        "expert": "Where those two cycles came from is the whole lesson. The run is exactly its issue-group count plus 14 cycles in which nothing issues at all, and the 14 is identical at two, three and four wide: cycle 0 before anything has been decoded, two cycles after each of the five taken branches, and three at the end while the last group drains. So the flush bill is width-invariant, and it is what sets the loop's five cycles a pass — 40 instructions are fetched at every width and 10 are discarded at every width, five copies of `li a7, 10` and five of `ecall`. What is left for width to win is the straight-line code at the two ends, and there is exactly one group's worth at each. The fourth slot is not idle hardware here, the way it was in \"Where widening stops paying\" — it is hardware this program can spend once."
+      }
+    }
+  ]
+}
