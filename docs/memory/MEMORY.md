@@ -4,11 +4,12 @@ A pedagogical RV32I simulator. **M1–M14 ALL COMPLETE** (spec §12's roadmap fi
 came from the don't-foreclose flag), each code-reviewed with every finding fixed. Six models ship,
 each with a lesson track. **NO milestone is in progress.**
 
-Work since M14 is **UX/product gaps in the shell**, not microarchitectures. A survey after M14 found
-four; **two are done** — keyboard clock control and continuous play (both 2026-07-30, repo **7248
-tests**, five gates green). **Open work: URL permalinks (the next best pick), session persistence,
-and the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles
-the local branch and needs no PR).
+Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
+four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30, repo
+**7248 tests**, five gates green). **Open work: dynamic branch prediction (plan written, STEP 0 DONE
+2026-07-30, no code yet — the only thing in flight), URL permalinks, session persistence, and the
+`/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles the
+local branch and needs no PR).
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
 that area. Keep this index to one line per entry; detail belongs in the file, never here.
@@ -33,8 +34,12 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 - [Panel jitter](panel-jitter-and-height-reserves.md) — **no test here can see a HEIGHT** either; the
   reserve idiom, and a fix that passed its own guard while the browser measured no change.
 
-## Post-M14 shell work
+## Post-M14 work
 
+- [Dynamic branch prediction](dynamic-branch-prediction.md) — **the only thing in flight.** Step 0
+  measured: a 2-bit BHT beats `static-taken` by **one cycle over the whole corpus**, so the corpus
+  cannot show what the feature is for. Read before step 1 — and read the method (pricing an unbuilt
+  knob offline) before measuring any future timing knob.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
