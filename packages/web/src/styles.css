@@ -310,6 +310,22 @@ input[type='range'] {
   .transport-keys {
     display: none;
   }
+
+  /* The word "speed" before the play-speed picker, dropped at the same threshold and for the same
+     reason — but note what is and is NOT hidden here, because the distinction is the whole design.
+     The legend above is a CAPTION and can vanish entirely; the play button and its `<select>` are
+     CONTROLS and cannot, so no media rule can make them go away the way the legend does. What is
+     left to give back is the caption-ish part of the control: the visible word. The `<select>`'s
+     own `aria-label="Play speed"` and its title still name it for a screen reader and on hover, and
+     the option faces (`4×/s`, `max`) are self-describing, so nothing about what the control DOES is
+     carried by the word alone.
+     Same threshold as the legend deliberately: two nearby elements disappearing at two different
+     widths would make the bar's narrow-width behaviour a two-step staircase nobody can reason
+     about. Both are viewport-width thresholds, never state, so neither can reintroduce the
+     per-step jitter class. */
+  .play-speed-label {
+    display: none;
+  }
 }
 
 .panel-heading {

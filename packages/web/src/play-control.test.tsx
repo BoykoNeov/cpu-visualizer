@@ -14,6 +14,7 @@
  * can be found.
  */
 
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PlayControl, TransportButtons } from './App';
@@ -119,6 +120,42 @@ describe('the speed control offers every position', () => {
     for (const s of PLAY_SPEEDS) {
       expect(selected(render(false, true, s))).toEqual([s]);
     }
+  });
+
+  it('carries the class the stylesheet hides its caption by — and the sheet names it', () => {
+    // The `transport-keys` treatment, applied because the same trap applies: neither half of a
+    // media-query fix is visible to `renderToStaticMarkup`, which renders no stylesheet. A class on
+    // an element with no rule anywhere is a HALF-FINISHED decision that looks finished, and this
+    // control shipped exactly that for one commit.
+    //
+    // Note the asymmetry this pins: the word is hidden, the control is not. A `<select>` cannot
+    // `display: none` at narrow widths the way the legend does — the reader would lose the ability
+    // to choose a speed, not just the label for it.
+    expect(render(false, true)).toContain('class="play-speed-label"');
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
+    expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
+    expect(Number(block![1])).toBe(1023); // the SAME threshold as the legend, not a second staircase
+    expect(block![2]).toContain('.play-speed-label');
+    expect(block![2]).toContain('display: none');
+  });
+
+  it('keeps the control itself reachable at every width — only the caption is hidden', () => {
+    // The rule that must NOT exist. A media rule hiding `.btn` or the `<select>` would take the
+    // feature away from narrow viewports rather than tidying it, and the wrap pressure this bar is
+    // under makes that a tempting fix at 2am.
+    //
+    // Comments are STRIPPED before asking, and that is not incidental: this assertion failed on
+    // first run against prose in the block explaining why a `<select>` is exactly what must not be
+    // hidden. A check that reads a comment as if it were a rule reports the documentation as the
+    // defect — and would equally miss a real rule hidden inside `/* … */`.
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/
+      .exec(css)![2]!
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(block).toContain('.play-speed-label'); // the strip did not eat the rules themselves
+    expect(block).not.toContain('select');
+    expect(block).not.toContain('.btn');
   });
 
   it('names the speeds in the reader’s own unit', () => {
