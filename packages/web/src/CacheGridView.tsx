@@ -39,6 +39,29 @@ const STATE_STYLE: Record<Exclude<LineState, 'idle'>, { label: string; hue: stri
   filling: { label: 'FILLING', hue: T.monoAmber },
 };
 
+/**
+ * What an IDLE line's state chip contains: one non-breaking space.
+ *
+ * It looks like nothing and it is half the fix for this panel's twitch. `.cache-line` is a grid with
+ * `align-items: center`, so a row is as tall as its tallest cell — and an EMPTY chip has no line box
+ * at all. Measured in the shipped bundle (2026-07-30): the idle chip was **5.19px** (its padding and
+ * border, and nothing else) against **18.19px** once it says `MISS`, so the touched row grew
+ * 30.19→31.38px and the panel 143.2→144.4px on every load and store, moving every panel below it.
+ *
+ * **The other half is that both chips must be set in the same FONT, and missing that made it worse
+ * rather than better.** With the space added but the chip still drawn as two branches, the idle one
+ * inherited the body's sans face while the lit one carried `MONO` inline: 20.19px against 18.19px, a
+ * 2px swing where there had been 1.2px, now with the IDLE row as the tall one. Which is why the chip
+ * is ONE element rather than a ternary between two — a line box is decided by content AND font AND
+ * size together, and a branch invites the next author to match two of the three.
+ *
+ * The space lives here rather than in a CSS `::after` so that it sits in the same element as the WORD
+ * it stands in for, and so the one net that runs on every commit — the rendered markup — can see it.
+ * `.cache-line-tag--idle`'s `min-width` is the same discipline on the horizontal axis, reserving the
+ * chip's WIDTH so the block address does not slide as a line lights.
+ */
+const IDLE_TAG_RESERVE = '\u00A0';
+
 /** The byte range a line-sized block covers, as `0x…–0x…` — the human form of a tag. */
 function blockRange(base: number, lineSize: number): string {
   return `${hex32(base)}–${hex32(base + lineSize - 1)}`;
@@ -102,19 +125,22 @@ export function CacheGrid(props: {
                   blockRange(line.blockBase, grid.lineSize)
                 )}
               </span>
-              {style ? (
-                <span
-                  className="cache-line-tag"
-                  style={{ color: style.hue, borderColor: style.hue, fontFamily: MONO }}
-                >
-                  {style.label}
-                  {line.state === 'filling' && line.penaltyLeft !== undefined
-                    ? ` · ${line.penaltyLeft}`
-                    : ''}
-                </span>
-              ) : (
-                <span className="cache-line-tag cache-line-tag--idle" aria-hidden />
-              )}
+              {/* ONE element for both states, not a branch between two — see {@link IDLE_TAG_RESERVE}.
+                  The line box is then the same by construction: same tag, same font, same font size,
+                  always some content. Only the hue and the word change. */}
+              <span
+                className={style ? 'cache-line-tag' : 'cache-line-tag cache-line-tag--idle'}
+                style={{ fontFamily: MONO, color: style?.hue, borderColor: style?.hue }}
+                aria-hidden={style ? undefined : true}
+              >
+                {style === null
+                  ? IDLE_TAG_RESERVE
+                  : `${style.label}${
+                      line.state === 'filling' && line.penaltyLeft !== undefined
+                        ? ` · ${line.penaltyLeft}`
+                        : ''
+                    }`}
+              </span>
             </div>
           );
         })}
@@ -150,16 +176,15 @@ export function CacheGrid(props: {
 /** The one-line status of THIS cycle's access — the caption that names what just happened. Reads the
  *  same fold the grid does, so the two never disagree about which line was touched.
  *
- *  **Both states are set in the SAME font size, and that is load-bearing rather than tidiness.** The
- *  caption sits in a baseline-aligned flex row with the panel heading, so the row is as tall as its
- *  tallest item — and the idle state was 0.75rem against the access state's 0.78rem, which made the
- *  cache panel 143.2px on a cycle with no memory access and 144.4px on a cycle with one. Measured in
- *  the shipped bundle at 1400px and 980px (2026-07-30): 1.2px, on every load and store, moving every
- *  panel below it. Too small to see as a size and exactly big enough to see as a twitch. */
+ *  Its two states are set at different sizes and that is NOT what made this panel twitch, though it
+ *  was the first guess: measured in the shipped bundle, the header row is 21px on an idle cycle and
+ *  21px on an access cycle. The 1.2px lived one element away, in the state chip on the touched LINE —
+ *  see `.cache-line-tag--idle` and {@link IDLE_TAG_RESERVE}. Recorded because the guess was plausible
+ *  enough to be made twice. */
 function AccessCaption(props: { grid: CacheGridView }): React.JSX.Element {
   const { access, lineSize } = props.grid;
   if (access === null) {
-    return <span style={{ fontSize: '0.78rem', color: T.ink3 }}>no memory access this cycle</span>;
+    return <span style={{ fontSize: '0.75rem', color: T.ink3 }}>no memory access this cycle</span>;
   }
   const style = STATE_STYLE[access.state];
   return (

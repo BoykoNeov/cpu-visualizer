@@ -167,12 +167,14 @@ describe('issue readout: the reserve covers every shape the recording reaches', 
     expect(Math.max(...counts)).toBeGreaterThan(1);
   });
 
-  it('an empty decode still draws the list — the message does not replace it', () => {
+  it("an empty decode still reserves the list's height, message and all", () => {
     const idle = all.findIndex((t) => t !== null && live(t) === 0);
     expect(idle).toBeGreaterThan(0); // the run really does have an empty-decode cycle
     expect(htmls[idle]).toContain('Decode is empty this cycle');
-    // The early return used to swap the whole `<ul>` for this one-line `<p>`, which is the same
-    // collapse as the panel vanishing, one level down.
+    // `Candidates` still swaps its own `<ul>` for that one-line `<p>` when there is nothing to list,
+    // and it is allowed to: the swap happens INSIDE the reserved cell, where the ghosts are already
+    // holding the height. This is what pins that — an empty-decode cursor still renders a list, from
+    // the reserve. Unfixed, the whole cell was one line of text here.
     expect(htmls[idle]).toContain('<ul');
     expect(count(htmls[idle]!, '<li')).toBeGreaterThan(0);
   });
@@ -231,10 +233,16 @@ describe('superscalar datapath: the verdict chip is always in the header', () =>
 });
 
 // ---------------------------------------------------------------------------------------------
-// The cache grid — 1.2px, from two font sizes on one caption.
+// The cache grid — 1.2px, from the state chip on the touched LINE having no line box when idle.
+//
+// This one is here twice over. The first fix was aimed at the caption's two font sizes, it passed a
+// guard written for it, and the browser then measured the panel still swinging 143.2→144.4px: the
+// header is 21px in both states and always was. A structural proxy can be perfectly stable and be a
+// proxy for the wrong thing, which is the failure mode no amount of headless care removes — only the
+// browser closed it. What is pinned below is the mechanism the probe actually found.
 // ---------------------------------------------------------------------------------------------
 
-describe('cache grid: the access caption is set at one size in both states', () => {
+describe('cache grid: an idle state chip reserves the same line box as a lit one', () => {
   function recordCache(cache: CacheConfig): readonly CycleTrace[] {
     const source = EXAMPLE_PROGRAMS.find((p) => p.name === 'array-sum-twice')!.source;
     const { program } = assemble(source);
@@ -247,20 +255,51 @@ describe('cache grid: the access caption is set at one size in both states', () 
   const htmls = cursors(recorded).map((trace) =>
     renderToStaticMarkup(<CacheGrid trace={trace} cache={CACHE_SMALL} />),
   );
-  /** Every inline font-size in the panel, sorted — the multiset that decides its line heights. */
-  const sizes = (html: string): string[] =>
-    [...html.matchAll(/font-size:([0-9.]+rem)/g)].map((m) => m[1]!).sort();
+  /** Every state chip in the panel, lit or idle, as (attributes, text). */
+  const chips = (html: string): { attrs: string; text: string }[] =>
+    [...html.matchAll(/<span class="cache-line-tag([^"]*)"([^>]*)>(.*?)<\/span>/g)].map((m) => ({
+      attrs: m[2]!,
+      text: m[3]!,
+    }));
 
-  it('the inline font sizes are identical at every cursor', () => {
-    // The caption read 0.75rem with no access and 0.78rem with one, and the header is a
-    // baseline-aligned flex row: the taller item sets the row, so the panel was 143.2px on a cycle
-    // with no memory access and 144.4px on a cycle with one.
-    expect(sizes(htmls[0]!).length).toBeGreaterThan(0); // the floor: there ARE inline sizes to compare
-    expect(distinct(htmls.map(sizes)).size).toBe(1);
+  it('every chip has content at every cursor — an empty one has no line box', () => {
+    // `.cache-line` is a grid with `align-items: center`, so the row is as tall as its tallest cell.
+    // An idle chip rendered as `<span … />` measured 5.19px (padding and border only) against a lit
+    // chip's 18.19px, growing the touched row 30.19→31.38px on every load and store.
+    for (const html of htmls) {
+      const found = chips(html);
+      expect(found.length).toBe(2); // CACHE_SMALL is two lines — the floor, and it never varies
+      for (const chip of found) expect(chip.text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('...and every chip is set in the same font', () => {
+    // The other half, and the one that bit: content alone left the idle chip in the body's sans face
+    // against the lit chip's mono, which measured 20.19px against 18.19px — a BIGGER swing than the
+    // defect being fixed, in the opposite direction. A line box needs content and font and size to
+    // agree, so this pins the font as well as the presence of text.
+    const fonts = new Set<string>();
+    for (const html of htmls) {
+      for (const chip of chips(html)) {
+        const font = /font-family:([^;"]+)/.exec(chip.attrs)?.[1];
+        expect(font).toBeDefined();
+        fonts.add(font!);
+      }
+    }
+    expect(fonts.size).toBe(1);
+  });
+
+  it('the number of LIT chips genuinely varies, so the reserve is doing work', () => {
+    // Non-vacuity, both halves: the run must touch a line on some cycles and not on others, or a
+    // panel with no reserve at all would hold its height for free.
+    const lit = htmls.map((html) =>
+      chips(html).filter((chip) => /HIT|MISS|EVICT|FILLING/.test(chip.text)),
+    );
+    expect(Math.max(...lit.map((l) => l.length))).toBeGreaterThan(0);
+    expect(Math.min(...lit.map((l) => l.length))).toBe(0);
   });
 
   it('both caption states are actually reached in this run', () => {
-    // Non-vacuity: without a cycle of each kind the sweep above compares a state against itself.
     const idle = htmls.filter((h) => h.includes('no memory access this cycle')).length;
     const busy = htmls.filter((h) => /HIT|MISS|EVICT|FILLING/.test(h)).length;
     expect(idle).toBeGreaterThan(0);

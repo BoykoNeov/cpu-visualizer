@@ -726,7 +726,13 @@ input[type='range'] {
   white-space: nowrap;
 }
 /* An idle line still reserves the chip's width, so the block address does not jump left/right as a
-   line lights and darkens while scrubbing — the same layout-reserve discipline as the map's header. */
+   line lights and darkens while scrubbing — the same layout-reserve discipline as the map's header.
+
+   The chip's HEIGHT is reserved too, and NOT from here: an empty chip has no line box, so it measured
+   5.19px against a lit chip's 18.19px and grew the touched row by 1.2px on every load and store. The
+   fix is a non-breaking space in the element itself (`IDLE_TAG_RESERVE` in `CacheGridView.tsx`),
+   where the rendered-markup tests can see it — a `::after { content }` here would work identically on
+   screen and be invisible to every net that runs on a commit. */
 .cache-line-tag--idle {
   min-width: 3.5rem;
 }
