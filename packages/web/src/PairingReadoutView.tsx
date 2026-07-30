@@ -173,10 +173,25 @@ export function PairingReadout(props: {
  * reserve IS the mechanism — and it takes the ghosts out of the accessibility tree on the way, so a
  * screen reader reads exactly one verdict and one candidate list.
  *
- * The ghosts are deduped on everything that can affect their height (verdict, reason, and each
- * candidate's slot/text/issued), so a long recording stacks a handful of shapes rather than one per
- * cycle. The LIVE readout is drawn on top of them rather than selected from among them: at the
- * pre-run cursor it comes from `readPairingPreRun` and so is not one of the recorded shapes at all.
+ * **The ghosts are deduped into SHAPE CLASSES, and the bound is the point.** The first draft keyed on
+ * everything that can affect a ghost's height — verdict, reason, and every candidate's slot, text and
+ * issued flag — which is exact and grows one class per distinct instruction tuple. Measured: fine on
+ * the corpus (35 rows, 24KB at worst) and **802 rows / 455KB for one panel** on a straight-line
+ * 800-instruction program, re-rendered on every step. That is the failure `MAX_MAP_CYCLES` exists for
+ * one file over, and the same trigger: something a sandbox user can type in a minute.
+ *
+ * So the key is `(verdict, reason, candidate count, issued count)` — everything that decides how many
+ * LINES a shape has — and within a class the kept member is the one whose widest single candidate is
+ * widest, since that is what decides whether a row WRAPS. The class count is bounded by the verdicts
+ * times the reasons times the width squared, so ghosts stop scaling with the run.
+ *
+ * That is a proxy rather than a proof, and the honest statement of the trade: two shapes in one class
+ * could wrap differently if the kept one's rows are individually shorter while another's total is
+ * longer. It is the right trade because the alternative is not "exact" but "exact until a long enough
+ * program makes the panel unusable", and the numbers above say how long that program has to be.
+ *
+ * The LIVE readout is drawn on top of the ghosts rather than selected from among them: at the pre-run
+ * cursor it comes from `readPairingPreRun` and so is not one of the recorded shapes at all.
  */
 function ReservedBody(props: {
   readout: Readout;
@@ -185,18 +200,16 @@ function ReservedBody(props: {
 }): React.JSX.Element {
   const { readout, recording, followed } = props;
   const ghosts = useMemo(() => {
-    const byShape = new Map<string, Readout>();
+    const byClass = new Map<string, Readout>();
     for (const trace of recording) {
       const r = readPairing(trace);
       if (r === null) continue;
-      const key = JSON.stringify([
-        r.verdict,
-        r.reason,
-        r.candidates.map((c) => [c.slot, c.text, c.issued]),
-      ]);
-      if (!byShape.has(key)) byShape.set(key, r);
+      const issued = r.candidates.filter((c) => c.issued).length;
+      const key = `${r.verdict}|${r.reason}|${r.candidates.length}|${issued}`;
+      const kept = byClass.get(key);
+      if (kept === undefined || widestRow(r) > widestRow(kept)) byClass.set(key, r);
     }
-    return [...byShape.values()];
+    return [...byClass.values()];
   }, [recording]);
 
   return (
@@ -213,6 +226,12 @@ function ReservedBody(props: {
       </div>
     </div>
   );
+}
+
+/** The longest single candidate row in a shape — a row wraps on its OWN length, not on the shape's
+ *  total, so this is what picks the tallest member of a shape class. */
+function widestRow(readout: Readout): number {
+  return readout.candidates.reduce((widest, c) => Math.max(widest, c.text.length), 0);
 }
 
 function Verdict({ readout }: { readout: Readout }): React.JSX.Element {

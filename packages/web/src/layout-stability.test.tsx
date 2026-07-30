@@ -179,6 +179,39 @@ describe('issue readout: the reserve covers every shape the recording reaches', 
     expect(count(htmls[idle]!, '<li')).toBeGreaterThan(0);
   });
 
+  it('the reserve does not GROW with the run — ghosts are shape classes, not cycles', () => {
+    // A reserve is only free if it is bounded. Keyed on every distinct instruction tuple, the ghost
+    // stack grew one class per candidate row: measured at 802 rows and 455KB of markup for this one
+    // panel on a straight-line 800-instruction program, re-rendered on every step — the failure
+    // `MAX_MAP_CYCLES` exists for, from the same trigger (something a sandbox user can type).
+    const straight = (n: number): string =>
+      `${Array.from({ length: n }, (_, i) => `  addi x${(i % 30) + 1}, x0, ${i}`).join('\n')}
+  li a7, 10
+  ecall
+`;
+    const rows = [200, 800].map((n) => {
+      const r = loadSource(straight(n), () => new SuperscalarProcessor(), WIDE);
+      if (!r.ok) throw new Error('fixture failed to assemble');
+      r.loaded.recorder.runToEnd();
+      const rec = r.loaded.recorder.recorded;
+      return {
+        cycles: rec.length,
+        li: count(
+          renderToStaticMarkup(
+            <PairingReadout trace={rec[rec.length - 1]!} recording={rec} followed={null} />,
+          ),
+          '<li',
+        ),
+      };
+    });
+    // The runs really are different lengths — otherwise "the reserve did not grow" is trivially true.
+    expect(rows[1]!.cycles).toBeGreaterThan(rows[0]!.cycles * 2);
+    expect(rows[1]!.li).toBe(rows[0]!.li);
+    // ...and small in absolute terms, not merely equal: the class count is bounded by the verdicts
+    // times the reasons times the width squared, which is a constant, not a function of the program.
+    expect(rows[1]!.li).toBeLessThan(60);
+  });
+
   it("a cycle that refused nobody still reserves the refusal note's height", () => {
     const refusedAt = all.findIndex((t) => t !== null && readPairing(t)?.verdict === 'refused');
     const pairedAt = all.findIndex((t) => t !== null && readPairing(t)?.verdict === 'paired');
