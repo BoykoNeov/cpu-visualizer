@@ -37,9 +37,13 @@ const render = (playing: boolean, canStart: boolean, speed: PlaySpeed = 4): stri
  *  `disabled=""`). One extractor for both, so a test cannot accidentally read the speed `<select>`
  *  and report it as the button. */
 const toggle = (html: string): { face: string; dead: boolean } => {
-  const m = /<button([^>]*)>([^<]*)</.exec(html);
+  const m = /<button([^>]*)>([\s\S]*?)<\/button>/.exec(html);
   expect(m, 'PlayControl should render a button').not.toBeNull();
-  return { face: m![2]!, dead: m![1]!.includes(' disabled') };
+  // The face is read with the INNER MARKUP STRIPPED, because the glyph and the word are separate
+  // spans — the stylesheet drops the word below 899px, where the width sweep measured it as the
+  // last thing costing the sticky bar a second row. A `([^<]*)` capture would stop at the span and
+  // report the face as `▶`, quietly turning every face assertion into a glyph assertion.
+  return { face: m![2]!.replace(/<[^>]*>/g, '').trim(), dead: m![1]!.includes(' disabled') };
 };
 
 describe('the toggle shows which verb the next click performs', () => {
@@ -135,7 +139,7 @@ describe('the speed control offers every position', () => {
     const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
     const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
     expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
-    expect(Number(block![1])).toBe(1023); // the SAME threshold as the legend, not a second staircase
+    expect(Number(block![1])).toBe(1199); // the SAME threshold as the legend, not a second staircase
     expect(block![2]).toContain('.play-speed-label');
     expect(block![2]).toContain('display: none');
   });
@@ -178,7 +182,10 @@ describe('play sits with the clock buttons, before their key legend', () => {
       </TransportButtons>,
     );
     const runAt = html.indexOf('run ⏭');
-    const playAt = html.indexOf('▶ play');
+    // NOT `indexOf('▶')`: the step button's face is `step ▶`, so the bare glyph finds the WRONG
+    // button and reported play as rendering 62 characters before `run ⏭`. Anchor on the play
+    // button's own markup — the glyph immediately followed by its word span.
+    const playAt = html.indexOf('play-word');
     const legendAt = html.indexOf('→ step');
     expect(runAt).toBeGreaterThan(-1);
     expect(playAt).toBeGreaterThan(runAt);

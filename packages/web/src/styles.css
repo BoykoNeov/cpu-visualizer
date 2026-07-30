@@ -295,18 +295,27 @@ input[type='range'] {
   border-bottom: 1px solid var(--line);
 }
 
-/* The keyboard legend under the clock buttons, and the width it stops being free at.
-   Measured 2026-07-30 in the browser, with the row at its most crowded (out-of-order, mid-run, an
-   in-flight instruction and a `N in flight` readout): the row is ONE line at 1024px and TWO at
-   900px, and removing the legend at 900px puts it back to one — so the legend is the cause, not a
-   passenger. The cost of letting it wrap is not cosmetic: this bar is `position: sticky`, so a
-   second line means 81px of permanently-eaten viewport becoming 104px on every scroll, in an app
-   whose whole point is watching the surfaces BELOW it.
-   So the caption goes away where it would cost a row. Nothing else does: the keys keep working and
-   every button's `title` still names its key. The threshold is a viewport width, never a piece of
-   state, so this cannot reintroduce the per-step jitter class. (At 700px the bar wraps with or
-   without it — that one is pre-existing and not this feature's to fix.) */
-@media (max-width: 1023px) {
+/* The captions in the transport bar, and the width each stops being free at.
+   This bar is `position: sticky`, so a wrapped row is not cosmetic: 81px of permanently-eaten
+   viewport becomes ~105px on every scroll, in an app whose whole point is watching the surfaces
+   BELOW it. So captions go away where they would cost a row; controls never do.
+
+   Measured 2026-07-30 in the browser, row at its most crowded (out-of-order, mid-run, an in-flight
+   instruction and a `N in flight` chip), by sweeping the viewport 1500 → 620px in 20px steps and
+   asking "is the row box taller than its tallest child" — never by comparing children's `rect.top`,
+   which `alignItems: center` makes meaningless.
+
+   THE THRESHOLD MOVED FROM 1023 TO 1199 WHEN PLAY SHIPPED, and the sweep is why. The keyboard
+   legend alone wrapped the row below 1024px, which is where 1023 came from. Continuous play then
+   added a button and a speed picker worth **169px** (row content 896 → 1065px), and the narrowest
+   one-line width went 1180 → 1200px: the row wrapped across the whole 1040–1180px band, which is
+   ordinary laptop territory. A caption cannot be worth a permanent row there. Both captions now go
+   at the same width — two nearby elements vanishing at two different widths would make the bar's
+   narrow-width behaviour a staircase nobody can reason about.
+
+   Every threshold here is a VIEWPORT WIDTH, never a piece of state, so none of this can reintroduce
+   the per-step jitter class. */
+@media (max-width: 1199px) {
   .transport-keys {
     display: none;
   }
@@ -324,6 +333,28 @@ input[type='range'] {
      about. Both are viewport-width thresholds, never state, so neither can reintroduce the
      per-step jitter class. */
   .play-speed-label {
+    display: none;
+  }
+}
+
+/* The second measured band. With both captions gone the row still wrapped from 880px down, while
+   the SAME row without the play control held one line to 780px — so play was costing 120px of
+   usable width at the narrow end too. The word on the play button is the last caption-ish thing
+   left to give back: `▶` and `⏸` are the universal transport glyphs, the button keeps its title
+   ("Play — run the clock forward at …" / "Pause — …") and its face still changes, so nothing about
+   what it does or which state it is in depends on the word.
+   What this does NOT close, stated as a number rather than left to be discovered: after the fix the
+   row holds one line down to **880px** with play, against **760px** without it. Below 880px play may
+   still cost a second row — where exactly depends on how crowded the row is (measured: the crossover
+   is 760px on out-of-order at cycle 7, and 700px on a lighter row at cycle 4, so it is a property of
+   the content and not a single width). Closing that would take ~100px more, and the only thing left
+   that big is the speed `<select>` — which is a CONTROL, not a caption: hiding it removes the
+   reader's ability to choose a speed rather than tidying the label for one. That is the line this
+   stylesheet does not cross, and `play-control.test.tsx` asserts no such rule exists.
+   Below ~740px the bar wraps with or WITHOUT play — pre-existing, from four buttons plus two chips,
+   and recorded rather than quietly folded into this feature's numbers. */
+@media (max-width: 899px) {
+  .play-word {
     display: none;
   }
 }

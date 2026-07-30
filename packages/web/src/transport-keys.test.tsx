@@ -76,9 +76,8 @@ describe('the legend lists every binding', () => {
 
   it('carries the class the stylesheet hides it by, at the width that was measured', () => {
     // The legend is 251px in a wrapping flex row inside a `position: sticky` bar. Measured in the
-    // browser on out-of-order mid-run: one line at 1024px, two at 900px, and removing the legend
-    // at 900px puts it back to one — so it is the cause. A second line is 23px of permanently
-    // eaten viewport on every scroll.
+    // browser on out-of-order mid-run, and RE-measured when continuous play joined the row. A
+    // second line is ~24px of permanently eaten viewport on every scroll.
     //
     // Neither half of that fix is visible to `renderToStaticMarkup` — it renders no stylesheet —
     // so this asserts the two halves still refer to each other: the class is on the element, and a
@@ -88,7 +87,12 @@ describe('the legend lists every binding', () => {
     const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
     const block = /@media \(max-width: (\d+)px\) \{([\s\S]*?)\n\}/.exec(css);
     expect(block, 'styles.css should carry a max-width media block').not.toBeNull();
-    expect(Number(block![1])).toBe(1023); // the measured threshold, not a round guess
+    // 1199, not the 1023 this shipped with. RE-MEASURED when continuous play added a button and a
+    // speed picker to the same row: play is worth 169px (row content 896 → 1065px), which moved the
+    // narrowest one-line width from 1180 to 1200 and wrapped the bar across the whole 1040–1180px
+    // band. The number is a measurement and moves when the row's occupants do — which is exactly
+    // why it is asserted rather than left as a comment.
+    expect(Number(block![1])).toBe(1199);
     expect(block![2]).toContain('.transport-keys');
     expect(block![2]).toContain('display: none');
   });

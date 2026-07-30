@@ -1654,7 +1654,11 @@ export function PlayControl(props: {
             : `Play — run the clock forward at ${SPEED_LABELS[speed]}, stopping at the end. Use ${ACTION_WORDS.runToEnd} ⏭ to jump there instantly.`
         }
       >
-        {playing ? '⏸ pause' : '▶ play'}
+        {/* The glyph and the word are separate spans so the stylesheet can drop the WORD below
+            899px, where the sweep measured this button's text as the last thing costing the sticky
+            bar a second row. The glyph never goes: it is what says which state the toggle is in. */}
+        {playing ? '⏸' : '▶'}
+        <span className="play-word">{playing ? ' pause' : ' play'}</span>
       </button>
       <label style={{ fontSize: '0.8rem', color: T.ink2 }}>
         <span className="play-speed-label">speed </span>
