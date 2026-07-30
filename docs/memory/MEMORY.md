@@ -13,8 +13,10 @@ DELTA lesson track — is ✅ COMPLETE (2026-07-30)**: all three lessons authore
 lessons), the within-track ORDER pinned on the four cross-references that lie without it, and the
 browser pass driven over the shipped bundle — 110 checks, two breaks, and the one acceptance a
 subject could not satisfy honored in its stricter substitute form
-([M14](m14-width-lessons-step0.md)). Repo **7125 tests**, five gates green.
-**NO milestone is in progress.** Outside the milestones, the
+([M14](m14-width-lessons-step0.md)). **M14 has now been code-reviewed and all 5 findings are fixed**
+([M14 review resolved](m14-review-resolved.md), 2026-07-30) — repo **7132 tests**, five gates green.
+**NO milestone is in progress**, and the only named open work is the `/code-review ultra` fan-out over
+`89bb26e..HEAD` (user-triggered; needs a PR to point at). Outside the milestones, the
 shell's **step-JITTER class is closed** (2026-07-30, repo **7125 tests**): five panels changed height
 as the cursor moved and every surface below them moved with it —
 [panel jitter](panel-jitter-and-height-reserves.md).
@@ -109,6 +111,17 @@ as the cursor moved and every surface below them moved with it —
   wide 43" from "44 cycles, down to 43". Also: `paired-branches` has an identical event multiset at
   w2/w3/w4 while its cycles differ, so **the events cannot see a won cycle**; and a refusal count is
   not a penalty.
+- [M14 review resolved](m14-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-30**
+  (7125→7132 tests). Read before trusting a reserve, a docblock's coverage claim, a comment that
+  QUOTES prose, or running a break harness on a dirty tree. Its sharpest lesson: **moving untestable
+  code somewhere callable does not always close its class** — M13's fix relocated the shell→engine
+  copy, and `forwarding: forwardingRef` has the same transposition surface as
+  `forwarding: forwardingRef.current`, so the real fix was to REMOVE the field names (one ref, a
+  spread, a rest-destructure). Also: a reserve's MAX-ness needs a net that does not name the constant
+  on both sides; a same-typed swap is invisible to `tsc` and to any fixture with repeated values; **a
+  comment that quotes a lesson's prose is a claim about a file** (the cache order pin quoted a
+  sentence that does not exist in the lesson); and ⚠ a `git checkout --` break harness destroyed this
+  review's own uncommitted refactor — recovered from a dangling stash commit.
 - [M13 review resolved](m13-review-resolved.md) — **✅ all 5 findings FIXED 2026-07-29**
   (6189→6203 tests; 21 browser checks on the shipped bundle). Read before trusting a docblock's
   stated reason, writing a range claim, or adding a knob to the shell→engine seam. Its sharpest
