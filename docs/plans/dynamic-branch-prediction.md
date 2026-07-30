@@ -1,8 +1,10 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEP 0 DONE, 2026-07-30 — no code written yet.** The corpus is measured (see the step-0
-results section); steps 1–8 are untouched. Every claim below about the current code is
-a grep or a quoted docblock, cited inline; every claim about what a dynamic predictor will _do_ is
+**Status: STEPS 0 AND 0b DONE, 2026-07-30 — no engine code written yet.** The corpus is measured
+(see the step-0 results section) and `content/programs/nested-loop.s` is authored, hand-derived into
+three timing tables and three shape tables, and committed; steps 1–8 are untouched. Every claim
+below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
+dynamic predictor will _do_ is
 a prediction, and the ones worth being wrong about are called out as step-0 measurements rather
 than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
 don't-foreclose flag. This is a feature, in the same class as `keyboard-transport.md` and
@@ -212,7 +214,7 @@ logic four times.
 
 - [ ] **7. Browser pass — and it is the only net for steps 6's wiring.** Per
       `browser-is-the-only-net`: 9 of 10 view steps here shipped a defect only the browser caught.
-      Drive all five schemes on the step-0 program, watch the table train, and **measure the new
+      Drive all five schemes on `nested-loop.s` (step 0b), watch the table train, and **measure the new
       panel at a stated narrow viewport in the app's most crowded state** (the wrap defect that
       keyboard control shipped was invisible at 1400px on the default model). Acceptance: a
       numbered check list with counts, in the style of `continuous-play.md`.
@@ -321,14 +323,14 @@ such program exists") does not fire, so this is a scope call, seeded below.
 
 ### Design forks priced — three of them move a number, three do not
 
-| fork                                          | verdict                                                                                                                                                                                                                                                                                                                                                                                                            |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Does `jal` consult the counter?**           | **Worth exactly 1 cycle, on M4's own witness — but measured on the corpus's ONLY `jal`,** so this is a single witness, not a range. `call-return.s` is 16 under the seed (jal bypasses the table, always taken) and **17** if `jal` reads a cold weakly-not-taken counter. The verdict does not rest on the sample size: an unconditional jump's answer is known at decode, so consulting a counter is pure noise. |
-| Does `jal` _update_ the counter?              | **Zero** on this corpus — no `jal` shares an index with a conditional branch at 16, 8 or 4 entries.                                                                                                                                                                                                                                                                                                                |
-| Does `jalr` update?                           | **Zero**, same reason.                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Table size (16 / 8 / 4 entries)**           | **Zero — identical cycle counts at all three.** No two branches in this corpus alias, even at 4 entries. "Aliasing is a feature" is **unreachable here**, so the size decision is unconstrained by timing and should be made for _drawability_ alone.                                                                                                                                                              |
-| **2-bit reset: weakly (01) vs strongly (00)** | **Moves five programs, and in BOTH directions.** `00` makes 2-bit _worse_ than 1-bit on the four single-entry loops (`array-sum` 72 vs 71, likewise `strided-sum`, `sum-loop`, `slow-op-loop`) and _better_ on `array-sum-twice` (274 vs 275, because the outer `TN` prefers a sticky not-taken start). `01` is the right seed and this is why.                                                                    |
-| 1-bit reset                                   | Not a fork — a 1-bit counter has no "weakly" position.                                                                                                                                                                                                                                                                                                                                                             |
+| fork                                          | verdict                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Does `jal` consult the counter?**           | **Worth exactly 1 cycle, on M4's own witness — but measured on the corpus's ONLY `jal`,** so this is a single witness, not a range. `call-return.s` is 16 under the seed (jal bypasses the table, always taken) and **17** if `jal` reads a cold weakly-not-taken counter. The verdict does not rest on the sample size: an unconditional jump's answer is known at decode, so consulting a counter is pure noise.              |
+| Does `jal` _update_ the counter?              | **Zero** on this corpus — no `jal` shares an index with a conditional branch at 16, 8 or 4 entries.                                                                                                                                                                                                                                                                                                                             |
+| Does `jalr` update?                           | **Zero**, same reason.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Table size (16 / 8 / 4 entries)**           | **Zero — identical cycle counts at all three.** No two branches in this corpus alias, even at 4 entries. "Aliasing is a feature" is **unreachable here**, so the size decision is unconstrained by timing and should be made for _drawability_ alone. ⚠ **FALSIFIED BY STEP 0b** — `nested-loop.s`'s guard and inner branch both land on index 2 at 4 entries, costing `dynamic-2bit` 181 against 171. See the step-0b section. |
+| **2-bit reset: weakly (01) vs strongly (00)** | **Moves five programs, and in BOTH directions.** `00` makes 2-bit _worse_ than 1-bit on the four single-entry loops (`array-sum` 72 vs 71, likewise `strided-sum`, `sum-loop`, `slow-op-loop`) and _better_ on `array-sum-twice` (274 vs 275, because the outer `TN` prefers a sticky not-taken start). `01` is the right seed and this is why.                                                                                 |
+| 1-bit reset                                   | Not a fork — a 1-bit counter has no "weakly" position.                                                                                                                                                                                                                                                                                                                                                                          |
 
 ### What step 0b would actually cost — the plan under-priced it
 
@@ -347,9 +349,85 @@ three visible re-entry mispredicts under 1-bit against zero under 2-bit, which i
 reader is supposed to watch disappear. Six passes would give 5, at no extra table cost. But it is a
 real scope addition (three hand-derived rows), so it is flagged here rather than decided.
 
+## Step 0b — DONE 2026-07-30. `content/programs/nested-loop.s`
+
+Authored at the recommended size, 4 passes × 6 iterations, register-only. The measured row, against
+the eleven that were already there:
+
+| scheme             | `nested-loop.s` [fwd off] | Δ vs `static-taken` | mispredicts |
+| ------------------ | ------------------------: | ------------------: | ----------: |
+| `static-not-taken` |                       182 |                  −5 |          23 |
+| `static-taken`     |                       177 |                   — |           9 |
+| `dynamic-1bit`     |                       174 |              **+3** |          10 |
+| `dynamic-2bit`     |                       171 |              **+6** |       **7** |
+
+**It is the only program in the corpus where a dynamic scheme beats `static-taken`,** and the
+1-bit → 2-bit delta is exactly the projected 3 — the three re-entry mispredicts, gone. Corpus-wide,
+`dynamic-2bit`'s margin over `static-taken` goes from **1 cycle to 7** (814 → 807 off, 591 → 584 on).
+That is still a small number, and it should stay stated: this feature's case is per-program, not
+aggregate.
+
+**The guard is what makes the ORDERING textbook, not just the delta legible.** A never-taken
+`bne x0, x0` at the head of each pass costs `static-taken` 2 cycles four times over and costs both
+dynamic schemes nothing (they start weakly-not-taken and are immediately right), so P runs
+46 / 41 / 38 / 35. Without it `static-taken` still won this program and the feature would have
+demonstrated hysteresis while losing on the clock.
+
+### Two ordering decisions that were MEASURED, and a rule that came out of them
+
+> **A register dependence must be distance-1 from a producer in the same basic block, or its stall
+> cost is not the same under every prediction scheme.**
+
+A RAW reaching **across a branch** has a distance that depends on what that branch predicted — the
+7-stage inserts 4 correction cycles for a lost bet. A **distance-2** RAW is re-timed by the 2-wide
+machine, which re-partitions its issue groups around a bet that kills its mate. Either one produces
+a stall that exists under one scheme and vanishes under another, on an instruction that **retires** —
+and all three timing tables pin ONE stall histogram per forwarding position for ALL schemes, so such
+a program would change their shape rather than just add a row to them.
+
+Both drafts of this program hit it, and the second was caught by measurement rather than by reading:
+
+- the guard sits **ahead** of `li t1, 6`, so nothing reads across it;
+- `addi t1, t1, -1` comes **before** `addi a0, a0, 1`, putting the decrement adjacent to the `li`.
+  The other order measured the 2-wide machine's `L` at **60 under `static-not-taken` and 64 under
+  `static-taken`**.
+
+### What it actually cost — six sites, not the three priced above
+
+The three timing rows were the predicted part, and each was hand-derived from its own model's
+recurrence and **green on the first run**, superscalar block included. The three that were not
+predicted are all _shape_ claims rather than presence checks, and grepping for the completeness
+idiom would not have found them:
+
+- `superscalar/src/pairing.test.ts:507` — a second corpus-completeness table (the headline w1/w2 A/B).
+- `superscalar/src/processor.test.ts:173,188` — slot-surjectivity **sets** per width, plus a
+  hard-coded length. A new program joins or does not join by its per-width issue shape.
+- `web/src/pairing-readout.test.ts:552` — the IPC tile's flat-at-widths-3-and-4 enumeration.
+- and `superscalar/src/timing.test.ts:2276`, a hard-coded `'eight of eleven'` count with a prose
+  message, which stays 8 only by coincidence.
+
+Out-of-order needed nothing, as predicted.
+
+### Two findings the row carries that are about the MACHINES, not the predictor
+
+- **Pairing makes this program's interlock worse, and it still wins.** `L = 64` at width 2 against
+  `S = 40` at width 1: once `addi t1@16` and `addi a0@20` issue in the same cycle, `bne@24` is one
+  GROUP behind its producer instead of two instructions behind, so its distance-2 interlock costs 2
+  cycles a lap instead of 1. Cycles go 182 → 172 regardless.
+- **`static-taken`'s sign flips with width** — a 5-cycle win at width 1, a 3-cycle loss at width 2,
+  4 at widths 3 and 4 — because every bet ends its issue group. The corpus's clearest case.
+
+### And it falsifies step 0's table-size verdict
+
+At **4 entries the guard (pc 8) and the inner branch (pc 24) collide on index 2**, and
+`dynamic-2bit` runs **181 instead of 171** — a 10-cycle loss. Step 0 measured table size as
+timing-neutral because nothing in the eleven-program corpus aliased; that is no longer true. The
+size decision now has a reason to pin **8 or 16** rather than being drawability alone, and the
+corpus has its first aliasing witness — reachable if the table is ever drawn at 4.
+
 ## Acceptance criteria
 
-- [ ] Load the step-0 program, pick **1-bit**, step through, and watch the counter table train —
+- [ ] Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table train —
       then pick **2-bit** on the same program and watch the re-entry mispredict disappear. Same
       program, one knob, visibly different behavior (the §12 flagship interaction).
 - [ ] The final register + memory state is **identical under all five schemes** on every corpus
@@ -366,7 +444,7 @@ real scope addition (three hand-derived rows), so it is flagged here rather than
 | Predictor state's home                               | `MachineState.micro.predictor`, following `micro.cache` (INV-3; a STATE view may read `micro`)                                                                                                                                                                                                                                                                                                                                                             | _(open)_      |
 | Scheme names                                         | **`'dynamic-1bit'` / `'dynamic-2bit'`**, not `'bht-*'` — the first names the pedagogy and reads as the obvious sibling of `'static-taken'`; the second names the implementation. Decide DELIBERATELY: these strings surface in the model picker, and if the URL-permalink work lands they become URL-visible and effectively frozen                                                                                                                        | _(open)_      |
 | **Does a SQUASHED branch update the predictor?**     | In the OoO model a branch can resolve and then be killed by an older mispredict, so update-on-resolve vs update-on-commit is a real behavioral fork — **invisible to INV-8**, and sitting exactly where step 5's copy-paste pressure peaks, so four models could quietly answer it four ways. Seed: **update-on-resolve** (simpler; the machine learns from what it saw), with commit-time as the realistic alternative. **Pin BEFORE step 5, not during** | _(open)_      |
-| Table size                                           | Fixed small (8 or 16 entries) — big enough to teach, small enough to draw. **Step 0 measured this as timing-NEUTRAL: 16, 8 and 4 entries give identical cycle counts corpus-wide, because no two branches alias even at 4.** So "aliasing is a feature" is a claim nothing in the corpus can exhibit, and the choice is drawability alone                                                                                                                  | _(open)_      |
+| Table size                                           | **8 or 16, and step 0b gave the choice a REASON.** Step 0 measured 16 / 8 / 4 as timing-neutral because nothing in the eleven-program corpus aliased. `nested-loop.s` changed that: its guard (pc 8) and inner branch (pc 24) collide on index 2 at **4** entries, and `dynamic-2bit` runs **181 instead of 171**. So the corpus now has an aliasing witness, it is reachable only at 4, and 8 or 16 keeps the flagship demo clean                         | _(open)_      |
 | **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore                                                                                                                     | _(open)_      |
 | Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner                                                                                                                                                                                              | _(open)_      |
 | Index function                                       | pc bits alone, no tag — a mispredict from aliasing is a true fact about this machine (INV-5)                                                                                                                                                                                                                                                                                                                                                               | _(open)_      |
@@ -375,7 +453,7 @@ real scope addition (three hand-derived rows), so it is flagged here rather than
 | Does the OoO model share one predictor across lanes? | Yes, one table per machine — a per-lane table is a different (and unrealistic) machine                                                                                                                                                                                                                                                                                                                                                                     | _(open)_      |
 | BTB / `jalr` predictability                          | **Out of scope**; `jalr` keeps paying full EX resolution under every scheme                                                                                                                                                                                                                                                                                                                                                                                | _(open)_      |
 | Global history / gshare                              | **Out of scope**                                                                                                                                                                                                                                                                                                                                                                                                                                           | _(open)_      |
-| Does the corpus need a new program?                  | **Measured: not to satisfy step 0's literal trigger — `array-sum-twice.s` does distinguish the two widths — but the delta is 1 cycle in 276, and dynamic prediction beats `static-taken` by 1 cycle across the ENTIRE corpus. Recommend authoring one (4 passes × 6 iterations ⇒ a 3-cycle delta), priced at three hand-derived timing rows.** See the step-0 results section                                                                              | _(open)_      |
+| Does the corpus need a new program?                  | **ANSWERED — yes, and it is written.** `content/programs/nested-loop.s`, 4 passes × 6 iterations, landed at step 0b: a 3-cycle 1-bit-vs-2-bit delta and the only program in the corpus where a dynamic scheme beats `static-taken` (+6). It cost six sites, not the three this plan priced. See the step-0b section                                                                                                                                        | **CLOSED**    |
 
 ## Risks, stated before they bite
 
