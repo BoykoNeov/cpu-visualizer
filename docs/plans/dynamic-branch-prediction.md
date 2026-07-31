@@ -474,10 +474,10 @@ Five schemes now, three of them behaviors: `packages/trace/src/processor.ts` car
 `packages/engine/common/src/predictor.ts` holds `PredictorState`, `PREDICTOR_ENTRIES = 16` and
 `predictorIndex(pc)`. **No behavior anywhere** — the four honoring engines still read
 `config.branchPrediction === 'static-taken'`, so a `dynamic-*` run is byte-identical to a not-taken
-one and `micro.predictor` is `null` on every recorded cycle of every model. Repo 7591 → 7592 tests —
-the single-cycle inertness test was STRENGTHENED in place rather than joined by a new one, so the
-one net addition is the cross-model spelling guard the break harness turned out to require. Five
-gates green.
+one and `micro.predictor` is `null` on every recorded cycle of every model. Repo 7591 → 7597 tests —
+the single-cycle inertness test was STRENGTHENED in place rather than joined by a new one, so every
+net addition is a hole this step's own checking found: the cross-model spelling guard, and the five
+tests for `predictorIndex`, which shipped untested. Five gates green.
 
 ### Where the type went, and the rule that decides it
 
@@ -579,6 +579,51 @@ Four findings, and only the first was predicted:
    here rather than at step 6**, by a test in `web/src/models.test.ts` that drives every model
    reporting `configurableBranchPrediction` and asserts a `predictor` key on every recorded cycle
    (7591 → 7592). Verified against the broken code first: it fails on `deep-pipeline cycle 0`.
+
+### The gap the break harness did NOT find, and the shape of it
+
+The harness above hunted the field's SPELLING and found a real hole. It never touched the exported
+ARITHMETIC, and `predictorIndex` shipped with **no test at all** — the only pure function in
+`engine-common` without one, in a package whose two siblings (`predict.ts`, `cache.ts`) are both
+pinned.
+
+**Why that is worse than the spelling gap, not smaller.** A wrong spelling blanks a panel; wrong
+arithmetic moves numbers that three hand-derived timing tables already assume. Delete the `>>> 2` and
+the function becomes `pc % 16` — under which `nested-loop.s`'s guard (pc 8) and inner branch (pc 24)
+**both land on index 8 and collide at the PINNED size**, exactly the aliasing this plan measured as
+reachable only at 4 entries. `dynamic-2bit` stops being 171. And nothing today can observe it:
+`micro.predictor` is null everywhere and the first reader is step 6's panel, so the symptom would
+first appear at **step 3** as "the step-0 derived table disagrees with the engine" — sending a future
+session to re-derive a table that was correct all along.
+
+`predictor.test.ts` closes it (5 tests; repo 7592 → 7597). Every assertion was verified against a
+broken function before being trusted, and the two mutations partition cleanly:
+
+| mutation                        | what went red                                                         |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `>>> 2` deleted (`pc % 16`)     | **3 of 5** — the two stated rows, consecutive-rows, and the collision |
+| `>>>` weakened to `>>` (signed) | **1 of 5** — the address-space range check, and nothing else          |
+
+The second row is why the range check is not padding: a signed shift is invisible to every
+corpus-shaped assertion, which is `predict.ts`'s own `>>> 0` finding recurring one file over.
+
+**`pc` is ABSOLUTE and `TEXT_BASE` is `0x0000_0000`**, so an absolute pc equals its offset and this
+plan's row numbers ("guard at pc 8 → index 2") are true of the shipped table verbatim. Not a
+tautology: a non-zero base rotates every row by `(TEXT_BASE >>> 2) % PREDICTOR_ENTRIES`. Collisions
+survive a constant rotation so **no cycle count would move** — but step 6 is checked against those
+stated rows, so a future base change moves the picture without moving a number.
+
+**The transferable rule**: a break harness aimed at a step's headline risk will not find the risk in
+what the step exported ALONGSIDE it. Both gaps here have the same root — code that nothing reads yet
+is code no test is shaped to cover, and "there is no consumer" is exactly when the defect gets
+written in.
+
+### Also, from the toolchain
+
+⚠ **The four `snapshotState` docblocks say "the cache is the ONE exception"** — true today, false at
+step 4. Each now carries a clause saying so, because THAT docblock (not the field's) is what someone
+deciding what to deep-copy reads; `models.test.ts` records this repo's own instance of a stale claim
+sitting directly above the assertion contradicting it.
 
 ⚠ **`Set-Content` mojibaked the file on the first attempt at row 5** — a two-token rename came back
 as 152 insertions / 152 deletions. The M13 memory records this hazard and it is still live: mutate

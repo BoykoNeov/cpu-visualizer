@@ -85,10 +85,13 @@ export interface ProcessorConfig {
    * ⚠ **The two `dynamic-*` names are inert on EVERY model as of step 1** — the four honoring
    * engines still read `config.branchPrediction === 'static-taken'` and so run them as not-taken.
    * That is deliberate (the type must exist before step 2's predictor class can return it) and it
-   * is temporary: step 3 wires the pipeline, step 5 the other three. Two tests are positioned to go
-   * red at exactly that moment rather than silently accepting the newcomers — see `SCHEME_POSITION`
-   * and {@link ProcessorCapabilities.configurableBranchPrediction}'s consumers in
-   * `web/src/simulator.test.ts`.
+   * is temporary: step 3 wires the pipeline, step 5 the other three. **Two tripwires are positioned
+   * to fire rather than silently accept the newcomers, and they fire at different moments**: the
+   * `SCHEME_POSITION` Record in `web/src/simulator.test.ts` is the COMPILE one and already fired at
+   * step 1, while the `toEqual` assertion inside that same `describe` — "every scheme the config can
+   * hold records as one of the two reachable positions" — is the BEHAVIOR one and goes red the
+   * moment step 3 makes a dynamic scheme genuinely different, forcing the prediction control to grow
+   * a position instead of drawing a third machine as a second.
    *
    * These strings are user-visible in the model picker and would become URL-visible if the
    * permalink work lands, so they name the PEDAGOGY (`dynamic-2bit`) rather than the implementation

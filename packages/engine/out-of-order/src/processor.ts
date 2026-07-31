@@ -1439,6 +1439,13 @@ export class OutOfOrderProcessor implements Processor {
    * in place and the array is `shift()`ed on commit). The cache is deliberately NOT exposed here —
    * see {@link OutOfOrderMicro}'s doc for why (the shared cache grid depends on pipeline-shaped
    * `exMem` state this model lacks).
+   *
+   * ⚠ **`predictor` arrives at the dynamic-branch-prediction plan's step 5 and needs a real DEEP
+   * COPY**, the discipline the ROB projection above already follows and the cache would need if it
+   * were exposed here: a counter table is single-buffered and mutated in place, so a `.slice()`
+   * replays a fully-trained table at cycle 0. Unlike the cache, it IS exposed — see
+   * {@link OutOfOrderMicro.predictor} for why the two decisions differ, and for the
+   * update-on-resolve vs update-on-commit fork this model is the only one to pose.
    */
   private snapshotMicro(): OutOfOrderMicro {
     return {

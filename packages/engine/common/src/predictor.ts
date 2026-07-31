@@ -61,6 +61,15 @@ export const PREDICTOR_ENTRIES = 16;
  * `blockOf`: the same value at any power-of-two size, and still correct if {@link
  * PREDICTOR_ENTRIES} is ever something else. At the pinned 16 this is exactly the `(pc>>>2)&15` the
  * plan's measured tables were derived with.
+ *
+ * **`pc` is ABSOLUTE, and that costs nothing only because `TEXT_BASE` is `0x0000_0000`**
+ * (`assembler/src/program.ts`) — so an absolute pc equals its offset from the start of text, and the
+ * plan's row numbers ("`nested-loop.s`'s guard at pc 8 lands on index 2") are true of the shipped
+ * table verbatim. Worth stating because it need not have been: a non-zero base rotates every row by
+ * `(TEXT_BASE >>> 2) % PREDICTOR_ENTRIES`. Collisions survive a constant rotation, so **no cycle
+ * count would move** — but step 6's panel is checked against those stated rows, so a future
+ * `TEXT_BASE` change moves the picture without moving a single number, which is the hardest kind of
+ * drift to notice. `predictor.test.ts` pins the two witnesses.
  */
 export function predictorIndex(pc: number): number {
   return (pc >>> 2) % PREDICTOR_ENTRIES;

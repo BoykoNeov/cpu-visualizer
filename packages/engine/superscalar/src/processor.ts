@@ -1786,6 +1786,11 @@ export class SuperscalarProcessor implements Processor {
    *   snapshotted. Aliasing it also passed all 694 tests while genuinely corrupting every
    *   recording, replaying a cold cache as warm-from-the-start. `recorder.test.ts` now pins it,
    *   because time-travel is the only layer at which it is observable at all.
+   *
+   * ⚠ **"Uniquely so" is true TODAY and stops being true at the dynamic-branch-prediction plan's
+   * step 4**, when `predictor` becomes the second load-bearing deep copy — single-buffered and
+   * mutated in place for the identical reason, and with the identical 694-tests-green failure mode.
+   * Flagged here because this docblock, not the field's, is what someone deciding what to copy reads.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: SuperscalarMicro = {

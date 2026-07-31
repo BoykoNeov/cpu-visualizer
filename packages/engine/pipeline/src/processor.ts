@@ -1342,6 +1342,14 @@ export class PipelineProcessor implements Processor {
    * single-buffered and mutated in place by {@link access}, so it must be DEEP-COPIED here or
    * every recorded snapshot would alias the final (fully warmed) state — the same reason
    * `memory` is snapshotted rather than shared.
+   *
+   * ⚠ **"The ONE exception" is true TODAY and stops being true at the dynamic-branch-prediction
+   * plan's step 4**, when `predictor` becomes the second: a counter table is single-buffered and
+   * mutated in place for the identical reason, so it needs the identical deep copy. Flagged in the
+   * prose rather than only on the field, because THIS docblock is what someone deciding what to copy
+   * reads — `models.test.ts` records this repo's own instance of the class, a comment that "said the
+   * opposite until M11 step 7, a stale claim sitting directly above the assertion that contradicts
+   * it."
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: PipelineMicro = {
