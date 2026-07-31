@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-07-31T06:00:11.703Z
+  modified: 2026-07-31T06:08:48.517Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b AND 1 complete — step 1 on
@@ -18,7 +18,7 @@ full measured tables live in the plan; only what a future session would otherwis
 
 Shipped: the union grew `'dynamic-1bit'`/`'dynamic-2bit'`; `engine/common/src/predictor.ts` holds
 `PredictorState`, `PREDICTOR_ENTRIES = 16`, `predictorIndex(pc)`; all four honoring models' `micro`
-carry `predictor`, **null on every cycle**. Repo 7591 → 7592, five gates green. Decisions now CLOSED
+carry `predictor`, **null on every cycle**. Repo 7591 → 7597, five gates green. Decisions now CLOSED
 in the plan's table: scheme names, state's home, table size (16 — chosen because every derived number
 in the step-0/0b tables used `(pc>>>2)&15`, so step 3's acceptance needs no row re-derived), and the
 index function's home.
@@ -72,9 +72,35 @@ the BEHAVIOR tripwire that fires at **step 3**. Restructuring at step 1 would ha
 that had not fired. Step 3's entry now names that failure so it reads as arrival, and makes growing
 the prediction control part of that step.
 
+⚠ **The gap the break harness did NOT find, and it is the transferable one.** The harness hunted the
+field's SPELLING. It never touched the ARITHMETIC the same step exported: `predictorIndex` shipped
+with **no test**, the only pure function in `engine-common` without one. Worse than the spelling gap,
+because a wrong spelling blanks a panel while wrong arithmetic moves numbers three hand-derived
+timing tables assume — delete the `>>> 2` and it becomes `pc % 16`, under which `nested-loop.s`'s
+guard (pc 8) and inner branch (pc 24) **collide at the PINNED 16**, the aliasing measured as
+reachable only at 4. `dynamic-2bit` stops being 171, and the symptom would first appear at step 3 as
+"the step-0 table was wrong". Closed: `predictor.test.ts`, 5 tests (7592 → 7597), each verified
+against a broken function. The two mutations partition cleanly — deleting `>>> 2` reddens 3 of 5;
+weakening `>>>` to a signed `>>` reddens **only** the address-space range check, which is
+`predict.ts`'s own `>>> 0` finding one file over. **Rule: a harness aimed at a step's headline risk
+will not find the risk in what the step exported ALONGSIDE it. "There is no consumer yet" is exactly
+when untested code gets written in — it is the same root as the spelling gap above.**
+
+`TEXT_BASE` is `0x0000_0000`, so an absolute pc equals its offset and the plan's stated rows ("pc 8 →
+index 2") are true of the shipped table verbatim. Not a tautology: a non-zero base rotates every row
+by `(TEXT_BASE >>> 2) % PREDICTOR_ENTRIES`, and since collisions survive a constant rotation, **no
+cycle count would move** — step 6's picture would drift with nothing numeric to notice it by.
+
+⚠ **A docblock's claim goes stale where the DECISION is read, not where the field is declared.** The
+four `snapshotState` docblocks say "the cache is the ONE exception" (to deep-copying); that is what a
+step-4 implementer reads, and the ⚠ had been put on the `micro` FIELD instead. Both now carry it.
+Same class as [[m14-review-resolved]]'s stale-docblock findings.
+
 ⚠ `Set-Content -replace` mojibaked a source file again on the first break attempt — a two-token
 rename came back as 152 insertions / 152 deletions. The [[m13-width-planned]] hazard is still live;
-mutate source with the editor.
+mutate source with the editor. Separately: **PowerShell here-strings break on commit messages
+containing quotes** — three commits this session failed with `pathspec ... did not match`. Write the
+message to a file under `M:\claud_projects\temp` and use `git commit -F`.
 
 ## Step 0b — `content/programs/nested-loop.s`, and what adding a corpus program REALLY costs
 

@@ -7,7 +7,7 @@ each with a lesson track. **NO milestone is in progress.**
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
 corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7592
-tests**, five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
+tests** (7597 after step 1 of branch prediction), five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
 jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
 caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic
 branch prediction (plan written, STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31, schema only, no
@@ -48,9 +48,10 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   before adding ANY corpus program** (it cost SIX pinned sites, not three), **before adding a field
   to any model's `micro`** (two of its three sites are whole-micro literals passed as ARGUMENTS, and
   one is a COMPONENT), and **before trusting any cross-model naming agreement — "by construction" was
-  enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests.** Also: a
-  five-scheme inertness sweep is vacuous without its control, and a union is a TYPE so `npm test`
-  cannot see it shrink.
+  enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests.** Also: **a
+  break harness aimed at a step's headline risk will not find the risk in what the step exported
+  ALONGSIDE it** (`predictorIndex` shipped untested); a five-scheme inertness sweep is vacuous
+  without its control; and a union is a TYPE so `npm test` cannot see it shrink.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
