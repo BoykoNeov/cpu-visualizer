@@ -6,11 +6,12 @@ each with a lesson track. **NO milestone is in progress.**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
-corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7591
+corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7592
 tests**, five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
 jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
-caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic branch prediction (plan written, STEPS 0 AND 0b DONE
-2026-07-30, no engine code yet — the only thing in flight), URL permalinks, session persistence, and
+caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic
+branch prediction (plan written, STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31, schema only, no
+engine behavior yet; the only thing in flight), URL permalinks, session persistence, and
 the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles the
 local branch and needs no PR).
 
@@ -42,11 +43,14 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 
 ## Post-M14 work
 
-- [Dynamic branch prediction](dynamic-branch-prediction.md) — **the only thing in flight.** Steps 0
-  and 0b done; `nested-loop.s` is now in the corpus. **Read before adding ANY corpus program** — it
-  cost SIX pinned sites, not the three the plan priced, and its layout was redesigned twice because a
-  program's stall histogram must not move with the prediction scheme. **Screen a candidate with the
-  scratch harness before hand-deriving anything.** Also the method for pricing an unbuilt timing knob.
+- [Dynamic branch prediction](dynamic-branch-prediction.md) — **the only thing in flight.** Steps 0,
+  0b and **1** done (step 1 = schema only, no behavior); `nested-loop.s` is in the corpus. **Read
+  before adding ANY corpus program** (it cost SIX pinned sites, not three), **before adding a field
+  to any model's `micro`** (two of its three sites are whole-micro literals passed as ARGUMENTS, and
+  one is a COMPONENT), and **before trusting any cross-model naming agreement — "by construction" was
+  enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests.** Also: a
+  five-scheme inertness sweep is vacuous without its control, and a union is a TYPE so `npm test`
+  cannot see it shrink.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser

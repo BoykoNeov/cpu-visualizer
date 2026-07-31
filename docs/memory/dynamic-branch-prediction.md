@@ -1,18 +1,80 @@
 ---
 name: dynamic-branch-prediction
-description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 AND 0b DONE 2026-07-30, no engine code written). Read before adding ANY corpus program: nested-loop.s cost SIX pinned sites, not the three the plan priced, and its layout was redesigned twice because a program's stall histogram must not move with the prediction scheme — screen a candidate with the scratch harness before hand-deriving anything. Also the reusable method for pricing an unbuilt config knob offline."
+description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31; schema only, no engine behavior). Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites, not three), before adding a field to any model's `micro` (two of the three sites are whole-micro literals passed as ARGUMENTS, invisible to a grep), and before trusting a cross-model naming agreement — 'by construction' was enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests. Also the reusable method for pricing an unbuilt config knob offline."
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-07-30T17:15:09.212Z
+  modified: 2026-07-31T06:00:11.703Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 AND 0b complete 2026-07-30; steps 1–8
-untouched, no ENGINE code written.** A 1-bit/2-bit saturating BHT riding `micro.predictor` (following
-`micro.cache`), wired into the four `configurableBranchPrediction` models. Not a milestone — a
-feature, like [[keyboard-clock-control]] and [[continuous-play]]. The full measured table lives in
-the plan; only what a future session would otherwise re-derive is here.
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b AND 1 complete — step 1 on
+2026-07-31. Steps 2–8 untouched; NO engine behavior anywhere.** A 1-bit/2-bit saturating BHT riding
+`micro.predictor` (following `micro.cache`), wired into the four `configurableBranchPrediction`
+models. Not a milestone — a feature, like [[keyboard-clock-control]] and [[continuous-play]]. The
+full measured tables live in the plan; only what a future session would otherwise re-derive is here.
+
+## Step 1 — the schema, and the three things it taught (2026-07-31)
+
+Shipped: the union grew `'dynamic-1bit'`/`'dynamic-2bit'`; `engine/common/src/predictor.ts` holds
+`PredictorState`, `PREDICTOR_ENTRIES = 16`, `predictorIndex(pc)`; all four honoring models' `micro`
+carry `predictor`, **null on every cycle**. Repo 7591 → 7592, five gates green. Decisions now CLOSED
+in the plan's table: scheme names, state's home, table size (16 — chosen because every derived number
+in the step-0/0b tables used `(pc>>>2)&15`, so step 3's acceptance needs no row re-derived), and the
+index function's home.
+
+⚠ **The plan's own step-1 text was WRONG and the rule is worth carrying.** It said "add
+`PredictorState` to the trace types". Precedent says otherwise: **a type handed to `reset()` is
+CONFIG and lives in `trace` (`CacheConfig`); a type carried in `MachineState.micro` is a model's
+SHAPE and lives beside the code that produces it (`CacheState`)** — `trace/src/schema.ts` types
+`micro` as `unknown` precisely so `trace` never learns these shapes. Also: `CacheState`'s re-export
+through the four model packages is HISTORY (it moved down at M7 and ten web files were spared churn),
+not a boundary — `web` already imports `engine-common` directly and eslint allows it, so a new
+surface needs no re-exports.
+
+⚠ **Adding a field to a `micro` type costs THREE sites and a grep finds only one.** The interfaces +
+construction sites are predicted. The other two are **whole-`micro` object literals passed as
+ARGUMENTS**, so `grep "micro: {"` misses both: `engine/pipeline/src/processor.test.ts`'s `toEqual`
+(the only assertion in the repo that could see the field arrive) and — not a test — a **component**,
+`web/src/MicroTablePanel.tsx`'s `preRunMicro`, which FABRICATES a micro for cursor −1. Grep the
+model's micro TYPE NAME instead. The fabricated one carries a live hazard for step 6: the honest
+pre-run value of a counter table is the COLD table, not `null` and not the trained one carried
+forward — `robCapacity` is a CONFIG fact so it copies, `rob`/`rename`/`predictor` are RUN facts and
+each must be emptied to its own zero.
+
+⚠ **"The names agree BY CONSTRUCTION" was enforced by nothing — measured, not suspected.** Renaming
+`predictor` → `bht` on `DeepPipelineMicro` (interface + site together, exactly what a step-5
+copy-paste produces) left typecheck clean and **all 7591 tests green**. Only the pipeline was
+covered, accidentally, by its whole-micro `toEqual`. The gap is invisible because **nothing READS
+the field yet** — the first reader is step 6's panel, by which time drift ships. Closed early: a
+`web/src/models.test.ts` test drives every model reporting `configurableBranchPrediction` and asserts
+the key on every recorded cycle. **Generalize this**: a field added to N models "so they agree" has
+no net until something reads all N; add the reader-shaped test with the field, not with the reader.
+
+Three more break-harness findings, each of which corrected a row written from prediction:
+
+- **A five-scheme "every scheme records identically" sweep is VACUOUS on its own.** With the knob
+  never applied and the control removed: 25/25 green. Same shape as [[browser-is-the-only-net]]'s
+  measurements. The control (the same helper, handed a model that HONORS the knob, must separate two
+  schemes) belongs in the test BODY, not a sibling `it`.
+- **A control placed first hides what follows** — vitest aborts an `it` at the first failed `expect`,
+  so "the control failed" does NOT show the sweep would have passed. That needs its own run. A break
+  table written from the one run records the opposite conclusion.
+- **A union is a TYPE, so `npm test` is structurally blind to it shrinking** (the `Record` literal
+  still carries the key at runtime). Only `tsc` sees it. A runtime `ALL_SCHEMES` length/contains
+  guard is NOT redundant — it covers the complementary mutation, the key deleted from the Record,
+  which is what "fixing" that compile error actually produces.
+
+Two tripwires M4 left armed both fired correctly and **only one was spent**: `SCHEME_POSITION`'s
+`Record<BranchPrediction,…>` is the COMPILE tripwire (fired at step 1; the dynamic names are
+classified not-taken _because the engine ignores them_), and the `toEqual(notTaken)` beneath it is
+the BEHAVIOR tripwire that fires at **step 3**. Restructuring at step 1 would have spent a tripwire
+that had not fired. Step 3's entry now names that failure so it reads as arrival, and makes growing
+the prediction control part of that step.
+
+⚠ `Set-Content -replace` mojibaked a source file again on the first break attempt — a two-token
+rename came back as 152 insertions / 152 deletions. The [[m13-width-planned]] hazard is still live;
+mutate source with the editor.
 
 ## Step 0b — `content/programs/nested-loop.s`, and what adding a corpus program REALLY costs
 
