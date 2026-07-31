@@ -30,6 +30,7 @@
  * reading each entry's {@link RobEntryView.srcA}/`srcB` readiness — there is no RS array to look for.
  */
 
+import type { PredictorState } from '@cpu-viz/engine-common';
 import type { DecodedInstruction } from '@cpu-viz/isa';
 import type { RobState } from './rob';
 
@@ -84,4 +85,34 @@ export interface OutOfOrderMicro {
   readonly rob: readonly RobEntryView[];
   /** The rename map indexed by architectural register (length 32); most read `committed`. */
   readonly rename: readonly RenameSlotView[];
+  /**
+   * The branch history table's counters, or `null` when the configured scheme has no memory. **Null
+   * on every recorded cycle as of the dynamic-branch-prediction plan's step 1** — nothing constructs
+   * a predictor until step 3 wires the pipeline and step 5 reaches this model.
+   *
+   * **This field IS exposed, and `cache` above deliberately is NOT — the difference is not
+   * inconsistency, it is the same test applied twice.** The cache is withheld because the shared
+   * grid derives its fill countdown from `micro.exMem.missCyclesRemaining`, a pipeline-shaped field
+   * this machine does not have, so lighting that panel here would draw a line as RESIDENT while the
+   * ROB above it still shows the load `executing` — a cross-surface contradiction (INV-5) on the
+   * exact surface that is this tier's drama. A predictor table has no such model-shaped dependency:
+   * its rows are counters indexed by pc, which means the same thing on every machine that bets. So
+   * the panel can be truthful here, and the field goes in.
+   *
+   * **One table for the whole machine**, shared across lanes and across everything in flight — a
+   * per-lane predictor would be a different machine.
+   *
+   * ⚠ **Spelled `predictor` here and in `PipelineMicro`, `DeepPipelineMicro` and `SuperscalarMicro`
+   * alike** — a step-6 panel reads `micro.predictor` across all four, and `cache-grid.ts`'s header
+   * records what a per-model name costs (a hard-coded `micro.exMem` left that panel idle on the deep
+   * pipeline, whose latch is `ex2Mem`, for a whole milestone on a shipped config).
+   *
+   * ⚠ **DEEP-COPY it into every snapshot**, for this module header's own reason: the predictor is
+   * single-buffered and mutated in place, so a `.slice()` of the array would replay a fully-trained
+   * table at cycle 0. This model is also where the plan's one open behavioral fork bites — a branch
+   * here can resolve and then be KILLED by an older mispredict, so update-on-resolve and
+   * update-on-commit are genuinely different machines, and INV-8 cannot see the difference. Pin that
+   * before step 5, not during it.
+   */
+  readonly predictor: PredictorState | null;
 }

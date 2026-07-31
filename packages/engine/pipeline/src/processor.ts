@@ -55,7 +55,13 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
+import {
+  speculativeTarget,
+  access,
+  newCache,
+  type CacheState,
+  type PredictorState,
+} from '@cpu-viz/engine-common';
 import {
   defaultConfig,
   makeRegisters,
@@ -192,6 +198,30 @@ export interface PipelineMicro {
    * alias one final cache across every recorded cycle and replay as warm-from-the-start.
    */
   readonly cache: CacheState | null;
+  /**
+   * The branch history table's counters, or `null` when the configured scheme has no memory — which
+   * is every scheme shipped before the dynamic-branch-prediction feature, and therefore **always,
+   * as of that plan's step 1**: nothing constructs a predictor yet, so this is `null` on every
+   * recorded cycle until step 3 wires the bet site. The field lands early on purpose (the type must
+   * exist before step 2's class can return it), and landing it in all four honoring models at once
+   * is the point — see below.
+   *
+   * ⚠ **Spelled `predictor` in `DeepPipelineMicro`, `SuperscalarMicro` and `OutOfOrderMicro` too,
+   * and that agreement is load-bearing rather than tidy.** `cache-grid.ts`'s own header records the
+   * defect this prevents: it reads the MEM-stage latch, whose NAME is per-model (`exMem` here,
+   * `ex2Mem` on the deep pipeline), so a hard-coded `micro.exMem` returned `undefined` there and the
+   * panel went idle on a shipped, user-reachable config for a whole milestone before a review caught
+   * it. A panel reading `micro.predictor` across four models has the identical shape — but unlike
+   * the latch, this is a NEW field, so the names are made to agree by construction instead of being
+   * reconciled by an accessor after the fact.
+   *
+   * ⚠ **DEEP-COPY it into every snapshot**, for the reason {@link cache} gives above and not one
+   * step less: step 2's table is single-buffered and mutated in place, so a shallow copy replays the
+   * fully-trained predictor at cycle 0 — a scrub back to the start would show a machine that has
+   * already learned everything. See the plan's step 4, which exists as its own step with a break
+   * harness precisely because this is the likeliest thing to ship silently.
+   */
+  readonly predictor: PredictorState | null;
 }
 
 /**
@@ -1320,6 +1350,9 @@ export class PipelineProcessor implements Processor {
       exMem: latches.exMem,
       memWb: latches.memWb,
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
+      // Always null until the plan's step 3 constructs a predictor; the DEEP COPY that has to
+      // arrive with it is specified in `PipelineMicro.predictor`'s docblock, next to the cache's.
+      predictor: null,
     };
     return {
       pc: this.pc,

@@ -65,7 +65,37 @@ export interface CacheConfig {
 export interface ProcessorConfig {
   /** Pipeline tier+; irrelevant to single-cycle. */
   forwarding: boolean;
-  branchPrediction: 'none' | 'static-taken' | 'static-not-taken';
+  /**
+   * Which branch predictor the machine runs (M4; the two `dynamic-*` schemes join at the
+   * dynamic-branch-prediction feature, step 1 — `docs/plans/dynamic-branch-prediction.md`).
+   *
+   * **The first three are CONSTANTS; the last two have MEMORY**, and that is the whole distinction
+   * the feature exists to draw. `'none'` and `'static-not-taken'` are one machine at every tier (a
+   * processor with no predictor does not stop and wait — the fall-through IS the not-taken path,
+   * M4 step 1), so three names have carried two behaviors since M4. `'dynamic-1bit'` and
+   * `'dynamic-2bit'` are a per-branch saturating counter table indexed by pc: the first machine
+   * here whose prediction depends on what this branch did LAST time.
+   *
+   * **Inertness contract, the {@link issueWidth} precedent.** Only the four models reporting
+   * {@link ProcessorCapabilities.configurableBranchPrediction} honor any of this; single-cycle and
+   * multi-cycle ignore the field entirely and their traces are byte-identical across all five names
+   * (pinned in `web/src/simulator.test.ts`). Gate every UI on the capability flag, **never** on this
+   * field's value.
+   *
+   * ⚠ **The two `dynamic-*` names are inert on EVERY model as of step 1** — the four honoring
+   * engines still read `config.branchPrediction === 'static-taken'` and so run them as not-taken.
+   * That is deliberate (the type must exist before step 2's predictor class can return it) and it
+   * is temporary: step 3 wires the pipeline, step 5 the other three. Two tests are positioned to go
+   * red at exactly that moment rather than silently accepting the newcomers — see `SCHEME_POSITION`
+   * and {@link ProcessorCapabilities.configurableBranchPrediction}'s consumers in
+   * `web/src/simulator.test.ts`.
+   *
+   * These strings are user-visible in the model picker and would become URL-visible if the
+   * permalink work lands, so they name the PEDAGOGY (`dynamic-2bit`) rather than the implementation
+   * (`bht-2`): the reader meets "a dynamic predictor with two bits of memory", and the name reads as
+   * the obvious sibling of `'static-taken'`.
+   */
+  branchPrediction: 'none' | 'static-taken' | 'static-not-taken' | 'dynamic-1bit' | 'dynamic-2bit';
   cache: CacheConfig | null;
   /**
    * How many instructions may **issue per cycle** (roadmap §12.4, M7). Absent or `1` is every

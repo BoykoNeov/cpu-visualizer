@@ -190,6 +190,12 @@ describe('five stages, four latches', () => {
       exMem: null,
       memWb: null,
       cache: null, // no cache configured (ADD_S runs cache-off): the timing shadow is absent
+      // Null under EVERY scheme as of the dynamic-branch-prediction plan's step 1 — the field
+      // exists but nothing constructs a predictor until step 3 wires the bet site. This whole-micro
+      // `toEqual` is the only assertion in the repo that saw the field arrive, which is the point of
+      // spelling the shape out here rather than probing fields one at a time: a `micro` that grows a
+      // member has to come through this line.
+      predictor: null,
     });
     // Cycle 3 is the fullest this program gets (3 instructions): IF/ID empty (fetch has left
     // text), the other three loaded.

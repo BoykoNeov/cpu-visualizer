@@ -1,8 +1,10 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEPS 0 AND 0b DONE, 2026-07-30 — no engine code written yet.** The corpus is measured
-(see the step-0 results section) and `content/programs/nested-loop.s` is authored, hand-derived into
-three timing tables and three shape tables, and committed; steps 1–8 are untouched. Every claim
+**Status: STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31. No engine BEHAVIOR yet.** The corpus is
+measured (see the step-0 results section), `content/programs/nested-loop.s` is authored, hand-derived
+into three timing tables and three shape tables, and committed, and the schema now carries five
+scheme names, `PredictorState`, and a `predictor` field on all four honoring models' `micro` — all of
+it inert (see the step-1 section). Steps 2–8 are untouched. Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
 dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
 step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
@@ -127,10 +129,11 @@ logic four times.
       program where 1-bit and 2-bit differ**. If no such program exists, the corpus needs a new
       one and that becomes step 0b — a doubly-entered loop, authored before any engine work.
 
-- [ ] **1. Schema first: `branchPrediction` gains the variants, and `PredictorState` is defined.**
-      Extend the union in `packages/trace/src/processor.ts:68`; add `PredictorState` to the trace
-      types, and add the `predictor` field to all four models' `micro` types — **spelled
-      `predictor` verbatim in every one** (see step 6 for why this is not a style preference).
+- [x] **1. Schema first: `branchPrediction` gains the variants, and `PredictorState` is defined.** —
+      **DONE 2026-07-31; results in the step-1 section below.**
+      Extend the union in `packages/trace/src/processor.ts:68`; define `PredictorState`, and add the
+      `predictor` field to all four models' `micro` types — **spelled `predictor` verbatim in every
+      one** (see step 6 for why this is not a style preference).
       **State the inertness contract in the docblock the way `issueWidth` does** — earlier models
       ignore the field and their traces stay byte-identical — and gate every UI on
       `capabilities.configurableBranchPrediction`, **never on the field's value**.
@@ -138,6 +141,14 @@ logic four times.
       ordering put the consumer before its type and could not have compiled. Acceptance: `tsc -b`
       green; a test pinning that single-cycle and multi-cycle traces are byte-identical across all
       five schemes.
+
+      ⚠ **This step's own text said "add `PredictorState` to the trace types" and that was WRONG
+      against the repo's own precedent — corrected below, and the rule is worth stating once.** A
+      type handed to `reset()` is CONFIG and belongs in `trace` (`CacheConfig` does). A type carried
+      in `MachineState.micro` is a model's own SHAPE and belongs beside the code that produces it
+      (`CacheState` does, in `engine/common/src/cache.ts`) — `trace/src/schema.ts` types `micro` as
+      `unknown` precisely so `trace` never learns these shapes. `PredictorState` is the second case.
+      It went to `packages/engine/common/src/predictor.ts`.
 
 - [ ] **2. `engine/common/src/predictor.ts` — the pure, stateful predictor.** A class over
       `{ index(pc), predict(pc): boolean, update(pc, actual): void, snapshot(): PredictorState }`,
@@ -156,6 +167,16 @@ logic four times.
       emitting `{ taken: false }` would assert an action the machine did not take"). A dynamic
       predictor predicts not-taken roughly half the time early in a run, so it must stay silent
       there, exactly as `'none'` does. `branch-resolved.predicted` still reports both ways.
+
+      ⚠ **TWO TESTS ARE POSITIONED TO GO RED THE MOMENT THIS STEP LANDS, and that is arrival, not
+      regression.** Step 1 classified `'dynamic-*'` as not-taken in `web/src/simulator.test.ts`'s
+      `SCHEME_POSITION` **because the engine ignored them**, and the assertion beneath it —
+      `record(scheme)` equals the not-taken recording for every name in the union — is the behavior
+      tripwire M4 left armed for exactly this. When the pipeline first consults a counter table both
+      that assertion and `predictsTaken`'s `boolean` shape stop being true. **Growing the prediction
+      control past two positions is part of THIS step**, not a follow-up: a five-name union drawn as
+      two positions would silently render a third machine as a second, which is the contradiction
+      (INV-5) the two-position control was justified by avoiding in the first place.
 
       ⚠ **INV-8 CANNOT SEE THE REGRESSION THIS STEP RISKS.** It compares final architectural state
       only — `cycles-cannot-see-a-lost-forward` records a cycles-only identity holding in every cell
@@ -439,6 +460,96 @@ timing-neutral because nothing in the eleven-program corpus aliased; that is no 
 size decision now has a reason to pin **8 or 16** rather than being drawability alone, and the
 corpus has its first aliasing witness — reachable if the table is ever drawn at 4.
 
+## Step 1 — DONE 2026-07-31. The union, `PredictorState`, and four `micro` fields
+
+Five schemes now, three of them behaviors: `packages/trace/src/processor.ts` carries
+`'none' | 'static-taken' | 'static-not-taken' | 'dynamic-1bit' | 'dynamic-2bit'`, and
+`packages/engine/common/src/predictor.ts` holds `PredictorState`, `PREDICTOR_ENTRIES = 16` and
+`predictorIndex(pc)`. **No behavior anywhere** — the four honoring engines still read
+`config.branchPrediction === 'static-taken'`, so a `dynamic-*` run is byte-identical to a not-taken
+one and `micro.predictor` is `null` on every recorded cycle of every model. Repo 7591 → 7591 tests
+(the single-cycle inertness test was STRENGTHENED in place rather than joined by a new one), five
+gates green.
+
+### Where the type went, and the rule that decides it
+
+The step's own text said "add `PredictorState` to the trace types". Wrong, against precedent:
+`CacheState` is not in `trace` either. The rule, now written into step 1 above so it is not
+re-litigated at step 2 — **a type handed to `reset()` is CONFIG and lives in `trace`; a type carried
+in `MachineState.micro` is a model's SHAPE and lives beside the code that produces it**, because
+`trace/src/schema.ts` types `micro` as `unknown` precisely so `trace` never learns these shapes.
+
+It is exported from `engine-common` and **deliberately NOT re-exported through the four model
+packages**, unlike `CacheState`. That asymmetry is history, not a boundary change: `cache.ts` lived
+in `engine-pipeline` first, so the M7 move kept a re-export to spare ten `web` files an import churn.
+This surface is new, `web` already imports `engine-common` directly (`MAX_ISSUE_WIDTH`,
+`CACHE_SMALL`/`CACHE_LARGE`, `toProgramImage`) and eslint's DAG allows that edge, so four re-exports
+would only add four places for the name to drift. The read/drive boundary the cache re-export
+protects holds by construction instead — what leaves this module is a shape, a size, and a pure
+function of `pc`; there is nothing here to drive, and step 2's mutating class stays package-private
+the way `access`/`newCache` are.
+
+### What adding a `micro` field actually costs — three sites, and two of them were invisible
+
+The four `micro` interfaces and their four construction sites were the predicted part. The two that
+were not are both **hand-written whole-`micro` object literals**, and neither is findable by grepping
+for the field being added:
+
+- `web/src/MicroTablePanel.tsx:133` — **not a test, a component.** `preRunMicro` FABRICATES an
+  `OutOfOrderMicro` for cursor −1 (it exists so the panel keeps its height off the start; without it
+  every surface below jumped 526px). It now passes `predictor: null` with a ⚠: **step 6 must
+  revisit it**, because once a predictor exists the honest pre-run value is the COLD table — every
+  counter at its seed — and emphatically not `m.predictor` carried forward, which would show a
+  fully-trained table before a single instruction ran. That is step 4's shallow-copy defect arriving
+  through the front door of a fabricated snapshot. `robCapacity` is copied because it is a CONFIG
+  fact; `rob`/`rename`/`predictor` are RUN facts and each must be emptied to its own zero — which for
+  a counter table is a seed, not an absence.
+- `engine/pipeline/src/processor.test.ts:187` — a `toEqual` on the whole `micro`. **The only
+  assertion in the repo that could see the field arrive**, and the argument for spelling a shape out
+  rather than probing fields one at a time: a `micro` that grows a member has to come through it.
+
+A grep for `micro: {` finds the assignments and misses both of these, because in each the literal is
+an ARGUMENT. Grep for the model's micro TYPE NAME instead.
+
+### The two tripwires, and why only one was spent
+
+`SCHEME_POSITION` in `web/src/simulator.test.ts` is a `Record<BranchPrediction, …>` M4 armed for
+exactly this newcomer, and it went red as a **compile** error the moment the union grew. The two
+dynamic names are classified `'not taken'` **because the engine ignores them, not because they are
+not-taken machines** — which is the truth about the shipped machine today.
+
+**The assertion beneath it was deliberately left alone.** It is the second, independent tripwire: it
+asserts every name in the union records identically to the not-taken recording, so it goes red at
+**step 3**, when the pipeline first consults a counter table. Restructuring the test at step 1 would
+have spent a tripwire that had not fired yet — the compile check covers step 1, the behavior check
+covers step 3, and each fires when it should. Step 3's entry above now names that failure so it reads
+as arrival rather than regression, and makes growing the prediction control part of that step.
+
+### The inertness test, and its non-vacuity control
+
+The old assertion was `cycles('static-taken') === cycles('static-not-taken')` — two names, and a
+CYCLE COUNT. Both halves were holes, and M4's own rule names the first: two machines agreeing on
+timing can still differ in events. It now sweeps **all five names on whole recordings**, on
+single-cycle and multi-cycle, deriving the five from `Object.keys(SCHEME_POSITION)` so a sixth scheme
+cannot be added unswept.
+
+⚠ **"Every scheme records the same" is exactly the assertion that passes when the harness has
+stopped applying the knob at all.** So the test carries its own control: the same helper, handed the
+PIPELINE, must separate `static-taken` from `static-not-taken` before the sweep runs. Verified by
+mutation rather than assumed — see the break table below.
+
+### Break table
+
+| mutation                                                            | what went red                                                                 |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `recordOn` ignores its `scheme` argument (drops it from the config) | the non-vacuity control, `simulator.test.ts` — the sweep itself stayed GREEN  |
+| the union loses `'dynamic-2bit'`                                    | `SCHEME_POSITION` (compile) + `ALL_SCHEMES` length/contains                   |
+| `PipelineMicro.predictor` spelled `bht` on ONE model                | `tsc -b` on that package only — the by-construction agreement step 6 rests on |
+
+The first row is the load-bearing one: **the five-scheme sweep alone cannot tell a working engine
+from a harness that stopped passing the knob.** Only the control can, which is why it is in the test
+body and not in a sibling `it`.
+
 ## Acceptance criteria
 
 - [ ] Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table train —
@@ -453,21 +564,22 @@ corpus has its first aliasing witness — reachable if the table is ever drawn a
 
 ## Decisions to pin (seeded with recommendations, so review is a diff)
 
-| Decision                                             | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                      | Pinned answer |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| Predictor state's home                               | `MachineState.micro.predictor`, following `micro.cache` (INV-3; a STATE view may read `micro`)                                                                                                                                                                                                                                                                                                                                                             | _(open)_      |
-| Scheme names                                         | **`'dynamic-1bit'` / `'dynamic-2bit'`**, not `'bht-*'` — the first names the pedagogy and reads as the obvious sibling of `'static-taken'`; the second names the implementation. Decide DELIBERATELY: these strings surface in the model picker, and if the URL-permalink work lands they become URL-visible and effectively frozen                                                                                                                        | _(open)_      |
-| **Does a SQUASHED branch update the predictor?**     | In the OoO model a branch can resolve and then be killed by an older mispredict, so update-on-resolve vs update-on-commit is a real behavioral fork — **invisible to INV-8**, and sitting exactly where step 5's copy-paste pressure peaks, so four models could quietly answer it four ways. Seed: **update-on-resolve** (simpler; the machine learns from what it saw), with commit-time as the realistic alternative. **Pin BEFORE step 5, not during** | _(open)_      |
-| Table size                                           | **8 or 16, and step 0b gave the choice a REASON.** Step 0 measured 16 / 8 / 4 as timing-neutral because nothing in the eleven-program corpus aliased. `nested-loop.s` changed that: its guard (pc 8) and inner branch (pc 24) collide on index 2 at **4** entries, and `dynamic-2bit` runs **181 instead of 171**. So the corpus now has an aliasing witness, it is reachable only at 4, and 8 or 16 keeps the flagship demo clean                         | _(open)_      |
-| **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore                                                                                                                     | _(open)_      |
-| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner                                                                                                                                                                                              | _(open)_      |
-| Index function                                       | pc bits alone, no tag — a mispredict from aliasing is a true fact about this machine (INV-5)                                                                                                                                                                                                                                                                                                                                                               | _(open)_      |
-| Initial counter state                                | Weakly-not-taken, so a loop's first pass visibly _learns_ rather than starting right. **Step 0 measured the alternative and it is not neutral: strongly-not-taken (`00`) makes the 2-bit predictor SLOWER than the 1-bit on all four single-entry loops** (`array-sum` 72 vs 71, and likewise `strided-sum`, `sum-loop`, `slow-op-loop`) — a demo that would show the "better" predictor losing                                                            | _(open)_      |
-| Does `branch-predicted` fire on a not-taken bet?     | **No** — the schema forbids it; a dynamic not-taken prediction is silent, like `'none'`                                                                                                                                                                                                                                                                                                                                                                    | _(open)_      |
-| Does the OoO model share one predictor across lanes? | Yes, one table per machine — a per-lane table is a different (and unrealistic) machine                                                                                                                                                                                                                                                                                                                                                                     | _(open)_      |
-| BTB / `jalr` predictability                          | **Out of scope**; `jalr` keeps paying full EX resolution under every scheme                                                                                                                                                                                                                                                                                                                                                                                | _(open)_      |
-| Global history / gshare                              | **Out of scope**                                                                                                                                                                                                                                                                                                                                                                                                                                           | _(open)_      |
-| Does the corpus need a new program?                  | **ANSWERED — yes, and it is written.** `content/programs/nested-loop.s`, 4 passes × 6 iterations, landed at step 0b: a 3-cycle 1-bit-vs-2-bit delta, and the only program whose four schemes come out strictly ordered with 2-bit fastest (+6 over `static-taken`, no ties). It cost six sites, not the three this plan priced. See the step-0b section                                                                                                    | **CLOSED**    |
+| Decision                                             | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Pinned answer |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| Predictor state's home                               | `MachineState.micro.predictor`, following `micro.cache` (INV-3; a STATE view may read `micro`). **The TYPE lives in `engine/common/src/predictor.ts`, not in `trace`** — see step 1's correction: config types go in `trace`, `micro` payload types go beside the code that produces them                                                                                                                                                                                                                                                                                                                                                                      | **CLOSED**    |
+| Scheme names                                         | **`'dynamic-1bit'` / `'dynamic-2bit'`**, not `'bht-*'` — the first names the pedagogy and reads as the obvious sibling of `'static-taken'`; the second names the implementation. Decide DELIBERATELY: these strings surface in the model picker, and if the URL-permalink work lands they become URL-visible and effectively frozen                                                                                                                                                                                                                                                                                                                            | **CLOSED**    |
+| **Does a SQUASHED branch update the predictor?**     | In the OoO model a branch can resolve and then be killed by an older mispredict, so update-on-resolve vs update-on-commit is a real behavioral fork — **invisible to INV-8**, and sitting exactly where step 5's copy-paste pressure peaks, so four models could quietly answer it four ways. Seed: **update-on-resolve** (simpler; the machine learns from what it saw), with commit-time as the realistic alternative. **Pin BEFORE step 5, not during**                                                                                                                                                                                                     | _(open)_      |
+| Table size                                           | **16, as a MODULE CONSTANT (`PREDICTOR_ENTRIES`), not a `ProcessorConfig` field.** Step 0b narrowed it to 8-or-16 (only 4 aliases: `nested-loop.s`'s guard at pc 8 and inner branch at pc 24 collide on index 2 there, costing `dynamic-2bit` 181 against 171). **16 breaks the tie because every derived number in the step-0 and step-0b tables was computed at `(pc>>>2)&15`** — so those cycle counts stay usable as step 3's acceptance target with no row re-derived. A config knob was rejected on scope: it is a `trace` schema change dragging every config literal and conformance matrix, to expose a lever whose whole measured range is one cliff | **CLOSED**    |
+| Index function's HOME                                | **A standalone pure `predictorIndex(pc)` beside the types, not only a method on step 2's class.** Step 6 must highlight the entry touched this cycle and derives it from `pc` (INV-3), but the mutating class stays package-private to the engines — so the view could never reach a method. This is `cache.ts`'s `lineIndex` boundary exactly: render a table, never drive one                                                                                                                                                                                                                                                                                | **CLOSED**    |
+| **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore                                                                                                                                                                                                                                                                                                                         | _(open)_      |
+| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner                                                                                                                                                                                                                                                                                                                                                                                                  | _(open)_      |
+| Index function                                       | pc bits alone, no tag — a mispredict from aliasing is a true fact about this machine (INV-5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _(open)_      |
+| Initial counter state                                | Weakly-not-taken, so a loop's first pass visibly _learns_ rather than starting right. **Step 0 measured the alternative and it is not neutral: strongly-not-taken (`00`) makes the 2-bit predictor SLOWER than the 1-bit on all four single-entry loops** (`array-sum` 72 vs 71, and likewise `strided-sum`, `sum-loop`, `slow-op-loop`) — a demo that would show the "better" predictor losing                                                                                                                                                                                                                                                                | _(open)_      |
+| Does `branch-predicted` fire on a not-taken bet?     | **No** — the schema forbids it; a dynamic not-taken prediction is silent, like `'none'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
+| Does the OoO model share one predictor across lanes? | Yes, one table per machine — a per-lane table is a different (and unrealistic) machine                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | _(open)_      |
+| BTB / `jalr` predictability                          | **Out of scope**; `jalr` keeps paying full EX resolution under every scheme                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | _(open)_      |
+| Global history / gshare                              | **Out of scope**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | _(open)_      |
+| Does the corpus need a new program?                  | **ANSWERED — yes, and it is written.** `content/programs/nested-loop.s`, 4 passes × 6 iterations, landed at step 0b: a 3-cycle 1-bit-vs-2-bit delta, and the only program whose four schemes come out strictly ordered with 2-bit fastest (+6 over `static-taken`, no ties). It cost six sites, not the three this plan priced. See the step-0b section                                                                                                                                                                                                                                                                                                        | **CLOSED**    |
 
 ## Risks, stated before they bite
 

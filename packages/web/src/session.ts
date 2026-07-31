@@ -234,10 +234,20 @@ export type BranchPrediction = ProcessorConfig['branchPrediction'];
  * loss from clicking a lit button. The guard is on the BEHAVIOR; so is the highlight.
  *
  * This is a view-local rule about the shell's control, not a re-statement of engine internals
- * (INV-3) — its justification is a measured engine fact, pinned in `simulator.test.ts`: the three
- * schemes produce exactly TWO distinct recordings, so two positions cover the machine. If a
- * dynamic scheme ever joins the union, that test fails and forces the control to grow a position
- * rather than silently classifying the newcomer as "not taken".
+ * (INV-3) — its justification is a measured engine fact, pinned in `simulator.test.ts`: the schemes
+ * produce exactly TWO distinct recordings, so two positions cover the machine. If a dynamic scheme
+ * ever behaves differently, that test fails and forces the control to grow a position rather than
+ * silently classifying the newcomer as "not taken".
+ *
+ * ⚠ **`'dynamic-1bit'` and `'dynamic-2bit'` joined the union at the dynamic-branch-prediction
+ * plan's step 1 and fall through to `false` here — because the ENGINE ignores them, not because
+ * they are not-taken machines.** Every honoring model still reads
+ * `config.branchPrediction === 'static-taken'`, so a dynamic run is byte-identical to a not-taken
+ * one and this predicate is telling the truth about the shipped machine. It stops being the truth
+ * at step 3: the `simulator.test.ts` assertion described above is positioned to go red at exactly
+ * that moment, which is the sentence above working as designed rather than a regression. Whether
+ * the control then grows two positions or five is step 3's call — this predicate's `boolean` return
+ * is the thing that will have to change shape, so do not build anything new on it meanwhile.
  */
 export function predictsTaken(scheme: BranchPrediction): boolean {
   return scheme === 'static-taken';

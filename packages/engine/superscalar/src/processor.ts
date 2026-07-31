@@ -94,6 +94,7 @@ import {
   newCache,
   MAX_ISSUE_WIDTH,
   type CacheState,
+  type PredictorState,
 } from '@cpu-viz/engine-common';
 import {
   defaultConfig,
@@ -232,6 +233,27 @@ export interface SuperscalarMicro {
    * every recorded cycle and replay as warm-from-the-start.
    */
   readonly cache: CacheState | null;
+  /**
+   * The branch history table's counters, or `null` when the configured scheme has no memory. **Null
+   * on every recorded cycle as of the dynamic-branch-prediction plan's step 1** — nothing
+   * constructs a predictor until step 3 wires the pipeline and step 5 reaches this model.
+   *
+   * **ONE table for the whole machine, not one per lane** — which is why this is a bare
+   * {@link PredictorState} and not an array, unlike every latch field above it. A per-lane predictor
+   * would be a different (and unrealistic) machine: the two lanes fetch from one stream, so they
+   * are betting on one program's branch history, not two.
+   *
+   * ⚠ **Spelled `predictor` here and in `PipelineMicro`, `DeepPipelineMicro` and `OutOfOrderMicro`
+   * alike** — a step-6 panel reads `micro.predictor` across all four, and `cache-grid.ts`'s header
+   * records what a per-model name costs (a hard-coded `micro.exMem` left that panel idle on the deep
+   * pipeline, whose latch is `ex2Mem`, for a whole milestone on a shipped config).
+   *
+   * ⚠ **DEEP-COPY it in `snapshotState`**, exactly as {@link cache} is. This model's own snapshot
+   * docblock records that aliasing the cache passed all 694 tests while corrupting every recording;
+   * the predictor is single-buffered and mutated in place for the same reason and would fail the
+   * same way, replaying a trained table at cycle 0.
+   */
+  readonly predictor: PredictorState | null;
 }
 
 /**
@@ -1773,6 +1795,9 @@ export class SuperscalarProcessor implements Processor {
       exMem: latches.exMem.slice(),
       memWb: latches.memWb.slice(),
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
+      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive
+      // with it is specified in `SuperscalarMicro.predictor`'s docblock, next to the cache's.
+      predictor: null,
     };
     return {
       pc: this.pc,

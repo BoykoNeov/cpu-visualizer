@@ -126,11 +126,21 @@ function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
  * `readPairingPreRun` in `pairing-readout.ts`, which solved the identical pre-run hole for the issue
  * readout — the panel is a property of the RECORDING, and only its contents are a property of the
  * cursor.
+ *
+ * ⚠ **`predictor: null` here is a step-1 placeholder and step 6 MUST revisit it.** The field is null
+ * on every recorded cycle today (nothing constructs a predictor until the dynamic-branch-prediction
+ * plan's step 3/5), so this is currently the truth. Once a predictor exists, the honest pre-run
+ * value is the COLD table — every counter at its seed — not `null` and emphatically not `m.predictor`
+ * carried forward, which would show a fully-TRAINED table before a single instruction had run: the
+ * shallow-copy defect the plan gives its own step, arriving through the front door of a fabricated
+ * snapshot instead. `robCapacity` is copied because it is a CONFIG fact; `rob`/`rename`/`predictor`
+ * are all RUN facts and must each be emptied to their own zero, which for a counter table is a seed
+ * rather than an absence.
  */
 function preRunMicro(recording: readonly CycleTrace[]): OutOfOrderMicro | null {
   for (const trace of recording) {
     const m = oooMicro(trace);
-    if (m !== null) return { robCapacity: m.robCapacity, rob: [], rename: [] };
+    if (m !== null) return { robCapacity: m.robCapacity, rob: [], rename: [], predictor: null };
   }
   return null;
 }

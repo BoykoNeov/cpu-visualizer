@@ -136,7 +136,13 @@
  */
 
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
-import { speculativeTarget, access, newCache, type CacheState } from '@cpu-viz/engine-common';
+import {
+  speculativeTarget,
+  access,
+  newCache,
+  type CacheState,
+  type PredictorState,
+} from '@cpu-viz/engine-common';
 import {
   type CacheConfig,
   defaultConfig,
@@ -293,6 +299,24 @@ export interface DeepPipelineMicro {
   readonly ex2Mem: Ex2MemLatch | null;
   readonly memWb: MemWbLatch | null;
   readonly cache: CacheState | null;
+  /**
+   * The branch history table's counters, or `null` when the configured scheme has no memory. **Null
+   * on every recorded cycle as of the dynamic-branch-prediction plan's step 1** — nothing
+   * constructs a predictor until step 3 wires the pipeline and step 5 reaches this model.
+   *
+   * ⚠ **Spelled `predictor` here, in `PipelineMicro`, in `SuperscalarMicro` and in
+   * `OutOfOrderMicro` — the same name in all four, by construction.** This model is the one that
+   * PROVES why: the shared cache grid reads the MEM-stage latch, which this machine calls `ex2Mem`
+   * and the 5-stage calls `exMem`, and the hard-coded `micro.exMem` left that panel silently idle
+   * here for an entire milestone on a shipped, user-reachable config (see `cache-grid.ts`'s header).
+   * A step-6 predictor panel reading `micro.predictor` across four models is the same shape; a new
+   * field can simply agree everywhere instead of needing an accessor to reconcile it.
+   *
+   * ⚠ **DEEP-COPY it in {@link DeepPipelineProcessor.snapshotState}**, exactly as {@link cache} is
+   * deep-copied and for the identical reason: step 2's table is single-buffered and mutated in
+   * place, so a shallow copy replays the fully-trained predictor at cycle 0.
+   */
+  readonly predictor: PredictorState | null;
 }
 
 /**
@@ -1498,6 +1522,9 @@ export class DeepPipelineProcessor implements Processor {
       ex2Mem: latches.ex2Mem,
       memWb: latches.memWb,
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
+      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive
+      // with it is specified in `DeepPipelineMicro.predictor`'s docblock, next to the cache's.
+      predictor: null,
     };
     return {
       pc: this.pc,

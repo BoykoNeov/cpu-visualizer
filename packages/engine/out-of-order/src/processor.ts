@@ -1445,6 +1445,10 @@ export class OutOfOrderProcessor implements Processor {
       robCapacity: this.rob.maxSize,
       rob: this.rob.all().map((e) => copyRobEntry(e)),
       rename: this.rename.snapshot().map(renameSlotView),
+      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive with
+      // it — and the update-on-resolve vs update-on-commit fork this machine is the only one to
+      // pose — are both specified in `OutOfOrderMicro.predictor`'s docblock.
+      predictor: null,
     };
   }
 }

@@ -312,7 +312,31 @@ describe('the prediction control has two positions because the machine has two b
     none: 'not taken',
     'static-not-taken': 'not taken',
     'static-taken': 'taken',
+    // The two dynamic schemes joined the union at the dynamic-branch-prediction plan's step 1, and
+    // this Record went red exactly as designed — the named candidate arriving, and having to be
+    // classified rather than silently swept up. **They are classified 'not taken' because the ENGINE
+    // IGNORES THEM, not because they are not-taken machines.** Every honoring model still reads
+    // `config.branchPrediction === 'static-taken'`, so a `dynamic-*` run really is byte-identical to
+    // a not-taken one today, and this classification is the truth about the shipped machine.
+    //
+    // ⚠ **It stops being true at step 3, and the assertion below is positioned to say so.** The
+    // moment the pipeline consults a counter table, `record('dynamic-1bit')` stops equalling
+    // `notTaken` and this test goes RED — which is the whole point of the two tripwires being
+    // separate: the Record is the COMPILE tripwire and it fired at step 1; the `toEqual` is the
+    // BEHAVIOR tripwire and it fires at step 3, when the control must genuinely grow a position
+    // rather than keep drawing a third machine as a second. Step 3's acceptance names this failure,
+    // so it reads as arrival rather than regression. Do not pre-empt it by restructuring this test.
+    'dynamic-1bit': 'not taken',
+    'dynamic-2bit': 'not taken',
   };
+
+  /**
+   * Every scheme the config can hold, derived from the Record's keys rather than written out — so a
+   * sixth scheme cannot be added and left unswept by the tests below. A literal array would
+   * typecheck while quietly covering less than the union, which is the vacuity shape the Record
+   * above exists to refuse.
+   */
+  const ALL_SCHEMES = Object.keys(SCHEME_POSITION) as BranchPrediction[];
 
   /** `sum-loop` on the pipeline under one scheme — the whole recording, not its length. */
   const record = (scheme: BranchPrediction): readonly CycleTrace[] => {
@@ -339,31 +363,74 @@ describe('the prediction control has two positions because the machine has two b
     // ...and every name in the union IS one of them. Whole traces, never cycle counts: two
     // machines agreeing on timing could still differ in events (M4 step 1's rule, and it is why
     // `'none' ≡ 'static-not-taken'` was pinned by `toEqual` rather than by a number).
-    for (const scheme of Object.keys(SCHEME_POSITION) as BranchPrediction[]) {
+    for (const scheme of ALL_SCHEMES) {
       expect(record(scheme), `${scheme} should record as its control position`).toEqual(
         predictsTaken(scheme) ? taken : notTaken,
       );
     }
   });
 
-  it('is inert for a model that does not honor it (single-cycle ignores the scheme)', () => {
-    // The same argument the forwarding toggle rests on, and the reason prediction could ride M3's
-    // config seam without widening it: the scheme is held at SESSION level and handed to every
-    // model, so it survives a trip through single-cycle and is still set when the user comes back.
-    // A config-blind engine is simply unmoved by it, so gating the CONTROL on
-    // `capabilities.configurableBranchPrediction` is a pure view concern — the engine needs no
-    // defending.
+  /**
+   * The inertness contract, the `issueWidth` shape (dynamic-branch-prediction step 1's acceptance).
+   *
+   * The same argument the forwarding toggle rests on, and the reason prediction could ride M3's
+   * config seam without widening it: the scheme is held at SESSION level and handed to every model,
+   * so it survives a trip through single-cycle and is still set when the user comes back. A
+   * config-blind engine is simply unmoved by it, so gating the CONTROL on
+   * `capabilities.configurableBranchPrediction` is a pure view concern — the engine needs no
+   * defending.
+   *
+   * **Whole recordings, not cycle counts, and all FIVE names rather than two** — both widenings are
+   * the step-1 acceptance, and both close a real hole. This assertion was a single
+   * `cycles('static-taken') === cycles('static-not-taken')`, which is the M4 rule's own counter-
+   * example: two machines agreeing on timing can still differ in EVENTS, and an engine that had
+   * started honoring the knob in some event-only way would have kept it green. And a two-name check
+   * says nothing about a scheme added later — which is exactly what just happened.
+   *
+   * **Not vacuous, and the control is the test above**: the identical sweep on the PIPELINE splits
+   * these same five names into two genuinely different recordings (`expect(taken).not.toEqual(
+   * notTaken)`). So "every scheme records the same" is a fact about these two models, not about a
+   * comparison too weak to separate anything.
+   */
+  it('is inert for the models that do not honor it — all five schemes, whole traces', () => {
     const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
-    const cycles = (scheme: BranchPrediction): number => {
-      const result = loadSource(program.source, () => new SingleCycleProcessor(), {
+    const recordOn = (make: () => Processor, scheme: BranchPrediction): readonly CycleTrace[] => {
+      const result = loadSource(program.source, make, {
         ...defaultConfig(),
         branchPrediction: scheme,
       });
       if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
       result.loaded.recorder.runToEnd();
-      return result.loaded.recorder.recordedCycles;
+      return result.loaded.recorder.recorded;
     };
-    expect(cycles('static-taken')).toBe(cycles('static-not-taken'));
+
+    // Non-vacuity, in THIS test's own terms rather than by pointing at the one above: the same
+    // helper, handed a model that honors the knob, genuinely separates two of the names it is about
+    // to sweep. Without this the assertions below would keep passing against a `recordOn` that had
+    // silently stopped applying the scheme at all — a helper that cannot tell anything apart proves
+    // nothing by finding everything equal.
+    expect(
+      recordOn(() => new PipelineProcessor(), 'static-taken'),
+      'the sweep must be capable of separating schemes at all',
+    ).not.toEqual(recordOn(() => new PipelineProcessor(), 'static-not-taken'));
+    // ...and it really is sweeping all five, not the three that predate the feature. `ALL_SCHEMES`
+    // is derived from the union, so this catches a name being dropped from it as readily as one
+    // never being added.
+    expect(ALL_SCHEMES).toHaveLength(5);
+    expect(ALL_SCHEMES).toContain('dynamic-1bit');
+    expect(ALL_SCHEMES).toContain('dynamic-2bit');
+
+    for (const [model, make] of [
+      ['single-cycle', () => new SingleCycleProcessor()],
+      ['multi-cycle', () => new MultiCycleProcessor()],
+    ] as const) {
+      const baseline = recordOn(make, 'none');
+      for (const scheme of ALL_SCHEMES) {
+        expect(recordOn(make, scheme), `${model} should ignore ${scheme} entirely`).toEqual(
+          baseline,
+        );
+      }
+    }
   });
 
   /**

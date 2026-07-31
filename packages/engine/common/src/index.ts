@@ -56,3 +56,22 @@ export {
   CACHE_SMALL,
   CACHE_LARGE,
 } from './cache';
+
+/**
+ * The branch history table's shape and geometry (dynamic-branch-prediction step 1) — types only
+ * until step 2 adds the stateful class beside them.
+ *
+ * **Exported from here and NOT re-exported through the four model packages, unlike `CacheState`,**
+ * and the asymmetry is history rather than a boundary change. `cache.ts` lived in `engine-pipeline`
+ * first, so when it moved down at M7 step 0 the pipeline kept re-exporting its READ surface to
+ * spare ten `web` files an import churn. This surface is new, `web` already imports from
+ * `@cpu-viz/engine-common` directly (`MAX_ISSUE_WIDTH`, `CACHE_SMALL`/`CACHE_LARGE`,
+ * `toProgramImage`) and eslint's DAG allows that edge, so four re-exports would buy nothing and add
+ * four places for the name to drift.
+ *
+ * The read/drive boundary the cache re-export protects is preserved by construction instead: what
+ * leaves this module at step 1 is a shape, a size, and a pure function of `pc` — there is nothing
+ * here to drive. When step 2 lands the mutating class it stays package-private to the engines, the
+ * way `access`/`newCache` are never re-exported upward.
+ */
+export { type PredictorState, PREDICTOR_ENTRIES, predictorIndex } from './predictor';
