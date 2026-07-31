@@ -123,6 +123,58 @@ describe('the model table', () => {
   });
 
   /**
+   * **`micro.predictor` is spelled the same on every model that bets — checked, not assumed.**
+   *
+   * The dynamic-branch-prediction plan's step 6 rests on exactly this agreement, and its reason is a
+   * shipped defect: `cache-grid.ts` reads the MEM-stage latch, whose name is per-model (`exMem` on
+   * the 5-stage, `ex2Mem` on the deep pipeline), and the hard-coded `micro.exMem` left that panel
+   * silently idle on the deep pipeline for a whole milestone on a user-reachable config. The plan's
+   * defense was that a NEW field can simply agree everywhere "by construction" instead of needing an
+   * accessor to reconcile it.
+   *
+   * ⚠ **"By construction" was enforced by NOTHING, and this test exists because that was measured
+   * rather than suspected.** Renaming the field to `bht` on `DeepPipelineMicro` alone — interface
+   * and construction site together, exactly what a step-5 copy-paste would produce — left
+   * `npm run typecheck` clean and all 7591 tests green. The pipeline happens to be covered, by a
+   * whole-`micro` `toEqual` in its own suite; the other three models had no such assertion, so three
+   * of the four spellings were free to drift. Nothing reads `micro.predictor` yet, which is
+   * precisely why the gap is invisible: the first reader is step 6's panel, and by then the drift
+   * would already be shipped.
+   *
+   * Asserted on the RECORDED trace rather than on the type, because the type is what a divergent
+   * rename changes in lockstep. A key present on every cycle is the claim a panel actually depends
+   * on.
+   */
+  it('every model that bets spells its predictor field `predictor` — on every recorded cycle', () => {
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const betting = MODELS.filter((m) => m.capabilities.configurableBranchPrediction);
+    // Non-vacuity: the sweep below says nothing if the filter selects nobody, and this is also the
+    // count that must grow if a fifth model ever honors prediction.
+    expect(betting.map((m) => m.id)).toEqual([
+      'pipeline',
+      'deep-pipeline',
+      'superscalar',
+      'out-of-order',
+    ]);
+
+    for (const model of betting) {
+      const result = loadSource(sumLoop.source, model.make, defaultConfig());
+      expect(result.ok, `${model.id} should load sum-loop`).toBe(true);
+      if (!result.ok) continue;
+      result.loaded.recorder.runToEnd();
+      const recorded = result.loaded.recorder.recorded;
+      expect(recorded.length, `${model.id} should record cycles to check`).toBeGreaterThan(0);
+      for (const trace of recorded) {
+        const micro = trace.state.micro as Record<string, unknown> | undefined;
+        expect(
+          micro !== undefined && 'predictor' in micro,
+          `${model.id} cycle ${trace.cycle}: micro must carry a \`predictor\` key`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  /**
    * The datapath discriminator, which App dispatches on. Every model has its OWN hand-authored
    * geometry and none reuses a neighbour's: lit by the wrong model's trace, a diagram draws a
    * contradictory picture (INV-5) — multi-cycle's single shared memory and one-in-flight layout

@@ -228,6 +228,13 @@ logic four times.
       reading `micro.predictor` across four models has the identical shape. Two defenses, and the
       first is why step 1 mandates the spelling: unlike the latch case this is a **new** field, so
       the names can be made to agree **by construction** rather than reconciled by an accessor.
+
+      ⚠ **"By construction" is now ENFORCED, and at step 1 it was not** — a divergent spelling on
+      the deep pipeline passed typecheck and all 7591 tests (step 1's break table, row 5). The guard
+      is `web/src/models.test.ts`, "every model that bets spells its predictor field `predictor`",
+      which drives all four and asserts the key on every recorded cycle. **Do not weaken it into an
+      accessor when this step arrives**: an accessor would make the panel work while letting the
+      names drift, which is the state the deep-pipeline cache grid was in for a milestone.
       Acceptance: the fold is derived purely from the trace (INV-3) and is **exercised against a
       recorded trace from each of the four models** — not one — with a render smoke test green on
       each. A fold tested on one trace proves nothing about the other three.
@@ -467,8 +474,9 @@ Five schemes now, three of them behaviors: `packages/trace/src/processor.ts` car
 `packages/engine/common/src/predictor.ts` holds `PredictorState`, `PREDICTOR_ENTRIES = 16` and
 `predictorIndex(pc)`. **No behavior anywhere** — the four honoring engines still read
 `config.branchPrediction === 'static-taken'`, so a `dynamic-*` run is byte-identical to a not-taken
-one and `micro.predictor` is `null` on every recorded cycle of every model. Repo 7591 → 7591 tests
-(the single-cycle inertness test was STRENGTHENED in place rather than joined by a new one), five
+one and `micro.predictor` is `null` on every recorded cycle of every model. Repo 7591 → 7592 tests —
+the single-cycle inertness test was STRENGTHENED in place rather than joined by a new one, so the
+one net addition is the cross-model spelling guard the break harness turned out to require. Five
 gates green.
 
 ### Where the type went, and the rule that decides it
@@ -538,17 +546,43 @@ stopped applying the knob at all.** So the test carries its own control: the sam
 PIPELINE, must separate `static-taken` from `static-not-taken` before the sweep runs. Verified by
 mutation rather than assumed — see the break table below.
 
-### Break table
+### Break table — MEASURED, and three rows came out other than predicted
 
-| mutation                                                            | what went red                                                                 |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `recordOn` ignores its `scheme` argument (drops it from the config) | the non-vacuity control, `simulator.test.ts` — the sweep itself stayed GREEN  |
-| the union loses `'dynamic-2bit'`                                    | `SCHEME_POSITION` (compile) + `ALL_SCHEMES` length/contains                   |
-| `PipelineMicro.predictor` spelled `bht` on ONE model                | `tsc -b` on that package only — the by-construction agreement step 6 rests on |
+| mutation                                                    | `npm run typecheck`                   | `npm test`                                 |
+| ----------------------------------------------------------- | ------------------------------------- | ------------------------------------------ |
+| `recordOn` drops the `scheme` from the config it builds     | green                                 | **1 red** — the non-vacuity control only   |
+| ...and the non-vacuity control is removed as well           | green                                 | **GREEN, 25/25** — the sweep sees nothing  |
+| the UNION loses `'dynamic-2bit'`                            | **1 red** (`SCHEME_POSITION`, TS2353) | **GREEN** — a type is invisible at runtime |
+| the RECORD loses its `'dynamic-2bit'` key (union intact)    | red                                   | **1 red** — `ALL_SCHEMES` length           |
+| `predictor` renamed `bht` on `DeepPipelineMicro` + its site | **green**                             | **GREEN, 7591/7591**                       |
 
-The first row is the load-bearing one: **the five-scheme sweep alone cannot tell a working engine
-from a harness that stopped passing the knob.** Only the control can, which is why it is in the test
-body and not in a sibling `it`.
+Four findings, and only the first was predicted:
+
+1. **The five-scheme sweep alone is vacuous.** Row 2 is the one that matters: with the knob never
+   applied AND the control removed, all 25 tests pass — including "every scheme records identically",
+   which is exactly the assertion a harness that stopped applying the knob would satisfy. The control
+   lives in the test BODY rather than a sibling `it` for that reason.
+2. **Row 1 does not show "the sweep stayed green" — it shows the `it` ABORTED.** Vitest stops at the
+   first failed `expect`, so a control placed first hides whether what follows would have passed.
+   Measuring the claim needed row 2 as its own run. A break table written from row 1 alone would have
+   recorded the opposite conclusion.
+3. **A union is a TYPE, so `npm test` is structurally blind to it shrinking** — the Record literal
+   still carries the key at runtime. Only `tsc` sees row 3. The `ALL_SCHEMES` runtime guards are not
+   redundant with it: they cover row 4, the complementary mutation, which is what "fixing" that
+   compile error by deleting the offending key would actually produce.
+4. ⚠ **Row 5 is the gap this step found, and it was open.** The plan's whole step-6 defense is that
+   `predictor` agrees across four models _by construction_ — and construction was checked by nothing.
+   A divergent spelling on the deep pipeline passed typecheck AND all 7591 tests. The pipeline alone
+   was covered, accidentally, by the whole-`micro` `toEqual` in its own suite; the other three had no
+   such assertion, and the gap is invisible precisely because nothing READS `micro.predictor` yet —
+   the first reader is step 6's panel, by which time the drift would already be shipped. **Closed
+   here rather than at step 6**, by a test in `web/src/models.test.ts` that drives every model
+   reporting `configurableBranchPrediction` and asserts a `predictor` key on every recorded cycle
+   (7591 → 7592). Verified against the broken code first: it fails on `deep-pipeline cycle 0`.
+
+⚠ **`Set-Content` mojibaked the file on the first attempt at row 5** — a two-token rename came back
+as 152 insertions / 152 deletions. The M13 memory records this hazard and it is still live: mutate
+source here with the editor, never a PowerShell `-replace` round-trip.
 
 ## Acceptance criteria
 
