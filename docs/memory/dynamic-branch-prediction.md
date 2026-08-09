@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T14:39:46.021Z
+  modified: 2026-08-09T14:43:00.654Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 5 complete — step 5 on 2026-08-09.
@@ -107,6 +107,25 @@ the cache" is two shapes, not one.
 The superscalar's took **72 seconds against the whole repo's 22** — the width axis multiplies every
 sweep by four and `issuedPerCycle` was quadratic over re-run cells. Memoized runs plus one index
 pass: 1.6s.
+
+**The scratch tooling, at `M:\claud_projects\temp\bp-step5\`** (same config shape as `bp-step0`: a
+vitest config OUTSIDE the repo importing `workspaceAliases` by absolute path, with `root: <project>`
+and `server.fs.allow`). Three pieces are reusable and would otherwise be rebuilt:
+
+- **`derive*.test.ts`** — derive a scheme's column from the STATIC runs alone, and validate the price
+  rule against the measured `static-taken` column before believing any derived cell. This is the
+  whole method; it works per model and stops at width ≥ 2.
+- **`squash.test.ts`** — the resolved-then-killed sweep (a `branch-resolved` whose instr never
+  retires), plus the ROB-overlap probe that keeps it from being vacuous. Run this before assuming
+  anything about speculation on the OoO.
+- **`lanes.test.ts`** — per-RUN slot occupancy per static pc. The probe that turned "the per-lane
+  table has no net" into a reason.
+
+⚠ **One residual, verified inert and owned by step 6**: `MicroTablePanel.tsx`'s `preRunMicro`
+fabricates an `OutOfOrderMicro` with `predictor: null`, and the honest pre-run value is the COLD
+table. Nothing in `web` reads `micro.predictor`'s value today (grepped), so it is latent — but step 5
+made the OoO record a real table, so step 6's first act makes it reachable. Flagged in the plan's
+step-6 entry, which is what step 6's author reads.
 
 ## Step 4 — the deep copy, and the step whose whole content was its own net (2026-08-09)
 

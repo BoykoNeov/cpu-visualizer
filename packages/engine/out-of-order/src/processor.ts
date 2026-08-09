@@ -1385,6 +1385,18 @@ export class OutOfOrderProcessor implements Processor {
    * which way this branch goes. Under `'static-not-taken'` there is nothing to know: the machine has
    * no taken path, so the fall-through is not a guess and dispatch never freezes. That asymmetry is
    * the machine's, not the predictor's.
+   *
+   * ⚠ **It has a MEASURED cost and a road not taken, and both belong here rather than only in the
+   * plan.** `paired-branches.s` bets not-taken on both its branches — it never redirects fetch — and
+   * still runs 8 cycles against the not-taken machine's 7 at widths 2 and 4, pinned in
+   * `dynamic-predict.test.ts`. **A dynamic scheme pays for HAVING a bet path even where it declines
+   * to use one.** The alternative, deliberately not built: consult the counter at DISPATCH for
+   * direction only, keeping the redirect at {@link stageBet}, which would let the freeze lift on a
+   * declined branch and cost nothing. It was rejected because reading the table earlier decouples
+   * *when the counter is read* from *when the bet is placed* — a branch resolving in between would
+   * train the table between the two, so the bets themselves would move and the bet-string
+   * invariance every model's acceptance rests on would stop holding. The cheaper machine is a
+   * larger change than it looks.
    */
   private hasBetPath(): boolean {
     return this.predictTaken || this.predictor !== null;

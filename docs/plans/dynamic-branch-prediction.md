@@ -227,7 +227,18 @@ logic four times.
       right about both of its fall-throughs. **So the superscalar's `betting` counts are RE-DERIVED
       per scheme, never carried over**, and the same goes for the deep pipeline's longer shadow.
 
-- [ ] **6. The view — a predictor panel, following `CacheGridView`.** A pure fold
+- [ ] **6. The view — a predictor panel, following `CacheGridView`.** ⚠ **START by fixing
+      `web/src/MicroTablePanel.tsx`'s `preRunMicro`, which step 5 made WRONG rather than merely
+      incomplete.** It fabricates an `OutOfOrderMicro` for cursor −1 with `predictor: null`; step 1
+      flagged that the honest pre-run value is the **COLD table** (every counter at its seed), and as
+      of step 5 the out-of-order core — the one model this panel actually reads — records a real
+      table on every cycle. So that literal is now step 4's shallow-copy defect arriving through the
+      front door of a fabricated snapshot. **Verified inert TODAY and only today**: nothing in `web`
+      reads `micro.predictor`'s value (grepped at step 5; the panel renders the ROB and rename
+      tables), so it is a latent wrong value rather than a visible one. The first thing this step
+      does is make it reachable. `robCapacity` is copied because it is a CONFIG fact; `rob`,
+      `rename` and `predictor` are RUN facts and each must be emptied to its own zero — which for a
+      counter table is a SEED, not an absence. A pure fold
       (`predictor-table.ts`) plus an HTML view plus a render smoke test, exactly the two-halves
       shape `cache-grid.ts` documents. Rows = table entries, each showing its counter position and
       the branch that owns it, with the entry touched this cycle highlighted.
