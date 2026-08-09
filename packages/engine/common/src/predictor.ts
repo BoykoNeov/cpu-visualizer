@@ -108,6 +108,17 @@ export interface PredictorState {
  * "how wide is its counter?". A hand-listed union would silently accept the newcomer and run it as a
  * 1-bit table. Same shape as `SCHEME_POSITION`'s `Record<BranchPrediction, …>` in
  * `web/src/simulator.test.ts`, which is the compile tripwire that fired at step 1.
+ *
+ * **FIRED, not assumed** — step 1's headline lesson was a "by construction" agreement enforced by
+ * nothing, so this one was measured: adding `'dynamic-3bit'` to the union produces exactly one
+ * error, `TS2741` on {@link COUNTER_BITS} below, and nothing else.
+ *
+ * ⚠ **But the tripwire is PREFIX-CONDITIONAL, and the decisions table explicitly contemplated the
+ * other spelling.** A scheme named `'bht-3bit'` does not match `` `dynamic-${string}` ``, so this
+ * type would not widen and the `Record` would stay complete; the error would instead land at
+ * whichever step-3/5 call site hands `config.branchPrediction` to the constructor. Still a compile
+ * error, but not the one named here — so a future scheme wants a `dynamic-` prefix, or this type
+ * wants rewriting as an explicit union.
  */
 export type DynamicScheme = Extract<ProcessorConfig['branchPrediction'], `dynamic-${string}`>;
 

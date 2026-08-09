@@ -667,6 +667,12 @@ test pins the aliasing so the contract cannot drift out from under step 4.
 `DynamicScheme` is `Extract`ed from the trace union with a template literal rather than hand-listed,
 so a third dynamic name widens the type, makes `COUNTER_BITS`'s `Record` incomplete and reddens `tsc`
 at the one place that must answer "how wide is its counter?" — the `SCHEME_POSITION` tripwire shape.
+**That claim was FIRED rather than asserted** (adding `'dynamic-3bit'` to the union gives exactly one
+error, `TS2741` on `COUNTER_BITS`), because step 1's headline lesson was a "by construction"
+agreement enforced by nothing — and a compile tripwire is invisible to the six runtime mutations
+below, so `npm test` could never have found it. ⚠ It is **prefix-conditional**: a scheme spelled
+`'bht-3bit'` — the alternative this plan's own decisions table weighed — would not widen the type at
+all, and the error would land at the step-3/5 call site instead.
 The seed falls out as `takenFrom - 1` in both schemes (0 for 1-bit, 1 for 2-bit), so weakly-not-taken
 is one expression rather than a second per-scheme table.
 

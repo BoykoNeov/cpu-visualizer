@@ -70,12 +70,17 @@ export {
  * `toProgramImage`) and eslint's DAG allows that edge, so four re-exports would buy nothing and add
  * four places for the name to drift.
  *
- * The read/drive boundary the cache re-export protects is preserved the way `access`/`newCache`
- * already are: the MUTATING surface — `BranchPredictor`, whose `update()` trains a table — leaves
- * this package because the models need it, and stops there. It is never re-exported upward, so the
- * web's "render a table, never drive one" boundary (M6 step 6) holds by the same mechanism. What a
- * view needs is the read half: the `PredictorState` it renders and the pure `predictorIndex` it
- * highlights a row with, which is the `lineIndex` boundary `cache.ts` draws.
+ * ⚠ **The read/drive boundary is CONVENTION here, not a rule — stated plainly because the honest
+ * version is the useful one.** `BranchPredictor` is a mutating surface (`update()` trains a table)
+ * and nothing stops `web` importing it: the paragraph above is exactly why — `web` may import this
+ * package directly and eslint's DAG allows that edge, so the *absence* of four model re-exports
+ * buys separation from the models, not from the view. `access`/`newCache` have been reachable on
+ * the same terms since M7 and are simply never imported. Only `curriculum` is mechanically denied
+ * `engine-common` (`eslint.config.js`, the INV-3 rule). So M6 step 6's "render a table, never drive
+ * one" holds because a view has no reason to drive one, and because what it actually needs is the
+ * read half — the `PredictorState` it renders and the pure `predictorIndex` it highlights a row
+ * with, which is the `lineIndex` boundary `cache.ts` draws. If that ever stops being enough, the
+ * fix is a rule, not a paragraph.
  */
 export {
   type PredictorState,

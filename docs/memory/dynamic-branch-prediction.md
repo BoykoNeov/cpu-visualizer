@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T11:16:11.938Z
+  modified: 2026-08-09T11:21:07.458Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1 AND 2 complete — step 2 on
@@ -52,6 +52,19 @@ just _run it_; a predicted row is a hypothesis.
 ⚠ **One mutation is invisible and was RECORDED rather than tested**: inlining `index()`'s delegation
 as `(pc>>>2)&15` is value-identical at 16 entries, so nothing can see it — it only starts mattering
 if `PREDICTOR_ENTRIES` moves. Saying so beats a test that pretends to cover it.
+
+⚠ **A COMPILE tripwire is invisible to a runtime break harness, and step 2 nearly shipped one
+asserted-not-fired** — the same "by construction" failure as step 1. `DynamicScheme` is
+`Extract<…, `dynamic-${string}`>` so a third scheme reddens `COUNTER_BITS`'s `Record`; the six
+mutations below could never have tested that, because `npm test` does not run `tsc`. Fired
+deliberately: `'dynamic-3bit'` gives exactly one error, `TS2741` on `COUNTER_BITS`. ⚠ It is
+**prefix-conditional** — a `'bht-3bit'` spelling would not widen the type at all.
+
+⚠ **`web` CAN import `BranchPredictor`, `access` and `newCache` — the "render, never drive" boundary
+is convention, not a rule.** Only `curriculum` is mechanically denied `engine-common` (`eslint.config.js`,
+the INV-3 rule); `web`'s edge to `engine-common` is allowed, which is the same fact that made the four
+model re-exports unnecessary. An index.ts docblock claimed the boundary "holds by the same mechanism"
+as the cache's — it doesn't. [[m13-review-resolved]]'s "a pinned decision with no net is a comment".
 
 Six mutations run (floor / ceiling / threshold / seed / re-implemented index / defensive snapshot);
 the table with counts is in the plan. The defensive-`snapshot()` row reddens **exactly one** test, so
