@@ -1,5 +1,4 @@
 import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
-import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { OutOfOrderProcessor } from '@cpu-viz/engine-out-of-order';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
@@ -433,21 +432,25 @@ describe('the prediction control has four positions because the machine has four
    * comparison too weak to separate anything.
    *
    * ⚠ **A SECOND, TEMPORARY inertness claim joined it at step 3, and it is an arrival tripwire
-   * rather than a contract.** Step 3 wires the counter table into the pipeline ALONE; the deep
-   * pipeline, the superscalar and the out-of-order core all report
-   * `configurableBranchPrediction: true` and all three still read
-   * `config.branchPrediction === 'static-taken'`, so on those three a `'dynamic-*'` run is
-   * byte-identical to a not-taken one. The shell's control shows all four positions on every model
-   * that bets, so for the length of the step-3→step-5 window two of its buttons move the BUTTON and
-   * not the machine on three of the four — the same temporary understatement as
-   * `PipelineMicro.predictor` still recording `null`.
+   * rather than a contract.** Step 3 wired the counter table into the pipeline ALONE; the models
+   * still listed in {@link STILL_INERT} report `configurableBranchPrediction: true` and still read
+   * `config.branchPrediction === 'static-taken'`, so on them a `'dynamic-*'` run is byte-identical
+   * to a not-taken one. The shell's control shows all four positions on every model that bets, so
+   * for the length of that window two of its buttons move the BUTTON and not the machine.
    *
-   * Naming those three models here is what keeps that window from closing unnoticed: **step 5 makes
-   * this assertion FAIL**, and that failure is the arrival. The alternative — a
+   * Naming the models here is what keeps the window from closing unnoticed: **each model step 5
+   * wires makes this assertion FAIL**, and that failure is the arrival. The alternative — a
    * `dynamicBranchPrediction` capability gating the two positions per model — was rejected because
    * it churns six capability literals and `models.test.ts`'s exact honoring-model list twice, once
-   * now and once at step 5, for a schema field whose only content is "step 5 has not happened yet".
-   * When step 5 lands, delete the second block; do not widen it.
+   * at step 3 and once at step 5, for a schema field whose only content is "step 5 has not happened
+   * yet".
+   *
+   * ⚠ **The list SHRINKS as step 5 lands, one model per commit, and then the block goes away
+   * entirely — it is never widened.** Shrinking is not the same edit as widening: each removal is a
+   * measured arrival (the assertion was red before the wiring and the model is gone from the list
+   * after it), and it keeps the tripwire armed for the models still waiting. The deep pipeline was
+   * removed when it was wired; when the list empties, delete the block rather than leaving an empty
+   * loop that asserts nothing.
    */
   it('is inert for the models that do not honor it — all five schemes, whole traces', () => {
     const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
@@ -489,15 +492,21 @@ describe('the prediction control has four positions because the machine has four
       }
     }
 
-    // The TEMPORARY half — see the ⚠ above. These three honor `'static-taken'` and are therefore not
-    // inert to the knob at all; what they are inert to, until step 5, is the DYNAMIC half of the
-    // union alone. So the baseline is `'static-not-taken'` rather than `'none'`, and the sweep is
-    // the two dynamic names rather than all five. **Delete this block at step 5; do not widen it.**
-    for (const [model, make] of [
-      ['deep-pipeline', () => new DeepPipelineProcessor()],
+    // The TEMPORARY half — see the ⚠ above. These honor `'static-taken'` and are therefore not
+    // inert to the knob at all; what they are inert to, until step 5 reaches them, is the DYNAMIC
+    // half of the union alone. So the baseline is `'static-not-taken'` rather than `'none'`, and the
+    // sweep is the two dynamic names rather than all five.
+    //
+    // ⚠ **`'deep-pipeline'` was removed here when step 5 wired it** — it bets from a counter table
+    // now, so its dynamic recordings differ from not-taken and this assertion was RED against it
+    // before the wiring landed, which is the arrival this block exists to produce. When the last
+    // name goes, the block goes with it: an empty loop asserts nothing while still reading as a net.
+    const STILL_INERT = [
       ['superscalar', () => new SuperscalarProcessor()],
       ['out-of-order', () => new OutOfOrderProcessor()],
-    ] as const) {
+    ] as const;
+    expect(STILL_INERT.length, 'when this hits zero, DELETE the block').toBeGreaterThan(0);
+    for (const [model, make] of STILL_INERT) {
       // Non-vacuity for THIS block, in its own terms: these models do honor the knob, so a helper
       // that had stopped applying it would show up here as `'static-taken'` matching not-taken.
       expect(
@@ -509,7 +518,7 @@ describe('the prediction control has four positions because the machine has four
       for (const scheme of ['dynamic-1bit', 'dynamic-2bit'] as const) {
         expect(
           recordOn(make, scheme),
-          `${model} does not honor ${scheme} until step 5 — if this fails, step 5 has landed and this block should be DELETED`,
+          `${model} does not honor ${scheme} yet — if this fails, step 5 has reached it: drop it from STILL_INERT (and delete the block once that list is empty)`,
         ).toEqual(notTaken);
       }
     }

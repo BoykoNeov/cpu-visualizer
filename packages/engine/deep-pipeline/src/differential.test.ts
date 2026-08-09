@@ -52,15 +52,30 @@ import { DeepPipelineProcessor } from './index';
  */
 
 /**
- * All three prediction schemes run, though **`'none'` and `'static-not-taken'` are the SAME MACHINE
+ * All five prediction schemes run, though **`'none'` and `'static-not-taken'` are the SAME MACHINE
  * here** — a processor with no predictor does not stop and wait, it keeps fetching the next address,
  * and the fall-through IS the not-taken guess (the same identity the 5-stage has, recorded on
  * `DEEP_PIPELINE_CAPABILITIES`). The redundant column is kept rather than trimmed: it costs one
  * corpus pass, `configLabel` names the two distinctly so there is no title collision to hide behind,
  * and pinning the identity is worth more than the second saved. Two identical green columns here are
  * the expected reading, not a bug.
+ *
+ * ⚠ **The two dynamic schemes joined at the dynamic-branch-prediction plan's step 5, and green cells
+ * here are NOT evidence that this model honors them.** Speculation is architecturally invisible by
+ * construction, so a machine that ignored `'dynamic-1bit'` entirely passes every cell — measured on
+ * the 5-stage at step 3, where the knob was unhonored on purpose and all 50 cells stayed green while
+ * `dynamic-predict.test.ts` went red. `m7-superscalar-engine` records INV-8 as a FALSE net outright.
+ * What the extra columns DO buy is coverage of paths the static schemes never take: a dynamic scheme
+ * mispredicts in both directions on the same branch within one run, which is where a speculation
+ * LEAK — a wrong-path write that survives its squash — would hide.
  */
-const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
+const SCHEMES = [
+  'none',
+  'static-not-taken',
+  'static-taken',
+  'dynamic-1bit',
+  'dynamic-2bit',
+] as const;
 
 /**
  * `cache: null` is written EXPLICITLY rather than inherited from `defaultConfig()`. Every other

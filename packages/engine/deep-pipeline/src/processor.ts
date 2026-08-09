@@ -140,6 +140,9 @@ import {
   speculativeTarget,
   access,
   newCache,
+  BranchPredictor,
+  isConditionalBranch,
+  isDynamicScheme,
   type CacheState,
   type PredictorState,
 } from '@cpu-viz/engine-common';
@@ -300,9 +303,9 @@ export interface DeepPipelineMicro {
   readonly memWb: MemWbLatch | null;
   readonly cache: CacheState | null;
   /**
-   * The branch history table's counters, or `null` when the configured scheme has no memory. **Null
-   * on every recorded cycle as of the dynamic-branch-prediction plan's step 1** — nothing
-   * constructs a predictor until step 3 wires the pipeline and step 5 reaches this model.
+   * The branch history table's counters, or `null` when the configured scheme has no memory —
+   * which is every static scheme, so `null` IS the M11 machine. Live since the
+   * dynamic-branch-prediction plan's **step 5**, which wired this model's bet and training sites.
    *
    * ⚠ **Spelled `predictor` here, in `PipelineMicro`, in `SuperscalarMicro` and in
    * `OutOfOrderMicro` — the same name in all four, by construction.** This model is the one that
@@ -556,8 +559,27 @@ export class DeepPipelineProcessor implements Processor {
   /**
    * `true` only for `'static-taken'`: `'none'` and `'static-not-taken'` both mean "keep fetching the
    * fall-through", which is one machine under two names — see {@link DEEP_PIPELINE_CAPABILITIES}.
+   *
+   * **It stays a boolean for the STATIC half of the union** (dynamic-branch-prediction step 5): the
+   * dynamic schemes do not answer "bet taken?" from the config at all — they answer it per branch,
+   * from {@link predictor}. See {@link betTarget}, the one place either is read.
    */
   private predictTaken = false;
+  /**
+   * The branch history table (dynamic-branch-prediction step 5), or `null` under every static
+   * scheme — so `null` is the M11 machine unchanged and the whole dynamic path is inert under it.
+   *
+   * **Single-buffered and mutated in place** by EX2's training call, exactly like {@link cache},
+   * which is why {@link snapshotState} copies its counters rather than handing
+   * {@link BranchPredictor.snapshot}'s live array through. Constructed once per {@link reset} so the
+   * counter width is derived in ONE place — the reason step 2's class takes the scheme in its
+   * constructor rather than threading a config through every call.
+   *
+   * ⚠ **Depth is what this model adds to the feature, and it is a teaching line.** A lost bet costs
+   * 4 here against the 5-stage's 2, so a counter that learns is worth twice as much: over the
+   * corpus `dynamic-2bit` beats `static-taken` by **14** cycles here where the 5-stage measured 7.
+   */
+  private predictor: BranchPredictor | null = null;
   private latches: Latches = EMPTY_LATCHES();
   /**
    * The D-cache config (M11 step 6), or `null` for the cache-less machine `defaultConfig()` still
@@ -584,6 +606,11 @@ export class DeepPipelineProcessor implements Processor {
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
+    // A fresh, COLD table per run (INV-1: no state may survive a reset) — the same lifetime as
+    // `cache` above, and for the same reason.
+    this.predictor = isDynamicScheme(config.branchPrediction)
+      ? new BranchPredictor(config.branchPrediction)
+      : null;
     this.registers = makeRegisters();
     this.memory = new SparseMemory();
     // Text loaded little-endian from entry; then initialized data. One flat space (§9).
@@ -1132,6 +1159,20 @@ export class DeepPipelineProcessor implements Processor {
         actual: taken,
         target: nextPc,
       });
+      // TRAINING (dynamic-branch-prediction step 5), and this is the only place it happens on this
+      // model. The counter learns what the branch ACTUALLY did, from the branch's OWN pc — the same
+      // pc the bet was placed with, four stages earlier, which is what makes the two touch one
+      // counter. Conditional branches only: `jal`/`jalr` are pinned not to update, spelled by the
+      // shared {@link isConditionalBranch} so the four wiring sites cannot answer it four ways.
+      //
+      // ⚠ **Resolve-time and commit-time coincide HERE, as a fact about a latch machine rather than
+      // a decision this model gets to make**: an instruction in an older transfer's shadow is
+      // flushed from the latches at the clock edge and never reaches EX2, so a branch that resolves
+      // here always retires. The fork the plan pins for the OoO core — where a resolved branch can
+      // still be killed by an older mispredict — is untouched by this line.
+      if (this.predictor !== null && isConditionalBranch(d)) {
+        this.predictor.update(ee.pc, taken);
+      }
       if (predicted !== taken) {
         // `nextPc` is the correction for BOTH directions with no branching on which way we were
         // wrong: the schema defines it as "the resolved next pc, whichever way it went".
@@ -1320,9 +1361,9 @@ export class DeepPipelineProcessor implements Processor {
     // the fetch pointer, overwriting the very redirect that condemned it. The reverse walk (EX2
     // before ID) is what makes "the correction always beats the bet" structural rather than a rule.
     //
-    // `predictTaken` gates it, so under 'none'/'static-not-taken' this is dead. A halt is not a
+    // `betTarget` gates it, so under 'none'/'static-not-taken' this is dead. A halt is not a
     // transfer, so the `isArchHalt` squash above cannot coincide with a bet.
-    const target = this.predictTaken ? speculativeTarget(d, fd.pc) : null;
+    const target = this.betTarget(d, fd.pc);
     if (target !== null) {
       ctx.bet = true;
       ctx.redirect = target; // applied at the clock edge, AFTER IF1 has fetched the fall-through
@@ -1343,6 +1384,33 @@ export class DeepPipelineProcessor implements Processor {
       b,
       predictedTaken: target !== null,
     };
+  }
+
+  /**
+   * **The bet, in one place** — where this word would be predicted to go, or `null` for "no bet"
+   * (not a predictable transfer, or predicted not-taken). Every scheme in the union is answered
+   * here, so ID asks one question and never learns which scheme it is running under. **Identical in
+   * shape to the 5-stage's `betTarget`, deliberately**: the plan's step-5 risk is four models
+   * answering one policy four ways, and the defense is that the three decisions below are each a
+   * shared predicate rather than an inline test.
+   *
+   *  1. **Not a PC-relative transfer** ⇒ no bet, under every scheme. `speculativeTarget` is asked
+   *     FIRST so that `jalr` and ordinary arithmetic never reach a counter.
+   *  2. **No table** ⇒ M4's machine verbatim, `predictTaken` alone. The dynamic path is inert.
+   *  3. **A table** ⇒ a conditional branch asks its counter; `jal` bypasses it and is bet taken.
+   *
+   * ⚠ **Read-only: consulting the table never trains it.** Training is EX2's, at resolution, when
+   * the answer exists — and the two must stay in different stages or a branch would learn from
+   * itself before it resolved. On this machine they are FOUR stages apart rather than one, which is
+   * the only thing depth changes here: the bet is placed further from the training that will judge
+   * it, and the counter it reads is whatever the last resolution left.
+   */
+  private betTarget(d: DecodedInstruction, pc: number): number | null {
+    const target = speculativeTarget(d, pc);
+    if (target === null) return null;
+    if (this.predictor === null) return this.predictTaken ? target : null;
+    if (!isConditionalBranch(d)) return target;
+    return this.predictor.predict(pc) ? target : null;
   }
 
   /**
@@ -1507,19 +1575,21 @@ export class DeepPipelineProcessor implements Processor {
    * objects are immutable and rebuilt each cycle, so copying the container is enough to keep every
    * recorded cycle's `micro` genuinely its own.
    *
-   * **The cache is the ONE exception, and it needs a real deep copy.** {@link CacheState} is
-   * single-buffered and mutated in place by {@link access}, so a shallow copy would alias one final
-   * cache across every recorded cycle and replay as warm-from-the-start. Final-state conformance
-   * cannot see that — only time-travel can, which is why `cache.test.ts` pins a cold early snapshot
-   * against a warm late one rather than trusting the copy to be right.
+   * **There are TWO exceptions, and they are the same exception twice.** {@link CacheState} and the
+   * counter table are each single-buffered and mutated in place — by {@link access} and by EX2's
+   * training call respectively — so a shallow copy would alias one final object across every
+   * recorded cycle and replay as warm-from-the-start. Final-state conformance cannot see that; only
+   * time-travel can, which is why `cache.test.ts` pins a cold early snapshot against a warm late one
+   * and `recorder.test.ts` does the same for the predictor, rather than trusting either copy.
    *
-   * ⚠ **"The ONE exception" is true on THIS model and stops being true at the
-   * dynamic-branch-prediction plan's step 5**, when `predictor` becomes the second: a counter table
-   * is single-buffered and mutated in place for the identical reason, and needs the identical deep
-   * copy plus its own cold-early-against-warm-late pin. Flagged here because this docblock, not the
-   * field's, is what someone deciding what to copy reads. **The pipeline already did it** at step 4
-   * — copy that shape rather than re-deriving it, `.slice()` on the counters and NOT a spread of the
-   * `PredictorState` wrapper, which builds a fresh object around the same array and aliases anyway.
+   * ⚠ **`predictor` became the second at the dynamic-branch-prediction plan's step 5, and this
+   * docblock said "the cache is the ONE exception" until then** — flagged in the prose rather than
+   * only on the field, because THIS is what someone deciding what to copy reads.
+   *
+   * ⚠ **`.slice()` on the counters, not a spread of the wrapper.** `{ ...snapshot() }` builds a new
+   * `PredictorState` around the SAME array, so it reads as a copy, passes an identity check on the
+   * object, and aliases every cycle anyway — measured on the 5-stage at step 4 as reddening the
+   * identical 20 tests as no copy at all.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: DeepPipelineMicro = {
@@ -1530,9 +1600,11 @@ export class DeepPipelineProcessor implements Processor {
       ex2Mem: latches.ex2Mem,
       memWb: latches.memWb,
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
-      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive
-      // with it is specified in `DeepPipelineMicro.predictor`'s docblock, next to the cache's.
-      predictor: null,
+      // The counter table (step 5), copied the same way and for the same reason as the cache above.
+      // `.slice()` is the whole of it: `PredictorState` holds counters and nothing else, so copying
+      // the array IS the deep copy — and both cheaper spellings alias.
+      predictor:
+        this.predictor === null ? null : { counters: this.predictor.snapshot().counters.slice() },
     };
     return {
       pc: this.pc,
