@@ -1408,11 +1408,18 @@ that read exactly like a product defect (see the rig lies below).
 
 ### The defect: the panel's height stepped with the cursor, and the rows were never the risk
 
-| viewport     | quiet cycle | resolve cycle | verdict                                        |
-| ------------ | ----------: | ------------: | ---------------------------------------------- |
-| ≥1200px      |     487.9px |       487.9px | flat — `main` is capped at `maxWidth: 1200`    |
-| **1180–900** | **487.9px** |   **520.9px** | **33px, appearing and disappearing on a step** |
-| ≤890px       |     520.9px |       520.9px | flat — both states wrap                        |
+| viewport     | quiet cycle | resolve cycle | AFTER the fix | verdict                                        |
+| ------------ | ----------: | ------------: | ------------: | ---------------------------------------------- |
+| ≥1200px      |     487.9px |       487.9px |   **510.5px** | flat — `main` is capped at `maxWidth: 1200`    |
+| **1180–900** | **487.9px** |   **520.9px** |   **510.5px** | **33px, appearing and disappearing on a step** |
+| ≤890px       |     520.9px |       520.9px |   **510.5px** | flat — both states wrap                        |
+
+**The fix's COST, stated plainly because it is the number a reviewer will ask about: the panel is
+now permanently 510.5px — `+22.6px` against the old quiet state and `−10.4px` against the old
+resolve state, at every cursor and every width.** That is the trade: 33px of jitter on every step,
+for 22.6px of constant height. It is the right way round here — the shell is a vertical stack, so
+jitter costs the reader every panel below the predictor on every step, while constant height costs
+one scroll line once — but it is a real cost, not a free win.
 
 Measured identically on the 5-stage pipeline and on the crowded out-of-order config, so it is the
 header's own content and not a neighbour's; `dBelow` was 33 at every width in the band, i.e. every
@@ -1480,6 +1487,12 @@ turns "the net cannot be written where the decision lives" into a number rather 
 | 8   | the follow highlight composing with the map                                |   2 | clicking the resolving branch lights exactly its row; following a non-branch lights none                          |
 | 9   | the depth dial                                                             |   1 | byte-identical at all three tiers — the panel takes no `tier` prop                                                |
 | 10  | console                                                                    |   1 | zero errors or exceptions across the whole pass                                                                   |
+
+⚠ **What the browser actually swept, stated so step 8 does not read the table as broader than it
+is: five schemes × the PIPELINE (§1), and one scheme (`dynamic-2bit`) × all four betting models
+(§2).** The full scheme × model cross-product is covered headlessly — INV-8 per model since step 5,
+plus each model's own `dynamic-predict.test.ts` — so this is a deliberate split rather than a hole,
+but the browser's per-model evidence is one scheme deep.
 
 **The flagship came out cheaper than the plan assumed, and the dump is why.** Under BOTH dynamic
 schemes the inner loop's exit resolves at cycle **37** and its re-entry at cycle **53** — the same
