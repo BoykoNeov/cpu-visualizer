@@ -190,9 +190,10 @@ describe('five stages, four latches', () => {
       exMem: null,
       memWb: null,
       cache: null, // no cache configured (ADD_S runs cache-off): the timing shadow is absent
-      // Null under EVERY scheme as of the dynamic-branch-prediction plan's step 1 — the field
-      // exists but nothing constructs a predictor until step 3 wires the bet site. This whole-micro
-      // `toEqual` is the only assertion in the repo that saw the field arrive, which is the point of
+      // Null because THIS run is `'none'`, not because the field is unwired: since step 4 the
+      // pipeline records a real counter table under the two dynamic schemes, and `null` is what a
+      // machine with no table reports. `dynamic-predict.test.ts` pins both halves. This whole-micro
+      // `toEqual` is the only assertion in the repo that saw the field ARRIVE, which is the point of
       // spelling the shape out here rather than probing fields one at a time: a `micro` that grows a
       // member has to come through this line.
       predictor: null,

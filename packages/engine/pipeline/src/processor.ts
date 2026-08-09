@@ -204,17 +204,16 @@ export interface PipelineMicro {
   /**
    * The branch history table's counters, or `null` when the configured scheme has no memory.
    *
-   * ⚠ **Still `null` on every recorded cycle, INCLUDING under `'dynamic-1bit'` / `'dynamic-2bit'`,
-   * and as of step 3 that is no longer because there is nothing to report.** This model now drives a
-   * real {@link BranchPredictor} — the bet site consults it and EX trains it — but the RECORDING is
-   * the plan's step 4, deliberately held back so that step's break harness has something to break.
-   * Wiring the snapshot here would have dissolved step 4 into a line of step 3, which is the same
-   * trade step 2 refused when it kept `snapshot()` returning the live table rather than a defensive
-   * copy. So between step 3 and step 4 this field UNDERSTATES the machine, which is a temporary lie
-   * and is why it is stated rather than left to be inferred from a `null`.
+   * **Recorded for real as of the plan's step 4** — under `'dynamic-1bit'` / `'dynamic-2bit'` this is
+   * the machine's live table as it stood at the END of the cycle, and `null` under every static
+   * scheme, where there is no table rather than an empty one. Between steps 3 and 4 it was `null`
+   * even while the bet site consulted a live counter table: a deliberate, temporary UNDERSTATEMENT
+   * of the machine (and an INV-2 one — the engine emits full expert-complete state and the view
+   * decides what to show), held back only so step 4's break harness had something to break.
    *
-   * `web/src/models.test.ts` asserts only that the KEY is present on every recorded cycle, so `null`
-   * here keeps that guard honest meanwhile — it is pinning the spelling, not the value.
+   * ⚠ **Landing the recording reddened ZERO of 7830 tests**, because nothing reads this field until
+   * step 6's panel; `web/src/models.test.ts` pins the KEY's spelling, never its value. The net is
+   * `dynamic-predict.test.ts`'s step-4 block, written with the recording.
    *
    * ⚠ **Spelled `predictor` in `DeepPipelineMicro`, `SuperscalarMicro` and `OutOfOrderMicro` too,
    * and that agreement is load-bearing rather than tidy.** `cache-grid.ts`'s own header records the
@@ -503,8 +502,8 @@ export class PipelineProcessor implements Processor {
    * keep rather than merely hope for: with no predictor there is no counter to consult.
    *
    * **Single-buffered and mutated in place** by EX, exactly like {@link cache} — which is why
-   * recording it (step 4) needs a DEEP copy, and why this model's `micro.predictor` is still `null`
-   * meanwhile. Constructed once per {@link reset} from `config.branchPrediction`, so the counter
+   * {@link snapshotState} copies its counters rather than handing {@link BranchPredictor.snapshot}'s
+   * live array through (step 4). Constructed once per {@link reset} from `config.branchPrediction`, so the counter
    * width is derived in ONE place for all four wiring sites (step 2's reason for taking the scheme
    * in its constructor rather than threading a config through every call).
    */
@@ -1425,18 +1424,22 @@ export class PipelineProcessor implements Processor {
   /**
    * An independent full-state snapshot — what each CycleTrace carries (handoff §6). The latch
    * objects are immutable and rebuilt each cycle, so copying the container is enough to keep
-   * every recorded cycle's `micro` genuinely its own. The cache is the ONE exception: it is
-   * single-buffered and mutated in place by {@link access}, so it must be DEEP-COPIED here or
-   * every recorded snapshot would alias the final (fully warmed) state — the same reason
-   * `memory` is snapshotted rather than shared.
+   * every recorded cycle's `micro` genuinely its own. There are **TWO exceptions**, and they are the
+   * same exception twice: the cache and the counter table are each single-buffered and mutated in
+   * place — by {@link access} and by the EX training call respectively — so each must be DEEP-COPIED
+   * here or every recorded snapshot would alias the final (fully warmed, fully trained) state. Same
+   * reason `memory` is snapshotted rather than shared.
    *
-   * ⚠ **"The ONE exception" is true TODAY and stops being true at the dynamic-branch-prediction
-   * plan's step 4**, when `predictor` becomes the second: a counter table is single-buffered and
-   * mutated in place for the identical reason, so it needs the identical deep copy. Flagged in the
-   * prose rather than only on the field, because THIS docblock is what someone deciding what to copy
-   * reads — `models.test.ts` records this repo's own instance of the class, a comment that "said the
-   * opposite until M11 step 7, a stale claim sitting directly above the assertion that contradicts
-   * it."
+   * ⚠ **`predictor` became the second at the dynamic-branch-prediction plan's step 4, and this
+   * docblock said "the cache is the ONE exception" until then** — flagged in the prose rather than
+   * only on the field, because THIS is what someone deciding what to copy reads. `models.test.ts`
+   * records this repo's own instance of the class, a comment that "said the opposite until M11
+   * step 7, a stale claim sitting directly above the assertion that contradicts it."
+   *
+   * ⚠ **`.slice()` on the counters, not a spread of the wrapper.** `{ ...snapshot() }` builds a new
+   * `PredictorState` around the SAME array, so it reads as a copy, passes an identity check on the
+   * object, and aliases every cycle anyway. `dynamic-predict.test.ts` asserts distinctness on
+   * `.counters` for exactly that reason.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: PipelineMicro = {
@@ -1445,12 +1448,15 @@ export class PipelineProcessor implements Processor {
       exMem: latches.exMem,
       memWb: latches.memWb,
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
-      // ⚠ **Still null even though step 3 now DRIVES a predictor** — this model bets from a live
-      // counter table, and this line reports none. That is the plan's sequencing, not an oversight:
-      // recording it is step 4, which exists as its own step so its break harness (make the copy
-      // shallow, see what stays green) has something to break. The DEEP COPY it must arrive with is
-      // specified in `PipelineMicro.predictor`'s docblock, next to the cache's one line up.
-      predictor: null,
+      // The counter table (step 4), copied the same way and for the same reason as the cache above.
+      // ⚠ **`.slice()` is the whole of it, and the two cheaper spellings are both broken.** Handing
+      // `snapshot()` straight through aliases ONE table into every recorded cycle; spreading it
+      // (`{ ...snapshot() }`) builds a fresh wrapper around that same array, which reads as a copy
+      // and is not one. Either way a scrub to cycle 0 shows a machine that has already learned
+      // everything. The array is the only mutable thing here — `PredictorState` holds counters and
+      // nothing else — so copying it IS the deep copy.
+      predictor:
+        this.predictor === null ? null : { counters: this.predictor.snapshot().counters.slice() },
     };
     return {
       pc: this.pc,

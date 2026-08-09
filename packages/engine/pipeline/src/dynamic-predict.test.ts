@@ -5,6 +5,7 @@ import { assemble } from '@cpu-viz/assembler';
 import { decode } from '@cpu-viz/isa';
 import {
   BranchPredictor,
+  PREDICTOR_ENTRIES,
   isConditionalBranch,
   isPredictable,
   toProgramImage,
@@ -16,7 +17,7 @@ import {
   type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
-import { PipelineProcessor } from './index';
+import { PipelineProcessor, type PipelineMicro } from './index';
 
 /**
  * **The net for the dynamic schemes — step 3's acceptance, and the reason it is three claims rather
@@ -268,7 +269,7 @@ function eventsOf<T extends TraceEvent['type']>(
 }
 
 const config = (
-  branchPrediction: (typeof SCHEMES)[number],
+  branchPrediction: ProcessorConfig['branchPrediction'],
   forwarding: boolean,
 ): ProcessorConfig => ({
   ...defaultConfig(),
@@ -447,4 +448,184 @@ describe('the dynamic schemes, pinned three ways', () => {
     const [, staticTaken, , twoBit] = totals(FILES, 'off');
     expect(staticTaken! - twoBit!, 'the 2-bit margin over static-taken, corpus-wide').toBe(7);
   });
+});
+
+/** The counters recorded at each cycle — `micro.predictor`, or `null` for a machine with no table. */
+const tablesOf = (ts: CycleTrace[]): (number[] | null)[] =>
+  ts.map((t) => (t.state.micro as PipelineMicro).predictor?.counters ?? null);
+
+/**
+ * What the table WOULD hold at the end of each cycle, replayed offline from the same branches.
+ *
+ * The per-cycle sibling of {@link replay}, and it reaches each branch's pc by the same independent
+ * route (join `branch-resolved` to `instr-fetch`, re-decode the encoding) for the same reason. What
+ * it adds is WHEN: the recorded table at cycle `i` must already carry cycle `i`'s own training,
+ * because `micro` is a post-cycle snapshot — the rule `cache-grid.ts` states for every state view
+ * ("state panels show the post-cycle-`i` result"). A snapshot taken before EX ran would be one
+ * cycle stale at every branch and identical everywhere else.
+ *
+ * ⚠ **The `.slice()` is not incidental** — `snapshot()` hands back the LIVE table by design (step 2),
+ * so without it this helper would return one aliased array per cycle and reproduce, inside the test,
+ * exactly the defect the test exists to catch.
+ */
+function expectedTables(ts: CycleTrace[], scheme: DynamicScheme): number[][] {
+  const fetches = eventsOf(ts, 'instr-fetch');
+  const pcOf = new Map(fetches.map((e) => [e.instr, e.pc]));
+  const encodingOf = new Map(fetches.map((e) => [e.instr, e.encoding]));
+  const predictor = new BranchPredictor(scheme);
+  return ts.map((t) => {
+    for (const e of t.events) {
+      if (e.type !== 'branch-resolved') continue;
+      const pc = pcOf.get(e.instr);
+      const encoding = encodingOf.get(e.instr);
+      if (pc === undefined || encoding === undefined) {
+        throw new Error(`branch-resolved names ${e.instr}, which was never fetched`);
+      }
+      if (isConditionalBranch(decode(encoding))) predictor.update(pc, e.actual);
+    }
+    return predictor.snapshot().counters.slice();
+  });
+}
+
+/** A cold 2-bit table: sixteen counters, each **weakly not-taken** — written out, not asked for. */
+const COLD_2BIT = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+
+/**
+ * `nested-loop.s`'s table after the last branch retires, under `'dynamic-2bit'`. Three rows moved
+ * and thirteen did not, and each of the three is a branch in the source:
+ *
+ *   - **index 2** — the guard at pc 8 (`bne x0, x0, done`), never taken four times over, so its
+ *     counter is driven to the floor and parks at 0.
+ *   - **index 6** — the inner branch at pc 24, `TTTTTN` per pass. It ends each pass at 2 rather
+ *     than 0, which IS the feature: a 2-bit counter walks back one step on the exit and re-enters
+ *     still betting taken, where the 1-bit table (below) is knocked all the way out of its habit.
+ *   - **index 8** — the outer branch at pc 32, `TTTN`, ending weakly taken for the same reason.
+ *
+ * ⚠ **Written out rather than compared against a replay, and that buys a defect class nothing else
+ * in this file can see.** The replay routes through `predictorIndex` exactly as the engine does, so
+ * a CONSISTENT shift of the index — the rotation the plan's `TEXT_BASE` note describes, measured at
+ * step 3 as invisible to the engine, the trace and the replay alike — agrees with itself perfectly.
+ * A literal naming rows 2, 6 and 8 does not: rotate the index and the moved counters land elsewhere.
+ * Until now the sole net for that class was `predictor.test.ts`'s unit tests on the index function.
+ */
+const TRAINED_2BIT_NESTED = [1, 1, 0, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1];
+
+/**
+ * **Step 4 — the table is RECORDED, and the deep copy is the whole of the step** (plan step 4).
+ *
+ * Between steps 3 and 4 this model bet from a live counter table and reported `micro.predictor` as
+ * `null` on every cycle: a temporary understatement of the machine, and an INV-2 one — the engine is
+ * supposed to emit full, expert-complete state and let the VIEW decide what to show. This block is
+ * what closes it, and it is the only thing that does. ⚠ **Landing the recording reddened ZERO tests
+ * across all 7830** — every suite in the repo was structurally blind to a `null` becoming a table,
+ * because nothing reads the field until step 6's panel. Same root as step 1's untested
+ * `predictorIndex` and step 3's untested datapath seam: code with no consumer yet is code no test is
+ * shaped to cover.
+ *
+ * ## Why a deep copy, and why the two cheaper spellings are both wrong
+ *
+ * `BranchPredictor` is single-buffered and mutated in place, exactly like `CacheState` — so the
+ * recorder owns the copy (step 2 kept `snapshot()` returning the live table for precisely this
+ * reason, rather than hiding the decision in a getter one package down). Handed straight through,
+ * one array would alias every recorded cycle and a scrub back to cycle 0 would show a machine that
+ * has already learned everything. Spreading the wrapper (`{ ...snapshot() }`) looks like a fix,
+ * passes an identity check on the OBJECT, and aliases the same array.
+ *
+ * That is why the identity assertion below is on `.counters` and never on the wrapper: the wrapper
+ * check is green under the mutation a reviewer is most likely to wave through.
+ *
+ * ## What each claim here would miss alone
+ *
+ * **Cycle 0 is COLD** is the net — it is the assertion the shallow copy fails. **The last cycle is
+ * TRAINED** is not coverage at all: a shallow copy shows the trained table everywhere, so that one
+ * passes under the defect. It is the non-vacuity control, and it is stated as one. **Cold ≠ trained**
+ * is what makes both mean something: on a program with no conditional branch (`add.s`, three of
+ * them in the corpus) every claim here holds trivially in both directions.
+ *
+ * ⚠ **And the control has to be `'dynamic-2bit'`, which is not arbitrary.** Under `'dynamic-1bit'`
+ * `nested-loop.s`'s final table is *identical to the cold one* — every counter it touched ends back
+ * at 0, because each of its three branches' last outcome is not-taken and a 1-bit counter keeps no
+ * memory of anything earlier. The obvious choice of scheme would have made the non-vacuity control
+ * assert nothing, which is this repo's recurring "the canonical demonstration is not the test of the
+ * mechanism" (step 2's flagship `TTTTNTTTT`) in a new place.
+ */
+describe('the recorded table (step 4 — the deep copy)', () => {
+  const TRAINS = 'nested-loop.s'; // three branch sites, 32 resolutions, and rows that move
+
+  it('records a COLD table at cycle 0 — the assertion a shallow copy fails', () => {
+    const tables = tablesOf(run(TRAINS, config('dynamic-2bit', false)));
+    expect(tables[0]).toEqual(COLD_2BIT);
+    expect(tables[0]).toHaveLength(PREDICTOR_ENTRIES);
+  });
+
+  it('...and a TRAINED one at the end — the control, which the shallow copy also passes', () => {
+    const tables = tablesOf(run(TRAINS, config('dynamic-2bit', false)));
+    expect(tables.at(-1)).toEqual(TRAINED_2BIT_NESTED);
+    // Non-vacuity for the two assertions on either side of this one. Both are claims about a table
+    // CHANGING, and both hold trivially on a program whose table never moves.
+    expect(TRAINED_2BIT_NESTED).not.toEqual(COLD_2BIT);
+  });
+
+  it('...and the 1-bit table ends cold, which is why the control above is not 1-bit', () => {
+    // Not a curiosity: it is the reason the scheme above is pinned. Each of the three branches'
+    // LAST outcome is not-taken, and a 1-bit counter remembers only that — so `nested-loop.s`, the
+    // program authored to make this feature legible, finishes under `'dynamic-1bit'` holding
+    // exactly the table it started with. Asserted so that a future edit to the program (or to the
+    // seed) which quietly makes 1-bit a valid control has to come through here and say so.
+    const tables = tablesOf(run(TRAINS, config('dynamic-1bit', false)));
+    const cold = new Array<number>(PREDICTOR_ENTRIES).fill(0);
+    expect(tables[0]).toEqual(cold);
+    expect(tables.at(-1)).toEqual(cold);
+    // ...while the run in between is emphatically not constant, which is what keeps this from
+    // reading as "the 1-bit predictor never learned anything".
+    expect(new Set(tables.map((t) => t!.join(','))).size).toBeGreaterThan(1);
+  });
+
+  it('gives every cycle its OWN array — a spread of the wrapper is not a copy', () => {
+    const ts = run(TRAINS, config('dynamic-2bit', false));
+    const counters = ts.map((t) => (t.state.micro as PipelineMicro).predictor!.counters);
+    // On `.counters`, never on the `PredictorState` wrapper. `{ ...snapshot() }` builds a fresh
+    // wrapper around the SAME array — it would pass an identity check on the object and alias every
+    // recorded cycle anyway, which is the defect most likely to survive review.
+    expect(new Set(counters).size, 'one array per cycle, shared with nothing').toBe(ts.length);
+  });
+
+  /**
+   * The strongest claim here, and the only one that pins WHEN the snapshot is taken: the table
+   * recorded at cycle `i` is the table an offline predictor holds after replaying every branch
+   * resolved **through** cycle `i`. Post-cycle, per `micro`'s contract.
+   *
+   * Both forwarding positions and every program, because forwarding moves stalls and so moves which
+   * cycle each branch resolves in — a snapshot taken one stage too early would land differently in
+   * the two positions rather than uniformly.
+   */
+  it.each(CASES)(
+    '$file under $scheme records the table trained through each cycle',
+    ({ file, scheme }) => {
+      for (const forwarding of [false, true]) {
+        const ts = run(file, config(scheme, forwarding));
+        expect(tablesOf(ts), `fwd=${forwarding}`).toEqual(expectedTables(ts, scheme));
+      }
+    },
+  );
+
+  /**
+   * The inertness half: a machine with no counter table records `null`, not an empty or a cold one.
+   * `'none'` is included even though it is the same MACHINE as `'static-not-taken'` — this is a
+   * claim about what the config produces, and `'none'` is what `defaultConfig()` selects, so it is
+   * the value every other suite in the repo reads.
+   */
+  it.each(['none', 'static-not-taken', 'static-taken'] as const)(
+    'records `null` under %s — no table, nothing to report',
+    (scheme) => {
+      for (const forwarding of [false, true]) {
+        const tables = tablesOf(run(TRAINS, config(scheme, forwarding)));
+        expect(tables.length, `${scheme} fwd=${forwarding}`).toBeGreaterThan(0);
+        expect(
+          tables.every((t) => t === null),
+          `${scheme} fwd=${forwarding}`,
+        ).toBe(true);
+      }
+    },
+  );
 });

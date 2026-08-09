@@ -89,11 +89,13 @@ export function predictorIndex(pc: number): number {
  * already has in hand — exactly as the cache grid takes its geometry from `CacheConfig` while
  * {@link CacheState} carries only the lines. The state carries the mutable part and nothing else.
  *
- * ⚠ **Deep-copy this into every `MachineState.micro` snapshot.** It is single-buffered and mutated
- * in place, so a shallow copy would alias one table across every recorded cycle and time-travel
- * would show the fully-TRAINED predictor at cycle 0 — the exact defect `CacheState`'s own note
- * warns about, and the reason the plan gives the deep copy its own step with a break harness
- * (step 4) rather than a line inside the wiring step.
+ * ⚠ **Deep-copy this into every `MachineState.micro` snapshot** — `.slice()` the counters, and note
+ * that a spread of THIS object is not enough: `{ ...state }` builds a fresh wrapper around the same
+ * array, which reads as a copy and aliases anyway. It is single-buffered and mutated in place, so a
+ * shallow copy would alias one table across every recorded cycle and time-travel would show the
+ * fully-TRAINED predictor at cycle 0 — the exact defect `CacheState`'s own note warns about, and the
+ * reason the plan gives the deep copy its own step with a break harness (step 4). **Done on the
+ * pipeline at step 4; the other three models copy that shape at step 5.**
  */
 export interface PredictorState {
   readonly counters: number[];
@@ -276,6 +278,11 @@ export class BranchPredictor {
    * would dissolve the plan's step 4, which exists as its own step *with a break harness* because a
    * shallow snapshot is the defect this design is most likely to ship: every recorded cycle would
    * alias one mutable table, and scrubbing to cycle 0 would show the fully-TRAINED predictor.
+   *
+   * **Step 4 landed on the pipeline and the contract held** — `snapshotState` there does the
+   * `.slice()`, and `dynamic-predict.test.ts` asserts distinctness on the recorded `.counters`. So
+   * a caller who wants an independent table copies it; a caller who wants to WATCH the live one
+   * (the replay helpers in that file, and the step-5 wiring sites) simply does not.
    */
   snapshot(): PredictorState {
     return this.state;

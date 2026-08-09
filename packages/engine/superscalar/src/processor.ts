@@ -1787,10 +1787,13 @@ export class SuperscalarProcessor implements Processor {
    *   recording, replaying a cold cache as warm-from-the-start. `recorder.test.ts` now pins it,
    *   because time-travel is the only layer at which it is observable at all.
    *
-   * ⚠ **"Uniquely so" is true TODAY and stops being true at the dynamic-branch-prediction plan's
-   * step 4**, when `predictor` becomes the second load-bearing deep copy — single-buffered and
-   * mutated in place for the identical reason, and with the identical 694-tests-green failure mode.
-   * Flagged here because this docblock, not the field's, is what someone deciding what to copy reads.
+   * ⚠ **"Uniquely so" is true on THIS model and stops being true at the dynamic-branch-prediction
+   * plan's step 5**, when `predictor` becomes the second load-bearing deep copy — single-buffered
+   * and mutated in place for the identical reason, and with the identical 694-tests-green failure
+   * mode. Flagged here because this docblock, not the field's, is what someone deciding what to copy
+   * reads. **The pipeline already did it** at step 4: `.slice()` the counters, and NOT a spread of
+   * the `PredictorState` wrapper, which builds a fresh object around the same array and aliases
+   * every cycle anyway while passing an identity check on the object.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: SuperscalarMicro = {

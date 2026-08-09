@@ -1513,11 +1513,13 @@ export class DeepPipelineProcessor implements Processor {
    * cannot see that — only time-travel can, which is why `cache.test.ts` pins a cold early snapshot
    * against a warm late one rather than trusting the copy to be right.
    *
-   * ⚠ **"The ONE exception" is true TODAY and stops being true at the dynamic-branch-prediction
-   * plan's step 4**, when `predictor` becomes the second: a counter table is single-buffered and
-   * mutated in place for the identical reason, and needs the identical deep copy plus its own
-   * cold-early-against-warm-late pin. Flagged here because this docblock, not the field's, is what
-   * someone deciding what to copy reads.
+   * ⚠ **"The ONE exception" is true on THIS model and stops being true at the
+   * dynamic-branch-prediction plan's step 5**, when `predictor` becomes the second: a counter table
+   * is single-buffered and mutated in place for the identical reason, and needs the identical deep
+   * copy plus its own cold-early-against-warm-late pin. Flagged here because this docblock, not the
+   * field's, is what someone deciding what to copy reads. **The pipeline already did it** at step 4
+   * — copy that shape rather than re-deriving it, `.slice()` on the counters and NOT a spread of the
+   * `PredictorState` wrapper, which builds a fresh object around the same array and aliases anyway.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: DeepPipelineMicro = {

@@ -127,9 +127,10 @@ function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
  * readout — the panel is a property of the RECORDING, and only its contents are a property of the
  * cursor.
  *
- * ⚠ **`predictor: null` here is a step-1 placeholder and step 6 MUST revisit it.** The field is null
- * on every recorded cycle today (nothing constructs a predictor until the dynamic-branch-prediction
- * plan's step 3/5), so this is currently the truth. Once a predictor exists, the honest pre-run
+ * ⚠ **`predictor: null` here is a step-1 placeholder and step 6 MUST revisit it.** This literal is
+ * an `OutOfOrderMicro`, and the out-of-order core constructs no predictor until the
+ * dynamic-branch-prediction plan's step 5 — so `null` is still the truth HERE, even though the
+ * pipeline has recorded a real table since step 4. Once this model has one, the honest pre-run
  * value is the COLD table — every counter at its seed — not `null` and emphatically not `m.predictor`
  * carried forward, which would show a fully-TRAINED table before a single instruction had run: the
  * shallow-copy defect the plan gives its own step, arriving through the front door of a fabricated
