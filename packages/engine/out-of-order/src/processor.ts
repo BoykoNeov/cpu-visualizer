@@ -67,6 +67,9 @@ import {
   access,
   newCache,
   MAX_ISSUE_WIDTH,
+  BranchPredictor,
+  isConditionalBranch,
+  isDynamicScheme,
   type CacheState,
 } from '@cpu-viz/engine-common';
 import {
@@ -279,7 +282,23 @@ export class OutOfOrderProcessor implements Processor {
   private sourceMap: ReadonlyMap<number, number> = new Map();
 
   private width = 2; // OoO's own default is 2, unlike the superscalar's 1 (pinned decision)
+  /**
+   * `true` only for `'static-taken'` — one machine under two names for `'none'` and
+   * `'static-not-taken'`. **It stays a boolean for the STATIC half of the union**: the dynamic
+   * schemes answer "bet taken?" per branch from {@link predictor}, never from the config. Read only
+   * through {@link betTarget} and {@link hasBetPath}.
+   */
   private predictTaken = false;
+  /**
+   * The branch history table (dynamic-branch-prediction step 5), or `null` under every static
+   * scheme — so `null` is the M9/M10 machine unchanged. **One table for the whole core**, shared
+   * across lanes and across everything in flight; a per-lane table would be a different machine, and
+   * the superscalar's own row measured that decision as unreachable on this corpus.
+   *
+   * **Single-buffered and mutated in place** by the resolve-time training call, exactly like
+   * {@link cache} — hence the `.slice()` in {@link snapshotState}.
+   */
+  private predictor: BranchPredictor | null = null;
   private cacheConfig: CacheConfig | null = null;
   private cache: CacheState | null = null;
 
@@ -335,6 +354,10 @@ export class OutOfOrderProcessor implements Processor {
     boundedIssueWidth(width);
     this.width = width;
     this.predictTaken = config.branchPrediction === 'static-taken';
+    // A fresh, COLD table per run (INV-1: no state may survive a reset).
+    this.predictor = isDynamicScheme(config.branchPrediction)
+      ? new BranchPredictor(config.branchPrediction)
+      : null;
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.outOfOrder = config.outOfOrderIssue ?? false;
@@ -1216,6 +1239,24 @@ export class OutOfOrderProcessor implements Processor {
         actual: taken,
         target: nextPc,
       });
+      // TRAINING (dynamic-branch-prediction step 5), and this is the only place it happens.
+      //
+      // ⚠ **AT RESOLVE, NOT AT COMMIT — and this is the one model where those are different
+      // instants.** In the three latch machines an instruction in an older transfer's shadow is
+      // flushed before it can reach the resolve point, so a branch that resolves always retires and
+      // the fork cannot be stated, let alone chosen. Here a younger branch can resolve and then be
+      // killed by an older mispredict, so the plan holds the question open for exactly this line.
+      //
+      // Update-on-resolve is the pinned answer: the machine learns from what it SAW. It is also the
+      // rule the other three models already follow — there it is a fact about latches rather than a
+      // decision, but the sentence "a branch trains the table when it resolves" is then true of the
+      // whole family, and a reader who learns it on the 5-stage does not have to unlearn it here.
+      // Update-on-commit is the realistic alternative (a real core does not want wrong-path history
+      // in its table) and is a strictly larger change: the outcome would have to ride the ROB entry
+      // to the commit stage. See the plan's decisions table for what that fork is measured to cost.
+      if (this.predictor !== null && isConditionalBranch(d)) {
+        this.predictor.update(e.pc, taken);
+      }
       if (predicted !== taken) {
         this.lastBranchWasPredictedTaken = predicted;
         ctx.squash = { seq: e.seq, reason: 'branch' };
@@ -1269,7 +1310,7 @@ export class OutOfOrderProcessor implements Processor {
     // instructions that, unlike a normal RAW wait, may turn out to be on the WRONG path, and
     // (unlike a normal wrong-path squash) would never be caught by the mispredict check if the
     // eventual bet happens to match the actual outcome.
-    if (this.predictTaken && this.hasUnresolvedBet()) return;
+    if (this.hasBetPath() && this.hasUnresolvedBet()) return;
 
     let dispatched = 0;
     for (let s = 0; s < this.width; s++) {
@@ -1310,7 +1351,7 @@ export class OutOfOrderProcessor implements Processor {
       // dispatch alongside it in this SAME cycle, or a same-cycle over-dispatch could smuggle
       // more wrong-path instructions into the ROB before the bet (and the redirect it carries)
       // exists at all.
-      if (this.predictTaken && speculativeTarget(d, f.pc) !== null) break;
+      if (this.hasBetPath() && speculativeTarget(d, f.pc) !== null) break;
     }
 
     // Slide: whatever dispatch did not consume moves down to lead next cycle's group.
@@ -1321,6 +1362,49 @@ export class OutOfOrderProcessor implements Processor {
       if (f !== null) kept[k++] = f;
     }
     this.ifSlot = kept;
+  }
+
+  /**
+   * **Does this machine have a taken-bet path at all?** — the question the three STRUCTURAL guards
+   * ask, as opposed to "what does this branch predict", which is {@link betTarget}'s.
+   *
+   * ⚠ **Keeping these two apart is the whole of what step 5 had to get right on this model.** Before
+   * the dynamic schemes there was one boolean and it answered both, so the guards read
+   * `this.predictTaken`. They are not the same question: a dynamic machine HAS the path — any branch
+   * may be bet taken — while any individual branch may be predicted not-taken. Gating dispatch on
+   * the per-branch answer would freeze the core on a branch it had already declined to bet.
+   *
+   * The three guards are one predicate rather than three `predictTaken || predictor !== null`
+   * disjunctions for the reason `m13-width-planned.md` measures: four sites sharing a condition are
+   * four chances to spell it differently, and this repo's signature defect is a transposition that
+   * typechecks.
+   *
+   * **Why a machine WITH the path must freeze dispatch even when it will decline.** The core does
+   * not consult the counter until the branch is about to issue ({@link stageBet}, one cycle before —
+   * the decoupling bug #6 exists to respect), so at dispatch time it genuinely does not yet know
+   * which way this branch goes. Under `'static-not-taken'` there is nothing to know: the machine has
+   * no taken path, so the fall-through is not a guess and dispatch never freezes. That asymmetry is
+   * the machine's, not the predictor's.
+   */
+  private hasBetPath(): boolean {
+    return this.predictTaken || this.predictor !== null;
+  }
+
+  /**
+   * **The bet, in one place** — where this word would be predicted to go, or `null` for "no bet".
+   * The same three cases, in the same order, as the other three models' `betTarget`, which is the
+   * point: the plan's step-5 risk is four models answering one policy four ways.
+   *
+   *  1. **Not a PC-relative transfer** ⇒ no bet under any scheme (a `jalr`'s target is a register).
+   *  2. **No table** ⇒ M4's machine verbatim, `predictTaken` alone.
+   *  3. **A table** ⇒ a conditional branch asks its counter; `jal` bypasses it and is bet taken.
+   */
+  private betTarget(d: DecodedInstruction, pc: number): number | null {
+    const target = speculativeTarget(d, pc);
+    if (target === null) return null;
+    if (this.predictor === null) return this.predictTaken ? target : null;
+    if (!isConditionalBranch(d)) return target;
+    return this.predictor.predict(pc) ? target : null;
   }
 
   /** Is there a predictable transfer still `'waiting'`, un-bet, anywhere in the ROB? */
@@ -1365,13 +1449,17 @@ export class OutOfOrderProcessor implements Processor {
   // -----------------------------------------------------------------------------------------
 
   private stageBet(ctx: CycleCtx): void {
-    if (!this.predictTaken) return;
+    if (!this.hasBetPath()) return;
     if (ctx.squash !== null || ctx.bet !== null) return;
 
     for (const e of this.walkIssuable(ctx)) {
       if (!TRANSFERS.has(e.decoded.mnemonic) || e.predictedTaken) continue;
-      const target = speculativeTarget(e.decoded, e.pc);
-      if (target === null) continue; // not predictable (or a `jalr` — see `predict.ts`)
+      const target = this.betTarget(e.decoded, e.pc);
+      // Nothing to redirect: an unpredictable `jalr`, or a counter that said not-taken. **`return`,
+      // not `continue`, and the two are equivalent rather than a choice** — `walkIssuable` yields at
+      // most ONE transfer per cycle (its `branchUsed` resource), so there is never a second one to
+      // look at. Returning is the honest reading: the branch unit has made this cycle's decision.
+      if (target === null) return;
 
       e.predictedTaken = true;
       ctx.bet = { seq: e.seq, target };
@@ -1440,10 +1528,10 @@ export class OutOfOrderProcessor implements Processor {
    * see {@link OutOfOrderMicro}'s doc for why (the shared cache grid depends on pipeline-shaped
    * `exMem` state this model lacks).
    *
-   * ⚠ **`predictor` arrives at the dynamic-branch-prediction plan's step 5 and needs a real DEEP
+   * ⚠ **`predictor` arrived at the dynamic-branch-prediction plan's step 5 and carries a real DEEP
    * COPY**, the discipline the ROB projection above already follows and the cache would need if it
-   * were exposed here: a counter table is single-buffered and mutated in place, so a `.slice()`
-   * replays a fully-trained table at cycle 0. Unlike the cache, it IS exposed — see
+   * were exposed here: a counter table is single-buffered and mutated in place, so handing the live
+   * one through replays a fully-trained table at cycle 0. Unlike the cache, it IS exposed — see
    * {@link OutOfOrderMicro.predictor} for why the two decisions differ, and for the
    * update-on-resolve vs update-on-commit fork this model is the only one to pose.
    */
@@ -1452,10 +1540,13 @@ export class OutOfOrderProcessor implements Processor {
       robCapacity: this.rob.maxSize,
       rob: this.rob.all().map((e) => copyRobEntry(e)),
       rename: this.rename.snapshot().map(renameSlotView),
-      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive with
-      // it — and the update-on-resolve vs update-on-commit fork this machine is the only one to
-      // pose — are both specified in `OutOfOrderMicro.predictor`'s docblock.
-      predictor: null,
+      // The counter table (step 5), deep-copied for the same reason the ROB projection above is:
+      // it is single-buffered and mutated in place, so handing `snapshot()` through would alias one
+      // fully-trained table into every recorded cycle. `.slice()` is the whole of it —
+      // `PredictorState` holds counters and nothing else — and a spread of the WRAPPER is not a
+      // copy, since it builds a fresh object around the same array.
+      predictor:
+        this.predictor === null ? null : { counters: this.predictor.snapshot().counters.slice() },
     };
   }
 }
