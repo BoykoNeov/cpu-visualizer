@@ -2633,6 +2633,39 @@ describe('bet-that-learns — the counter that remembers across a loop exit (BP 
     expect(mispredicts(oneBit)).toBe(10);
     expect(mispredicts(taken)).toBe(9);
     expect(oneBit.length).toBeLessThan(taken.length);
+
+    // ⚠ **And the ledger is only measured if the PROSE is measured against it.** The break table
+    // found this one: misstating a single figure in the expert paragraph (the 1-bit table's 32 →
+    // 31) reddened NOTHING, because every number above was computed here and then compared with
+    // another computation. A number a test derives and never reads back out of the narration is a
+    // comment. So each figure is checked BESIDE the words that claim it, which is the same guard
+    // the cycle counts get one test up — a bare `toContain` would pass on a paragraph that credits
+    // the 2-bit table with the 1-bit table's bill.
+    const expert = lesson().steps[6]!.narration.expert!;
+    const claims: [string, number][] = [
+      ['guard', cost(taken, GUARD_ROW)],
+      ["loop's branch", cost(taken, INNER_ROW)],
+      ['1-bit table', cost(oneBit, INNER_ROW)],
+      ['2-bit table', cost(twoBit, INNER_ROW)],
+      ['outer branch', cost(taken, 8)],
+      ['always-taken', cost(taken, null)],
+      ["1-bit table's", cost(oneBit, null)],
+      ["2-bit table's", cost(twoBit, null)],
+    ];
+    for (const [phrase, value] of claims) {
+      expect(
+        statesNumberBeside(expert, phrase, String(value)),
+        `the expert ledger does not state ${value} beside "${phrase}"`,
+      ).toBe(true);
+    }
+    expect(expert, 'the shared floor the three totals are added to').toContain(
+      `${floors[0]}-cycle floor`,
+    );
+    // The final sentence spells its two counts as WORDS, so there is no digit to check. The link is
+    // made here instead: the words are pinned, and the numbers they stand for are the two
+    // assertions above — which is what stops the sentence surviving a change to either.
+    expect(expert).toContain('TEN times');
+    expect(expert).toContain('NINE');
   });
 
   it('the ASK is present at every authored tier of the step that makes it', () => {
