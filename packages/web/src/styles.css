@@ -860,9 +860,18 @@ input[type='range'] {
 
 /* The branch-predictor table (dynamic-branch-prediction step 6): one row per counter, the row a
    branch trained this cycle called out. Sixteen rows, always — the table is a fixed piece of
-   hardware, so unlike every other tabular panel here the height is constant by construction and
-   needs no reserve (see `predictor-table.ts`'s header). Rows are tighter than the cache's for that
-   reason: sixteen of them at `.cache-line`'s padding would be twice the panel. */
+   hardware, so unlike every other tabular panel here the ROWS' height is constant by construction
+   and needs no reserve (see `predictor-table.ts`'s header). Rows are tighter than the cache's for
+   that reason: sixteen of them at `.cache-line`'s padding would be twice the panel. */
+
+/* ⚠ The train caption's OWN row, and it is a step-7 fix rather than a layout choice — the reason is
+   written out in `TrainCaption`'s docblock. In one sentence: this string is the only cursor-
+   dependent text in the panel, and while it sat in the heading's `flexWrap` row it wrapped that row
+   on resolve cycles and not on quiet ones, stepping the panel 33px between 900px and 1180px. It
+   stays on its own line so the heading row holds nothing that moves with the clock. */
+.predictor-train-line {
+  margin-bottom: 0.5rem;
+}
 .predictor-rows {
   display: flex;
   flex-direction: column;

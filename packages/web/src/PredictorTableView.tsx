@@ -95,13 +95,15 @@ export function PredictorTable(props: {
       style={{ marginTop: '1rem' }}
       aria-label="Branch predictor"
     >
+      {/* The heading row holds only CURSOR-INVARIANT text. See {@link TrainCaption} for why the
+          one cursor-dependent string is not allowed in here. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'baseline',
           gap: '1rem',
           flexWrap: 'wrap',
-          marginBottom: '0.5rem',
+          marginBottom: '0.35rem',
         }}
       >
         <h2 className="panel-heading" style={{ margin: 0 }}>
@@ -111,9 +113,10 @@ export function PredictorTable(props: {
           {table.entries.length} counters × {table.bits} bit{table.bits === 1 ? '' : 's'} · a branch
           picks its row by address · counters saturate, they do not wrap
         </span>
-        <span style={{ marginLeft: 'auto' }}>
-          <TrainCaption table={table} />
-        </span>
+      </div>
+
+      <div className="predictor-train-line">
+        <TrainCaption table={table} />
       </div>
 
       <div className="predictor-rows">
@@ -257,32 +260,59 @@ function PredictorRow(props: {
  * It handles more than one train because the fold hands it a list (see the fold's decision 3). The
  * corpus cannot currently produce two, so that branch is UNREACHED rather than untested-by
  * oversight — said here so the next reader does not take the plural as evidence it has been seen.
+ *
+ * ⚠ **This caption gets its OWN ROW, and that is a fix rather than a layout preference — do not put
+ * it back beside the heading.** It shipped inside the heading's `flexWrap: wrap` row, pushed right
+ * by `marginLeft: auto`, and step 7's browser pass measured what that costs: its text swings from
+ * `no branch resolved this cycle` (~200px) to a full `MISPREDICT bne x6, x0, -8 @ 0x00000018 → not
+ * taken · row 6: 3 → 2` (~470px), so between **900px and 1180px** the heading row was ONE line on a
+ * quiet cycle and TWO on a resolve — **33px of panel height appearing and disappearing as the clock
+ * stepped**, taking every surface below it along (measured identically on the pipeline and on the
+ * crowded out-of-order config; flat at ≥1200px only because `main` is capped at `maxWidth: 1200`).
+ * That is `panel-jitter`'s class, in the one place this panel's own header said it could not happen
+ * — "the height is constant by construction" is true of the ROWS and was silent about the header.
+ *
+ * The fix is the sticky transport bar's, not the cache grid's: **move the cursor-dependent text out
+ * of the wrapping row**, rather than reserving its peak width inside it. Reserving was measured and
+ * rejected there for the reason that applies here too — it makes every cursor as wide as the peak,
+ * so the row wraps at ALL cursors instead of some: stable, and stably worse for the quiet cursors,
+ * which are most of them. A ghost would also manufacture a fresh decoy for every document-wide
+ * selector that reads this panel's text, which is the trap `panel-jitter` records against the ghost
+ * idiom itself.
  */
 function TrainCaption(props: {
   table: NonNullable<ReturnType<typeof buildPredictorTable>>;
 }): React.JSX.Element {
   const { entries, trains } = props.table;
-  if (trains.length === 0) {
-    return (
-      <span style={{ fontSize: '0.75rem', color: T.ink3 }}>no branch resolved this cycle</span>
-    );
-  }
+  // ONE element in both states — same tag, same family, same size — so the line box is decided by
+  // the same three things either way and only the words and the hue change. The two states used to
+  // be two spans at 0.75rem/sans and 0.78rem/MONO; that is `CacheGridView`'s `IDLE_TAG_RESERVE`
+  // finding ("a line box is decided by content AND font AND size together"), and it only became
+  // load-bearing once this caption owned its own row and its line box WAS the row's height.
   return (
-    <span style={{ fontSize: '0.78rem', color: T.ink2, fontFamily: MONO }}>
-      {trains.map((train) => {
-        const row = entries[train.index];
-        const right = train.predicted === train.actual;
-        return (
-          <span key={train.id} style={{ marginLeft: '0.6rem' }}>
-            <span style={{ color: right ? T.monoGreen : T.danger, fontWeight: 700 }}>
-              {right ? 'CORRECT' : 'MISPREDICT'}
-            </span>{' '}
-            {train.text} @ {hex32(train.pc)} → {train.actual ? 'taken' : 'not taken'} · row{' '}
-            {train.index}
-            {row === undefined ? '' : `: ${row.previous} → ${row.counter}`}
-          </span>
-        );
-      })}
+    <span
+      style={{
+        fontSize: '0.78rem',
+        color: trains.length === 0 ? T.ink3 : T.ink2,
+        fontFamily: MONO,
+      }}
+    >
+      {trains.length === 0
+        ? 'no branch resolved this cycle'
+        : trains.map((train, i) => {
+            const row = entries[train.index];
+            const right = train.predicted === train.actual;
+            return (
+              <span key={train.id} style={i === 0 ? undefined : { marginLeft: '0.6rem' }}>
+                <span style={{ color: right ? T.monoGreen : T.danger, fontWeight: 700 }}>
+                  {right ? 'CORRECT' : 'MISPREDICT'}
+                </span>{' '}
+                {train.text} @ {hex32(train.pc)} → {train.actual ? 'taken' : 'not taken'} · row{' '}
+                {train.index}
+                {row === undefined ? '' : `: ${row.previous} → ${row.counter}`}
+              </span>
+            );
+          })}
     </span>
   );
 }

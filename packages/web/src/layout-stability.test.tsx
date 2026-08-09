@@ -51,6 +51,7 @@ import { readoutReserve } from './transport-readout';
 import { CacheGrid } from './CacheGridView';
 import { MicroTablePanel } from './MicroTablePanel';
 import { PairingReadout } from './PairingReadoutView';
+import { PredictorTable } from './PredictorTableView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { MemoryPanel, peakDataMemoryRows } from './panels';
 import { readPairing } from './pairing-readout';
@@ -417,6 +418,77 @@ describe('cache grid: an idle state chip reserves the same line box as a lit one
     const busy = htmls.filter((h) => /HIT|MISS|EVICT|FILLING/.test(h)).length;
     expect(idle).toBeGreaterThan(0);
     expect(busy).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The branch-predictor panel — 33px, measured in the browser at step 7 of
+// `docs/plans/dynamic-branch-prediction.md`, and the only offender in this file that was NOT found
+// by the jitter sweep: that sweep predates the panel, and the panel's own header argued it was
+// exempt ("the height is constant by construction"). True of the sixteen ROWS. The header row was
+// a `flexWrap: wrap` flex holding the one cursor-dependent string in the panel, so between 900px
+// and 1180px it was ONE line on a quiet cycle and TWO on a resolve.
+// ---------------------------------------------------------------------------------------------
+
+describe('branch predictor: the heading row holds nothing that moves with the clock', () => {
+  const SCHEME = 'dynamic-2bit' as const;
+  const recorded = record(
+    'nested-loop',
+    { ...defaultConfig(), branchPrediction: SCHEME },
+    () => new PipelineProcessor(),
+  );
+  const htmls = cursors(recorded).map((trace) =>
+    renderToStaticMarkup(
+      <PredictorTable trace={trace} recording={recorded} scheme={SCHEME} followed={null} />,
+    ),
+  );
+  const MARK = '<div class="predictor-train-line">';
+  /** Everything the panel draws ABOVE the train caption — the heading row and nothing else. */
+  const headingRow = (html: string): string => html.slice(0, html.indexOf(MARK));
+  /** The train caption's own row, opening `<span>` included, so its style is readable. */
+  const trainRow = (html: string): string =>
+    html.slice(html.indexOf(MARK), html.indexOf('<div class="predictor-rows">'));
+
+  it('the caption has a row of its OWN — the floor, and what the fix consists of', () => {
+    // Without this, `headingRow` below slices at −1 and compares near-identical whole panels, which
+    // is the shape that passes for free. Asserted at every cursor, pre-run included.
+    for (const html of htmls) expect(html).toContain(MARK);
+    expect(htmls[0]).toContain(MARK);
+  });
+
+  it('the heading row is byte-identical at every cursor', () => {
+    // THE guard. Counted on the render, never on the fold: this is a substring of the markup the
+    // component produced. Put `TrainCaption` back beside the `<h2>` and this set becomes as large as
+    // the number of distinct captions in the run.
+    expect(distinct(htmls.map(headingRow)).size).toBe(1);
+    // ...and the row really is the heading, not an empty slice.
+    expect(headingRow(htmls[0]!)).toContain('Branch predictor');
+    expect(headingRow(htmls[0]!)).toContain('counters');
+  });
+
+  it('...while the caption itself genuinely varies across the run', () => {
+    // Non-vacuity. "The heading row never changes" is what a panel drawing no caption at all
+    // satisfies most easily, so the run has to actually reach both states.
+    const captions = htmls.map(trainRow);
+    expect(distinct(captions).size).toBeGreaterThan(1);
+    expect(captions.filter((c) => c.includes('no branch resolved this cycle')).length).toBeGreaterThan(0); // prettier-ignore
+    expect(captions.filter((c) => c.includes('MISPREDICT')).length).toBeGreaterThan(0);
+    expect(captions.filter((c) => c.includes('CORRECT')).length).toBeGreaterThan(0);
+  });
+
+  it('both caption states are set in the same font at the same size', () => {
+    // The other half, and the half the cache grid already paid for: now that this caption owns a
+    // row, ITS line box IS the row's height, and a line box needs content and font and size to
+    // agree. The two states used to be two different spans — 0.75rem sans and 0.78rem mono.
+    const shapes = new Set<string>();
+    for (const html of htmls) {
+      const span = /<div class="predictor-train-line"><span style="([^"]*)"/.exec(html);
+      expect(span, 'the caption is one span carrying its own style').not.toBeNull();
+      // Colour is allowed to differ — it is the only thing that may.
+      shapes.add(span![1]!.replace(/color:[^;]*;?/g, ''));
+    }
+    expect(shapes.size).toBe(1);
+    expect([...shapes][0]).toContain('font-size:0.78rem');
   });
 });
 
