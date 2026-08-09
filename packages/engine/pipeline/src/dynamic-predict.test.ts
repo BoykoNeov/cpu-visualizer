@@ -502,11 +502,19 @@ const COLD_2BIT = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
  *   - **index 8** — the outer branch at pc 32, `TTTN`, ending weakly taken for the same reason.
  *
  * ⚠ **Written out rather than compared against a replay, and that buys a defect class nothing else
- * in this file can see.** The replay routes through `predictorIndex` exactly as the engine does, so
- * a CONSISTENT shift of the index — the rotation the plan's `TEXT_BASE` note describes, measured at
- * step 3 as invisible to the engine, the trace and the replay alike — agrees with itself perfectly.
- * A literal naming rows 2, 6 and 8 does not: rotate the index and the moved counters land elsewhere.
- * Until now the sole net for that class was `predictor.test.ts`'s unit tests on the index function.
+ * in this file can see — FIRED, not asserted.** The replay routes through `predictorIndex` exactly
+ * as the engine does, so a CONSISTENT shift of the index (the rotation the plan's `TEXT_BASE` note
+ * describes) agrees with itself perfectly: step 3 measured it as invisible to the engine, the trace
+ * and the replay alike, with `predictor.test.ts`'s unit tests on the index function as its **sole**
+ * net. A literal naming rows 2, 6 and 8 does not agree: rotate the index and the three moved
+ * counters land on 3, 7 and 9. Re-run against this suite, `((pc >>> 2) + 1) % PREDICTOR_ENTRIES`
+ * reddens **3** tests — the two index unit tests, and this one. So the sole net has a second.
+ *
+ * ⚠ **And the test that catches it is the one labelled a CONTROL below.** "The last cycle is
+ * trained" passes under the shallow copy and is therefore not coverage *for that defect* — but it is
+ * the only thing in the repo besides `predictor.test.ts` that sees a rotated index. A test can be
+ * vacuous for the class it was written for and load-bearing for another, which is why the label says
+ * what it does not cover rather than "this test is a control".
  */
 const TRAINED_2BIT_NESTED = [1, 1, 0, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1];
 

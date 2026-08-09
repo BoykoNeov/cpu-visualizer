@@ -950,16 +950,17 @@ exactly the other 16, which is how the number was arrived at rather than reasone
 
 Committed first (risk 5), editor not `Set-Content`, `git checkout --` between rows.
 
-| #   | Mutation                                              | Reddens                                   |
-| --- | ----------------------------------------------------- | ----------------------------------------- |
-| 0   | the recording itself, landed (against the 7830 suite) | **0**                                     |
-| 1   | `snapshot()` handed straight through — one alias      | **20**                                    |
-| 2   | `{ ...snapshot() }` — the wrapper spread              | **20** — identical to row 1               |
-| 3   | reverted to `predictor: null`                         | **29**                                    |
-| 4   | a static scheme records an EMPTY table, not `null`    | **4** — incl. the whole-`micro` `toEqual` |
-| 5   | the snapshot taken at cycle START — one cycle stale   | **16** — the per-cycle sweep ALONE        |
+| #   | Mutation                                              | Reddens                                      |
+| --- | ----------------------------------------------------- | -------------------------------------------- |
+| 0   | the recording itself, landed (against the 7830 suite) | **0**                                        |
+| 1   | `snapshot()` handed straight through — one alias      | **20**                                       |
+| 2   | `{ ...snapshot() }` — the wrapper spread              | **20** — identical to row 1                  |
+| 3   | reverted to `predictor: null`                         | **29**                                       |
+| 4   | a static scheme records an EMPTY table, not `null`    | **4** — incl. the whole-`micro` `toEqual`    |
+| 5   | the snapshot taken at cycle START — one cycle stale   | **16** — the per-cycle sweep ALONE           |
+| 6   | `predictorIndex` ROTATED by one — step 3's row 10     | **3** — was **2**; the step-4 literal joined |
 
-Three rows are worth more than their count:
+Four rows are worth more than their count:
 
 - **Row 4 is the third time `pipeline/src/processor.test.ts`'s whole-`micro` `toEqual` has earned its
   keep**, and the first time on a VALUE rather than a key: step 1 called it "the only assertion in the
@@ -969,6 +970,20 @@ Three rows are worth more than their count:
   cycle stale in timing is invisible to cold-at-0 (no branch resolves in cycle 0), to trained-at-end
   (the last branch retires well before the drain), and to the identity check. The 24-case sweep is
   not decoration.
+- ⚠ **Row 6 was written into a docblock as a claim before anyone ran it, which is this plan's own
+  four-times-burnt failure mode arriving in the step that was supposed to be careful about it.** The
+  claim: the literal `TRAINED_2BIT_NESTED` names rows 2, 6 and 8, so unlike the replay (which routes
+  through `predictorIndex` and therefore agrees with a rotated index perfectly) it should see the
+  CONSISTENT shift that step 3 recorded as invisible to everything but `predictor.test.ts`. Fired:
+  `((pc >>> 2) + 1) % PREDICTOR_ENTRIES` reddens **3** — the two index unit tests plus this literal.
+  **So step 3's "the sole net is `predictor.test.ts`" is now "was, until step 4's literal joined
+  it."** The claim happened to be true; it was still an unfired assertion in two documents, and the
+  fix is the same one step 2 applied to the `DynamicScheme` compile tripwire — run it.
+- ⚠ **And the test that catches the rotation is the one labelled a CONTROL.** "The last cycle is
+  trained" passes under the shallow copy and is not coverage for THAT class — and it is the only
+  thing in the repo besides `predictor.test.ts` that sees a rotated index. **A test can be vacuous
+  for the class it was written for and load-bearing for another**, so a label should say what a test
+  fails to cover, never "this one is just a control".
 - **Row 3 (29) is bigger than rows 1 and 2 (20)** because a `null` also takes down the two `it`s that
   dereference `.counters`. Worth noting only because it means the count is not a severity ordering:
   the aliasing defect is the one that would have shipped, and it reddens fewer tests than simply not

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T12:50:48.173Z
+  modified: 2026-08-09T12:57:44.465Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1, 2, 3 AND 4 complete — steps 3 and
@@ -59,6 +59,28 @@ and 4 on two re-runs of the identical tree, with the summary never naming the fi
 deterministic (INV-1), so it is a harness timeout — `label-collisions.test.tsx` ran 22.9s and 12.8s
 on two passes of the same tree. Re-run any row whose count surprises you.
 
+⚠ **A coverage claim went into a docblock UNFIRED, in the step that was being careful about exactly
+that — caught by review, then measured.** The claim: `TRAINED_2BIT_NESTED` names rows 2, 6 and 8, so
+unlike the replay (which routes through `predictorIndex` and agrees with a rotated index perfectly)
+the literal should see the CONSISTENT shift. Fired as break row 6: rotating the index reddens **3**,
+the two index unit tests plus this literal. **So step 3's "the sole net for the rotation is
+`predictor.test.ts`" is superseded — it was sole only until step 4's literal joined it.** The claim
+was true and was still unfired prose in two documents. Same fix step 2 applied to the `DynamicScheme`
+compile tripwire: run it.
+
+⚠ **The test that catches the rotation is the one labelled a CONTROL.** "The last cycle is trained"
+passes under the shallow copy — not coverage for that class — and is the ONLY thing in the repo
+besides `predictor.test.ts` that sees a rotated index. **A test can be vacuous for the class it was
+written for and load-bearing for another**, so label what a test fails to cover, never "this one is
+just a control".
+
+**For step 5:** the repo's existing home for a deep-copy claim is each model's `recorder.test.ts` —
+the superscalar's own docblock says the cache's aliasing is pinned there because "time-travel is the
+only layer at which it is observable at all". The predictor's went into `dynamic-predict.test.ts`
+instead, which is non-vacuous but is a second home. Put the other three models' versions in ONE
+shape, whichever it is — that seam is exactly where [[m13-width-planned]]'s four-site divergence
+pressure lands.
+
 **Three docblocks said "the cache is the ONE exception" and only one was about the pipeline.**
 deep-pipeline's and superscalar's were re-anchored from step 4 to **step 5**; out-of-order's already
 said 5. Also corrected: `PipelineMicro.predictor`, `MicroTablePanel.preRunMicro` (its literal is an
@@ -90,9 +112,10 @@ for a defect class, break that class and see who else goes red.**
 ⚠ **The wrong-pc mutation that IS invisible is the CONSISTENT shift** — `predictorIndex` rotated by
 one entry, predict and update moving together. A rotation is a bijection on rows, so collisions
 survive exactly (the plan's `TEXT_BASE` argument, now measured): engine, trace and replay all see
-nothing. **The sole net is `predictor.test.ts`'s unit tests on `predictorIndex`** — the arithmetic
+nothing. **The sole net was `predictor.test.ts`'s unit tests on `predictorIndex`** — the arithmetic
 that shipped with NO test at step 1. Those tests are not redundant with the wiring tests above them;
-they cover a class nothing else reaches.
+they cover a class nothing else reaches. ⚠ **Superseded at step 4**, which re-ran this row: the
+literal recorded table joined them, so the row is now 3 rather than 2 — see step 4's break row 6.
 
 ⚠ **A shell predicate serving more than one question hides a defect in the question it answers
 worst.** `predictsTaken(scheme): boolean` served three: the lit button, the re-record no-op guard,
