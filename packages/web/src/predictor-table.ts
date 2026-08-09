@@ -50,15 +50,24 @@
  * before/after lives on the ENTRY rather than on the train: with two trains on one row (see 3) no
  * per-train intermediate value exists in the trace at all, but the row's own start and end always do.
  *
- * ## Why there is no height-reserve machinery here
+ * ## Why the ROWS need no height reserve — and ⚠ why that sentence was not the whole panel
  *
  * Every other tabular panel in this shell reserves a height because its row count moves with the
  * cursor (`MicroTablePanel`'s three tables, the map's follow readout). **This one draws all
- * {@link PREDICTOR_ENTRIES} rows on every cycle, so its height is constant by construction** — the
- * table is a fixed piece of hardware and drawing only the occupied rows would be a picture of the
- * program rather than of the machine. Stated here so the next author does not add a reserve for a
- * jitter this panel cannot have. (The row CONTENTS still change width — see the view's chip
+ * {@link PREDICTOR_ENTRIES} rows on every cycle, so the ROWS' height is constant by construction** —
+ * the table is a fixed piece of hardware and drawing only the occupied rows would be a picture of
+ * the program rather than of the machine. Stated here so the next author does not add a reserve for
+ * a jitter the rows cannot have. (The row CONTENTS still change width — see the view's chip
  * reserve, which is the horizontal half of the same discipline.)
+ *
+ * ⚠ **This paragraph shipped as "its height is constant by construction", and step 7's browser pass
+ * measured that as false OF THE PANEL.** The rows were never the risk; the HEADER was, because it
+ * held the one cursor-dependent string in the surface and wrapped on resolve cycles only — 33px,
+ * between 900px and 1180px. The transferable half: **a "by construction" height claim is scoped to
+ * the thing it was reasoned about, and a panel is not only its rows.** Same shape as the sticky
+ * transport bar, which the panel-jitter sweep also missed because a bar is not a panel. The fix and
+ * its measurements live in `PredictorTableView.tsx`'s `TrainCaption`; the guard is in
+ * `layout-stability.test.tsx`.
  */
 
 import {

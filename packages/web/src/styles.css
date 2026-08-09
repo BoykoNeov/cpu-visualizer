@@ -861,7 +861,8 @@ input[type='range'] {
 /* The branch-predictor table (dynamic-branch-prediction step 6): one row per counter, the row a
    branch trained this cycle called out. Sixteen rows, always — the table is a fixed piece of
    hardware, so unlike every other tabular panel here the ROWS' height is constant by construction
-   and needs no reserve (see `predictor-table.ts`'s header). Rows are tighter than the cache's for
+   and needs no reserve (see `predictor-table.ts`'s header, which records that this claim was
+   written about the panel and is only true of the rows). Rows are tighter than the cache's for
    that reason: sixteen of them at `.cache-line`'s padding would be twice the panel. */
 
 /* ⚠ The train caption's OWN row, and it is a step-7 fix rather than a layout choice — the reason is

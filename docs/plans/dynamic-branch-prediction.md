@@ -1,7 +1,9 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEPS 0 THROUGH 5 DONE — steps 3, 4 and 5 on 2026-08-09. ALL FOUR betting models now have a
-real predictor and record it.** The corpus is
+**Status: STEPS 0 THROUGH 7 DONE — steps 3–7 on 2026-08-09. ALL FOUR betting models bet from a real
+counter table, record it deep-copied, and the panel draws it; the browser pass has run (52 checks,
+one defect found and fixed — the panel's height stepped 33px with the cursor). ONLY STEP 8, the
+lesson, remains.** The corpus is
 measured (see the step-0 results section), `content/programs/nested-loop.s` is authored, hand-derived
 into three timing tables and three shape tables, and committed; the schema carries five scheme names,
 `PredictorState`, and a `predictor` field on all four honoring models' `micro`; `BranchPredictor` —
@@ -10,8 +12,9 @@ superscalar and the out-of-order core all **bet from it, train it and record it 
 the shell's control grown to four positions. Every derived cycle count in the step-0 and step-0b
 tables was reproduced exactly, and each of the other three models had its own columns derived before
 it was wired. The plan's last open decision — whether a SQUASHED branch trains the table — is pinned
-at update-on-resolve and measured on the only model that can pose it. **Steps 6–8 remain: the
-predictor panel, the browser pass, and a lesson.** Every claim
+at update-on-resolve and measured on the only model that can pose it. **Only step 8 remains: a
+lesson — and step 7 handed it its anchor, the cursor pair 37/53 on `nested-loop.s` where one knob
+flips a MISPREDICT into a CORRECT.** Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
 dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
 step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
@@ -268,12 +271,13 @@ logic four times.
       recorded trace from each of the four models** — not one — with a render smoke test green on
       each. A fold tested on one trace proves nothing about the other three.
 
-- [ ] **7. Browser pass — and it is the only net for steps 6's wiring.** Per
-      `browser-is-the-only-net`: 9 of 10 view steps here shipped a defect only the browser caught.
-      Drive all five schemes on `nested-loop.s` (step 0b), watch the table train, and **measure the new
-      panel at a stated narrow viewport in the app's most crowded state** (the wrap defect that
-      keyboard control shipped was invisible at 1400px on the default model). Acceptance: a
-      numbered check list with counts, in the style of `continuous-play.md`.
+- [x] ✅ **7. Browser pass — and it is the only net for steps 6's wiring.** — **DONE 2026-08-09;
+      results in the step-7 section below. 52 checks, 1 defect found and fixed, 4 rig lies.** Per
+      `browser-is-the-only-net`: 9 of 10 view steps here shipped a defect only the browser caught,
+      and this one makes it **10 of 11**. Drove all five schemes on `nested-loop.s` (step 0b),
+      watched the table train, and measured the panel at 27 viewport widths in the app's most
+      crowded state. Acceptance: a numbered check list with counts, in the style of
+      `continuous-play.md`.
 
 - [ ] **8. A lesson.** The M4 flagship is `branch-bet` on `call-return`; this one's subject is a
       **delta against a machine already met** — the M12 shape. Read `m12-deep-pipeline-lessons.md`
@@ -1391,17 +1395,159 @@ defect only the browser caught**, and the fixed-16-row design removes one jitter
 height is constant by construction, so none of `panel-jitter`'s reserve machinery applies) without
 touching the others.
 
+## Step 7 — DONE 2026-08-09. The browser pass: 52 checks, one defect, four rig lies
+
+Rig: `M:\claud_projects\temp\bp-step7\` — `rig.mjs` (CDP plumbing + page helpers), `dump.test.ts`
+and `widest.test.ts` (the two PRE-browser dumps), `recon.mjs` (selectors read once, not guessed),
+`eyeball.mjs` (the 52 checks), `probe-jitter.mjs` / `probe-fixed.mjs` (the defect, before and
+after). `rig-sweep.ps1` run at the start (0/0/0/0, user's 38 Chromes untouched) and at the end.
+
+**Every expected number came out of a dump written before the browser started**, and the dump paid
+for itself twice: it gave the flagship its cursors, and its own first version was wrong in a way
+that read exactly like a product defect (see the rig lies below).
+
+### The defect: the panel's height stepped with the cursor, and the rows were never the risk
+
+| viewport     | quiet cycle | resolve cycle | verdict                                        |
+| ------------ | ----------: | ------------: | ---------------------------------------------- |
+| ≥1200px      |     487.9px |       487.9px | flat — `main` is capped at `maxWidth: 1200`    |
+| **1180–900** | **487.9px** |   **520.9px** | **33px, appearing and disappearing on a step** |
+| ≤890px       |     520.9px |       520.9px | flat — both states wrap                        |
+
+Measured identically on the 5-stage pipeline and on the crowded out-of-order config, so it is the
+header's own content and not a neighbour's; `dBelow` was 33 at every width in the band, i.e. every
+surface below the panel moved with it. Counterfactual at 1180px: remove the caption and the header
+is **17px instead of 54**. The cause is the one cursor-dependent string in the panel —
+`no branch resolved this cycle` (~200px) against `MISPREDICT bne x6, x0, -8 @ 0x00000018 → not
+taken · row 6: 3 → 2` (~470px) — sitting in the heading's `flexWrap: wrap` row.
+
+⚠ **`predictor-table.ts` said this panel needed no reserve because it draws all sixteen rows every
+cycle. That is true of the ROWS and was written about the PANEL.** The transferable rule: a "by
+construction" height claim is scoped to the thing it was reasoned about, and a panel is not only its
+rows. Exactly the shape of the sticky transport bar, which the `panel-jitter` sweep also missed
+because a bar is not a panel — **third instance of that class, and the second one found after the
+class was declared closed.**
+
+**The fix is the transport bar's, not the cache grid's**: move the cursor-dependent text OUT of the
+wrapping row rather than reserving its peak width inside it. Reserving was measured and rejected
+there for the reason that applies here — every cursor becomes as wide as the peak, so the row wraps
+at ALL cursors instead of some, which is stable and stably worse for the quiet cursors (most of
+them). A ghost would also have manufactured a fresh decoy for every document-wide selector reading
+this panel, which is the trap `panel-jitter` records against the ghost idiom itself.
+
+**Re-measured after the fix — because `panel-jitter`'s sharpest lesson is a fix that shipped with a
+passing guard while the browser measured no change.** FLAT at all 27 widths from 1600 to 620, on
+three configurations: the flagship MISPREDICT cursor, the crowded out-of-order state, and **the
+corpus's WIDEST caption** (68 chars, `array-sum-twice.s` @269 under 1-bit — found by measuring all
+178 train cycles rather than estimating from `nested-loop.s`, whose widest is 66). The caption's own
+row is **21px at every width down to 620px**, so it needs no reserve of its own; that is a
+measurement, not an assumption.
+
+⚠ **Second half, and it would have been a fresh 1px defect:** once the caption owns a row, ITS line
+box IS the row's height. The two states were two spans at 0.75rem/sans and 0.78rem/mono — the cache
+grid's `IDLE_TAG_RESERVE` finding verbatim ("a line box is decided by content AND font AND size
+together"), latent while the caption shared a row with an `<h2>` and load-bearing the moment it did
+not. They are now ONE element differing only in hue and words.
+
+**Guard: `layout-stability.test.tsx`, 26 → 30 tests** — the heading row's markup is byte-identical at
+every cursor (counted on the RENDER), the caption genuinely varies (non-vacuity), and both states
+carry one style. Verified by reverting the fix: **4 red across the whole 9497-test repo, all four
+of them these**, so they are the sole net. And the suite was green through the defect and is green
+now, which is the whole point of the browser pass.
+
+### Break row 9 is CLOSED — headless 0, browser 2
+
+Step 6 recorded the App slot gate as untestable **by position**: nothing in the repo renders
+`<App/>`, so gating on the scheme instead of `hasPredictorTable(sim.recorded)` reddened zero tests.
+Fired here: with `showPredictor = sim.branchPrediction.startsWith('dynamic')`, `npm test` is
+**9497 / 9497 green** and the browser fails **2 of 52** — a user holding `2-bit` on the pipeline and
+switching to single-cycle or multi-cycle gets a counter table drawn for a machine that has none.
+This is the shape `keyboard-transport`'s 68/68 and `continuous-play`'s 47/47 set, and it is what
+turns "the net cannot be written where the decision lives" into a number rather than a shrug.
+
+### The checks, by section — 52, all green after the fix
+
+| §   | what it measures                                                           |   n | headline observation                                                                                              |
+| --- | -------------------------------------------------------------------------- | --: | ----------------------------------------------------------------------------------------------------------------- |
+| 0   | vacuity: built bundle, CSS rules, a known-present control, the panel found |   7 | `/assets/index-*.js`, 92 CSS rules; the app opens on single-cycle with **no** panel and **no** Predict control    |
+| 1   | the knob takes — five schemes' cycle counts                                |   5 | **181 / 181 / 176 / 173 / 170**, reproducing the step-0b table exactly; `'none'` needed a fresh navigate          |
+| 2   | the App slot gate + the four-model multiplier                              |   7 | panel on all four betting models (170 / 239 / 170 / 130); gone on single- and multi-cycle with `2-bit` still held |
+| 3   | the flagship A/B at the derived cursors 37 and 53                          |  15 | all 16 rows matched the fold at four cursors; **one knob, cursor 53: 1-bit MISPREDICTS, 2-bit is CORRECT**        |
+| 4   | the cold table                                                             |   3 | after visiting the end, cursor 0 is all `1/3 weakly not taken`; pre-run equals cycle 0 exactly                    |
+| 5   | header height vs the cursor — **the defect**                               |   4 | 27 widths × 2 cursors; flat everywhere after the fix, `dBelow` 0 at every width                                   |
+| 6   | the row grid at 1400 / 1024 / 900 / 800px                                  |   4 | no horizontal page scroll, one row height (23.38px), **0 of 16 owner columns ellipsised** at any width            |
+| 7   | both palettes                                                              |   3 | taken `#0a8a6b`→`#35bf95`, not-taken `#a06400`→`#d9a441`; ⚠ `--ink-3` is `#898781` in BOTH by design              |
+| 8   | the follow highlight composing with the map                                |   2 | clicking the resolving branch lights exactly its row; following a non-branch lights none                          |
+| 9   | the depth dial                                                             |   1 | byte-identical at all three tiers — the panel takes no `tier` prop                                                |
+| 10  | console                                                                    |   1 | zero errors or exceptions across the whole pass                                                                   |
+
+**The flagship came out cheaper than the plan assumed, and the dump is why.** Under BOTH dynamic
+schemes the inner loop's exit resolves at cycle **37** and its re-entry at cycle **53** — the same
+two cursors — so the entire 1-bit-vs-2-bit lesson is one cursor pair with one knob flipped:
+
+| cursor | `dynamic-1bit`                        | `dynamic-2bit`                              |
+| -----: | ------------------------------------- | ------------------------------------------- |
+|     37 | MISPREDICT, row 6 → **0** `not taken` | MISPREDICT, row 6 → **2** `weakly taken`    |
+|     53 | **MISPREDICT**, row 6 `0 → 1`         | **CORRECT**, row 6 `2 → 3` `strongly taken` |
+
+That pair is what step 8's lesson should anchor on — and note it is `nested-loop.s`, whose last
+cycle holds **no** strongly-taken counter (step 6's finding). A rig, or a lesson, reaching for the
+end of the run reads a weakened counter and calls it a bug.
+
+### Four rig lies, and three of them were the rig's EXPECTATIONS rather than its selectors
+
+The house record holds: of the 4 failures in the first full run, **1 was the app**.
+
+- **(a) The dump ran the out-of-order model on `defaultConfig()` and the app does not.**
+  `ProcessorConfig` leaves `issueWidth` / `outOfOrderIssue` / `robSize` **optional**, so
+  `defaultConfig()` hands the engine `undefined` and each model falls back to its OWN default —
+  while the shell opens on `session.ts`'s `OPENING_KNOBS` (`1`, `false`, `16`). Result: a 26-cycle
+  disagreement (104 vs 130) that read exactly like a broken model picker. ⚠ **A dump is only an
+  oracle for the configuration the app is actually in, and "the default config" is two different
+  things here.**
+- **(b) The §5 counterfactual hid the wrong element AND corrupted every section after it.**
+  `[...head.querySelectorAll(':scope > span')][1].parentElement` **is the header div**, so it hid
+  the whole header; worse, the restore did `style.display = ''`, which strips the `display: flex`
+  **React owns** and never re-sets, because the style prop did not change. §6 then reported "the
+  header wraps at 1400px" — that corruption, not a finding. ⚠ **Restore with `visibility`, never by
+  clearing a style a framework owns, and re-navigate between sections that mutate the DOM.**
+- **(c) §7 required the UNOWNED row's ink to change with the theme.** It is `T.ink3` = `--ink-3` =
+  `#898781` in all three CSS blocks, app-wide, 8 call sites — a deliberate theme-invariant gray. The
+  check was demanding that a constant be a variable. The panel's OWN new inks do move, and that is
+  what it asserts now, with the invariance pinned as its own check so the next reader is not told
+  twice.
+- **(d) The first jitter sweep printed `headWraps` off a `headChildMax` computed after (b).** Only
+  worth naming as the general form: **a rig's later sections inherit its earlier sections' damage**,
+  which is `browser-rig-vacuity-traps`' leftover-state class one layer in from where it was recorded.
+
+### What this step did NOT settle
+
+- **The pip meter fills `counter + 1` pips**, so a counter at 0 lights one pip and the meter is
+  never empty. It is a position indicator read as a fill gauge. Measured and recorded rather than
+  changed: it is legible in both palettes and every row states its word besides, so this is a design
+  question for a reviewer, not a browser finding.
+- **The multi-owner (aliasing) render path is still UNREACHED**, as step 6 measured — no corpus
+  program puts two branches on one row at 16 entries, so the browser could not look at it either.
+- **The lesson path was not driven** — there is no predictor lesson until step 8. That is the
+  omission `browser-rig-vacuity-traps` records against four consecutive passes, and it is a
+  scheduling fact here rather than an oversight; **step 8's own pass must drive it.**
+
 ## Acceptance criteria
 
-- [ ] Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table train —
-      then pick **2-bit** on the same program and watch the re-entry mispredict disappear. Same
-      program, one knob, visibly different behavior (the §12 flagship interaction).
-- [ ] The final register + memory state is **identical under all five schemes** on every corpus
-      program (INV-8 across the full matrix).
-- [ ] Single-cycle and multi-cycle traces are **byte-identical** across all five schemes (the
-      inertness contract).
-- [ ] Scrubbing to cycle 0 shows an **untrained** table — the deep-copy holds.
-- [ ] All suites green; `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build`.
+- [x] ✅ Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table
+      train — then pick **2-bit** on the same program and watch the re-entry mispredict disappear.
+      Same program, one knob, visibly different behavior (the §12 flagship interaction). Observed in
+      the browser at cursor 53: 1-bit `MISPREDICT … row 6: 0 → 1`, 2-bit `CORRECT … row 6: 2 → 3`.
+- [x] ✅ The final register + memory state is **identical under all five schemes** on every corpus
+      program (INV-8 across the full matrix) — green per model since step 5.
+- [x] ✅ Single-cycle and multi-cycle traces are **byte-identical** across all five schemes (the
+      inertness contract), and the browser confirms neither draws the panel while a dynamic scheme
+      is held.
+- [x] ✅ Scrubbing to cycle 0 shows an **untrained** table — the deep-copy holds. Observed after
+      first visiting the end of the run: all sixteen rows `1/3 weakly not taken`, and the end-of-run
+      table is genuinely different (row 6 at `2/3`), which is that check's non-vacuity.
+- [x] ✅ All suites green; `npm run typecheck`, `npm run lint`, `npm run format:check`,
+      `npm run build`. Repo **9493 → 9497 tests**.
 
 ## Decisions to pin (seeded with recommendations, so review is a diff)
 

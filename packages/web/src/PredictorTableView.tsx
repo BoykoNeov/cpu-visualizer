@@ -26,10 +26,17 @@
  * way the register, memory and cache panels do, so `micro.predictor`'s post-cycle counters are
  * exactly right.
  *
- * ⚠ **Nothing headless can see this panel's LAYOUT, and step 7 is its only net.** Every claim below
- * about width, wrapping and the meter is a claim about pixels, and this repo's own record is that 9
- * of 10 view steps shipped a defect only the browser caught. The reserves here are written from the
- * `panel-jitter` idiom rather than from measurement; the browser pass is where they become facts.
+ * ⚠ **Nothing headless can see this panel's LAYOUT, and step 7's browser pass was its only net —
+ * it ran, and it found one defect.** The reserves here were written from the `panel-jitter` idiom
+ * rather than from measurement, and the one this file did NOT think to write is the one that bit:
+ * the heading row held the train caption, so the panel's height stepped 33px with the cursor
+ * between 900px and 1180px. See {@link TrainCaption}. Everything else measured clean over 52
+ * checks: the row grid does not wrap or scroll the page down to 800px, no owner column is
+ * ellipsised on any corpus program, all sixteen rows keep one height, the follow ring composes
+ * with the map, and both palettes carry distinct taken/not-taken ink. The panel takes no `tier`
+ * prop and is therefore byte-identical at all three depths — recorded, not a defect: it is a state
+ * view like the register panel, and if it should say less at `essentials` that is a curriculum
+ * question, not a layout one.
  */
 
 import type { CycleTrace } from '@cpu-viz/trace';
