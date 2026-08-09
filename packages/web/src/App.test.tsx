@@ -25,10 +25,21 @@
  */
 
 import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
+import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { defaultConfig } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { IssueOrderToggle, PredictionToggle, RobSizeControl, WidthToggle } from './App';
-import { schemeForPosition, type BranchPrediction, type PredictionPosition } from './session';
+import { PipelineDatapath } from './PipelineDatapathView';
+import { EXAMPLE_PROGRAMS } from './programs';
+import {
+  hasTakenBetPath,
+  schemeForPosition,
+  PREDICTION_POSITIONS,
+  type BranchPrediction,
+  type PredictionPosition,
+} from './session';
+import { loadSource } from './simulator';
 
 const noop = (): void => {};
 
@@ -97,6 +108,90 @@ describe('the prediction control has one position per MACHINE, not per scheme na
       const scheme = schemeForPosition(label as PredictionPosition);
       expect(litPosition(render(scheme)), `${label} must light itself back`).toBe(label);
     }
+  });
+
+  /**
+   * Every button carries a non-empty `title`, and no two share one.
+   *
+   * `PREDICTION_TITLES` is a `Record<PredictionPosition, string>`, so a MISSING key is a compile
+   * error — but an empty string is not, and neither is the same string on two positions, which is
+   * what a copy-paste of the two dynamic entries produces. The titles are where this control's whole
+   * honesty budget lives (they are the only place the reader is told that a correct bet is not free,
+   * and the only place the 1-bit/2-bit difference is stated in words), so "present and distinct" is
+   * the least this file can hold them to.
+   */
+  it('every button carries its own non-empty title', () => {
+    const titles = [...render('none').matchAll(/title="([^"]*)"/g)].map((m) => m[1]!);
+    expect(titles).toHaveLength(PREDICTION_POSITIONS.length);
+    for (const t of titles) expect(t.length).toBeGreaterThan(40);
+    expect(new Set(titles).size, 'two positions share a title').toBe(titles.length);
+  });
+});
+
+/**
+ * **The shell → datapath seam for prediction, keyed off the RENDER** (dynamic-branch-prediction
+ * step 3).
+ *
+ * ⚠ **This exists because the break harness measured that nothing else covers it.** `App.tsx` builds
+ * the diagram's config as `predictTaken: hasTakenBetPath(sim.branchPrediction)`, and
+ * `datapath-pipeline.test.ts` sweeps `DatapathConfig` LITERALS — `{forwarding, predictTaken}` pairs —
+ * so it never traverses that function at all. Collapsing `hasTakenBetPath` back to
+ * `scheme === 'static-taken'` reddened exactly ONE test, and it was a pure-fold assertion in
+ * `session.test.ts`. Without the case below, the branch-target adder and its three wires would blank
+ * on the pipeline datapath under BOTH dynamic schemes — on the very config this feature exists to
+ * demonstrate — with nothing to say so.
+ *
+ * That is `cache-grid.ts`'s own recorded defect (a panel that went idle on a shipped, user-reachable
+ * config for a whole milestone) and `m13-width-planned.md`'s signature one (a test keyed off a pure
+ * fold rather than the render, which recurred eight times and twice inside the fix written to stop
+ * it). So this asserts against the MARKUP, and it starts from a SCHEME rather than from a
+ * `DatapathConfig`, because the scheme is what the user actually picks.
+ *
+ * `Branch` appears in exactly one node label in `datapath-pipeline.ts` (`btarget`'s
+ * `'Branch\ntarget'`), so its presence in the markup is an unambiguous marker for the adder. The
+ * wires are not re-asserted here — `datapath-pipeline.test.ts` already pins that they are visible
+ * exactly when their `btarget` endpoint is.
+ */
+describe('the prediction scheme reaches the datapath, not just the control', () => {
+  const trace = (): ReturnType<typeof loadSource> =>
+    loadSource(
+      EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!.source,
+      () => new PipelineProcessor(),
+      defaultConfig(),
+    );
+
+  const markup = (scheme: BranchPrediction): string => {
+    const result = trace();
+    if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+    result.loaded.recorder.runToEnd();
+    return renderToStaticMarkup(
+      <PipelineDatapath
+        trace={result.loaded.recorder.recorded[0]!}
+        cycleKey={0}
+        tier="expert"
+        // Built exactly as `App.tsx` builds it — the point of this test is the expression, not the
+        // diagram. A literal `predictTaken` here would re-test what `datapath-pipeline.ts` already
+        // covers and leave the seam uncovered all over again.
+        config={{ forwarding: false, predictTaken: hasTakenBetPath(scheme) }}
+        followed={null}
+      />,
+    );
+  };
+
+  it('draws the branch-target adder under every scheme that can bet taken', () => {
+    // Non-vacuity first: something was rendered at all, and the marker really does discriminate.
+    expect(markup('static-not-taken').length, 'nothing rendered').toBeGreaterThan(500);
+    expect(markup('static-taken')).toMatch(/Branch/);
+    expect(markup('static-not-taken')).not.toMatch(/Branch/);
+
+    // ...and the two schemes this step made real. A dynamic machine HAS the adder — it bets taken
+    // the moment a counter warms — so drawing it absent would contradict the machine on screen
+    // (INV-5), which is the same rule that forbids drawing a third machine as a second.
+    expect(markup('dynamic-1bit'), 'the 1-bit machine has a branch-target adder').toMatch(/Branch/);
+    expect(markup('dynamic-2bit'), 'the 2-bit machine has a branch-target adder').toMatch(/Branch/);
+
+    // `'none'` is `'static-not-taken'` under another name, here as everywhere else.
+    expect(markup('none')).not.toMatch(/Branch/);
   });
 });
 

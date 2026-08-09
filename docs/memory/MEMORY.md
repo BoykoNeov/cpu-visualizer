@@ -7,7 +7,7 @@ each with a lesson track. **NO milestone is in progress.**
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
 corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7828
-tests** (7597 after branch prediction's step 1, 7606 after step 2, 7828 after step 3), five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
+tests** (7597 after branch prediction's step 1, 7606 after step 2, 7830 after step 3), five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
 jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
 caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic
 branch prediction (plan written, STEPS 0, 0b, 1, 2 AND 3 DONE — step 3 on 2026-08-09; the PIPELINE
@@ -53,7 +53,10 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   invisible is the CONSISTENT shift**, caught solely by `predictorIndex`'s own unit tests; **a view
   predicate serving more than one question hides a defect in the one it answers worst** (a
   taken/not-taken boolean silently skipped the re-record on a dynamic scheme, and NOTHING headless
-  saw it); and **a scheduling window wants an arrival tripwire, not a schema field**. Step 2 adds
+  saw it); **a predicate extracted so two consumers can DIFFER needs a test per CONSUMER, one of
+  them render-keyed** — the datapath seam had none and would have blanked the branch-target adder
+  under both dynamic schemes; and **a scheduling window wants an arrival tripwire, not a schema
+  field** (and then FIRE the tripwire, so it is measured). Step 2 adds
   three more: **an API that accepts a richer argument silently answers the questions that argument
   encodes**; **a getter made defensive can dissolve a later step's whole content**; and **the
   canonical demo sequence is usually not the test of the mechanism** — `TTTTNTTTT` does not pin the

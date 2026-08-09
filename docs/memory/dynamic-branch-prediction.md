@@ -14,12 +14,12 @@ metadata:
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
 and [[continuous-play]]. The full measured tables live in the plan; only what a future session would
-otherwise re-derive is here. Repo at 7828 tests.
+otherwise re-derive is here. Repo at 7830 tests.
 
 ## Step 3 — the wiring, and what the break harness said about the test written FOR it (2026-08-09)
 
 Shipped: `betTarget(d, pc)` + an EX training call in `engine/pipeline`, `isConditionalBranch` and
-`isDynamicScheme` in `engine-common`, a four-position prediction control. 7606 → 7828, five gates.
+`isDynamicScheme` in `engine-common`, a four-position prediction control. 7606 → 7830, five gates.
 
 ⚠ **Acceptance (b) came out EXACT.** Every derived cell of the step-0/0b tables — 12 programs × 4
 schemes × both forwarding positions — reproduced by the real engine with no correction, including
@@ -69,6 +69,24 @@ any kind — a pinned decision with no net whatsoever, held only by `isCondition
 (the plan predicted zero TIMING effect; the truth is broader). And with the knob **entirely
 unhonored**, all 50 INV-8 cells stay green and `timing.test.ts` too — the widened differential matrix
 is a false net for "is this scheme honored at all", exactly as [[m7-superscalar-engine]] records.
+
+⚠ **A predicate extracted so two consumers can DIFFER needs a test per CONSUMER, and one of them
+must be keyed off the RENDER.** `hasTakenBetPath` was split out for the datapath, and the only thing
+covering it was a fold assertion in `session.test.ts` — `datapath-pipeline.test.ts` sweeps
+`DatapathConfig` LITERALS, so it never traverses the function at all. Collapsing it back to
+`scheme === 'static-taken'` reddened exactly ONE test, and under both dynamic schemes the
+branch-target adder and its three wires would have blanked on the pipeline datapath with nothing to
+say so — on the very config the feature ships for. This is [[m11-deep-pipeline-view-and-cache]]'s
+cache-grid blanking and [[m13-width-planned]]'s fold-not-render defect, together, in new code. Closed
+with a render-keyed case in `App.test.tsx` that starts from a SCHEME and greps the markup. **The
+first eleven break rows all missed it because they were aimed at the engine and the control** — the
+same "a harness aimed at the headline risk misses what shipped alongside it" as step 1.
+
+**Two more rows the same review pass added.** Making `deep-pipeline` honor `'dynamic-1bit'` reddens
+exactly the inertness block and nothing else — so "step 5 turns this red" is MEASURED, not asserted;
+an arrival tripwire deserves the same discipline as any other row. And ⚠ **a break row that reddens 0
+is worth a second look before it is written down as coverage**: the title-distinctness row's first
+mutation produced a title that was still distinct, so it tested nothing and read as a gap.
 
 Both `jal` decisions are now CLOSED (bypass the table; do not update it), spelled by a shared
 `isConditionalBranch` so step 5's three sites cannot answer them three more ways. Resolve-time and

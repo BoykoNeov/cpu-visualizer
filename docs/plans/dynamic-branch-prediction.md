@@ -805,6 +805,9 @@ Committed first (risk 5), editor not `Set-Content`, `git checkout --` between ro
 | 9   | the no-op guard reverted to the boolean              | **0**                                   |
 | 10  | `predictorIndex` ROTATED by one entry                | **2** — `predictor.test.ts` alone       |
 | 11  | `branch-predicted` fires on a not-taken bet          | **6** — across four files               |
+| 12  | `hasTakenBetPath` collapses to `static-taken` only   | **1** → **2** — see below               |
+| 13  | every button rendered with the 1-bit `title`         | **1** — added with the row              |
+| 14  | deep-pipeline starts honoring `dynamic-1bit`         | **1** — the step-5 tripwire, FIRED      |
 
 Six rows are worth more than their count:
 
@@ -844,6 +847,38 @@ Six rows are worth more than their count:
 Row 7 is the honest counterpart of step 2's inline-index row: value-identical today, so nothing can
 see it. It is a reading guarantee that starts paying when a third scheme arrives, and saying so beats
 a test that pretends to cover it.
+
+### Rows 12–14 — added by a review pass AFTER the harness, and one of them found a real hole
+
+The first eleven rows were aimed at the engine and the control. A review of the finished step asked
+three questions the harness had not, and the first was a genuine gap:
+
+- ⚠ **Row 12 exposed the repo's signature defect in the new code.** `App.tsx` builds the diagram's
+  config as `predictTaken: hasTakenBetPath(sim.branchPrediction)`, and `datapath-pipeline.test.ts`
+  sweeps `DatapathConfig` **literals** — so it never traverses that function. Collapsing
+  `hasTakenBetPath` back to `scheme === 'static-taken'` reddened exactly **one** test, and it was the
+  pure-fold assertion in `session.test.ts`. **Under both dynamic schemes the branch-target adder and
+  its three wires would have blanked on the pipeline datapath with nothing to say so** — on the very
+  config this feature exists to demonstrate. That is `cache-grid.ts`'s own recorded defect (a panel
+  idle on a shipped, user-reachable config for a whole milestone) and `m13-width-planned.md`'s
+  signature one (a test keyed off a pure fold rather than the render, eight recurrences). Closed with
+  a **render-keyed** case in `App.test.tsx` that starts from a SCHEME and greps the markup; row 12
+  now reddens 2. **Generalize: a predicate extracted so two consumers can differ needs a test per
+  CONSUMER, and at least one of them must be keyed off the render.**
+
+- **Row 14 turns the step-5 arrival tripwire from a prediction into a measurement**, which is the
+  same discipline the eleven rows above were run under. The inertness block's own control proves the
+  helper applies the knob; it does not prove the _dynamic_ comparison can fail — step 1's "a control
+  placed first hides what follows", in new dress. Making `deep-pipeline` honor `'dynamic-1bit'`
+  reddens exactly that block and nothing else, so "step 5 turns this red" is now something the
+  harness has seen rather than something this document asserts.
+
+- Row 13 is the cheap one: a `Record<PredictionPosition, string>` catches a MISSING title at compile
+  time but not an empty one and not the same title on two positions. ⚠ **The first attempt at this
+  row was a bad mutation and reddened 0** — it produced a title that was still distinct, so it tested
+  nothing. Re-run as a genuine transposition (every button rendered with the 1-bit title) it reddens
+  the new assertion. A break row is only as good as the mutation, and a 0 is worth a second look
+  before it is written down as coverage.
 
 ## Acceptance criteria
 
