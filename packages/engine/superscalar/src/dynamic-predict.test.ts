@@ -177,7 +177,26 @@ const NEVER_BETS = Object.keys(STRINGS).filter(
 const FILES = Object.keys(W1);
 const CASES = FILES.flatMap((file) => DYNAMIC.map((scheme) => ({ file, scheme })));
 
+/**
+ * Runs are MEMOIZED, and that is a performance fix rather than a style one: this file sweeps
+ * 12 programs × 4 widths × 2 positions × 4 schemes and several claims re-visit the same cell, so
+ * without the cache the same `array-sum-twice.s` run is re-executed dozens of times and the suite
+ * takes over a minute. The engine is pure and deterministic (INV-1), so a cached run is the run.
+ * The returned traces are never mutated by anything here — the one place that could,
+ * {@link expectedTables}, `.slice()`s what it reads.
+ */
+const RUNS = new Map<string, CycleTrace[]>();
+
 function run(file: string, config: ProcessorConfig): CycleTrace[] {
+  const key = `${file}|${config.branchPrediction}|${config.forwarding}|${config.issueWidth}`;
+  const hit = RUNS.get(key);
+  if (hit !== undefined) return hit;
+  const traces = runUncached(file, config);
+  RUNS.set(key, traces);
+  return traces;
+}
+
+function runUncached(file: string, config: ProcessorConfig): CycleTrace[] {
   const { program, errors } = assemble(readFileSync(PROGRAMS_DIR + file, 'utf8'));
   if (!program) {
     throw new Error(
@@ -241,17 +260,17 @@ const penaltyFromEvents = (ts: CycleTrace[]): number =>
  * schemes; if the two ever drift, both files fail and name which.
  */
 function issuedPerCycle(ts: CycleTrace[], width: number): number[] {
+  // One pass building a per-cycle id→location index, rather than `find`/`some` inside the slot loop:
+  // the sweeps here are wide enough that the quadratic spelling dominated the whole file's runtime.
+  const inExAt = ts.map(
+    (t) => new Set(t.instructions.filter((i) => i.location.startsWith('EX.')).map((i) => i.id)),
+  );
   const counts: number[] = [];
   for (let c = 0; c < ts.length - 1; c++) {
     let n = 0;
     for (let s = 0; s < width; s++) {
       const inId = ts[c]!.instructions.find((i) => i.location === `ID.${s}`);
-      if (
-        inId &&
-        ts[c + 1]!.instructions.some((i) => i.id === inId.id && i.location.startsWith('EX.'))
-      ) {
-        n++;
-      }
+      if (inId && inExAt[c + 1]!.has(inId.id)) n++;
     }
     counts.push(n);
   }
@@ -459,6 +478,71 @@ describe('the dynamic schemes on the superscalar', () => {
         }
       }
     }
+  });
+
+  /**
+   * ⚠ **The "ONE table, not one per lane" decision has NO NET on this corpus, and this test is what
+   * makes that statement precise instead of leaving it a comment.** Measured: building a real
+   * per-lane predictor — one `BranchPredictor` per slot, each bet from and trained by its own lane —
+   * reddens **ZERO of 8754 tests**. `m13-review-resolved` records the class ("a pinned decision with
+   * no net is a comment"), and the honest response is to say exactly why it is unreachable rather
+   * than to write a test that pretends to cover it.
+   *
+   * **Why it is unreachable, exactly.** Per-lane tables can only differ from one shared table for a
+   * branch that issues from more than one SLOT — otherwise each lane's table sees precisely the
+   * branches it bets on and holds the identical history. Across the whole corpus × every width ×
+   * both dynamic schemes there is exactly **one** such branch: `nested-loop.s`'s guard at pc 8,
+   * which lands in `EX.2` and `EX.0` on different passes at widths 3 and 4. And that branch is
+   * `bne x0, x0` — **never taken**, so its counter sits at the floor in every table that could hold
+   * it and both machines bet `N` on it forever.
+   *
+   * So the corpus has a lane-alternating branch and it is the one branch whose counter never moves.
+   * This test pins both halves, which makes it an ARRIVAL tripwire: a future corpus program with a
+   * TAKEN branch that alternates lanes turns it red, and at that moment the decision acquires a net
+   * and this comment stops being the only thing holding it. (The schema is a partial net in the
+   * meantime: `SuperscalarMicro.predictor` is a bare `PredictorState`, so a per-lane machine that
+   * RECORDED its lanes would not typecheck. What it cannot catch is one that keeps two tables
+   * internally and records only one — which is precisely the mutation measured above.)
+   */
+  it('the only lane-alternating branch is the one whose counter never moves', () => {
+    // ⚠ **Alternation is a property of ONE RUN, not of the corpus.** Aggregating a branch's slots
+    // across widths finds "alternation" everywhere — the same branch is `EX.0` at width 1 and `EX.1`
+    // at width 2 — which says nothing about whether one machine's lanes could disagree. The first
+    // draft of this test did exactly that and reported three branches instead of one.
+    const multiLane = new Set<number>();
+    for (const width of WIDTHS) {
+      for (const scheme of DYNAMIC) {
+        for (const file of FILES) {
+          const ts = run(file, config(scheme, false, width));
+          const pcOf = new Map(eventsOf(ts, 'instr-fetch').map((e) => [e.instr, e.pc]));
+          const perRun = new Map<number, Set<string>>();
+          for (const t of ts) {
+            for (const e of t.events) {
+              if (e.type !== 'branch-resolved') continue;
+              const where = t.instructions.find((i) => i.id === e.instr);
+              const pc = pcOf.get(e.instr);
+              if (where === undefined || pc === undefined) continue;
+              const seen = perRun.get(pc) ?? new Set<string>();
+              seen.add(where.location);
+              perRun.set(pc, seen);
+            }
+          }
+          for (const [pc, slots] of perRun) if (slots.size > 1) multiLane.add(pc);
+        }
+      }
+    }
+
+    // Exactly one, and it is the guard at pc 8. Stated as the pc rather than a count alone, so a
+    // DIFFERENT branch starting to alternate fails here rather than silently taking its place.
+    expect([...multiLane], 'the lane-alternating branches').toEqual([8]);
+
+    // ...and its counter never leaves the floor, which is the half that makes the mutation
+    // invisible. `nested-loop.s`'s guard is index 2 (pc 8 ⇒ `(8 >>> 2) & 15`), and under
+    // `'dynamic-2bit'` it is driven DOWN from the weakly-not-taken seed and parks at 0.
+    const tables = tablesOf(run('nested-loop.s', config('dynamic-2bit', false, 4)));
+    const guardCounter = new Set(tables.map((t) => t![2]!));
+    expect([...guardCounter].sort(), 'the guard never bets taken').toEqual([0, 1]);
+    expect(tables.at(-1)![2], 'and it ends at the floor').toBe(0);
   });
 
   /**
