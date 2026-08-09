@@ -114,9 +114,18 @@ export function isPredictable(d: DecodedInstruction): boolean {
  *   - **`jal` does not CONSULT the table** — it is unconditionally taken, so a counter can only be
  *     wrong about it. Priced at exactly 1 cycle on `call-return.s` (16 bypassing, 17 consulting a
  *     cold weakly-not-taken counter), landing squarely on M4's own `+1` witness.
- *   - **`jal` and `jalr` do not UPDATE it** — measured at zero effect on this corpus (no jump shares
- *     an index with a conditional branch at 16, 8 or 4 entries), so it is a pedagogy call rather
- *     than a timing one: a table whose every row is a conditional branch reads cleaner.
+ *   - **`jal` and `jalr` do not UPDATE it** — measured at zero TIMING effect on this corpus (no jump
+ *     shares an index with a conditional branch at 16, 8 or 4 entries), so it is a pedagogy call
+ *     rather than a timing one: a table whose every row is a conditional branch reads cleaner.
+ *
+ * ⚠ **"A pinned decision with no net" was true when it was written at step 3 and is FALSE now, and
+ * the correction is worth more than the fact.** That row measured zero reddened tests across the
+ * whole suite — but step 4 then added a per-cycle recorded-table sweep, which replays training under
+ * exactly this predicate, and step 5 gave the deep pipeline one too. Re-fired against the finished
+ * suite, letting jumps train reddens **3 tests on each model**, all of them `call-return.s` (the
+ * corpus's only `jal`/`jalr`) plus that sweep's own non-vacuity guard. **A break-table count is a
+ * measurement against a suite, and it expires when the suite grows** — the second row of this
+ * plan's to go stale that way, after the index-rotation row went from 2 to 3.
  *
  * ⚠ **Both policies are CALL-SITE policy and this predicate is the whole of their mechanism.** Step
  * 2 kept `BranchPredictor`'s API at `predict(pc)` / `update(pc, actual)` precisely so these

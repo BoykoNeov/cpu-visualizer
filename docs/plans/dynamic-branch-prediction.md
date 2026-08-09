@@ -210,7 +210,8 @@ logic four times.
       reads the field until step 6. So there was no test that read the table at an early cursor;
       there was no test that read the table at all. The step's whole content is writing that net.
 
-- [ ] **5. The other three models.** `deep-pipeline`, `superscalar`, `out-of-order`. Each should be
+- [ ] **5. The other three models.** `deep-pipeline` **DONE 2026-08-09** (results in the step-5
+      section below); `superscalar`, `out-of-order` remain. Each should be
       an ask-and-tell diff (see the multiplier section). Acceptance: INV-8 green per model across
       the full scheme matrix; the superscalar's per-lane bets and the OoO's speculation depth
       unchanged in shape.
@@ -840,6 +841,12 @@ Six rows are worth more than their count:
   jumps update reddens nothing at all — the plan predicted zero TIMING effect (no jump shares an index
   with a conditional branch at 16, 8 or 4 entries) and the truth is broader: no test of any kind sees
   it. It is a pedagogy call, and `isConditionalBranch`'s docblock is the only thing holding it.
+  ⚠ **SUPERSEDED at step 5 — re-fired against the finished suite it reddens 3, not 0.** Step 4's
+  per-cycle recorded-table sweep replays training under `isConditionalBranch`, so `call-return.s`
+  (the corpus's only `jal`/`jalr`) disagrees under both dynamic schemes, taking that sweep's
+  non-vacuity guard with it. The row was true when measured and nobody re-ran it when the suite grew
+  underneath it — the second row here to go stale that way, after the index rotation went 2 → 3.
+  **A break-table count is a measurement against a suite, not a property of the mutation.**
 - **Row 4 confirms the differential matrix is a FALSE NET here, in its own new cells.** With the knob
   entirely unhonored, **all 50 INV-8 cells stay green** and so does `timing.test.ts`; the only red is
   `dynamic-predict.test.ts` plus the control's four-position test. The matrix was still worth widening
@@ -1011,6 +1018,84 @@ forward references.
 untrained table" is closed at the TRACE level here and stays unticked, because nothing in `web` reads
 `micro.predictor` until step 6's panel. There is no panel to scrub and no browser pass to run yet.
 
+## Step 5 — IN PROGRESS. The other three models, one commit each
+
+### Model 1 of 3 — `deep-pipeline`, DONE 2026-08-09
+
+Shipped: a `BranchPredictor` field + `betTarget(d, pc)` + an EX2 training call + the `.slice()` deep
+copy in `engine/deep-pipeline`, a `dynamic-predict.test.ts` mirroring the 5-stage's, and INV-8
+widened to all five schemes (74 → 122 cells). 7863 → 8017 tests, five gates green.
+
+**Acceptance (b) came out EXACT again, and the derivation is now a two-model method.** The columns
+were computed before the engine could run a dynamic scheme, as
+`cycles(scheme) = cycles(not-taken) − P(not-taken) + P(scheme)` with `P` summed per INSTANCE — and
+the price rule was **validated first by reproducing the MEASURED `static-taken` column** on all 12
+programs × both positions before a single dynamic cell was believed. That validation is the whole
+trick: it is the same "replay the schemes that DO exist" move step 0 used, one model over.
+
+⚠ **The plan says step 0's table must not be inherited here, and it was not — but two things in it
+genuinely ARE program properties and reusing them is the point.** The outcome string (`actual`) and
+the bet strings (`oneBit`/`twoBit`) transfer, because prediction changes when things happen and never
+what happens, and both models share one bet policy by importing it. What does NOT transfer is the
+price: **4 / 2 / 0 here against the 5-stage's 2 / 1 / 0.** The new file re-derives `actual` from this
+engine under all four schemes rather than asserting the transfer, so a policy that diverged here
+fails against the strings instead of agreeing with a replay that diverged with it.
+
+**The finding worth teaching, and it is not a wart in the numbers.** On the 5-stage this feature's
+aggregate case is thin — over the eleven programs predating `nested-loop.s`, `dynamic-2bit` beat
+`static-taken` by ONE cycle and `dynamic-1bit` tied it. **Depth changes that.** Every wrong bet costs
+4 instead of 2, so corpus-wide the 2-bit margin is **14 cycles** here against the 5-stage's 7, and
+`dynamic-1bit` — which tied over the original eleven — wins outright (+6). `call-return.s` is +4
+where the 5-stage measured +2; `nested-loop.s` runs 262 / 252 / 246 / 240, still strictly ordered
+with no ties. **A deeper machine is where a counter's memory is worth paying for**, which is the
+sentence this model's lesson (step 8) should be built on.
+
+#### Break table — MEASURED, eight rows, and one of them corrected a row in THIS document
+
+| #   | Mutation                                                | Reddens                          |
+| --- | ------------------------------------------------------- | -------------------------------- |
+| 1   | the bet ignores the predictor (knob unhonored)          | **35** — `dynamic-predict` alone |
+| 2   | `snapshot()` handed straight through — one alias        | **20**                           |
+| 3   | `{ ...snapshot() }` — the wrapper spread                | **20** — identical to row 2      |
+| 4   | `update` handed the wrong pc (`nextPc`)                 | **48**                           |
+| 5   | `jal` CONSULTS the table                                | **5**                            |
+| 6   | `jal`/`jalr` UPDATE the table                           | **3** — and see below            |
+| 7   | trained on what it PREDICTED, not what happened         | **47**                           |
+| 8   | `predictor` renamed `bht` on `DeepPipelineMicro` + site | **30** + **2** `tsc` errors      |
+
+Four rows are worth more than their count:
+
+- ⚠ **Row 6 is the one that matters, because it falsifies a row already written down here.** Step 3
+  measured "jumps update the table" at **ZERO** reddened tests and this document called it "a pinned
+  decision with NO net, held only by `isConditionalBranch`'s docblock". Re-fired on the deep pipeline
+  it reddens 3 — so the same mutation was re-fired on the **5-stage**, where it now also reddens 3.
+  The reason is step 4: its per-cycle recorded-table sweep replays training under
+  `isConditionalBranch`, so `call-return.s` (the corpus's only `jal`/`jalr`) disagrees under both
+  schemes and takes the sweep's own non-vacuity guard with it. **The row was true when it was
+  measured and nobody re-ran it when the suite grew underneath it.** Second instance of the same
+  shape here, after step 4 found the index-rotation row had gone from 2 to 3.
+  **Generalize: a break-table count is a measurement against a SUITE, not a property of the
+  mutation — it expires, and a step that adds a sweep should re-fire the rows that sweep now covers.**
+- **Rows 2 and 3 redden the IDENTICAL 20**, reproducing the 5-stage's step-4 measurement exactly on a
+  different model. The wrapper spread is still exactly as broken as no copy at all.
+- **Row 8 re-fires step 1's cross-model spelling tripwire in the new world and it still holds** —
+  `web/src/models.test.ts` goes red, which is what that test was added for when a divergent spelling
+  passed typecheck and all 7591 tests. What is new is that the model's own `dynamic-predict.test.ts`
+  now casts to `DeepPipelineMicro`, so the rename is **also** two compile errors: a field with a
+  reader has a net a field without one cannot have. That is step 4's lesson from the other side.
+- **Row 1 confirms the differential is a false net here too.** With the bet ignoring the predictor
+  entirely, all 122 INV-8 cells stay green and the only red is the new file.
+
+#### The test file's home, decided once for all three models
+
+The 5-stage put its deep-copy claim in `dynamic-predict.test.ts` rather than `recorder.test.ts`, and
+the reviewer's instinct is that the predictor's aliasing pin belongs next to the cache's. **That
+premise does not hold in this repo**: the superscalar pins the cache's aliasing in
+`recorder.test.ts`, the deep pipeline pins it in `cache.test.ts`. "Next to the cache" is therefore
+not one shape but two. A per-model `dynamic-predict.test.ts` holding every predictor claim — timing,
+strings and recording — makes all four models identical instead, so that is the shape for the
+remaining two.
+
 ## Acceptance criteria
 
 - [ ] Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table train —
@@ -1033,7 +1118,7 @@ untrained table" is closed at the TRACE level here and stays unticked, because n
 | Table size                                           | **16, as a MODULE CONSTANT (`PREDICTOR_ENTRIES`), not a `ProcessorConfig` field.** Step 0b narrowed it to 8-or-16 (only 4 aliases: `nested-loop.s`'s guard at pc 8 and inner branch at pc 24 collide on index 2 there, costing `dynamic-2bit` 181 against 171). **16 breaks the tie because every derived number in the step-0 and step-0b tables was computed at `(pc>>>2)&15`** — so those cycle counts stay usable as step 3's acceptance target with no row re-derived. A config knob was rejected on scope: it is a `trace` schema change dragging every config literal and conformance matrix, to expose a lever whose whole measured range is one cliff | **CLOSED**    |
 | Index function's HOME                                | **A standalone pure `predictorIndex(pc)` beside the types, not only a method on step 2's class.** Step 6 must highlight the entry touched this cycle and derives it from `pc` (INV-3), but the mutating class stays package-private to the engines — so the view could never reach a method. This is `cache.ts`'s `lineIndex` boundary exactly: render a table, never drive one                                                                                                                                                                                                                                                                                | **CLOSED**    |
 | **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore. **Pinned at step 3, spelled by `isConditionalBranch` in `engine/common/predict.ts`** so the four wiring sites cannot answer it four ways — the break harness reddens 5 tests when `jal` is made to consult, one of them `call-return.s`'s cycle count                                                                  | **CLOSED**    |
-| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner. **Pinned NO at step 3** — and the harness confirms the "no timing net" half: making jumps update reddens **ZERO** tests, the only mutation of the eleven that is invisible to the entire suite                                                                                                                                                                                                  | **CLOSED**    |
+| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner. **Pinned NO at step 3**, when the mutation reddened ZERO tests. ⚠ **That "no net" reading EXPIRED at step 4 and was re-measured at step 5: it reddens 3 per wired model**, all `call-return.s`, because the per-cycle recorded-table sweep replays training under `isConditionalBranch`                                                                                                         | **CLOSED**    |
 | Index function                                       | pc bits alone, no tag — a mispredict from aliasing is a true fact about this machine (INV-5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _(open)_      |
 | Initial counter state                                | Weakly-not-taken, so a loop's first pass visibly _learns_ rather than starting right. **Step 0 measured the alternative and it is not neutral: strongly-not-taken (`00`) makes the 2-bit predictor SLOWER than the 1-bit on all four single-entry loops** (`array-sum` 72 vs 71, and likewise `strided-sum`, `sum-loop`, `slow-op-loop`) — a demo that would show the "better" predictor losing                                                                                                                                                                                                                                                                | _(open)_      |
 | Does `branch-predicted` fire on a not-taken bet?     | **No** — the schema forbids it; a dynamic not-taken prediction is silent, like `'none'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
