@@ -1,10 +1,11 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31. No engine BEHAVIOR yet.** The corpus is
+**Status: STEPS 0, 0b, 1 AND 2 DONE — step 2 on 2026-08-09. No engine BEHAVIOR yet.** The corpus is
 measured (see the step-0 results section), `content/programs/nested-loop.s` is authored, hand-derived
-into three timing tables and three shape tables, and committed, and the schema now carries five
-scheme names, `PredictorState`, and a `predictor` field on all four honoring models' `micro` — all of
-it inert (see the step-1 section). Steps 2–8 are untouched. Every claim
+into three timing tables and three shape tables, and committed; the schema carries five scheme names,
+`PredictorState`, and a `predictor` field on all four honoring models' `micro`; and `BranchPredictor`
+— the state machine itself — is written and unit-tested. **All of it inert: nothing constructs a
+predictor** (see the step-1 and step-2 sections). Steps 3–8 are untouched. Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
 dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
 step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
@@ -150,7 +151,8 @@ logic four times.
       `unknown` precisely so `trace` never learns these shapes. `PredictorState` is the second case.
       It went to `packages/engine/common/src/predictor.ts`.
 
-- [ ] **2. `engine/common/src/predictor.ts` — the pure, stateful predictor.** A class over
+- [x] **2. `engine/common/src/predictor.ts` — the pure, stateful predictor.** — **DONE 2026-08-09;
+      results in the step-2 section below.** A class over
       `{ index(pc), predict(pc): boolean, update(pc, actual): void, snapshot(): PredictorState }`,
       with the 1-bit and 2-bit variants as the counter width. No model imports, no trace imports
       beyond types — the same layering `predict.ts` already respects. Sweep the classic sequences
@@ -628,6 +630,82 @@ sitting directly above the assertion contradicting it.
 ⚠ **`Set-Content` mojibaked the file on the first attempt at row 5** — a two-token rename came back
 as 152 insertions / 152 deletions. The M13 memory records this hazard and it is still live: mutate
 source here with the editor, never a PowerShell `-replace` round-trip.
+
+## Step 2 — DONE 2026-08-09. `BranchPredictor`, the state machine
+
+Shipped: `BranchPredictor` in `engine/common/src/predictor.ts` — `{ index, predict, update, snapshot }`,
+constructed from the scheme, exported through `engine-common/index.ts` and **constructed by nobody**.
+Nine tests (7597 → 7606), five gates green. Step 3 wires the pipeline.
+
+### Three shape decisions, each made against a precedent rather than a preference
+
+**A CLASS, not `cache.ts`'s functions-over-a-state-object — and the difference is not taste.**
+`access()` threads `config` through every call because a cache's geometry lives in `CacheConfig` and
+varies per run. This table's geometry is a module constant and its only variable is the counter
+width, so constructing from the scheme derives that width **once** and the four wiring sites (steps 3
+and 5) pass `config.branchPrediction` straight through. That matters here specifically:
+`m13-width-planned.md` records four-site divergence as this repo's measured failure mode, and a
+threshold computed at four call sites is four chances to compute it differently.
+
+**The API stays `predict(pc)` / `update(pc, actual)` and nothing richer, because that is what keeps
+three of this plan's open decisions open.** "Does `jal` consult the counter", "do `jal`/`jalr` update
+it" and "does a SQUASHED branch update it, on resolve or on commit" are all still `_(open)_` — and
+all three are CALL-SITE policy. A constructor taking a decode, or an `update` taking `isConditional`,
+would close them by implementation **inside a package forbidden from importing a model**, which is
+the wrong place for a question whose answer is "it depends which machine". The two-arg `update` is
+precisely what leaves update-on-resolve vs update-on-commit a step-5 decision rather than a step-2
+accident.
+
+**`snapshot()` returns the LIVE table, deliberately not a defensive copy.** A copy here would read as
+the safer choice and would be wrong twice over: it would make four `micro.predictor` docblocks false
+(all say "DEEP-COPY it into every snapshot"), and it would **dissolve step 4** — whose whole content
+is putting that copy in each model's `snapshotState()`, next to the cache's, with a break harness.
+The general rule is step 1's own ⚠ restated: a decision belongs where the implementer READS it, and
+the person deciding what to deep-copy is reading `snapshotState`, not a getter one package down. A
+test pins the aliasing so the contract cannot drift out from under step 4.
+
+`DynamicScheme` is `Extract`ed from the trace union with a template literal rather than hand-listed,
+so a third dynamic name widens the type, makes `COUNTER_BITS`'s `Record` incomplete and reddens `tsc`
+at the one place that must answer "how wide is its counter?" — the `SCHEME_POSITION` tripwire shape.
+The seed falls out as `takenFrom - 1` in both schemes (0 for 1-bit, 1 for 2-bit), so weakly-not-taken
+is one expression rather than a second per-scheme table.
+
+### Break table — MEASURED, six mutations, and the flagship string is NOT a total net
+
+Commit first (risk 5), mutate with the editor (`Set-Content` mojibakes source here), revert with
+`git checkout --` between rows. 14 tests in the file.
+
+| #   | Mutation                                     | Reddens                                         |
+| --- | -------------------------------------------- | ----------------------------------------------- |
+| 1   | Floor clamp dropped (`c - 1`)                | **1** — floor only                              |
+| 2   | Ceiling clamp dropped (`c + 1`)              | **2** — ceiling + flagship string               |
+| 3   | Threshold forced to 1 (`takenFrom = 1`)      | **3** — cold table, floor, live table           |
+| 4   | 2-bit seeded strongly-not-taken (`.fill(0)`) | **3** — cold table, flagship string, live table |
+| 5   | `update` re-implements the index (`pc % 16`) | **6** — everything that trains then reads       |
+| 6   | `snapshot()` copies defensively              | **1** — the live-table guard only               |
+
+Four rows are worth more than the count:
+
+- ⚠ **Row 3 leaves the flagship string GREEN.** `TTTTNTTTT` under a 2-bit table with the threshold at
+  1 still reads `NTTTTTTTT` — so the sequence everyone thinks of as "the" test of a saturating
+  counter does **not** pin the taken threshold. The cold-table and floor tests carry that, which is
+  the concrete reason the flagship is not allowed to be the only case. Same class as step 1's
+  "a five-scheme sweep is vacuous on its own".
+- **Row 4 corrected a row written from prediction, again.** It was hand-derived as "cold table only";
+  it also reddens the flagship, because a 2-bit counter seeded at 0 mispredicts **twice** before it
+  warms (`NNTTT…`), not once. Third consecutive step where a predicted break-table row came out
+  wrong — the rule is now simply _run it_.
+- **Row 5 does not partition and should not.** A predictor that trains the wrong row is the loud
+  failure, and six of fourteen is the right shape for it. What it does prove is that `predict` and
+  `update` are welded to the exported `predictorIndex`, which is the coupling step 6's panel rests on.
+- **Row 6 is the guard on step 4's premise, and it is non-vacuous** — exactly one test sees a
+  defensive `snapshot()`. Without that row, "the recorder owns the copy" would be a comment.
+
+⚠ **One mutation is INVISIBLE and is recorded rather than tested.** Replacing `index()`'s delegation
+with an inline `(pc >>> 2) & 15` is value-identical for every uint32 at the pinned 16 entries, so no
+assertion in the repo can see it; the delegation is a _reading_ guarantee that only starts paying if
+`PREDICTOR_ENTRIES` moves. Stating it beats a test that pretends to cover it — the honest form of
+step 1's "a harness aimed at the headline risk misses what shipped alongside it".
 
 ## Acceptance criteria
 

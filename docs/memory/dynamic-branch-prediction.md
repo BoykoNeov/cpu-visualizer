@@ -1,18 +1,62 @@
 ---
 name: dynamic-branch-prediction
-description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b AND 1 DONE — step 1 on 2026-07-31; schema only, no engine behavior). Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites, not three), before adding a field to any model's `micro` (two of the three sites are whole-micro literals passed as ARGUMENTS, invisible to a grep), and before trusting a cross-model naming agreement — 'by construction' was enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests. Also the reusable method for pricing an unbuilt config knob offline."
+description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1 AND 2 DONE — step 2 on 2026-08-09; schema + the BranchPredictor class, still no engine behavior and nothing constructs one). Read before choosing a shared class's API, before making a getter defensive, and before trusting the canonical demo sequence as a test. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites, not three), before adding a field to any model's `micro` (two of the three sites are whole-micro literals passed as ARGUMENTS, invisible to a grep), and before trusting a cross-model naming agreement — 'by construction' was enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests. Also the reusable method for pricing an unbuilt config knob offline."
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-07-31T06:08:48.517Z
+  modified: 2026-08-09T11:16:11.938Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b AND 1 complete — step 1 on
-2026-07-31. Steps 2–8 untouched; NO engine behavior anywhere.** A 1-bit/2-bit saturating BHT riding
-`micro.predictor` (following `micro.cache`), wired into the four `configurableBranchPrediction`
-models. Not a milestone — a feature, like [[keyboard-clock-control]] and [[continuous-play]]. The
-full measured tables live in the plan; only what a future session would otherwise re-derive is here.
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1 AND 2 complete — step 2 on
+2026-08-09. Steps 3–8 untouched; NO engine behavior anywhere, and nothing constructs a
+`BranchPredictor` yet.** A 1-bit/2-bit saturating BHT riding `micro.predictor` (following
+`micro.cache`), wired into the four `configurableBranchPrediction` models. Not a milestone — a
+feature, like [[keyboard-clock-control]] and [[continuous-play]]. The full measured tables live in
+the plan; only what a future session would otherwise re-derive is here.
+
+## Step 2 — `BranchPredictor`, and what its API shape is protecting (2026-08-09)
+
+Shipped: `{ index, predict, update, snapshot }` in `engine/common/src/predictor.ts`, constructed from
+the scheme. 7597 → 7606, five gates green. Three shape decisions, each with a reason that will be
+re-asked at steps 3–6:
+
+- **A CLASS here even though `cache.ts` next door is functions-over-a-state-object.** `access()`
+  threads `config` because a cache's geometry varies per run; this table's geometry is a module
+  constant and its only variable is counter width. Constructing from the scheme derives the width
+  ONCE, so the four wiring sites pass `config.branchPrediction` through and none re-derives a
+  threshold — the [[m13-width-planned]] four-site-divergence failure mode, designed out.
+- **The API is `predict(pc)` / `update(pc, actual)` and nothing richer, and that is load-bearing.**
+  Three of the plan's open decisions (does `jal` consult; do `jal`/`jalr` update; does a SQUASHED
+  branch update, on resolve or commit) are all CALL-SITE policy. A constructor taking a decode would
+  close them by implementation **inside a package forbidden from importing a model**. Generalize: an
+  API that accepts a richer argument silently answers the questions that argument encodes.
+- **`snapshot()` returns the LIVE table on purpose.** A defensive copy reads as safer and is wrong
+  twice: four `micro.predictor` docblocks say "DEEP-COPY it into every snapshot", and copying here
+  **dissolves step 4**, whose whole content is that copy plus a break harness. Step 1's ⚠ restated —
+  a decision belongs where the implementer READS it, and that is `snapshotState`, not a getter one
+  package down. A test pins the aliasing so the contract can't drift out from under step 4.
+
+⚠ **The flagship sequence is NOT a total net, measured.** `TTTTNTTTT` under a 2-bit table with the
+taken threshold forced to 1 still reads `NTTTTTTTT` — so the sequence everyone reaches for does not
+pin the threshold at all. The cold-table and floor cases carry it. Same class as step 1's vacuous
+five-scheme sweep: **the canonical demonstration of a mechanism is usually not the test of it.**
+Related: assert the prediction STRING, never the mispredict COUNT — a wrong seed and a wrong
+threshold can both leave the count unchanged.
+
+⚠ **Third consecutive step where a break-table row predicted by hand came out wrong.** Here: "2-bit
+seeded at 0 reddens the cold-table test only" — it also reddens the flagship, because a counter
+seeded strongly-not-taken mispredicts **twice** before warming (`NNTTT…`), not once. The rule is now
+just _run it_; a predicted row is a hypothesis.
+
+⚠ **One mutation is invisible and was RECORDED rather than tested**: inlining `index()`'s delegation
+as `(pc>>>2)&15` is value-identical at 16 entries, so nothing can see it — it only starts mattering
+if `PREDICTOR_ENTRIES` moves. Saying so beats a test that pretends to cover it.
+
+Six mutations run (floor / ceiling / threshold / seed / re-implemented index / defensive snapshot);
+the table with counts is in the plan. The defensive-`snapshot()` row reddens **exactly one** test, so
+the step-4 premise guard is non-vacuous. `git checkout --` between rows, editor not `Set-Content`,
+tree committed first.
 
 ## Step 1 — the schema, and the three things it taught (2026-07-31)
 
