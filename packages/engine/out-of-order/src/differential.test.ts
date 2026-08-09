@@ -44,8 +44,22 @@ import { OutOfOrderProcessor } from './index';
  * coverage of paths the static schemes never take: a dynamic scheme mispredicts in BOTH directions
  * on the same branch within one run, which on THIS model means the squash/restore machinery —
  * `flushAfter`, the rename replay, the deferred-broadcast filter — runs on interleavings the static
- * schemes never produce. That is where a speculation LEAK would hide, and it is the reason to widen
- * a matrix that cannot answer the honoring question at all.
+ * schemes never produce. That is where a speculation LEAK would hide.
+ *
+ * ⚠ **And on this model that stopped being a hypothesis: the widened columns CAUGHT one.** Step 5's
+ * break harness left this core's three structural guards reading `predictTaken` — the careless
+ * spelling, since before the dynamic schemes one boolean answered both "has a bet path" and "bets
+ * taken" — so a dynamic machine never froze dispatch behind an un-bet transfer. Fall-through
+ * instructions then entered the ROB behind a branch that was later bet taken, and when the bet
+ * happened to match the outcome no squash ever fired to remove them: **wrong-path instructions
+ * COMMITTED.** That reddens **180 cells here**, and every single one is a `dynamic-*` cell.
+ *
+ * **So this is the one place in the whole feature where INV-8 is a real net rather than a false
+ * one.** Three earlier steps measured the opposite — with the knob entirely unhonored, every cell
+ * stays green — and that remains true: green cells still say nothing about whether a scheme is
+ * HONORED. What they do say, here and not on the three latch models, is that speculation stayed
+ * contained; this core is the only one whose predictor wiring touches a correctness mechanism rather
+ * than only a timing one. Had this matrix not been widened, that bug would have shipped in silence.
  */
 const SCHEMES = [
   'none',
