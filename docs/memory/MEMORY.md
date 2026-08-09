@@ -5,19 +5,15 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 each with a lesson track. **NO milestone is in progress.**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
-four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
-corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **9466
-tests** (7597 after branch prediction's step 1, 7606 after step 2, 7830 after step 3, 7863 after
-step 4, 9466 after step 5), five gates green. A third shell fix landed 2026-07-30: the **sticky
-transport bar's per-step
-jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
-caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic
-branch prediction (plan written, STEPS 0 THROUGH 5 DONE — steps 3, 4 and 5 on 2026-08-09; ALL FOUR
-betting models now bet from a live counter table, train it and record it deep-copied. Steps 6–8
-remain: the predictor panel, the browser pass, a lesson — the only
-thing in flight), URL permalinks,
-session persistence, and
-the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles the
+four UX gaps; **three are done** — keyboard clock control, continuous play, and the sticky transport
+bar's per-step jitter (all 2026-07-30; the jitter fix also closed continuous play's sub-880px
+residual and moved both caption thresholds). The corpus is **twelve** programs and the repo runs
+**9492 tests** (branch prediction by step: 7597 / 7606 / 7830 / 7863 / 9466 / 9492 after steps 1–6),
+five gates green.
+
+**Open work:** dynamic branch prediction (**steps 0–6 done, 3–6 on 2026-08-09; steps 7–8 — the
+browser pass and a lesson — are the only thing in flight**), URL permalinks, session persistence, and
+the `/code-review ultra` fan-out over `89bb26e..HEAD` (user-triggered; the no-arg form bundles the
 local branch and needs no PR).
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
@@ -48,48 +44,15 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 
 ## Post-M14 work
 
-- [Dynamic branch prediction](dynamic-branch-prediction.md) — **steps 0–5 DONE; 6–8 (panel, browser
-  pass, lesson) remain — the only thing in flight.** All four betting models bet from a counter
-  table, train it at resolve and record it deep-copied; every derived cell reproduced EXACTLY.
-  **Step 5 inverts a claim this plan made three times: INV-8 is a FALSE net on the three latch models
-  and a REAL one on the out-of-order core** — 180 dynamic-only cells caught wrong-path instructions
-  COMMITTING, because there the wiring touches speculation containment, not only timing. Also: **a
-  break-table count EXPIRES when the suite grows** (step 3's "jumps train the table → ZERO, a
-  decision with no net" is now 3 everywhere); **depth and width argue for a counter for OPPOSITE
-  reasons** — a wrong bet costs double / every bet costs a pair — which are step 8's two sentences;
-  **the never-bets identity is a theorem on the superscalar and FALSE on the OoO**; **the per-lane
-  table has no net and the WHY is the finding** (the corpus's one lane-alternating branch is the one
-  whose counter never moves); and **the cross-model test written to close a gap swept the wrong
-  program and caught nothing.** Read before step 6 and before writing any cross-model test.
-  **Step 4's headline: landing the recording
-  reddened ZERO of 7830 tests** — `null` recorded while a live table trained was an INV-2
-  understatement nothing could see arrive or leave, so a step whose content is one line is really a
-  step whose content is its own net. Also: **`{ ...snapshot() }` is exactly as broken as no copy**
-  (all four models redden exactly 20), so assert distinctness on `.counters` and never the
-  wrapper; **the non-vacuity control had to be 2-bit** because `nested-loop.s` ends 1-bit holding the
-  COLD table; a per-cycle replay is the sole net for snapshot TIMING; **eight of its 24 cases
-  asserted nothing** and only the break harness found that; and **a break count read from ONE run has
-  an unstated variance** (a row reported 5 then 4 then 4). Step 3's lessons are about the TESTS: **a
-  replay written to be the unique net for a defect caught nothing alone** (break the class and see
-  who else reddens before claiming a test is the only net); **the wrong-pc mutation that is truly
-  invisible is the CONSISTENT shift**, caught solely by `predictorIndex`'s own unit tests; **a view
-  predicate serving more than one question hides a defect in the one it answers worst** (a
-  taken/not-taken boolean silently skipped the re-record on a dynamic scheme, and NOTHING headless
-  saw it); **a predicate extracted so two consumers can DIFFER needs a test per CONSUMER, one of
-  them render-keyed** — the datapath seam had none and would have blanked the branch-target adder
-  under both dynamic schemes; and **a scheduling window wants an arrival tripwire, not a schema
-  field** (and then FIRE the tripwire, so it is measured). Step 2 adds
-  three more: **an API that accepts a richer argument silently answers the questions that argument
-  encodes**; **a getter made defensive can dissolve a later step's whole content**; and **the
-  canonical demo sequence is usually not the test of the mechanism** — `TTTTNTTTT` does not pin the
-  taken threshold. **Read
-  before adding ANY corpus program** (it cost SIX pinned sites, not three), **before adding a field
-  to any model's `micro`** (two of its three sites are whole-micro literals passed as ARGUMENTS, and
-  one is a COMPONENT), and **before trusting any cross-model naming agreement — "by construction" was
-  enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests.** Also: **a
-  break harness aimed at a step's headline risk will not find the risk in what the step exported
-  ALONGSIDE it** (`predictorIndex` shipped untested); a five-scheme inertness sweep is vacuous
-  without its control; and a union is a TYPE so `npm test` cannot see it shrink.
+- [Dynamic branch prediction](dynamic-branch-prediction.md) — **steps 0–6 DONE; 7–8 (browser pass,
+  lesson) remain — the only thing in flight.** Four models bet from a counter table and the panel
+  draws it. The file carries a per-step section; its recurring findings are that **INV-8 is a false
+  net on the latch models and a real one on the OoO**, that **a break count EXPIRES when the suite
+  grows**, and that **the canonical demonstration of a mechanism is usually not the test of it**
+  (five instances, `call-return.s` the witness each time). **Read before step 7; before any view fold
+  over a per-cycle event; before adding a corpus program (six pinned sites, not three), a field to
+  any model's `micro`, or a knob to a model that speculates; and before trusting a cross-model naming
+  agreement or a break row you wrote by hand.**
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser

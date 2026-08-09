@@ -227,7 +227,8 @@ logic four times.
       right about both of its fall-throughs. **So the superscalar's `betting` counts are RE-DERIVED
       per scheme, never carried over**, and the same goes for the deep pipeline's longer shadow.
 
-- [ ] **6. The view — a predictor panel, following `CacheGridView`.** ⚠ **START by fixing
+- [x] **6. The view — a predictor panel, following `CacheGridView`.** — **DONE 2026-08-09; results in
+      the step-6 section below.** ⚠ **START by fixing
       `web/src/MicroTablePanel.tsx`'s `preRunMicro`, which step 5 made WRONG rather than merely
       incomplete.** It fabricates an `OutOfOrderMicro` for cursor −1 with `predictor: null`; step 1
       flagged that the honest pre-run value is the **COLD table** (every counter at its seed), and as
@@ -1251,6 +1252,125 @@ premise does not hold in this repo**: the superscalar pins the cache's aliasing 
 not one shape but two. A per-model `dynamic-predict.test.ts` holding every predictor claim — timing,
 strings and recording — makes all four models identical instead, so that is the shape for the
 remaining two.
+
+## Step 6 — DONE 2026-08-09. The panel, and the four decisions the measurements made
+
+Shipped: `web/src/predictor-table.ts` (the pure fold), `PredictorTableView.tsx` (the HTML half),
+their two test files, the CSS, the App slot, `counterGeometry` + `coldPredictorState` in
+`engine-common`, and the `preRunMicro` fix the step's own text demanded. 9466 → 9492 tests, five
+gates green. Two commits: the panel, then the break harness's closures.
+
+### The blocking question was the fold's SHAPE, and it had to be measured first
+
+The obvious move is to copy `CacheAccessView` — a single `access | null`. That shape is legitimate
+on the cache **because its docblock justifies it with a model fact**: at most one memory instruction
+is in MEM per cycle. There is no equivalent fact for branch resolution, and the superscalar at width
+≥ 2 and the OoO core both plausibly resolve two conditional branches in one cycle. So it was counted
+before the type was written, over **672 runs and 31,140 cycles** (every model × width × issue mode ×
+forwarding × dynamic scheme × program): **the maximum is 1**, with 5,096 `branch-resolved` events of
+which 4,984 are conditional.
+
+⚠ **The fold still uses a LIST, and the reason is where that 1 comes from.** On the superscalar it is
+structural — `issueVerdict`'s `branch-slot` rule is one branch unit, so two transfers never issue
+together. On the out-of-order core it is not structural in the same way: it follows from
+`stageDispatch`'s freeze behind an un-bet transfer, which is a **correctness** mechanism that a
+future model or knob could satisfy differently. A `train | null` would then silently DROP the second
+train — the `memOccupant` shape again. A list costs one word and removes the assumption instead of
+documenting it. (⚠ The first sweep ran in 327ms and reported max 1 with no counters; the numbers
+above are from the re-run **with** run/cycle/event totals. A sweep that fast is exactly the shape
+that measures nothing.)
+
+### Three more measurements, each of which decided something
+
+- **464 trains leave the counter UNMOVED** (a saturating counter trained in the direction it is
+  already parked at). So **the highlight cannot be derived from a counter diff** — a diff-keyed panel
+  goes dark for exactly the branches that have been LEARNT, which are the ones the lesson is about.
+  The `branch-resolved` event is the only honest source. This is the file's headline decision and the
+  break harness confirms it: the diff spelling reddens 2.
+- **Zero rows have more than one owner at the pinned 16 entries**, across all twelve programs. The
+  multi-owner (aliasing) render path is therefore drawn but UNREACHED from the shipped corpus —
+  labelled the way `cache-grid.test.ts` labels its unreachable store-miss state, with a guard that
+  turns red if the corpus ever grows a witness. Three programs (`add`, `byte-loads`,
+  `store-forward`) own no row at all.
+- **No corpus program on any model trains a counter during cycle 0.** That is what makes the pre-run
+  cold table _continuous_ with the recording's first frame, and it is the non-vacuity behind the
+  shared-seed test: the seed cannot drift (one function feeds the engine and both panels), so what
+  the test actually measures is this corpus fact.
+
+### The decision that is a judgement call, not a measurement: the CONSULT is not drawn
+
+A row is READ at the bet and WRITTEN at the resolve, and only the write is drawable —
+`branch-predicted` fires **only when the bet is taken**, because the schema forbids asserting an
+action the machine did not take. A panel lighting "consulted" rows would light roughly half of them
+and silently teach that the predictor is consulted only when it says taken: a lower-fidelity surface
+CONTRADICTING a higher one, which is INV-5's failure rather than a lawful simplification of it. One
+honest state beats two where one is a half-truth. Nothing is lost that the reader needs —
+`branch-resolved.predicted` reports the bet in both directions, and the fold carries it.
+
+### `preRunMicro`, which this step's own text called its first act
+
+It said `predictor: null` from step 1. Step 5 gave the OoO core a real table, at which point `null`
+claimed "this machine has no predictor" about a machine that has one and has merely learnt nothing.
+It is now `coldPredictorState(scheme)` — the same function `BranchPredictor`'s constructor and the
+new panel's pre-run path use, so the three pictures are one value with one definition. `robCapacity`
+still copies because it is a CONFIG fact; `rob`/`rename`/`predictor` are RUN facts and each empties
+to its own zero, which for a counter table is a SEED.
+
+⚠ Adding `scheme` as a **required** prop was itself a compile tripwire: it found all four call sites,
+three of them in tests, which a grep for the component name would also have found but a default
+value would have hidden.
+
+### Break table — MEASURED, ten mutations, and four reddened NOTHING
+
+| #   | Mutation                                         | Red       | Note                                                                            |
+| --- | ------------------------------------------------ | --------- | ------------------------------------------------------------------------------- |
+| 1   | `trainsThisCycle` drops `isConditionalBranch`    | **0 → 1** | a real hole, closed — see below                                                 |
+| 2   | `ownerIndex` drops `isConditionalBranch`         | 3         |                                                                                 |
+| 3   | `trained` derived from a counter diff            | 2         | the headline decision; the saturating-counter tests are what catch it           |
+| 4   | `previous` inverted from the update              | 1         |                                                                                 |
+| 5   | `predictorIndex` rotated by one, in the fold     | 5         | **includes the render-keyed case** — this is what makes a wrong row lit visible |
+| 6   | owners built from the cursor's trace only        | 2         |                                                                                 |
+| 7   | id→pc join through this cycle's `instructions[]` | **0 → 1** | closed on a synthetic trace                                                     |
+| 8   | `preRunMicro` back to `predictor: null`          | **0 → 1** | closed by exporting it                                                          |
+| 9   | App gate on the SCHEME instead of a trace fact   | **0**     | NOT closed — see below                                                          |
+| 10  | `strength` reported for a 1-bit counter          | 2         |                                                                                 |
+
+⚠ **Row 1 is the fifth instance of this feature's recurring finding, and it arrived inside the file
+that names it.** `isConditionalBranch` has two call sites in the fold — owners and trains — and only
+owners had a test. Every training assertion ran on `nested-loop.s`, which contains **no `jal` and no
+`jalr`**, so a view that lit a row for an unconditional jump would have shipped in silence, with the
+counter sitting at its seed under a moving highlight. The test above it says exactly this about
+owners. **Two call sites of one predicate need two tests, and the program that can state the claim is
+`call-return.s` — again.**
+
+⚠ **Row 9 is NOT closed, and the reason is positional.** Nothing in the repo renders `<App/>`, so its
+slot gates are untestable **by position** — and that is equally true of `showCache`, `showMicro` and
+`showIssue`, which have shipped that way for four milestones. The predicate itself
+(`hasPredictorTable`) is tested; its use at the call site is not. Recorded rather than faked, per
+`m13-review-resolved`'s "a pinned decision with no net is a comment" — the honest version of which
+here is "and sometimes the net cannot be written where the decision lives".
+
+⚠ **Row 7's closure is this file's one deliberate FIXTURE.** The wide id→pc join removes a four-model
+assumption rather than documenting one, but no real recording can tell it from the narrow join,
+because all four models keep a resolver listed on its resolve cycle. The only construction that
+separates them is a synthetic cycle with the resolver stripped out — so that is what the test builds,
+labelled as the documented exception to this suite's "derive from a real run, never a fixture" rule.
+
+⚠ **The break harness destroyed the uncommitted tree AGAIN.** `git checkout -- .` between rows wiped
+three finished closures that had not been committed — the identical loss `m13-width-planned.md`
+records. The rule is not "commit before you break", it is **"commit before EVERY row"**, because the
+loop body contains the revert. Separately: driving the mutations from a node script is right, but the
+patch strings must go through the editor or a file, never a bash heredoc — backtick expansion
+silently mangled a docblock full of `` `code` `` spans on the first re-apply.
+
+### What this step did NOT do, stated so step 7 is not skipped
+
+Nothing here renders to a browser. The chip reserves, the pip meter's width, whether sixteen rows
+read at a narrow viewport, and the follow-highlight composing with the map and datapath are all
+unmeasured — `renderToStaticMarkup`, no jsdom, no layout. **9 of 10 view steps in this repo shipped a
+defect only the browser caught**, and the fixed-16-row design removes one jitter class (the panel's
+height is constant by construction, so none of `panel-jitter`'s reserve machinery applies) without
+touching the others.
 
 ## Acceptance criteria
 

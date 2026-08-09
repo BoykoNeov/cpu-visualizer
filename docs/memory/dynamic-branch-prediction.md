@@ -1,21 +1,106 @@
 ---
 name: dynamic-branch-prediction
-description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 THROUGH 5 DONE - step 5 on 2026-08-09; ALL FOUR betting models now bet from a live counter table, train it at resolve and record it deep-copied. Steps 6-8 remain: the panel, the browser pass, a lesson). Read before step 6, before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy - all four models reddened exactly 20), before adding a knob to a model that speculates, before writing a cross-model test, and before trusting a break row you wrote by hand. Headlines: INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core (180 dynamic-only cells caught wrong-path instructions COMMITTING); a break-table count EXPIRES when the suite grows; depth and width argue for a counter for OPPOSITE reasons; the never-bets identity is a theorem on the superscalar and FALSE on the OoO; the per-lane table has no net and the WHY is the useful part; and the cross-model test written to close a gap swept the wrong program and caught nothing. Also the reusable method for pricing an unbuilt config knob offline, and exactly where it stops working.'
+description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 THROUGH 6 DONE - step 6 on 2026-08-09; the predictor panel ships, all four betting models bet from a live counter table, train it at resolve and record it deep-copied. Steps 7-8 remain: the browser pass, a lesson). Read before step 7, before writing any view fold over a per-cycle event (COUNT the events before choosing between a scalar and a list - a saturating counter means a diff-keyed highlight goes dark for exactly the branches that have been LEARNT), before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy - all four models reddened exactly 20), before adding a knob to a model that speculates, before writing a cross-model test, and before trusting a break row you wrote by hand. Headlines: INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core (180 dynamic-only cells caught wrong-path instructions COMMITTING); a break-table count EXPIRES when the suite grows; depth and width argue for a counter for OPPOSITE reasons; the never-bets identity is a theorem on the superscalar and FALSE on the OoO; two call sites of one predicate need TWO tests and call-return.s is the only witness - AGAIN; App slot gates are untestable BY POSITION; and the cross-model test written to close a gap swept the wrong program and caught nothing. Also the reusable method for pricing an unbuilt config knob offline, and exactly where it stops working.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T14:43:00.654Z
+  modified: 2026-08-09T15:58:03.703Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 5 complete — step 5 on 2026-08-09.
-ALL FOUR betting models bet from a live counter table, train it at resolve, and record it
-deep-copied.** A 1-bit/2-bit
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 6 complete — step 6 on 2026-08-09.
+ALL FOUR betting models bet from a live counter table, train it at resolve, record it deep-copied,
+and the panel DRAWS it.** A 1-bit/2-bit
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
-and [[continuous-play]]. **Steps 6–8 remain: the predictor panel, the browser pass, the lesson.** The
+and [[continuous-play]]. **Steps 7–8 remain: the browser pass, the lesson.** The
 full measured tables live in the plan; only what a future session would otherwise re-derive is here.
-Repo at 9466 tests.
+Repo at 9492 tests.
+
+## Step 6 — the panel, and the shape that had to be counted before it was typed (2026-08-09)
+
+Shipped: `web/src/predictor-table.ts` (pure fold) + `PredictorTableView.tsx` (HTML half) + two test
+files + CSS + an App slot, plus `counterGeometry`/`coldPredictorState` in `engine-common`. 9466 →
+9492, five gates. Two commits: the panel, then the break harness's closures.
+
+⚠ **The blocking question was the fold's SHAPE, and copying the neighbour would have been wrong.**
+`CacheAccessView` is a scalar `access | null` and its docblock _justifies_ that with a model fact (at
+most one memory instruction in MEM). **There is no equivalent fact for branch resolution** — so it
+was counted before the type was written: over **672 runs / 31,140 cycles** (every model × width ×
+issue mode × forwarding × dynamic scheme × program), max conditional `branch-resolved` per cycle is
+**1**, from 4,984 conditional events. The fold still uses a **LIST**, because on the superscalar the 1
+is structural (`issueVerdict`'s one branch unit) but on the OoO it follows from `stageDispatch`'s
+freeze behind an un-bet transfer — a **correctness** mechanism a future knob could satisfy
+differently. A scalar would then silently DROP the second train (the `memOccupant` shape). **A list
+costs one word and removes the assumption instead of documenting it.** ⚠ The first sweep ran in 327ms
+and reported max 1 with no counters; a sweep that fast is exactly the shape that measures nothing —
+add run/cycle/event totals before believing any of them.
+
+⚠ **464 trains leave the counter UNMOVED, so a diff-keyed highlight is disqualified by measurement.**
+A saturating counter trained in the direction it is already parked at moves nothing, so a panel that
+lights "the row that changed" goes dark for exactly the branches that have been **LEARNT** — the ones
+the lesson is about. `branch-resolved` is the only honest source. Break row 3 confirms (reddens 2).
+Before/after values are read from `recording.find(t => t.cycle === trace.cycle - 1)`, never by
+inverting the update (wrong at the ceiling), and they live on the ENTRY not the train — with two
+trains on one row no per-train intermediate value exists in the trace at all.
+
+**The consult is deliberately NOT drawn, and the reason is INV-5.** A row is read at the bet and
+written at the resolve; only the write is drawable, because `branch-predicted` fires **only on a
+taken bet**. Lighting "consulted" rows would light ~half of them and teach that the predictor is
+consulted only when it says taken — a lower tier CONTRADICTING a higher one, not a lawful
+simplification. `branch-resolved.predicted` reports both directions and the fold carries it.
+
+**Gate on a TRACE fact (`hasPredictorTable`), never on the scheme** — the shell's `branchPrediction`
+knob persists across model switches, so a dynamic scheme can be held while viewing a machine that has
+no predictor. Related: App passes the raw scheme to the panel, **not** `hasTakenBetPath`, which
+collapses both dynamic schemes onto `'static-taken'` — precisely the distinction this panel draws.
+
+⚠ **Break row 1 is the FIFTH instance of this feature's recurring finding, and it arrived inside the
+file that names it.** `isConditionalBranch` has two call sites in the fold — owners and trains — and
+only owners had a test, because every training assertion ran on `nested-loop.s`, which has **no `jal`
+and no `jalr`**. A view lighting a row for an unconditional jump would have shipped in silence.
+**Two call sites of one predicate need two tests, and `call-return.s` is the witness — again.**
+
+⚠ **Break row 9 reddens 0 and is NOT closed: an App slot gate is untestable BY POSITION.** Nothing in
+the repo renders `<App/>`, and the same is true of `showCache`/`showMicro`/`showIssue`, shipped that
+way for four milestones. The predicate is tested; its use at the call site is not. Recorded rather
+than faked — [[m13-review-resolved]]'s "a pinned decision with no net is a comment", whose honest
+extension here is "and sometimes the net cannot be written where the decision lives".
+
+**Other measured rows.** 10 mutations: 1→0 (closed to 1), 2→3, 3→2, 4→1, **5→5** (`predictorIndex`
+rotated inside the fold — includes the render-keyed case, which is what makes a wrong ROW LIT
+visible), 6→2, 7→0 (closed on a **synthetic** trace — the one deliberate fixture in this suite,
+because no real recording can tell the wide id→pc join from the narrow one: all four models keep a
+resolver listed on its resolve cycle), 8→0 (closed by EXPORTING `preRunMicro` so its fabricated cold
+table is a claim rather than a comment), 10→2. Also: **zero rows have more than one owner at 16
+entries** across all twelve programs, so the aliasing render path is drawn but UNREACHED and labelled
+like `cache-grid.test.ts`'s unreachable store-miss state; and **no program trains during cycle 0**,
+which is what makes the pre-run cold table continuous with frame 0.
+
+**`preRunMicro` fixed, as the step's own text demanded.** `predictor: null` claimed "this machine has
+no predictor" about one that has merely learnt nothing. Now `coldPredictorState(scheme)` — the same
+function the engine's constructor uses, so engine and both panel paths are one value with one
+definition. ⚠ Adding `scheme` as a **required** prop was itself a compile tripwire that found all four
+call sites; a default would have hidden them.
+
+⚠ **A render-keyed test must DERIVE its cycle, not reach for the last one.** "strongly/weakly only at
+2 bits" asserted on `recorded.at(-1)` and failed: `nested-loop.s`'s last cycle holds no strongly-taken
+counter, because both loops exit at the end and weaken 3→2. Third instance of **"the canonical
+demonstration of a mechanism is usually not the test of it."** Fixed by finding a cycle where
+`counter === table.max`.
+
+⚠ **Two toolchain hazards, both recurrences.** `git checkout -- .` between break rows wiped three
+finished-but-uncommitted closures — the identical loss [[m13-width-planned]] records. **The rule is
+not "commit before you break", it is "commit before EVERY row", because the loop body contains the
+revert.** And driving mutations from a node script is right, but **patch strings must go through the
+editor or a file, never a bash heredoc** — backtick expansion silently mangled a docblock full of
+`` `code` `` spans while still printing "ok".
+
+**Step 7 is not optional and this step measured none of it.** No browser, no jsdom, no layout: the
+chip reserves, the pip meter's width, sixteen rows at a narrow viewport, and the follow-highlight
+composing with the map and datapath are all unmeasured. The fixed-16-row design removes one jitter
+class by construction (constant height, so no [[panel-jitter-and-height-reserves]] reserve machinery)
+and touches none of the others. See [[browser-is-the-only-net]].
 
 ## Step 5 — the other three models, and the claim that inverted (2026-08-09)
 
@@ -121,7 +206,7 @@ and `server.fs.allow`). Three pieces are reusable and would otherwise be rebuilt
 - **`lanes.test.ts`** — per-RUN slot occupancy per static pc. The probe that turned "the per-lane
   table has no net" into a reason.
 
-⚠ **One residual, verified inert and owned by step 6**: `MicroTablePanel.tsx`'s `preRunMicro`
+⚠ **One residual, verified inert and owned by step 6 — CLOSED at step 6**: `MicroTablePanel.tsx`'s `preRunMicro`
 fabricates an `OutOfOrderMicro` with `predictor: null`, and the honest pre-run value is the COLD
 table. Nothing in `web` reads `micro.predictor`'s value today (grepped), so it is latent — but step 5
 made the OoO record a real table, so step 6's first act makes it reachable. Flagged in the plan's
