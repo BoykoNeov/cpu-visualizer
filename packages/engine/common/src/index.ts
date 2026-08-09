@@ -58,8 +58,9 @@ export {
 } from './cache';
 
 /**
- * The branch history table's shape and geometry (dynamic-branch-prediction step 1) — types only
- * until step 2 adds the stateful class beside them.
+ * The branch history table — its shape and geometry (dynamic-branch-prediction step 1) and the
+ * stateful `BranchPredictor` the four models will drive (step 2). **Nothing constructs one yet**;
+ * step 3 wires the pipeline and step 5 the other three.
  *
  * **Exported from here and NOT re-exported through the four model packages, unlike `CacheState`,**
  * and the asymmetry is history rather than a boundary change. `cache.ts` lived in `engine-pipeline`
@@ -69,9 +70,17 @@ export {
  * `toProgramImage`) and eslint's DAG allows that edge, so four re-exports would buy nothing and add
  * four places for the name to drift.
  *
- * The read/drive boundary the cache re-export protects is preserved by construction instead: what
- * leaves this module at step 1 is a shape, a size, and a pure function of `pc` — there is nothing
- * here to drive. When step 2 lands the mutating class it stays package-private to the engines, the
- * way `access`/`newCache` are never re-exported upward.
+ * The read/drive boundary the cache re-export protects is preserved the way `access`/`newCache`
+ * already are: the MUTATING surface — `BranchPredictor`, whose `update()` trains a table — leaves
+ * this package because the models need it, and stops there. It is never re-exported upward, so the
+ * web's "render a table, never drive one" boundary (M6 step 6) holds by the same mechanism. What a
+ * view needs is the read half: the `PredictorState` it renders and the pure `predictorIndex` it
+ * highlights a row with, which is the `lineIndex` boundary `cache.ts` draws.
  */
-export { type PredictorState, PREDICTOR_ENTRIES, predictorIndex } from './predictor';
+export {
+  type PredictorState,
+  type DynamicScheme,
+  BranchPredictor,
+  PREDICTOR_ENTRIES,
+  predictorIndex,
+} from './predictor';

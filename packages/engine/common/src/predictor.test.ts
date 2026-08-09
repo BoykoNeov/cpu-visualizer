@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PREDICTOR_ENTRIES, predictorIndex } from './predictor';
+import {
+  BranchPredictor,
+  PREDICTOR_ENTRIES,
+  predictorIndex,
+  type DynamicScheme,
+} from './predictor';
 
 /**
  * `predictorIndex` is arithmetic that **three hand-derived timing tables already depend on**, and at
@@ -88,5 +93,188 @@ describe('predictorIndex — the arithmetic three timing tables rest on', () => 
       expect(i).toBeGreaterThanOrEqual(0);
       expect(i).toBeLessThan(PREDICTOR_ENTRIES);
     }
+  });
+});
+
+/**
+ * `BranchPredictor` — the state machine itself (step 2), tested **before any processor sees it**,
+ * which is the whole acceptance criterion for this step and the same inertness pattern
+ * `predict.ts` (M4 step 0) and `cache.ts` (M6 step 1) each landed under.
+ *
+ * **Every assertion below was verified against a deliberately broken predictor before being
+ * trusted**, and the mutations partition — the break table lives in the plan's step-2 section. That
+ * discipline is not ceremony here: nothing constructs a `BranchPredictor` until step 3, so a defect
+ * in this file's subject has no other net, and step 1 already shipped one untested export
+ * (`predictorIndex`) for exactly the reason "there is no consumer yet".
+ *
+ * ⚠ **One mutation is invisible and is recorded rather than tested.** Replacing {@link
+ * BranchPredictor.index}'s delegation with an inline `(pc >>> 2) & 15` is value-identical at the
+ * pinned {@link PREDICTOR_ENTRIES}, so no assertion here can see it. What the tests DO pin is the
+ * coupling that matters — that `predict` and `update` touch the row `predictorIndex` names — so a
+ * table that trained the wrong row would redden even though a re-spelled index would not.
+ */
+describe('BranchPredictor — the saturating counter table', () => {
+  /**
+   * Drive one pc through a sequence of actual outcomes, collecting **what the predictor said before
+   * each one**. The prediction STRING is the assertion target throughout, not a mispredict count:
+   * the count is a lossy fold that a wrong seed and a wrong threshold can both leave unchanged,
+   * while the string pins where in the sequence the machine was wrong.
+   */
+  function predictions(scheme: DynamicScheme, pc: number, actuals: readonly boolean[]): string {
+    const p = new BranchPredictor(scheme);
+    return actuals
+      .map((actual) => {
+        const bet = p.predict(pc) ? 'T' : 'N';
+        p.update(pc, actual);
+        return bet;
+      })
+      .join('');
+  }
+
+  /** `'TTTTNTTTT'` and friends as outcome arrays — the textbook sequence, read the obvious way. */
+  const outcomes = (s: string): boolean[] => [...s].map((c) => c === 'T');
+
+  /**
+   * The cold table, which is more than a constructor detail: **step 6's `preRunMicro` has to show
+   * exactly this at cursor −1.** `MicroTablePanel.tsx` FABRICATES a micro for the pre-run frame, and
+   * the honest pre-run value of a counter table is the cold table — not `null`, and not the trained
+   * one carried forward. Pinning the shape here gives that step something to copy.
+   */
+  it('starts cold — a full-width table, weakly not-taken in both schemes', () => {
+    const oneBit = new BranchPredictor('dynamic-1bit').snapshot();
+    const twoBit = new BranchPredictor('dynamic-2bit').snapshot();
+
+    expect(oneBit.counters).toHaveLength(PREDICTOR_ENTRIES);
+    expect(twoBit.counters).toHaveLength(PREDICTOR_ENTRIES);
+    // 1-bit's only not-taken state is 0; 2-bit's weakly-not-taken is 1, NOT 0 — see the seed's
+    // docblock for the four single-entry loops where seeding at 0 makes the 2-bit predictor lose.
+    expect(oneBit.counters).toEqual(new Array<number>(PREDICTOR_ENTRIES).fill(0));
+    expect(twoBit.counters).toEqual(new Array<number>(PREDICTOR_ENTRIES).fill(1));
+  });
+
+  /** Cold ⇒ the first bet on any branch is not-taken, which is the cold mispredict every loop pays. */
+  it('bets not-taken on a branch it has never seen', () => {
+    for (const scheme of ['dynamic-1bit', 'dynamic-2bit'] as const) {
+      expect(new BranchPredictor(scheme).predict(8), scheme).toBe(false);
+    }
+  });
+
+  /**
+   * **The flagship comparison, and the numbers are the MEASURED ones rather than the textbook's.**
+   * The plan first wrote "a 2-bit costs one mispredict here and a 1-bit two" — those are the
+   * WARM-START figures. Both counters reset not-taken, so the leading `T` is a cold mispredict every
+   * scheme pays, and the honest answer is two and three.
+   *
+   * The delta is carried entirely by the single `N`: the 1-bit table flips on it and then
+   * mispredicts the very next `T`; the 2-bit only steps 3 → 2, stays in the taken half, and is
+   * immediately right again. That is the hysteresis this whole feature exists to show, and it is
+   * why `nested-loop.s` — a loop RE-ENTERED, so its exit `N` is followed by more `T` — is the only
+   * corpus program whose four schemes come out strictly ordered.
+   */
+  it('separates 1-bit from 2-bit on `TTTTNTTTT` — three mispredicts against two', () => {
+    const actuals = outcomes('TTTTNTTTT');
+
+    expect(predictions('dynamic-1bit', 8, actuals)).toBe('NTTTTNTTT');
+    expect(predictions('dynamic-2bit', 8, actuals)).toBe('NTTTTTTTT');
+  });
+
+  /**
+   * The CEILING, stated as saturation rather than as the sequence above's side effect. A 2-bit
+   * counter parked at 3 must absorb one `N` without leaving the taken half — take the clamp away and
+   * a long-running loop's counter climbs past 3, at which point a single `N` no longer flips it back
+   * within one step and the predictor stops being a 2-bit one.
+   */
+  it('saturates at the top — a long taken run then one N still bets taken (2-bit)', () => {
+    const p = new BranchPredictor('dynamic-2bit');
+    for (let i = 0; i < 20; i += 1) p.update(8, true);
+
+    expect(p.snapshot().counters[predictorIndex(8)]).toBe(3);
+    p.update(8, false);
+    expect(p.predict(8)).toBe(true); // weakened to 2, still the taken half — the hysteresis
+  });
+
+  /**
+   * The FLOOR, which the flagship sequence never touches — a counter is only ever pushed down once
+   * there. Unclamped it goes negative and keeps going, so a branch that falls through for a while
+   * would need as many takens to climb back as it had not-takens: the table would remember far more
+   * than its width, and would stop being readable as "0..3" in step 6's panel.
+   */
+  it('saturates at the bottom — a long not-taken run leaves the counter at 0, not below', () => {
+    for (const [scheme, afterOneTaken] of [
+      ['dynamic-1bit', true],
+      ['dynamic-2bit', false],
+    ] as const) {
+      const p = new BranchPredictor(scheme);
+      for (let i = 0; i < 20; i += 1) p.update(8, false);
+
+      expect(p.snapshot().counters[predictorIndex(8)], scheme).toBe(0);
+      p.update(8, true);
+      // And the climb back out is one step for a 1-bit table, two for a 2-bit one — the same
+      // hysteresis as the ceiling, seen from the other end.
+      expect(p.predict(8), scheme).toBe(afterOneTaken);
+    }
+  });
+
+  /**
+   * **Aliasing is shared state, and it is the property `nested-loop.s`'s witness rests on.** Two pcs
+   * 64 bytes apart share a row at 16 entries, so training one trains the other — the interference
+   * the module header calls a true fact about a machine indexed by pc alone (INV-5), and the effect
+   * that costs `dynamic-2bit` 181 cycles against 171 at a 4-entry table.
+   *
+   * This is also the assertion that pins {@link BranchPredictor.update} to the exported index: a
+   * predictor keyed off anything else — the raw pc, or a re-derived row — would leave these two
+   * independent and the test would redden.
+   */
+  it('shares one counter between aliasing pcs — training 8 is visible at 72', () => {
+    expect(predictorIndex(8)).toBe(predictorIndex(72)); // the precondition, stated not assumed
+
+    const p = new BranchPredictor('dynamic-1bit');
+    p.update(8, true);
+
+    expect(p.predict(72)).toBe(true);
+  });
+
+  /** …and the complement: branches on DIFFERENT rows do not see each other's history. */
+  it('keeps non-aliasing branches independent — training 8 leaves 24 cold', () => {
+    const p = new BranchPredictor('dynamic-2bit');
+    for (let i = 0; i < 5; i += 1) p.update(8, true);
+
+    expect(p.predict(8)).toBe(true);
+    expect(p.predict(24)).toBe(false); // `nested-loop.s`'s guard and inner branch, the pinned pair
+  });
+
+  /**
+   * The class's index is the exported one. Weak on its own — the two agree by delegation and an
+   * inlined copy would agree too (see this describe's header) — but it is the assertion a future
+   * reader checks when step 6's panel highlights a row that does not match the counter that moved.
+   */
+  it('indexes through the same function the view highlights with', () => {
+    const p = new BranchPredictor('dynamic-1bit');
+
+    for (const pc of [0, 8, 24, 64, 72, 0xffff_fffc]) {
+      expect(p.index(pc), `pc ${pc}`).toBe(predictorIndex(pc));
+    }
+  });
+
+  /**
+   * ⚠ **`snapshot()` hands out the LIVE table, and this test exists to keep it that way** — it is
+   * the premise the plan's step 4 breaks on purpose. Every model's `snapshotState()` must DEEP-COPY
+   * `micro.predictor`, exactly as it already deep-copies `micro.cache`; if this getter ever starts
+   * copying defensively, four `micro.predictor` docblocks become false and step 4's break harness
+   * quietly measures nothing.
+   *
+   * So the aliasing asserted below is not a wart being pinned — it is the contract being kept where
+   * the implementer reads it. The visible symptom of getting step 4 wrong is that scrubbing to cycle
+   * 0 shows the fully-TRAINED table.
+   */
+  it('hands out the live table, so the RECORDER owns the deep copy (step 4)', () => {
+    const p = new BranchPredictor('dynamic-2bit');
+    const taken = p.snapshot();
+
+    p.update(8, true);
+    p.update(8, true);
+
+    expect(taken.counters[predictorIndex(8)]).toBe(3); // the earlier snapshot moved with the table
+    expect(p.snapshot()).toBe(taken); // …because it is the same object
   });
 });

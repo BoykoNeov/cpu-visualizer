@@ -1,12 +1,12 @@
 /**
- * The branch history table — **the predictor's memory** (dynamic-branch-prediction, step 1).
+ * The branch history table — **the predictor's memory** (dynamic-branch-prediction, steps 1–2).
  *
- * **This file is TYPES AND GEOMETRY ONLY at step 1; the stateful class lands at step 2.** That
- * ordering is forced rather than stylistic: step 2's class returns a {@link PredictorState}, and the
- * four models' `micro` types name that type, so the type must exist before either can compile. What
- * is here is exactly the part with no behavior — the shape the view will render, the table size, and
- * the pure index function — following `predict.ts`'s and `cache.ts`'s own precedent of landing a
- * complete, unwired piece before anything rests on it.
+ * **Step 1 landed the types and geometry; step 2 added {@link BranchPredictor}, the stateful class.**
+ * That ordering was forced rather than stylistic: the class returns a {@link PredictorState}, and the
+ * four models' `micro` types name that type, so the type had to exist before either could compile.
+ * Both halves follow `predict.ts`'s and `cache.ts`'s own precedent of landing a complete, unwired
+ * piece before anything rests on it — **nothing constructs a `BranchPredictor` yet**; step 3 wires
+ * the pipeline and step 5 the other three models.
  *
  * **Why this lives in `engine-common` rather than in `trace`, against the plan's own step-1
  * wording.** The rule the repo already follows, made explicit here because the plan got it wrong:
@@ -30,6 +30,8 @@
  *     INV-8 is green by construction here and, equally, why INV-8 is a FALSE NET for this feature.
  *     Verifying a wiring step means comparing event sequences, not final state.
  */
+
+import type { ProcessorConfig } from '@cpu-viz/trace';
 
 /**
  * How many counters the table holds. **Pinned at 16, and the reason is that every derived number in
@@ -95,4 +97,153 @@ export function predictorIndex(pc: number): number {
  */
 export interface PredictorState {
   readonly counters: number[];
+}
+
+/**
+ * The schemes that actually own a table — the `dynamic-*` half of `ProcessorConfig.branchPrediction`.
+ *
+ * **Derived from the trace union with a template-literal `Extract` rather than written out**, so it
+ * is a tripwire and not a copy. Adding a third dynamic name upstream widens this type, which makes
+ * {@link COUNTER_BITS}'s `Record` incomplete and reddens `tsc` at the one place that has to answer
+ * "how wide is its counter?". A hand-listed union would silently accept the newcomer and run it as a
+ * 1-bit table. Same shape as `SCHEME_POSITION`'s `Record<BranchPrediction, …>` in
+ * `web/src/simulator.test.ts`, which is the compile tripwire that fired at step 1.
+ */
+export type DynamicScheme = Extract<ProcessorConfig['branchPrediction'], `dynamic-${string}`>;
+
+/**
+ * The one thing that differs between the two schemes: **how many bits a counter has.** Everything
+ * else below — the seed, the taken threshold, the ceiling — is derived from this number, which is
+ * why the class needs no per-scheme branch and why a third width would be a one-row change.
+ */
+const COUNTER_BITS: Record<DynamicScheme, number> = {
+  'dynamic-1bit': 1,
+  'dynamic-2bit': 2,
+};
+
+/**
+ * A pc-indexed table of saturating counters — **the whole dynamic predictor** (step 2).
+ *
+ * A class rather than `cache.ts`'s functions-over-a-state-object, and the difference is not taste.
+ * `access()` threads `config` through every call because a cache's geometry lives in `CacheConfig`
+ * and varies per run; this table's geometry is a module constant ({@link PREDICTOR_ENTRIES}) and its
+ * only variable is the counter width. Constructing from the scheme derives that width **once**, so
+ * the four wiring sites (steps 3 and 5) pass `config.branchPrediction` straight through and none of
+ * them re-derives a threshold. That matters here specifically: `m13-width-planned.md` measured
+ * four-site divergence as this repo's live failure mode, and a width computed at four call sites is
+ * four chances to compute it differently.
+ *
+ * **The API is deliberately `predict(pc)` / `update(pc, actual)` and nothing richer**, because three
+ * decisions in the plan's table are still open and all three are CALL-SITE policy:
+ *   - does `jal` consult the counter, or is an unconditional jump simply predicted taken?
+ *   - do `jal` / `jalr` **update** it?
+ *   - does a SQUASHED branch update it — on resolve, or on commit? (the OoO fork, to pin before step 5)
+ *
+ * A constructor taking a decode, or an `update` taking `isConditional`, would close all three by
+ * implementation — and would close them **inside a package forbidden from importing a model**, which
+ * is exactly the wrong place for a question whose answer is "it depends which machine". The two-arg
+ * `update` is what keeps update-on-resolve vs update-on-commit a step-5 decision instead of a step-2
+ * accident.
+ *
+ * **Not double-buffered.** {@link update} mutates in place, the same class as the register file,
+ * memory and `CacheState` — see {@link snapshot} for whose job the copy is.
+ */
+export class BranchPredictor {
+  /**
+   * The live table. Held as a {@link PredictorState} rather than a bare array so {@link snapshot}
+   * has a stable object to hand out, exactly as a model holds one `CacheState` for the run.
+   */
+  private readonly state: PredictorState;
+
+  /** The counter's ceiling: `1` for a 1-bit table, `3` for a 2-bit one. */
+  private readonly max: number;
+
+  /**
+   * The lowest counter value that predicts TAKEN — the top half of the range, so `1` for 1-bit and
+   * `2` for 2-bit. Stated as a threshold rather than as a per-scheme `if` because that is what makes
+   * the seed below fall out as one expression instead of a second table.
+   */
+  private readonly takenFrom: number;
+
+  /**
+   * A cold table: every counter **weakly not-taken**, which is `takenFrom - 1` in both schemes (0 for
+   * 1-bit — its only not-taken state — and 1 for 2-bit).
+   *
+   * ⚠ **Seeding 2-bit at `0` instead is not a neutral alternative, and the plan measured it**: at
+   * strongly-not-taken the "better" predictor LOSES to the 1-bit on all four single-entry loops
+   * (`array-sum` 72 vs 71, likewise `strided-sum` / `sum-loop` / `slow-op-loop`), because a loop
+   * entered once never pays back the extra step it takes to warm up. A demo whose headline is "the
+   * 2-bit predictor is smarter" cannot ship showing it lose. Weakly-not-taken also buys the animation
+   * the lesson wants — a loop's first pass visibly *learns* rather than starting right.
+   */
+  constructor(scheme: DynamicScheme) {
+    const bits = COUNTER_BITS[scheme];
+    this.max = (1 << bits) - 1;
+    this.takenFrom = 1 << (bits - 1);
+    this.state = {
+      counters: new Array<number>(PREDICTOR_ENTRIES).fill(this.takenFrom - 1),
+    };
+  }
+
+  /**
+   * Which counter `pc` consults. **Delegates to {@link predictorIndex} and must keep delegating** —
+   * the decisions table pinned the standalone function precisely so the step-6 panel can highlight
+   * the touched row without reaching into a live predictor (INV-3), and two implementations of one
+   * index is how a panel comes to highlight the wrong row while every cycle count stays right.
+   *
+   * ⚠ **Inlining the arithmetic here would be invisible to every test**, and that is worth stating
+   * rather than pretending otherwise: `(pc >>> 2) & 15` and `(pc >>> 2) % 16` are the same value for
+   * every uint32 at the pinned size, so the delegation is a *reading* guarantee that only starts
+   * paying if {@link PREDICTOR_ENTRIES} ever moves. What tests CAN see is the coupling below — that
+   * {@link predict} and {@link update} route through this same index — and `predictor.test.ts` pins
+   * that against the exported function rather than against a repeated literal.
+   */
+  index(pc: number): number {
+    return predictorIndex(pc);
+  }
+
+  /**
+   * The bet: does this branch's counter sit in the taken half of its range?
+   *
+   * **Read-only — consulting a predictor never trains it.** Training happens at resolution, when the
+   * answer exists, which is the whole reason {@link update} is a separate call made from a different
+   * stage.
+   */
+  predict(pc: number): boolean {
+    return this.state.counters[predictorIndex(pc)]! >= this.takenFrom;
+  }
+
+  /**
+   * Train `pc`'s counter on what the branch actually did — up on taken, down on not-taken, and
+   * **saturating at both ends**.
+   *
+   * The clamps are the hysteresis, and they are not symmetric in what they buy. The CEILING is what
+   * the flagship sequence exercises (a long run of taken branches parks a 2-bit counter at 3, so the
+   * single `N` in `TTTTNTTTT` only weakens it to 2 and the next `T` is still right — the 1-bit
+   * table has no such headroom, flips, and mispredicts twice). The FLOOR is invisible to that
+   * sequence and to most of the corpus, but a counter allowed to go negative would drift below the
+   * table's range and never come back — so it is pinned by its own case rather than by the flagship.
+   */
+  update(pc: number, actual: boolean): void {
+    const i = predictorIndex(pc);
+    const c = this.state.counters[i]!;
+    this.state.counters[i] = actual ? Math.min(c + 1, this.max) : Math.max(c - 1, 0);
+  }
+
+  /**
+   * The table, for recording into `MachineState.micro.predictor`.
+   *
+   * ⚠ **This returns the LIVE, single-buffered state — it is deliberately not a defensive copy, and
+   * the deep copy is the RECORDER's job.** That is `micro.cache`'s contract verbatim
+   * (`cache.ts`'s `CacheState` note, and the four models' own `micro.predictor` docblocks all say
+   * "DEEP-COPY it into every snapshot"), and keeping it that way keeps the decision where an
+   * implementer reads it — inside each model's `snapshotState()`, next to the cache's copy — rather
+   * than hidden in a getter one package down. Copying here would make four docblocks false and
+   * would dissolve the plan's step 4, which exists as its own step *with a break harness* because a
+   * shallow snapshot is the defect this design is most likely to ship: every recorded cycle would
+   * alias one mutable table, and scrubbing to cycle 0 would show the fully-TRAINED predictor.
+   */
+  snapshot(): PredictorState {
+    return this.state;
+  }
 }
