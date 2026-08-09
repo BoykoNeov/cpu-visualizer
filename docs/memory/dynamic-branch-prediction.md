@@ -1,20 +1,112 @@
 ---
 name: dynamic-branch-prediction
-description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1, 2, 3 AND 4 DONE - steps 3 and 4 on 2026-08-09; the PIPELINE bets from a live counter table, trains it and now RECORDS it deep-copied, and micro.predictor is null only on the other three models). Read before wiring the other three models (step 5), before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy), before splitting a view predicate that serves more than one question, and before trusting a break row you wrote by hand - FOUR consecutive steps have had one come out wrong, and one row varied between runs. Also: landing step 4 reddened ZERO of 7830 tests; a replay test written to be the unique net for a defect caught NOTHING alone; the wrong-pc mutation that is truly invisible is the CONSISTENT shift, and only predictorIndex own unit tests see it. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites), before adding a field to any model micro, and before trusting a cross-model naming agreement. Also the reusable method for pricing an unbuilt config knob offline.'
+description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 THROUGH 5 DONE - step 5 on 2026-08-09; ALL FOUR betting models now bet from a live counter table, train it at resolve and record it deep-copied. Steps 6-8 remain: the panel, the browser pass, a lesson). Read before step 6, before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy - all four models reddened exactly 20), before adding a knob to a model that speculates, before writing a cross-model test, and before trusting a break row you wrote by hand. Headlines: INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core (180 dynamic-only cells caught wrong-path instructions COMMITTING); a break-table count EXPIRES when the suite grows; depth and width argue for a counter for OPPOSITE reasons; the never-bets identity is a theorem on the superscalar and FALSE on the OoO; the per-lane table has no net and the WHY is the useful part; and the cross-model test written to close a gap swept the wrong program and caught nothing. Also the reusable method for pricing an unbuilt config knob offline, and exactly where it stops working.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T12:57:44.465Z
+  modified: 2026-08-09T14:39:46.021Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1, 2, 3 AND 4 complete — steps 3 and
-4 on 2026-08-09. The PIPELINE has real behavior AND records its table; the other three betting models
-do not (step 5), and `micro.predictor` is `null` on them.** A 1-bit/2-bit
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 5 complete — step 5 on 2026-08-09.
+ALL FOUR betting models bet from a live counter table, train it at resolve, and record it
+deep-copied.** A 1-bit/2-bit
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
-and [[continuous-play]]. The full measured tables live in the plan; only what a future session would
-otherwise re-derive is here. Repo at 7863 tests.
+and [[continuous-play]]. **Steps 6–8 remain: the predictor panel, the browser pass, the lesson.** The
+full measured tables live in the plan; only what a future session would otherwise re-derive is here.
+Repo at 9466 tests.
+
+## Step 5 — the other three models, and the claim that inverted (2026-08-09)
+
+Three commits, one per model, each with its own `dynamic-predict.test.ts` and its own break table.
+7863 → 9466 tests, five gates green throughout.
+
+⚠ **INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core.** Three
+earlier steps measured "with the knob entirely unhonored every cell stays green" and this document
+generalized it to the feature. Wrong: on the OoO the predictor's wiring touches **speculation
+containment**, not just timing. Leaving that model's three STRUCTURAL guards on `predictTaken` — the
+careless spelling, since one boolean used to answer both "has a bet path" and "bets taken" — reddens
+**213** tests including **180 differential cells, every one a `dynamic-*` cell**: without the freeze,
+fall-through instructions enter the ROB behind a branch later bet taken, and where the bet matches
+the outcome nothing removes them, so **wrong-path instructions COMMIT**. Had that matrix not been
+widened to five schemes, an architectural correctness bug ships in silence. Green cells still say
+nothing about whether a scheme is HONORED — that half stands.
+
+⚠ **A break-table count is a measurement against a SUITE and it EXPIRES.** Step 3 measured
+"`jal`/`jalr` update the table" at ZERO and this plan called it "a pinned decision with no net";
+re-fired at step 5 it reddens **3 on every wired model**, because step 4's per-cycle recorded-table
+sweep replays training under `isConditionalBranch` and `call-return.s` disagrees. Second row here to
+go stale that way (the index rotation went 2 → 3). **A step that adds a sweep should re-fire the rows
+that sweep now covers.**
+
+⚠ **Depth and width argue for a counter for OPPOSITE reasons** — the two sentences step 8's lesson
+should be built on. **Depth** doubles a wrong bet (4/2/0 against the 5-stage's 2/1/0), so corpus-wide
+`dynamic-2bit` beats `static-taken` by **14** cycles on the deep pipeline against the 5-stage's 7,
+and `dynamic-1bit` — which merely TIED over the original eleven — wins outright. **Width** makes every
+bet cost a pair: at width 2 `static-taken` LOSES on `nested-loop.s` (175 vs not-taken's 172) and the
+dynamic schemes are the only winners (168/165), because they decline the bets they would lose and
+keep the pairs (`Q` = 57 / 26 / 35 / 32). The 5-stage has neither, which is why its aggregate case
+looks thin.
+
+**The derivation method, and exactly where it stops.** `cycles(scheme) = cycles(not-taken) −
+P(not-taken) + P(scheme)`, `P` summed per INSTANCE — **validated first by reproducing the MEASURED
+`static-taken` column** before any dynamic cell is believed. Exact on the deep pipeline (12 programs ×
+both positions) and at WIDTH 1 on the other two. **It is false at width ≥ 2**: a bet ends its issue
+group, so it re-partitions the schedule rather than merely paying a penalty. Wide cells are measured
+and labelled, carried by three other things: the closed form `cycles = G + L + P + 4` balances; the
+bet STRING is width-invariant (asserted — this is what pins the POLICY where cycle counts cannot);
+and a program that never bets records identically to `static-not-taken`.
+
+⚠ **That last identity is a THEOREM on the superscalar and FALSE on the OoO** — the feature's first
+inexact acceptance. `paired-branches.s` bets `NN`, emits no `branch-predicted` at all, and still
+costs **8 against not-taken's 7** at widths 2 and 4. The dispatch freeze is a CORRECTNESS requirement
+for any machine that MIGHT bet taken, and the core does not consult the counter until the branch is
+about to issue — so **a dynamic scheme pays for HAVING a bet path even where it declines to use
+one.** Pinned with its exact witness and cost, plus the four never-bets programs that are free.
+
+**The squashed-branch fork: pinned at update-on-RESOLVE, and the corpus cannot pose it.** Measured
+over 1536 runs (every program × width × issue mode × forwarding × scheme): **no branch ever resolves
+and is then killed** — dispatch freezes behind an un-bet transfer, so a younger branch never gets far
+enough ahead. That is also **why every bet string transfers from the other three models unchanged.**
+Pinned as an arrival tripwire with its own non-vacuity control (two transfers DO overlap in the ROB).
+⚠ **The fork is still not net-free: training at COMMIT reddens 21.** The set of branches that train
+is identical; what moves is the **LATENCY**. The plan asked "does a squashed branch train?" — the
+observable content here is "how late does a surviving one?". No ROB shape change was needed: issue
+clears `'waiting'` before dispatch re-checks, so the freeze self-lifts.
+
+⚠ **The per-lane table is a pinned decision with NO net, and the WHY is the useful part.** A real
+per-lane predictor on the superscalar reddens **0**. Per-lane tables can differ only for a branch
+that issues from more than one SLOT, and there is exactly one in the corpus — `nested-loop.s`'s guard
+at pc 8, at widths 3–4 — which is `bne x0, x0`, **never taken**, so its counter sits at the floor in
+every table that could hold it. **The corpus has a lane-alternating branch and it is the one branch
+whose counter never moves.** Closed with a test pinning both halves, so a TAKEN alternating branch
+turns it red. ⚠ Its first draft pooled slots ACROSS widths and reported three branches — **alternation
+is a property of one RUN**; a sweep that pools runs answers a different question than its name.
+
+⚠ **The cross-model test written to close a gap swept the wrong program and caught NOTHING.** "All
+four models make the same bets" is the only claim no per-package file can make (four literals each
+agreeing with themselves ≠ the four agreeing with each other). Swept on `nested-loop.s` alone — the
+program authored to make the feature legible — a real divergence (deep pipeline made to let `jal`
+consult the table) left all 32 tests green, because **that program has no `jal` and no `jalr`**.
+`call-return.s` is the only witness. **Fourth instance of "the canonical demonstration of a mechanism
+is not the test of it"**, this time inside the test written to close the gap it names.
+
+**Other measured rows worth carrying.** The aliasing snapshot reddens exactly **20 on all four
+models** — a wrapper spread is still exactly as broken as no copy. The engine-level policy mutations
+scale with the suite (knob unhonored 35/47/42, wrong pc 48/59/54). And the step-3 arrival tripwire in
+`simulator.test.ts` worked exactly as designed: RED before each model's wiring, its list shrank by
+one per commit, and it was **deleted** when empty rather than left as a loop asserting nothing.
+
+**Where each claim lives.** Per-model `dynamic-predict.test.ts`, all four in ONE shape. ⚠ The
+reviewer's instinct — "put the aliasing pin next to the cache's" — does not survive contact: the
+superscalar pins the cache's in `recorder.test.ts`, the deep pipeline in `cache.test.ts`. "Next to
+the cache" is two shapes, not one.
+
+⚠ **A test file wide enough to be worth writing is wide enough to need its inner loop looked at.**
+The superscalar's took **72 seconds against the whole repo's 22** — the width axis multiplies every
+sweep by four and `issuedPerCycle` was quadratic over re-run cells. Memoized runs plus one index
+pass: 1.6s.
 
 ## Step 4 — the deep copy, and the step whose whole content was its own net (2026-08-09)
 
