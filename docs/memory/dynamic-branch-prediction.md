@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T18:49:16.589Z
+  modified: 2026-08-09T18:55:26.655Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. ✅ COMPLETE — steps 0 through 8, steps 3–8 on
@@ -64,7 +64,9 @@ oracle and compared against another computation, so misstating one in the prose 
 Re-reading for that class then found a second: the opening tier recites three addresses and their
 rows, and the OUTER branch's row 8 was in no constant, no assertion and no comment.
 **After a break table, re-read the narration for every number the tests happen to know and never
-look at.** 12 rows total, 9 red on the first pass, all 12 after the two closures.
+look at.** The sequence, which is the shape worth copying rather than the count: **ten rows run,
+nine red — row 9's zero closed, and closing it exposed a class that ADDED rows 11 and 12, both red.**
+A break table is finished when the rows it suggests are, not when its own rows are.
 
 ⚠ **The browser pass's prose defect was a PASSING check whose printed VALUE disagreed with the
 narration.** §6's label said "the transport reads 134 cycles" while its assertion read `last === 133`
@@ -73,8 +75,8 @@ narration.** §6's label said "the transport reads 134 cycles" while its asserti
 is `forwarding-bubble`'s "51 over a transport reading 49" arriving through an **indexing convention**,
 where declaring harder cannot help. **Read the VALUES a green check prints, not only its colour.**
 
-**The pass: 39 checks, 3 rig lies, 0 app defects** (`lesson-eyeball.mjs`, reusing `bp-step7/rig.mjs`
-unchanged). It is the pass step 7 recorded as owed — the lesson path had never been driven, and
+**The pass: 39/39 green on run 3; three rig lies found and fixed across runs 1–2 (one failure each),
+and NEITHER failure was the app** (`lesson-eyeball.mjs`, reusing `bp-step7/rig.mjs` unchanged). It is the pass step 7 recorded as owed — the lesson path had never been driven, and
 `startLesson` dragging a **four-position** knob out of a declaration is untestable anywhere else.
 Measured clean: the `hasPredictorTable` gate driven from a lesson for the first time (absent on
 `single-cycle`, present after the drag, sixteen rows), the rail 7 → 6 with exactly the re-entry text
@@ -82,9 +84,10 @@ gone and the survivors in order, cursor 40 flipping MISPREDICT → CORRECT, and 
 (`not taken` / `weakly taken` / `strongly taken`) — `PredictorTableView.counterWord` is view-only and
 no headless test of this lesson touches it, so the browser is the only net for the prose's vocabulary.
 ⚠ The three lies: the owner column draws the pc in **HEX** (`@ 0x00000018`) against a check demanding
-decimal 24; a check read the transport **where the closing step ANCHORS** (cycle 121, the last write
-of `a0`) while the prose quotes the run's END — **a step's anchor and the run's end are different
-cursors**; and the §6 label above.
+decimal 24 (run 1); a check read the transport **where the closing step ANCHORS** (cycle 121, the
+last write of `a0`) while the prose quotes the run's END — **a step's anchor and the run's end are
+different cursors** (run 2); and the §6 label above, which **never failed** and was caught by reading
+a passing check's printed value, which is why it is the one that changed the product.
 
 ## Step 7 — the browser pass, and the docblock that declared the panel exempt (2026-08-09)
 

@@ -284,8 +284,9 @@ logic four times.
       `bet-that-learns`, seven steps on `nested-loop` on the 5-stage, appended to **"The machine"**
       after `branch-bet`. Declares `dynamic-1bit` with **forwarding ON** and asks the reader for
       `dynamic-2bit`. The M12 delta shape, with the delta a KNOB rather than a model — which is why
-      it extends that track instead of opening one. Its own browser pass drove the lesson path (39
-      checks, 3 rig lies, 0 app defects) and a 12-row break table ran against it.
+      it extends that track instead of opening one. Its own browser pass drove the lesson path —
+      **39/39 green on run 3; three rig lies found and fixed across runs 1–2, none of them the app**
+      — and a 12-row break table ran against it.
 
 ## Step 0 — MEASURED (2026-07-30)
 
@@ -1604,22 +1605,22 @@ Two structures rejected on measurement rather than taste: a **2-bit-exclusive st
 20 against 23, so only `nth ≥ 21` separates them), and a **no-exclusive-step, anchor-vector**
 design (M14's `width-moved-the-work` shape), which would have thrown away the disappearing dot.
 
-### The break table — 12 rows, and the one that reddened ZERO
+### The break table — 10 rows run, one reddened ZERO, and closing it added two more
 
-| #   | mutation                                              |       red | what it proves                                        |
-| --- | ----------------------------------------------------- | --------: | ----------------------------------------------------- |
-| 1   | step 5 `nth` 2 → 3 (pass THREE's re-entry)            |         2 | the occurrence pin, and the decoy pin beside it       |
-| 2   | declared scheme 1-bit → 2-bit                         |         1 | the declaration is asserted, not assumed              |
-| 3   | declared forwarding on → off                          |         3 | every quoted number belongs to the declared position  |
-| 4   | the ask stripped from the **expert** tier only        |         1 | `resolveNarration` falls back DOWNWARD (M14 step 1)   |
-| 5   | lesson moved before `branch-bet` in the index         |         1 | the order pin, and nothing else sees it               |
-| 6   | step 4 loses `predicted: true`                        |         6 | **the design decision above, per not-taken position** |
-| 7   | step 3 loses `predicted: true`                        |        19 | two steps collide on one cycle in every position      |
-| 8   | step 1 anchors the loop branch, not the guard         |        25 | the order + occurrence nets, in all 24 positions      |
-| 9   | the expert LEDGER misstates the 1-bit table (32 → 31) | **0 → 1** | ⚠ see below                                           |
-| 10  | the closing prose swaps 134 and 131                   |         1 | `statesNumberBeside`, the attribution guard           |
-| 11  | the opening tier misstates the OUTER branch's row     |         1 | added after row 9's class was found                   |
-| 12  | the opening tier misstates the index bit field        |         1 | added after row 9's class was found                   |
+| #   | mutation                                              |               red | what it proves                                               |
+| --- | ----------------------------------------------------- | ----------------: | ------------------------------------------------------------ |
+| 1   | step 5 `nth` 2 → 3 (pass THREE's re-entry)            |                 2 | the occurrence pin, and the decoy pin beside it              |
+| 2   | declared scheme 1-bit → 2-bit                         |                 1 | the declaration is asserted, not assumed                     |
+| 3   | declared forwarding on → off                          |                 3 | every quoted number belongs to the declared position         |
+| 4   | the ask stripped from the **expert** tier only        |                 1 | `resolveNarration` falls back DOWNWARD (M14 step 1)          |
+| 5   | lesson moved before `branch-bet` in the index         |                 1 | the order pin, and nothing else sees it                      |
+| 6   | step 4 loses `predicted: true`                        |                 6 | **the design decision above, per not-taken position**        |
+| 7   | step 3 loses `predicted: true`                        |                19 | two steps collide on one cycle in every position             |
+| 8   | step 1 anchors the loop branch, not the guard         |                25 | the order + occurrence nets, in all 24 positions             |
+| 9   | the expert LEDGER misstates the 1-bit table (32 → 31) | **0**, then **1** | ⚠ zero before the prose check existed, one after — see below |
+| 10  | the closing prose swaps 134 and 131                   |                 1 | `statesNumberBeside`, the attribution guard                  |
+| 11  | the opening tier misstates the OUTER branch's row     |                 1 | ADDED after row 9 exposed the class                          |
+| 12  | the opening tier misstates the index bit field        |                 1 | ADDED after row 9 exposed the class                          |
 
 ⚠ **Row 9 is the transferable one: a number a test DERIVES and never reads back out of the
 narration is a comment.** The expert closing paragraph prints a per-row penalty ledger
@@ -1629,9 +1630,12 @@ misstating one in the PROSE reddened nothing at all. Closed by checking each fig
 words that claim it. Its sibling, found by the same reading, is row 11/12: the opening tier recites
 three addresses and their rows, and the outer branch's row 8 appeared in no constant, no assertion
 and no comment. **Generalise: after a break table, re-read the narration for every number the tests
-happen to know and never look at.**
+happen to know and never look at.** The sequence is worth stating plainly, because it is the shape
+worth copying rather than the count: **ten rows run, nine red — then row 9's zero was closed, and
+closing it exposed a class that added rows 11 and 12.** A break table is not finished when its rows
+are; it is finished when the rows it suggests are.
 
-### The browser pass — 39 checks, 3 rig lies, 0 app defects, and the prose it rewrote
+### The browser pass — 39/39 green on run 3, and the prose it rewrote
 
 `M:\claud_projects\temp\bp-step8\lesson-eyeball.mjs`, on the shipped `vite preview` bundle, reusing
 `bp-step7/rig.mjs`'s plumbing unchanged. This is the pass step 7 recorded as owed: **the lesson path
@@ -1660,11 +1664,14 @@ cannot help. The sentence now names both, generated from the shell's own `counte
 **Read the VALUES a green check prints, not only its colour.**
 
 ⚠ **All three rig lies were the rig's EXPECTATIONS again, and one of them is a new shape.** (a) The
-owner column draws the pc in HEX (`@ 0x00000018`) and the check demanded decimal `24`. (b) The check
-comparing the closing prose against the transport read the widget **where the closing step anchors**
-— cycle 121, the last write of `a0` — while the prose quotes the run's END. **A step's anchor and
-the run's end are different cursors**, and only the second is what "ends at" names. (c) The §6 label
-above. The house record holds: of the failures across two runs, **none was the app**.
+owner column draws the pc in HEX (`@ 0x00000018`) and the check demanded decimal `24` — run 1's one
+failure, of 38. (b) The check comparing the closing prose against the transport read the widget
+**where the closing step anchors** — cycle 121, the last write of `a0` — while the prose quotes the
+run's END. **A step's anchor and the run's end are different cursors**, and only the second is what
+"ends at" names. That was run 2's one failure, of the 39 the ledger fix had grown the list to.
+(c) The §6 label above, which never failed at all — it was caught by READING a passing check's
+printed value, which is why it is the one that changed the product's prose. **Run 3 is 39/39.** The
+house record holds: of the two failures across three runs, **neither was the app**.
 
 ## Acceptance criteria
 
