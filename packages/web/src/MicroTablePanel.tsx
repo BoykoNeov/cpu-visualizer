@@ -38,9 +38,11 @@
  */
 
 import type { CycleTrace } from '@cpu-viz/trace';
+import { coldPredictorState, isDynamicScheme } from '@cpu-viz/engine-common';
 import type { OperandView, OutOfOrderMicro, RobEntryView } from '@cpu-viz/engine-out-of-order';
 import { useMemo } from 'react';
 import { ABI_REGISTER_NAMES, formatInstruction, hex32 } from './format';
+import type { BranchPrediction } from './session';
 import { MONO, T } from './theme';
 
 const mono = { fontFamily: MONO } as const;
@@ -127,21 +129,36 @@ function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
  * readout — the panel is a property of the RECORDING, and only its contents are a property of the
  * cursor.
  *
- * ⚠ **`predictor: null` here is a step-1 placeholder and step 6 MUST revisit it.** This literal is
- * an `OutOfOrderMicro`, and the out-of-order core constructs no predictor until the
- * dynamic-branch-prediction plan's step 5 — so `null` is still the truth HERE, even though the
- * pipeline has recorded a real table since step 4. Once this model has one, the honest pre-run
- * value is the COLD table — every counter at its seed — not `null` and emphatically not `m.predictor`
- * carried forward, which would show a fully-TRAINED table before a single instruction had run: the
+ * **`predictor` is the COLD table, and step 6 is where that stopped being a placeholder.** From step
+ * 1 until step 5 this literal said `predictor: null`, which was true only because the out-of-order
+ * core had no predictor to record; step 5 gave it one, and `null` then meant "this machine has no
+ * predictor" about a machine that has one and has merely learnt nothing. Those are different claims,
+ * and the second is what cursor −1 actually is. It is emphatically NOT `m.predictor` carried
+ * forward, which would show a fully-TRAINED table before a single instruction had run — the
  * shallow-copy defect the plan gives its own step, arriving through the front door of a fabricated
  * snapshot instead. `robCapacity` is copied because it is a CONFIG fact; `rob`/`rename`/`predictor`
- * are all RUN facts and must each be emptied to their own zero, which for a counter table is a seed
+ * are all RUN facts and must each be emptied to their own zero, which for a counter table is a SEED
  * rather than an absence.
+ *
+ * The seed comes from the engine's own {@link coldPredictorState} rather than from a literal here,
+ * so this panel's pre-run table, the predictor panel's pre-run table and the machine's reset state
+ * are one value with one definition. That the three agree is checkable rather than asserted: no
+ * corpus program on any model trains a counter during cycle 0, so stepping off the start moves no
+ * counter — `predictor-table.test.ts` pins it against real recordings.
  */
-function preRunMicro(recording: readonly CycleTrace[]): OutOfOrderMicro | null {
+function preRunMicro(
+  recording: readonly CycleTrace[],
+  scheme: BranchPrediction,
+): OutOfOrderMicro | null {
   for (const trace of recording) {
     const m = oooMicro(trace);
-    if (m !== null) return { robCapacity: m.robCapacity, rob: [], rename: [], predictor: null };
+    if (m === null) continue;
+    return {
+      robCapacity: m.robCapacity,
+      rob: [],
+      rename: [],
+      predictor: isDynamicScheme(scheme) ? coldPredictorState(scheme) : null,
+    };
   }
   return null;
 }
@@ -184,13 +201,18 @@ export function MicroTablePanel(props: {
   followed: string | null;
   /** Toggle-follow when a row is clicked (same affordance as the map's cells). */
   onFollow: (id: string | null) => void;
+  /** The configured scheme — read for ONE thing, the pre-run micro's cold counter table (see
+   *  {@link preRunMicro}). None of the three tables here draws the predictor; the field exists
+   *  because a fabricated `OutOfOrderMicro` must be a whole one, and a fabricated value that is
+   *  wrong is worse than one that is absent. */
+  scheme: BranchPrediction;
 }): React.JSX.Element | null {
-  const { trace, recording, followed, onFollow } = props;
+  const { trace, recording, followed, onFollow, scheme } = props;
   const reserves = useMemo(() => microReserves(recording), [recording]);
   // The cursor's micro, or the empty one at the pre-run cursor — see {@link preRunMicro}. The panel
   // is present for as long as the RECORDING has an out-of-order micro; only its rows are a function
   // of where the cursor is.
-  const micro = oooMicro(trace) ?? preRunMicro(recording);
+  const micro = oooMicro(trace) ?? preRunMicro(recording, scheme);
   if (micro === null) return null;
 
   // The tag the followed instruction currently owns — for lighting its rename-map row(s). A

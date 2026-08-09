@@ -26,6 +26,11 @@ import { loadSource } from './simulator';
 
 const noop = (): void => {};
 
+/** The scheme these renders declare. It matches {@link OOO}'s, which is what makes the pre-run
+ *  micro's `predictor: null` the right answer here — a static scheme has no counter table (the
+ *  cold-table case is `predictor-table.test.ts`'s, driven from a dynamic recording). */
+const SCHEME = 'static-taken' as const;
+
 /** The flagship out-of-order config — the money shot (a miss with independent work behind it). */
 const OOO: ProcessorConfig = {
   ...defaultConfig(),
@@ -55,6 +60,7 @@ function render(trace: CycleTrace | null, followed: string | null = null): strin
       recording={trace ? [trace] : []}
       followed={followed}
       onFollow={noop}
+      scheme={SCHEME}
     />,
   );
 }
@@ -80,7 +86,13 @@ describe('MicroTablePanel — the gate is a TRACE fact', () => {
     // is a trace fact, and the reserve below must not smuggle the panel into another model's shell.
     expect(
       renderToStaticMarkup(
-        <MicroTablePanel trace={null} recording={pipeline} followed={null} onFollow={noop} />,
+        <MicroTablePanel
+          trace={null}
+          recording={pipeline}
+          followed={null}
+          onFollow={noop}
+          scheme={SCHEME}
+        />,
       ),
     ).toBe('');
   });
@@ -92,7 +104,13 @@ describe('MicroTablePanel — the gate is a TRACE fact', () => {
     // measured in the shipped bundle, 2026-07-30. See `preRunMicro`.
     const recorded = record('array-sum', OOO);
     const html = renderToStaticMarkup(
-      <MicroTablePanel trace={null} recording={recorded} followed={null} onFollow={noop} />,
+      <MicroTablePanel
+        trace={null}
+        recording={recorded}
+        followed={null}
+        onFollow={noop}
+        scheme={SCHEME}
+      />,
     );
     expect(html).not.toBe('');
     // All three tables are present and reserved, and each says its own empty state rather than

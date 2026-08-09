@@ -135,6 +135,67 @@ const COUNTER_BITS: Record<DynamicScheme, number> = {
 };
 
 /**
+ * A counter's whole shape, derived from the scheme in ONE place — the ceiling, the taken threshold,
+ * and the cold seed.
+ *
+ * **Added at step 6, because the panel is the second consumer of arithmetic that had exactly one.**
+ * Until now {@link BranchPredictor}'s constructor was the only thing that turned a scheme into a
+ * range, so it derived `max` and `takenFrom` inline and nothing else needed them. The step-6 view
+ * needs both to say what a row currently BETS and how strongly — and re-deriving `1 << (bits - 1)`
+ * in `web` would be the four-site divergence `m13-width-planned.md` records as this repo's measured
+ * failure mode, on the one number where being wrong is invisible: a view that mis-reads the
+ * threshold draws a row betting taken while the engine bets not-taken, and every cycle count stays
+ * right. One function, two callers, no second spelling.
+ *
+ * ⚠ **This deliberately does NOT replace {@link COUNTER_BITS}'s `Record`.** That literal's
+ * incompleteness is the feature's one COMPILE tripwire and it has already fired once, deliberately
+ * (step 2: adding `'dynamic-3bit'` to the union produces exactly one error, `TS2741`, here). A
+ * refactor that computed the width some other way — a `startsWith`, a parsed digit — would disarm
+ * a tripwire that is doing its job.
+ */
+export interface CounterGeometry {
+  /** Counter width in bits: 1 or 2. The one thing that differs between the schemes. */
+  readonly bits: number;
+  /** The counter's ceiling — `1` for a 1-bit table, `3` for a 2-bit one. */
+  readonly max: number;
+  /** The lowest value that predicts TAKEN: the top half of the range (`1` for 1-bit, `2` for 2-bit). */
+  readonly takenFrom: number;
+  /** A cold counter — **weakly not-taken**, which is `takenFrom - 1` in both schemes. See
+   *  {@link BranchPredictor}'s constructor for why `0` is not a neutral alternative for 2-bit. */
+  readonly seed: number;
+}
+
+export function counterGeometry(scheme: DynamicScheme): CounterGeometry {
+  const bits = COUNTER_BITS[scheme];
+  const takenFrom = 1 << (bits - 1);
+  return { bits, max: (1 << bits) - 1, takenFrom, seed: takenFrom - 1 };
+}
+
+/**
+ * A COLD table — every counter at its seed. The state a machine resets to, and the honest picture
+ * of the predictor **before the first cycle has run**.
+ *
+ * **Exported at step 6 so that three callers cannot answer "what does an untrained table look
+ * like?" three ways**: this class's constructor, the step-6 panel's pre-run cursor, and
+ * `MicroTablePanel`'s fabricated cursor-−1 micro, which carried a placeholder `predictor: null`
+ * from step 1 until step 6 made it reachable. `null` says "this machine has no predictor", which
+ * is a different claim from "it has one and has learned nothing" — and the second is what a
+ * dynamic scheme at cursor −1 actually means.
+ *
+ * The corpus makes that continuity checkable rather than merely plausible: **no program on any of
+ * the four models trains a counter during cycle 0** (measured at step 6 over 12 programs × 4 models
+ * × both schemes), so the pre-run picture this returns is exactly the table the recording's first
+ * cycle reports, and stepping off the start moves no counter. `predictor-table.test.ts` pins that
+ * against real recordings — if a future program ever resolves a branch in its first cycle, that is
+ * where it says so.
+ */
+export function coldPredictorState(scheme: DynamicScheme): PredictorState {
+  return {
+    counters: new Array<number>(PREDICTOR_ENTRIES).fill(counterGeometry(scheme).seed),
+  };
+}
+
+/**
  * Does this scheme own a counter table? The narrowing every wiring site needs before it can
  * construct a {@link BranchPredictor} (step 3 for the pipeline, step 5 for the other three).
  *
@@ -211,14 +272,19 @@ export class BranchPredictor {
    * entered once never pays back the extra step it takes to warm up. A demo whose headline is "the
    * 2-bit predictor is smarter" cannot ship showing it lose. Weakly-not-taken also buys the animation
    * the lesson wants — a loop's first pass visibly *learns* rather than starting right.
+   *
+   * **Routed through {@link counterGeometry} and {@link coldPredictorState} as of step 6**, which is
+   * a refactor with a purpose rather than tidying: the step-6 panel needs the same threshold and the
+   * same cold table, and the alternative was a second derivation of `1 << (bits - 1)` in `web`. The
+   * engine and the view now read one function, so a view cannot draw a row betting taken while the
+   * engine bets not-taken — a disagreement that would move no cycle count and so would be invisible
+   * to everything except a reader looking at both.
    */
   constructor(scheme: DynamicScheme) {
-    const bits = COUNTER_BITS[scheme];
-    this.max = (1 << bits) - 1;
-    this.takenFrom = 1 << (bits - 1);
-    this.state = {
-      counters: new Array<number>(PREDICTOR_ENTRIES).fill(this.takenFrom - 1),
-    };
+    const geometry = counterGeometry(scheme);
+    this.max = geometry.max;
+    this.takenFrom = geometry.takenFrom;
+    this.state = coldPredictorState(scheme);
   }
 
   /**

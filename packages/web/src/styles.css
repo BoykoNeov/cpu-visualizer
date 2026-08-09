@@ -857,3 +857,87 @@ input[type='range'] {
 .cache-legend {
   margin-top: 0.5rem;
 }
+
+/* The branch-predictor table (dynamic-branch-prediction step 6): one row per counter, the row a
+   branch trained this cycle called out. Sixteen rows, always — the table is a fixed piece of
+   hardware, so unlike every other tabular panel here the height is constant by construction and
+   needs no reserve (see `predictor-table.ts`'s header). Rows are tighter than the cache's for that
+   reason: sixteen of them at `.cache-line`'s padding would be twice the panel. */
+.predictor-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.predictor-row {
+  --row-hue: var(--line-2);
+  display: grid;
+  grid-template-columns: 1.6rem 2.6rem auto minmax(6.5rem, max-content) 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid transparent;
+  border-left: 3px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-size: 0.76rem;
+  transition:
+    border-left-color 0.12s ease,
+    background 0.12s ease;
+}
+/* The trained row takes the accent on its left rail. The hue is never the SOLE carrier — the chip
+   spells out the counter's move — it just draws the eye while scrubbing. */
+.predictor-row--trained {
+  border-left-color: var(--accent);
+}
+.predictor-row-idx {
+  text-align: right;
+  font-size: 0.7rem;
+}
+.predictor-row-counter {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+/* The meter: one pip per counter value, filled up to where the counter stands. Fixed pip count per
+   scheme (2 pips at 1 bit, 4 at 2), so a row's width does not move as its counter does. */
+.predictor-row-meter {
+  display: inline-flex;
+  gap: 2px;
+}
+.predictor-pip {
+  display: inline-block;
+  width: 6px;
+  height: 10px;
+  border: 1px solid;
+  border-radius: 2px;
+}
+.predictor-row-word {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.predictor-row-owner {
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The trained chip: the counter's move, boxed so it reads as a badge rather than as more numbers. */
+.predictor-row-chip {
+  justify-self: end;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+/* An untrained row reserves the chip's WIDTH so the owner column does not slide as rows light while
+   scrubbing. Its HEIGHT is reserved from the component instead, by a non-breaking space in the
+   element itself (`IDLE_CHIP_RESERVE` in `PredictorTableView.tsx`) — the cache grid measured that
+   exact defect at 1.2px per row, and the fix belongs where the rendered-markup tests can see it. */
+.predictor-row-chip--idle {
+  min-width: 3.2rem;
+}
+.predictor-legend {
+  margin-top: 0.5rem;
+}

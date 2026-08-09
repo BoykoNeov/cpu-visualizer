@@ -102,7 +102,13 @@ describe('out-of-order structures: present at every cursor, reserved identically
   const recorded = record('array-sum', OOO, () => new OutOfOrderProcessor());
   const htmls = cursors(recorded).map((trace) =>
     renderToStaticMarkup(
-      <MicroTablePanel trace={trace} recording={recorded} followed={null} onFollow={noop} />,
+      <MicroTablePanel
+        trace={trace}
+        recording={recorded}
+        followed={null}
+        onFollow={noop}
+        scheme={OOO.branchPrediction}
+      />,
     ),
   );
 

@@ -27,6 +27,8 @@ import { MicroTablePanel, hasMicroTables } from './MicroTablePanel';
 import { hasOverlap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { PairingReadout } from './PairingReadoutView';
+import { hasPredictorTable } from './predictor-table';
+import { PredictorTable } from './PredictorTableView';
 import { PLAY_SPEEDS, SPEED_LABELS, type PlaySpeed } from './playback';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
@@ -221,6 +223,12 @@ export function App(): React.JSX.Element {
   // appears exactly for the out-of-order model and for nothing else, without this file naming it
   // (INV-3) — the same shape as the map's overlap gate and the issue readout's slotted-latch gate.
   const showMicro = hasMicroTables(sim.recorded);
+  // The branch-predictor table (dynamic-branch-prediction step 6), gated on the same kind of TRACE
+  // fact as its four neighbours: the recording carries a counter table. That is deliberately NOT the
+  // scheme — the knob persists across a model switch, so a user who picks `2-bit` on the pipeline and
+  // then switches to the single-cycle model still holds a dynamic scheme while looking at a machine
+  // with no predictor at all. See `hasPredictorTable`.
+  const showPredictor = hasPredictorTable(sim.recorded);
 
   return (
     <main
@@ -478,6 +486,7 @@ export function App(): React.JSX.Element {
                           recording={sim.recorded}
                           followed={followed}
                           onFollow={setFollowed}
+                          scheme={sim.branchPrediction}
                         />
                       ),
                     },
@@ -579,6 +588,35 @@ export function App(): React.JSX.Element {
                     <DatapathPlaceholder modelLabel={activeModel.label} />
                   ),
               },
+              /* The branch-predictor table (dynamic-branch-prediction step 6), authored directly
+                 under the datapath and ABOVE the cache grid — the order the machine reads in: the
+                 predictor is consulted in the front end, the cache is touched near the back. The
+                 datapath above draws the bet's redirect as an arrow; this says what the counter that
+                 placed it currently believes, and the row it just learnt from. Gated on a TRACE fact
+                 like its neighbours, so a future model that honors the knob gets it for free (INV-3).
+
+                 `scheme` is passed because the counters do not carry their own range — the same
+                 config-supplies-the-geometry split the cache grid makes with `CacheConfig`. It is
+                 the raw scheme, NOT `hasTakenBetPath`: that predicate answers "does this machine
+                 have a taken-bet path" for the datapath's hardware, and collapses the two dynamic
+                 schemes onto `'static-taken'`, which is precisely the distinction this panel exists
+                 to draw. */
+              ...(showPredictor
+                ? [
+                    {
+                      key: 'predictor',
+                      label: 'branch predictor',
+                      node: (
+                        <PredictorTable
+                          trace={sim.cycleTrace}
+                          recording={sim.recorded}
+                          scheme={sim.branchPrediction}
+                          followed={followed}
+                        />
+                      ),
+                    },
+                  ]
+                : []),
               /* The cache grid (M6 step 6), authored directly under the datapath and above the
                  memory panel it shadows. Gated on a TRACE fact, not the model or the shell's
                  config: the grid shows a cache's state, so it appears exactly when the recording

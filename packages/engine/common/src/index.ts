@@ -58,9 +58,16 @@ export {
 } from './cache';
 
 /**
- * The branch history table — its shape and geometry (dynamic-branch-prediction step 1) and the
- * stateful `BranchPredictor` the four models will drive (step 2). **Nothing constructs one yet**;
- * step 3 wires the pipeline and step 5 the other three.
+ * The branch history table — its shape and geometry (dynamic-branch-prediction step 1), the
+ * stateful `BranchPredictor` the four models drive (step 2, wired at steps 3 and 5), and the pure
+ * `counterGeometry` / `coldPredictorState` the step-6 VIEW reads.
+ *
+ * **The two step-6 additions are the read half, and they exist to stop a second derivation.** A
+ * panel that draws a counter has to know what the counter would bet (`takenFrom`), how strongly
+ * (`max`), and what an untrained one looks like (the seed) — all three derivable from the scheme,
+ * and all three previously derived inline in the constructor below. Re-deriving them in `web` is
+ * the four-site divergence `m13-width-planned.md` records, on numbers whose disagreement moves no
+ * cycle count and is therefore invisible to the timing suites.
  *
  * **Exported from here and NOT re-exported through the four model packages, unlike `CacheState`,**
  * and the asymmetry is history rather than a boundary change. `cache.ts` lived in `engine-pipeline`
@@ -85,8 +92,11 @@ export {
 export {
   type PredictorState,
   type DynamicScheme,
+  type CounterGeometry,
   BranchPredictor,
   isDynamicScheme,
+  counterGeometry,
+  coldPredictorState,
   PREDICTOR_ENTRIES,
   predictorIndex,
 } from './predictor';
