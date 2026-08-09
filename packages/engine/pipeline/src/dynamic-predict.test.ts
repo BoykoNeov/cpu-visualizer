@@ -609,6 +609,24 @@ describe('the recorded table (step 4 — the deep copy)', () => {
     },
   );
 
+  it('is not sweeping tables that never move', () => {
+    // Non-vacuity for the per-cycle sweep above, in the same idiom as this file's "not sweeping a
+    // corpus of empty strings" guard — and the count was MEASURED by the break harness rather than
+    // reasoned to. Eight of that sweep's 24 cases hold the cold table on every single cycle, so it
+    // is trivially true on them: the three programs with no control transfer at all (six cases),
+    // plus `call-return.s` and `paired-branches.s` under `'dynamic-1bit'`, whose only conditional
+    // branches are never taken and so leave a 1-bit counter parked at its floor. Break rows 1, 2
+    // and 5 each reddened exactly the other sixteen.
+    //
+    // ⚠ Without this, a refactor that made the recorded table constant would leave that sweep green
+    // across the board while agreeing with a replay that had gone constant the same way.
+    const moving = CASES.filter(({ file, scheme }) => {
+      const tables = tablesOf(run(file, config(scheme, false)));
+      return new Set(tables.map((t) => t!.join(','))).size > 1;
+    });
+    expect(moving).toHaveLength(16);
+  });
+
   /**
    * The inertness half: a machine with no counter table records `null`, not an empty or a cold one.
    * `'none'` is included even though it is the same MACHINE as `'static-not-taken'` — this is a
