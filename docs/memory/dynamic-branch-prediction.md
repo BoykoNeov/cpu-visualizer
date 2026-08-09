@@ -1,20 +1,69 @@
 ---
 name: dynamic-branch-prediction
-description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1, 2 AND 3 DONE - step 3 on 2026-08-09; the PIPELINE now bets from a live counter table and trains it, the shell control has four positions, and micro.predictor is still null by design). Read before wiring the other three models (step 5), before splitting a view predicate that serves more than one question, and before trusting a break row you wrote by hand - FOUR consecutive steps have had one come out wrong. Also: a replay test written to be the unique net for a defect caught NOTHING alone; the wrong-pc mutation that is truly invisible is the CONSISTENT shift, and only predictorIndex own unit tests see it. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites), before adding a field to any model micro, and before trusting a cross-model naming agreement. Also the reusable method for pricing an unbuilt config knob offline.'
+description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1, 2, 3 AND 4 DONE - steps 3 and 4 on 2026-08-09; the PIPELINE bets from a live counter table, trains it and now RECORDS it deep-copied, and micro.predictor is null only on the other three models). Read before wiring the other three models (step 5), before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy), before splitting a view predicate that serves more than one question, and before trusting a break row you wrote by hand - FOUR consecutive steps have had one come out wrong, and one row varied between runs. Also: landing step 4 reddened ZERO of 7830 tests; a replay test written to be the unique net for a defect caught NOTHING alone; the wrong-pc mutation that is truly invisible is the CONSISTENT shift, and only predictorIndex own unit tests see it. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites), before adding a field to any model micro, and before trusting a cross-model naming agreement. Also the reusable method for pricing an unbuilt config knob offline.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T15:10:00.000Z
+  modified: 2026-08-09T12:50:48.173Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1, 2 AND 3 complete — step 3 on
-2026-08-09. The PIPELINE has real behavior; the other three betting models do not (step 5), and
-`micro.predictor` is still recorded `null` everywhere (step 4, deliberately).** A 1-bit/2-bit
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1, 2, 3 AND 4 complete — steps 3 and
+4 on 2026-08-09. The PIPELINE has real behavior AND records its table; the other three betting models
+do not (step 5), and `micro.predictor` is `null` on them.** A 1-bit/2-bit
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
 and [[continuous-play]]. The full measured tables live in the plan; only what a future session would
-otherwise re-derive is here. Repo at 7830 tests.
+otherwise re-derive is here. Repo at 7863 tests.
+
+## Step 4 — the deep copy, and the step whose whole content was its own net (2026-08-09)
+
+Shipped: one line in `engine/pipeline`'s `snapshotState()` (`.slice()` the counters) plus a
+`describe` in `dynamic-predict.test.ts`. 7830 → 7863, five gates.
+
+⚠ **Landing the recording reddened ZERO of 7830 tests.** The plan predicted "most of the suite
+passes — only a test that reads the table at an early cursor sees it"; there was no such test,
+because nothing reads `micro.predictor` until step 6. So `null` recorded while a live table trained
+was an **INV-2 understatement no test could see arrive or leave**. Third instance of the same root
+(step 1's `predictorIndex`, step 3's datapath seam): **code with no consumer yet is code no test is
+shaped to cover — write the net WITH the field, not with the reader.**
+
+⚠ **`{ ...snapshot() }` is exactly as broken as no copy at all — measured, rows 1 and 2 redden the
+IDENTICAL 20 tests.** A spread builds a fresh `PredictorState` around the same array, so it reads as
+a fix and passes an identity check on the OBJECT. **Assert distinctness on `.counters`, never on the
+wrapper.** `PredictorState` holds one mutable thing, so `.slice()` IS the deep copy.
+
+⚠ **The non-vacuity control had to be `'dynamic-2bit'`, and the obvious choice asserts nothing.**
+Under `'dynamic-1bit'`, `nested-loop.s` — the program authored to make this feature legible —
+finishes holding **exactly the cold table**: each of its three branches' last outcome is not-taken
+and a 1-bit counter remembers nothing earlier. Step 2's `TTTTNTTTT` lesson again: **the canonical
+demonstration of a mechanism is usually not the test of it.** Pinned by its own `it`.
+
+**The claim structure worth copying at step 5.** Cycle-0-is-COLD is the net (the shallow copy fails
+it); last-cycle-is-TRAINED **passes under the defect** and is labelled a control, not coverage;
+cold ≠ trained is what stops both being trivial (three corpus programs have no control transfer).
+Plus a per-cycle replay — the table at cycle `i` is trained through cycle `i`, since `micro` is
+post-cycle — which row 5 (snapshot taken at cycle START) shows is the **sole** net for snapshot
+TIMING and invisible to everything else.
+
+⚠ **Eight of that sweep's 24 cases assert nothing, and only the break harness found it** — the three
+branchless programs, plus `call-return`/`paired-branches` under 1-bit, whose counters never leave the
+floor. Rows 1, 2 and 5 each reddened exactly the other 16, which is where the guard's number came
+from. Break rows: 0 / **20** / **20** / 29 (`predictor: null`) / 4 (empty table under a static scheme
+— incl. the whole-`micro` `toEqual`, earning its keep a THIRD time and first on a VALUE) / **16**.
+Note 29 > 20: **the count is not a severity ordering** — the aliasing defect is the one that would
+have shipped and it reddens fewer tests than simply not recording.
+
+⚠ **A break-table count read from ONE run has an unstated variance.** Row 4 reported 5 failures once
+and 4 on two re-runs of the identical tree, with the summary never naming the fifth. The engine is
+deterministic (INV-1), so it is a harness timeout — `label-collisions.test.tsx` ran 22.9s and 12.8s
+on two passes of the same tree. Re-run any row whose count surprises you.
+
+**Three docblocks said "the cache is the ONE exception" and only one was about the pipeline.**
+deep-pipeline's and superscalar's were re-anchored from step 4 to **step 5**; out-of-order's already
+said 5. Also corrected: `PipelineMicro.predictor`, `MicroTablePanel.preRunMicro` (its literal is an
+`OutOfOrderMicro`, so the `null` is still true — the PREMISE sentence went stale, not the value),
+`processor.test.ts:187`, and `predictor.ts`'s two forward references.
 
 ## Step 3 — the wiring, and what the break harness said about the test written FOR it (2026-08-09)
 

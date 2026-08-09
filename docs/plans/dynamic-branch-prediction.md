@@ -1,15 +1,15 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEPS 0, 0b, 1, 2 AND 3 DONE — step 3 on 2026-08-09. The PIPELINE now has a real
-predictor.** The corpus is
+**Status: STEPS 0, 0b, 1, 2, 3 AND 4 DONE — steps 3 and 4 on 2026-08-09. The PIPELINE now has a real
+predictor and RECORDS it.** The corpus is
 measured (see the step-0 results section), `content/programs/nested-loop.s` is authored, hand-derived
 into three timing tables and three shape tables, and committed; the schema carries five scheme names,
 `PredictorState`, and a `predictor` field on all four honoring models' `micro`; `BranchPredictor` —
-the state machine itself — is written and unit-tested; and the five-stage pipeline **bets from it and
-trains it**, with the shell's control grown to four positions. Step 3 reproduced every derived cycle
-count in the step-0 and step-0b tables exactly. **Still inert on the other three betting models**
-(step 5), and `micro.predictor` is still recorded as `null` everywhere (step 4, deliberately — its
-break harness needs something to break). Steps 4–8 remain. Every claim
+the state machine itself — is written and unit-tested; and the five-stage pipeline **bets from it,
+trains it and records it**, with the shell's control grown to four positions. Step 3 reproduced every
+derived cycle count in the step-0 and step-0b tables exactly; step 4 deep-copies the table into
+`micro.predictor` and pins it cold-at-cycle-0. **Still inert on the other three betting models**
+(step 5), where `micro.predictor` stays `null`. Steps 5–8 remain. Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
 dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
 step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
@@ -197,12 +197,18 @@ logic four times.
       cover all four models rather than the pipeline alone. If they cover only the pipeline, widening
       them is part of this step, not step 5.
 
-- [ ] **4. The deep-copy step, with its own break harness.** Add `predictor` to `snapshotState()`
+- [x] **4. The deep-copy step, with its own break harness.** — **DONE 2026-08-09; results in the
+      step-4 section below.** Add `predictor` to `snapshotState()`
       deep-copied, per the `micro.cache` precedent above. **Then break it on purpose**: make the
       copy shallow and record what stays green. The prediction is that _most of the suite passes_ —
       final state is unchanged, cycle counts are unchanged, and only a test that reads the table at
       an early cursor can see it. Acceptance: a committed break-table row, and at least one test
       that **fails** under the shallow copy.
+
+      ⚠ **The prediction was an UNDERSTATEMENT and the truth is sharper: landing the recording
+      reddened ZERO of 7830 tests.** Not "most of the suite passes" — all of it did, because nothing
+      reads the field until step 6. So there was no test that read the table at an early cursor;
+      there was no test that read the table at all. The step's whole content is writing that net.
 
 - [ ] **5. The other three models.** `deep-pipeline`, `superscalar`, `out-of-order`. Each should be
       an ask-and-tell diff (see the multiplier section). Acceptance: INV-8 green per model across
@@ -879,6 +885,116 @@ three questions the harness had not, and the first was a genuine gap:
   nothing. Re-run as a genuine transposition (every button rendered with the 1-bit title) it reddens
   the new assertion. A break row is only as good as the mutation, and a 0 is worth a second look
   before it is written down as coverage.
+
+## Step 4 — DONE 2026-08-09. The table is recorded, and the copy is `.slice()`
+
+Shipped: one line in `engine/pipeline`'s `snapshotState()` and a `describe` block in
+`dynamic-predict.test.ts`. 7830 → 7863 tests, five gates green. `micro.predictor` now carries the
+live table under the two dynamic schemes and `null` under every static one.
+
+### The finding that reframes the step
+
+⚠ **Landing the recording reddened ZERO of 7830 tests.** The step's own text predicted "most of the
+suite passes … only a test that reads the table at an early cursor can see it", and there was no
+such test — there was no test that read the field at all, on any cursor. Between steps 3 and 4 this
+model bet from a live counter table and reported `null` on every cycle: a deliberate, temporary
+understatement, and an **INV-2** one, since the engine is supposed to emit full expert-complete state
+and let the view decide what to show. Nothing in the repo could see that lie arrive or leave.
+
+Same root as step 1's untested `predictorIndex` and step 3's untested datapath seam, for the third
+time: **code with no consumer yet is code no test is shaped to cover, and "there is no consumer" is
+exactly when the defect gets written in.** The net is written WITH the recording or it is not written.
+
+### The two spellings that look like a copy and are not
+
+`PredictorState` holds one mutable thing, so `.slice()` on `counters` IS the deep copy. Both cheaper
+spellings alias:
+
+- `snapshot()` handed straight through — one table shared by every recorded cycle.
+- **`{ ...snapshot() }` — a fresh wrapper around the SAME array.** This is the one to guard against,
+  because it reads as a fix and passes an identity check on the object. Break rows 1 and 2 redden the
+  **identical 20 tests**, which is the useful measurement: the spread is exactly as broken as no copy
+  at all. So the identity assertion is on `.counters` and never on the wrapper.
+
+### What each claim in the new block would miss alone
+
+**Cycle 0 is COLD** is the net — the assertion a shallow copy fails. **The last cycle is TRAINED** is
+not coverage: a shallow copy shows the trained table everywhere, so it passes under the defect. It is
+the non-vacuity control, and it is labelled as one in the file. **Cold ≠ trained** is what makes both
+mean anything: three corpus programs have no control transfer at all and every claim here holds
+trivially on them.
+
+⚠ **And the control has to be `'dynamic-2bit'` — the obvious choice would have asserted nothing.**
+Under `'dynamic-1bit'`, `nested-loop.s` finishes holding **exactly the cold table**: each of its
+three branches' last outcome is not-taken and a 1-bit counter keeps no memory of anything earlier, so
+the program authored to make this feature legible ends where it started. That is step 2's flagship
+`TTTTNTTTT` lesson in a new place — **the canonical demonstration of a mechanism is usually not the
+test of it** — and it is now pinned by its own `it` so a future edit to the program or the seed has
+to come through it.
+
+### The per-cycle claim, and the vacuity the harness found in it
+
+The strongest assertion is a per-cycle replay: the table recorded at cycle `i` is what an offline
+`BranchPredictor` holds after every branch resolved **through** cycle `i`. That pins WHEN the
+snapshot is taken — `micro` is post-cycle, the rule `cache-grid.ts` states for every state view — and
+row 5 shows it is the **only** thing that does.
+
+⚠ **Eight of its 24 cases assert nothing, and the break harness is what found that.** The three
+branchless programs (6 cases), plus `call-return.s` and `paired-branches.s` under `'dynamic-1bit'`,
+whose only conditional branches are never taken and so leave a 1-bit counter parked at its floor —
+their tables are cold on every cycle and any constant recording agrees. Rows 1, 2 and 5 each reddened
+exactly the other 16, which is how the number was arrived at rather than reasoned to. Closed with a
+`moving`-count guard in this file's own "not sweeping a corpus of empty strings" idiom.
+
+### Break table — MEASURED, five mutations, all against the finished 7863-test suite
+
+Committed first (risk 5), editor not `Set-Content`, `git checkout --` between rows.
+
+| #   | Mutation                                              | Reddens                                   |
+| --- | ----------------------------------------------------- | ----------------------------------------- |
+| 0   | the recording itself, landed (against the 7830 suite) | **0**                                     |
+| 1   | `snapshot()` handed straight through — one alias      | **20**                                    |
+| 2   | `{ ...snapshot() }` — the wrapper spread              | **20** — identical to row 1               |
+| 3   | reverted to `predictor: null`                         | **29**                                    |
+| 4   | a static scheme records an EMPTY table, not `null`    | **4** — incl. the whole-`micro` `toEqual` |
+| 5   | the snapshot taken at cycle START — one cycle stale   | **16** — the per-cycle sweep ALONE        |
+
+Three rows are worth more than their count:
+
+- **Row 4 is the third time `pipeline/src/processor.test.ts`'s whole-`micro` `toEqual` has earned its
+  keep**, and the first time on a VALUE rather than a key: step 1 called it "the only assertion in the
+  repo that could see the field arrive", and it is also the only one that sees a machine with no table
+  start reporting one. The other three reds are the new `null`-under-static cases.
+- **Row 5 partitions cleanly from everything else** — a recording that is correct in content and one
+  cycle stale in timing is invisible to cold-at-0 (no branch resolves in cycle 0), to trained-at-end
+  (the last branch retires well before the drain), and to the identity check. The 24-case sweep is
+  not decoration.
+- **Row 3 (29) is bigger than rows 1 and 2 (20)** because a `null` also takes down the two `it`s that
+  dereference `.counters`. Worth noting only because it means the count is not a severity ordering:
+  the aliasing defect is the one that would have shipped, and it reddens fewer tests than simply not
+  recording.
+
+⚠ **One full-suite run of row 4 reported 5 failures instead of 4 and the summary never named the
+fifth**; two re-runs of the identical tree reported 4. The engine is deterministic (INV-1), so the
+flake is in the harness — most plausibly a timeout on one of the multi-second geometry suites
+(`label-collisions.test.tsx` ran 22.9s and 12.8s on two passes of the same tree). Recorded rather than
+rounded off: a break-table count read from a single run is a measurement with a variance nobody
+stated.
+
+### Docblocks re-anchored, which is the rest of the diff
+
+`predictor` became `snapshotState`'s SECOND deep copy on this model, so three docblocks that said
+"the cache is the ONE exception" needed attention and only one of them was about the pipeline. The
+deep-pipeline's and superscalar's said "…and stops being true at **step 4**"; they now say step 5 and
+point at the shape the pipeline landed. The out-of-order's already said step 5 and needed nothing.
+Also corrected: `PipelineMicro.predictor`'s "still null" ⚠, `MicroTablePanel`'s `preRunMicro` (whose
+literal is an `OutOfOrderMicro`, so its `null` is still true — the premise sentence was what went
+stale), `processor.test.ts:187`'s "null under EVERY scheme", and `predictor.ts`'s two step-4
+forward references.
+
+**Not in this step, deliberately:** the plan's acceptance line "scrubbing to cycle 0 shows an
+untrained table" is closed at the TRACE level here and stays unticked, because nothing in `web` reads
+`micro.predictor` until step 6's panel. There is no panel to scrub and no browser pass to run yet.
 
 ## Acceptance criteria
 
