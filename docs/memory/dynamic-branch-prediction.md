@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T15:58:03.703Z
+  modified: 2026-08-09T16:11:33.936Z
 ---
 
 **Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 6 complete — step 6 on 2026-08-09.
@@ -15,13 +15,15 @@ saturating BHT riding `micro.predictor` (following `micro.cache`), wired into th
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
 and [[continuous-play]]. **Steps 7–8 remain: the browser pass, the lesson.** The
 full measured tables live in the plan; only what a future session would otherwise re-derive is here.
-Repo at 9492 tests.
+Repo at 9493 tests.
 
 ## Step 6 — the panel, and the shape that had to be counted before it was typed (2026-08-09)
 
 Shipped: `web/src/predictor-table.ts` (pure fold) + `PredictorTableView.tsx` (HTML half) + two test
 files + CSS + an App slot, plus `counterGeometry`/`coldPredictorState` in `engine-common`. 9466 →
-9492, five gates. Two commits: the panel, then the break harness's closures.
+9493, five gates (`build` included — it is the ONLY gate that exercises library emit, since Vitest
+and the dev server alias workspace imports to SOURCE). Three commits: the panel, the break harness's
+closures, then the review residual below.
 
 ⚠ **The blocking question was the fold's SHAPE, and copying the neighbour would have been wrong.**
 `CacheAccessView` is a scalar `access | null` and its docblock _justifies_ that with a model fact (at
@@ -95,6 +97,27 @@ not "commit before you break", it is "commit before EVERY row", because the loop
 revert.** And driving mutations from a node script is right, but **patch strings must go through the
 editor or a file, never a bash heredoc** — backtick expansion silently mangled a docblock full of
 `` `code` `` spans while still printing "ok".
+
+**The scratch tooling, at `M:\claud_projects\temp\bp-step6\`** (same config shape as `bp-step0`).
+Two pieces make the headlines above executable rather than advisory:
+
+- **`resolves-per-cycle.test.ts`** — the sweep that answers "scalar or list?" for any per-cycle
+  event, with the run/cycle/event counters that turned a vacuous 327ms pass into a measurement. It
+  also reports same-entry collisions and whether a resolver is still listed in its own cycle's
+  `instructions[]` (the id→pc join question). **Run this shape before typing any view fold's
+  view-model.**
+- **`null-predictor.test.ts`** — the reachability sweep for a `?? fallback` in a fold, with its
+  static control. Generalizes: measure whether the branch CAN fire before choosing between a
+  tripwire and coverage.
+- **`break.mjs`** — the row driver. ⚠ Its loop body contains the revert, which is the whole reason
+  for "commit before EVERY row".
+
+⚠ **A residual the ten break rows missed, found by review and then measured.** The fold's
+`predictorOf(trace)?.counters ?? cold` would draw a COLD table for a frame that has none — silently,
+every cycle. Unreachable (0 null tables in 14,108 dynamic cycles; the static control says 7,142 ARE
+null, which is what makes "non-null" a property of the scheme). Now a tripwire rather than coverage.
+⚠ **And it is NOT the sole net — breaking the class the sharp way (null for the first five cycles,
+i.e. LAZY population) reddens 29, of which 28 are the deep pipeline's own per-cycle replay from step 4.** Third time this feature has had to run the break before believing a sole-net claim.
 
 **Step 7 is not optional and this step measured none of it.** No browser, no jsdom, no layout: the
 chip reserves, the pip meter's width, sixteen rows at a narrow viewport, and the follow-highlight

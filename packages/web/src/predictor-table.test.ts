@@ -128,6 +128,16 @@ describe('the gate is a TRACE fact, not the scheme', () => {
    * rather than a docblock claiming it. A future model that records the table lazily (null until
    * its first bet, say) turns this red instead of silently drawing a cold table for its whole run.
    *
+   * ⚠ **It is NOT the sole net, and that was measured rather than assumed** — the discipline step 3
+   * wrote down after a replay test claimed sole-net status and caught nothing alone. Two rows:
+   * a model recording `predictor: null` on EVERY cycle reddens three tests in this file (the gate
+   * above and the training sweep see it too, because the table then never appears at all); the
+   * sharper row — null for the first five cycles only, i.e. lazy population — reddens **29 across
+   * the repo, and 28 of them are `deep-pipeline/src/dynamic-predict.test.ts`'s per-cycle replay**
+   * from step 4. So the engine side already covers this per model. What this adds is the claim
+   * stated in the layer that owns the FALLBACK, across all four models at once — the same gap
+   * `models.test.ts`'s cross-model sweep exists to close for the field's spelling.
+   *
    * ⚠ Its non-vacuity is the static half: under a scheme with no predictor the field IS null on
    * every cycle (7,142 measured), so "non-null" is a property of the SCHEME rather than of a field
    * that happens to always be populated. Without that control this sweep would pass unchanged

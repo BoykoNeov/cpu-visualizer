@@ -1257,7 +1257,7 @@ remaining two.
 
 Shipped: `web/src/predictor-table.ts` (the pure fold), `PredictorTableView.tsx` (the HTML half),
 their two test files, the CSS, the App slot, `counterGeometry` + `coldPredictorState` in
-`engine-common`, and the `preRunMicro` fix the step's own text demanded. 9466 → 9492 tests, five
+`engine-common`, and the `preRunMicro` fix the step's own text demanded. 9466 → 9493 tests, five
 gates green. Two commits: the panel, then the break harness's closures.
 
 ### The blocking question was the fold's SHAPE, and it had to be measured first

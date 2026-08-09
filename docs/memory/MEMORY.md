@@ -8,7 +8,7 @@ Work since M14 is **UX/product gaps in the shell** plus one new feature. A surve
 four UX gaps; **three are done** — keyboard clock control, continuous play, and the sticky transport
 bar's per-step jitter (all 2026-07-30; the jitter fix also closed continuous play's sub-880px
 residual and moved both caption thresholds). The corpus is **twelve** programs and the repo runs
-**9492 tests** (branch prediction by step: 7597 / 7606 / 7830 / 7863 / 9466 / 9492 after steps 1–6),
+**9493 tests** (branch prediction by step: 7597 / 7606 / 7830 / 7863 / 9466 / 9493 after steps 1–6),
 five gates green.
 
 **Open work:** dynamic branch prediction (**steps 0–6 done, 3–6 on 2026-08-09; steps 7–8 — the
@@ -49,10 +49,12 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   draws it. The file carries a per-step section; its recurring findings are that **INV-8 is a false
   net on the latch models and a real one on the OoO**, that **a break count EXPIRES when the suite
   grows**, and that **the canonical demonstration of a mechanism is usually not the test of it**
-  (five instances, `call-return.s` the witness each time). **Read before step 7; before any view fold
-  over a per-cycle event; before adding a corpus program (six pinned sites, not three), a field to
-  any model's `micro`, or a knob to a model that speculates; and before trusting a cross-model naming
-  agreement or a break row you wrote by hand.**
+  (five instances, `call-return.s` the witness each time). **Read before step 7; before authoring
+  step 8's lesson (depth and width argue for a counter for OPPOSITE reasons — that is its two
+  sentences); before any view fold over a per-cycle event; before adding a corpus program (six pinned
+  sites, not three), a field to any model's `micro`, or a knob to a model that speculates; and before
+  trusting a cross-model naming agreement or a break row you wrote by hand.** Reusable sweeps live in
+  `M:\claud_projects\temp\bp-step0|5|6\`, named in the file.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
