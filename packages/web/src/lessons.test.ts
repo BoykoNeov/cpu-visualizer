@@ -2393,6 +2393,33 @@ describe('bet-that-learns — the counter that remembers across a loop exit (BP 
     expect(lesson().config!.cache).toBeNull();
   });
 
+  it('the row numbers the opening step recites are the ones the table actually uses', () => {
+    // The opening tier names three addresses and the rows they land on, plus the bit field that
+    // produces them. Those are arithmetic claims about `predictorIndex`, made in prose, and the
+    // constants at the top of this describe cover only two of the three — the outer branch's row
+    // is named nowhere else. Same class as break row 9: a figure stated in narration and derived
+    // nowhere is unpinned, and here the derivation is one function call away.
+    const opening = lesson().steps[0]!.narration.expert!;
+    for (const [pc, phrase] of [
+      [INNER_PC, 'Address 24 lands on row'],
+      [GUARD_PC, 'address 8 on row'],
+      [32, 'address 32 on row'],
+    ] as const) {
+      expect(
+        statesNumberBeside(opening, phrase, String(predictorIndex(pc)), 30),
+        `"${phrase}" does not name ${predictorIndex(pc)}`,
+      ).toBe(true);
+    }
+    expect(predictorIndex(INNER_PC)).toBe(INNER_ROW);
+    expect(predictorIndex(GUARD_PC)).toBe(GUARD_ROW);
+    // And the bit field the same sentence claims, checked as behavior rather than as a string:
+    // sixteen entries indexed by the word address means bits 5 to 2, so exactly the addresses
+    // differing in those bits differ in their rows.
+    expect(opening).toContain('bits 5 to 2');
+    expect(predictorIndex(INNER_PC)).not.toBe(predictorIndex(INNER_PC + 4));
+    expect(predictorIndex(INNER_PC)).toBe(predictorIndex(INNER_PC + 64));
+  });
+
   it('THE FLIP REMOVES A STEP, and it is the second re-entry misprediction', () => {
     // (1) The live-step sets, in both directions. Seven steps authored; all seven live on the
     //     declared machine, six on the 2-bit machine, and the missing index is 5.
