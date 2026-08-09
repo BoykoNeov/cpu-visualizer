@@ -31,7 +31,7 @@ import {
   lessonSections,
   orderLessons,
 } from './lessons';
-import { predictionPosition } from './session';
+import { PREDICTION_POSITIONS, predictionPosition, schemeForPosition } from './session';
 import { loadSource } from './simulator';
 
 /**
@@ -116,11 +116,13 @@ interface ConfigAxis {
 }
 
 /**
- * Every knob a model can honor, each with its behaviors. Note `branchPrediction` contributes TWO
- * positions for THREE names: `'none'` and `'static-not-taken'` are the same machine (M4 step 1 —
+ * Every knob a model can honor, each with its behaviors. Note `branchPrediction` contributes FOUR
+ * positions for FIVE names: `'none'` and `'static-not-taken'` are the same machine (M4 step 1 —
  * a processor with no predictor does not wait, it keeps fetching, and the fall-through IS the
- * not-taken path), so sweeping `'none'` as a third position would re-run an identical recording
- * and call the duplicate coverage. The positions are the BEHAVIORS, not the names.
+ * not-taken path), so sweeping `'none'` as a fifth position would re-run an identical recording
+ * and call the duplicate coverage. The positions are the BEHAVIORS, not the names — and
+ * `simulator.test.ts` pins the arithmetic that makes "four" the right number: the five schemes
+ * produce exactly four distinct recordings.
  */
 const CONFIG_AXES: readonly ConfigAxis[] = [
   {
@@ -131,11 +133,24 @@ const CONFIG_AXES: readonly ConfigAxis[] = [
     ],
   },
   {
+    // ⚠ **This axis went stale exactly as the width axis did, and for one more step than that one.**
+    // It sat at a literal `[static-not-taken, static-taken]` while the dynamic-branch-prediction
+    // plan's step 3 grew the shell's control to FOUR positions — so every lesson on a betting model
+    // was swept at HALF the machines the user can park it on, and the two positions missing were the
+    // two a predictor lesson would be ABOUT. A literal list is what failed twice, so it is gone: the
+    // positions are DERIVED from {@link PREDICTION_POSITIONS} and {@link schemeForPosition}, the
+    // control's own reachable set, which is the M13/M14 precedent for this staleness class.
+    //
+    // Deriving from the CONTROL rather than from the scheme union is what keeps `'none'` collapsed
+    // for free: `SCHEME_FOR_POSITION` is the inverse over the REACHABLE names, so five names arrive
+    // here as the four BEHAVIORS this axis's docblock demands, with no second list to maintain. The
+    // labels are the button captions for the same reason — the sweep names the machine the way the
+    // shell does, so a position in one and not the other cannot hide behind a private spelling.
     honored: (caps) => caps.configurableBranchPrediction,
-    positions: [
-      { label: 'predict not-taken', set: (c) => ({ ...c, branchPrediction: 'static-not-taken' }) },
-      { label: 'predict taken', set: (c) => ({ ...c, branchPrediction: 'static-taken' }) },
-    ],
+    positions: PREDICTION_POSITIONS.map((position) => ({
+      label: `predict ${position}`,
+      set: (c: ProcessorConfig) => ({ ...c, branchPrediction: schemeForPosition(position) }),
+    })),
   },
   {
     // The cache contributes THREE positions, not two, and the asymmetry with prediction is the point
@@ -486,25 +501,43 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
   });
 
   it('gives the pipeline the CROSS PRODUCT of ALL THREE knobs it honors, not two', () => {
-    // The claim in one line: three honored knobs ⇒ 2 × 2 × 3 = twelve machines. This is what went
-    // stale when step 1 flipped `configurableBranchPrediction` (four, not two) and again when M6
-    // flipped `configurableCache` (twelve, not four) — each time the sweep would have kept passing
-    // at a fraction of coverage while `positionsFor` still enumerated the old knobs. The cache axis
-    // is THREE positions because off/small/large are three machines, so it triples rather than
-    // doubles the count.
+    // The claim in one line: three honored knobs ⇒ 2 × 4 × 3 = twenty-four machines. This is what
+    // went stale when M3 step 1 flipped `configurableBranchPrediction` (four, not two), again when
+    // M6 flipped `configurableCache` (twelve, not four), and a THIRD time when the dynamic-branch-
+    // prediction plan's step 3 grew the prediction control from two positions to four (twenty-four,
+    // not twelve) — each time the sweep would have kept passing at a fraction of coverage while
+    // `positionsFor` still enumerated the old knobs. The cache axis is THREE positions because
+    // off/small/large are three machines; prediction is FOUR because the counter tables are two more
+    // machines, not two more names for the taken bet.
+    //
+    // Spelled out rather than counted, unlike the two big models below, and that is the point of
+    // having both shapes: this list is the one a reader can check against the shell's own controls,
+    // and it is what a collapsed axis makes obviously wrong instead of merely off by an integer.
     expect(positionsFor('pipeline').map((p) => p.label)).toEqual([
-      'forwarding off, predict not-taken, cache off',
-      'forwarding off, predict not-taken, cache small',
-      'forwarding off, predict not-taken, cache large',
+      'forwarding off, predict not taken, cache off',
+      'forwarding off, predict not taken, cache small',
+      'forwarding off, predict not taken, cache large',
       'forwarding off, predict taken, cache off',
       'forwarding off, predict taken, cache small',
       'forwarding off, predict taken, cache large',
-      'forwarding on, predict not-taken, cache off',
-      'forwarding on, predict not-taken, cache small',
-      'forwarding on, predict not-taken, cache large',
+      'forwarding off, predict 1-bit, cache off',
+      'forwarding off, predict 1-bit, cache small',
+      'forwarding off, predict 1-bit, cache large',
+      'forwarding off, predict 2-bit, cache off',
+      'forwarding off, predict 2-bit, cache small',
+      'forwarding off, predict 2-bit, cache large',
+      'forwarding on, predict not taken, cache off',
+      'forwarding on, predict not taken, cache small',
+      'forwarding on, predict not taken, cache large',
       'forwarding on, predict taken, cache off',
       'forwarding on, predict taken, cache small',
       'forwarding on, predict taken, cache large',
+      'forwarding on, predict 1-bit, cache off',
+      'forwarding on, predict 1-bit, cache small',
+      'forwarding on, predict 1-bit, cache large',
+      'forwarding on, predict 2-bit, cache off',
+      'forwarding on, predict 2-bit, cache small',
+      'forwarding on, predict 2-bit, cache large',
     ]);
   });
 
@@ -526,9 +559,12 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
    * decisions table left open — `MEM1`/`MEM2`, a 12-stage — so this case is the guard that makes the
    * next depth milestone say so out loud.
    */
-  it('gives the deep pipeline the SAME twelve machines as the 5-stage — no new axis', () => {
+  it('gives the deep pipeline the SAME machines as the 5-stage — no new axis', () => {
     const deep = positionsFor('deep-pipeline').map((p) => p.label);
-    expect(deep).toHaveLength(12);
+    // Half-derived, like the superscalar's width factor below: forwarding(2) and cache(3) have
+    // never moved and stay honest numbers a human chose; the prediction factor is the one that has
+    // now gone stale twice, so it is the one read from the control.
+    expect(deep).toHaveLength(2 * PREDICTION_POSITIONS.length * 3);
     expect(deep).toEqual(positionsFor('pipeline').map((p) => p.label));
   });
 
@@ -540,24 +576,26 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
    * That is the precise shape of the two staleness bugs recorded above, so the case list is
    * extended to reach the collision rather than left to the first superscalar lesson to discover.
    *
-   * Four honored knobs ⇒ 2 × 2 × 3 × `MAX_ISSUE_WIDTH` = forty-eight machines. Asserted as a COUNT
-   * plus the axis order and the endpoints, not forty-eight spelled-out labels: at this size a
+   * Four honored knobs ⇒ 2 × 4 × 3 × `MAX_ISSUE_WIDTH` = ninety-six machines. Asserted as a COUNT
+   * plus the axis order and the endpoints, not ninety-six spelled-out labels: at this size a
    * literal list stops being read and starts being pasted, and what is worth pinning is that all
    * four axes are in the product and the width is the innermost one.
    *
-   * The width factor is DERIVED and the other three are literal — the same half-derived shape as
-   * `datapath-superscalar.test.ts`'s `4 * MAX_ISSUE_WIDTH`. Fully deriving it would make the pin
-   * vacuous (true at any width); leaving it literal is what let this case read twenty-four while
-   * the shell offered four widths, straight through M13. Deriving exactly the stale term is the
-   * fix, and the three that have never moved stay honest numbers a human chose.
+   * The width and prediction factors are DERIVED and the other two are literal — the same
+   * half-derived shape as `datapath-superscalar.test.ts`'s `4 * MAX_ISSUE_WIDTH`. Fully deriving it
+   * would make the pin vacuous (true at any width, under any number of schemes); leaving a factor
+   * literal is what let this case read twenty-four while the shell offered four widths, straight
+   * through M13, and forty-eight while it offered four prediction positions, straight through the
+   * predictor feature's steps 3–7. **Both stale terms are now read from the thing that moved them**,
+   * and the two that have never moved stay honest numbers a human chose.
    */
   it('gives the superscalar all FOUR knobs it honors — the width axis included', () => {
     const labels = positionsFor('superscalar').map((p) => p.label);
-    expect(labels).toHaveLength(12 * MAX_ISSUE_WIDTH);
-    expect(labels[0]).toBe('forwarding off, predict not-taken, cache off, 1-wide');
-    expect(labels[1]).toBe('forwarding off, predict not-taken, cache off, 2-wide');
+    expect(labels).toHaveLength(2 * PREDICTION_POSITIONS.length * 3 * MAX_ISSUE_WIDTH);
+    expect(labels[0]).toBe('forwarding off, predict not taken, cache off, 1-wide');
+    expect(labels[1]).toBe('forwarding off, predict not taken, cache off, 2-wide');
     expect(labels.at(-1)).toBe(
-      `forwarding on, predict taken, cache large, ${MAX_ISSUE_WIDTH}-wide`,
+      `forwarding on, predict 2-bit, cache large, ${MAX_ISSUE_WIDTH}-wide`,
     );
     // Non-vacuity: the width genuinely varies across the sweep rather than every position carrying
     // the same value under two different labels — the failure a length check alone cannot see. It
@@ -576,19 +614,19 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
    * record.
    *
    * FIVE honored knobs, but `configurableForwarding` is FALSE on this model (the CDB broadcast IS the
-   * forward — no off-position), so the product is prediction(2) × cache(3) × width(`MAX_ISSUE_WIDTH`)
-   * × outOfOrderIssue(2) × robSize(2) = 96, NOT the superscalar's 48 with a forwarding axis on top.
+   * forward — no off-position), so the product is prediction(4) × cache(3) × width(`MAX_ISSUE_WIDTH`)
+   * × outOfOrderIssue(2) × robSize(2) = 192, NOT the superscalar's 96 with a forwarding axis on top.
    * Asserted as a COUNT plus the axis order and the endpoints, like the superscalar case: at this size
    * a literal list stops being read and starts being pasted, and what is worth pinning is that BOTH
    * new axes are in the product (the flagship toggle and the ROB-size lever), innermost, that
    * `slowOpLatency` is NOT (no shell control — held per-lesson), and that forwarding is absent.
    */
-  it('gives the out-of-order model prediction × cache × width × the OoO cluster — 96 machines', () => {
+  it('gives the out-of-order model prediction × cache × width × the OoO cluster — 192 machines', () => {
     const labels = positionsFor('out-of-order').map((p) => p.label);
-    expect(labels).toHaveLength(24 * MAX_ISSUE_WIDTH);
-    expect(labels[0]).toBe('predict not-taken, cache off, 1-wide, in-order issue, rob 16');
+    expect(labels).toHaveLength(PREDICTION_POSITIONS.length * 3 * 2 * 2 * MAX_ISSUE_WIDTH);
+    expect(labels[0]).toBe('predict not taken, cache off, 1-wide, in-order issue, rob 16');
     expect(labels.at(-1)).toBe(
-      `predict taken, cache large, ${MAX_ISSUE_WIDTH}-wide, out-of-order issue, rob 4`,
+      `predict 2-bit, cache large, ${MAX_ISSUE_WIDTH}-wide, out-of-order issue, rob 4`,
     );
     // Non-vacuity: BOTH new knobs genuinely vary across the sweep rather than every position carrying
     // one value under two labels — the failure a length check alone cannot see (the width case's move,
@@ -606,14 +644,16 @@ describe('positionsFor — the sweep covers every machine a lesson can be opened
     );
   });
 
-  it('the positions are DISTINCT configs, not twelve labels on one machine', () => {
-    // The non-vacuity, and the thing a label can lie about: twelve names over identical configs
-    // would run the sweep twelve times and prove one position. Compared as configs rather than
+  it('the positions are DISTINCT configs, not twenty-four labels on one machine', () => {
+    // The non-vacuity, and the thing a label can lie about: twenty-four names over identical configs
+    // would run the sweep twenty-four times and prove one position. Compared as configs rather than
     // labels, because the labels are what would agree while the configs collapsed. `CACHE_SMALL`
     // and `CACHE_LARGE` are distinct objects with distinct geometry, so the cache axis genuinely
-    // triples the distinct-config count rather than aliasing.
+    // triples the distinct-config count rather than aliasing — and the same question is now live for
+    // prediction, whose four positions would collapse to two if the axis were derived from
+    // `hasTakenBetPath` (which answers YES for both dynamic schemes) instead of from the control.
     const configs = positionsFor('pipeline').map((p) => JSON.stringify(p.config));
-    expect(new Set(configs).size).toBe(12);
+    expect(new Set(configs).size).toBe(2 * PREDICTION_POSITIONS.length * 3);
   });
 });
 
