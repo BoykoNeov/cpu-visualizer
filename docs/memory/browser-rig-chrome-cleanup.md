@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-08-09T17:34:55.492Z
+  modified: 2026-08-09T17:35:37.430Z
 ---
 
 Teardown rules for the CDP browser rigs described in [[browser-is-the-only-net]] and
@@ -55,9 +55,9 @@ predictor's step-7 pass — 6 rig runs in one session). Pass 1: 7 previews and 4
 and the verify re-count still reported **22 rig Chromes and 7 profile dirs remaining**. Pass 2 took
 it to 0 Chromes / 4 dirs. Pass 3 reported clean. Nothing was wrong with the predicate — a Chrome
 tree kill races the children still spawning, and a profile directory cannot be deleted while any
-process still holds it, so the dirs trail the processes by one pass. **`\*** SWEEP INCOMPLETE **\*`is
-an instruction to run it again, not a failure to debug: re-run until it says`clean`, and quote the
-run that did.** This is the same rule as the file's headline one level up — a cleanup you did not
+process still holds it, so the dirs trail the processes by one pass. **The script's INCOMPLETE
+verdict is an instruction to run it again, not a failure to debug: re-run until it prints `clean`,
+and quote the run that did.** This is the same rule as the file's headline one level up — a cleanup you did not
 re-count is a claim, and a re-count you did not act on is worse, because you have the number and
 filed it anyway.
 
