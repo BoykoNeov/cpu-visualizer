@@ -9,7 +9,7 @@
  * composition WITH the map and datapath remain a browser eyeball, as every view step has needed.
  */
 
-import { CACHE_LARGE } from '@cpu-viz/engine-common';
+import { CACHE_LARGE, coldPredictorState } from '@cpu-viz/engine-common';
 import { OutOfOrderProcessor, type OutOfOrderMicro } from '@cpu-viz/engine-out-of-order';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import {
@@ -20,7 +20,7 @@ import {
 } from '@cpu-viz/trace';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { hasMicroTables, MicroTablePanel } from './MicroTablePanel';
+import { hasMicroTables, MicroTablePanel, preRunMicro } from './MicroTablePanel';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
@@ -120,6 +120,43 @@ describe('MicroTablePanel — the gate is a TRACE fact', () => {
     expect(html).toContain('Rename map');
     expect(html).toContain('empty — nothing in flight');
     expect(html).not.toContain('ROB#');
+  });
+
+  /**
+   * ⚠ **The fabricated pre-run micro's `predictor` is the COLD table, and this test exists because
+   * the value has no other net.** None of the three tables above draws it — the field is there
+   * because a fabricated `OutOfOrderMicro` must be a whole one — so reverting it to the step-1
+   * `predictor: null` placeholder reddened **zero of 9489 tests** when the step-6 break harness
+   * tried it. A wrong fabricated value guarded only by prose is `m13-review-resolved`'s "a pinned
+   * decision with no net is a comment", so `preRunMicro` is exported and the claim is asserted.
+   *
+   * The claim itself: `robCapacity` is a CONFIG fact and copies; `rob`, `rename` and `predictor` are
+   * RUN facts and each empties to its own zero — which for a counter table is a SEED, not an
+   * absence. `null` would say "this machine has no predictor" about a machine that has one and has
+   * merely learnt nothing, and `m.predictor` carried forward would show a fully-TRAINED table before
+   * a single instruction had run.
+   */
+  it('fabricates the pre-run micro with a COLD predictor under a dynamic scheme', () => {
+    const recorded = record('array-sum', { ...OOO, branchPrediction: 'dynamic-2bit' });
+    const fabricated = preRunMicro(recorded, 'dynamic-2bit');
+    expect(fabricated).not.toBeNull();
+    // Every RUN fact emptied...
+    expect(fabricated!.rob).toEqual([]);
+    expect(fabricated!.rename).toEqual([]);
+    // ...the counter table to its SEED, from the engine's own definition rather than a literal here.
+    expect(fabricated!.predictor).toEqual(coldPredictorState('dynamic-2bit'));
+    // ...and the CONFIG fact copied, which is what keeps the ROB spine's reserve at full height.
+    expect(fabricated!.robCapacity).toBe(OOO.robSize);
+
+    // The seed is scheme-dependent, so the two schemes must not be interchangeable here.
+    expect(preRunMicro(recorded, 'dynamic-1bit')!.predictor).toEqual(
+      coldPredictorState('dynamic-1bit'),
+    );
+    expect(coldPredictorState('dynamic-1bit')).not.toEqual(coldPredictorState('dynamic-2bit'));
+
+    // A static scheme has no table at all, and `null` is then the honest value rather than a
+    // placeholder — which is what the recording itself carries on every cycle.
+    expect(preRunMicro(recorded, 'static-taken')!.predictor).toBeNull();
   });
 });
 

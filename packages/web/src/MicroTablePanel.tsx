@@ -145,8 +145,15 @@ function oooMicro(trace: CycleTrace | null): OutOfOrderMicro | null {
  * are one value with one definition. That the three agree is checkable rather than asserted: no
  * corpus program on any model trains a counter during cycle 0, so stepping off the start moves no
  * counter — `predictor-table.test.ts` pins it against real recordings.
+ *
+ * ⚠ **EXPORTED for its test, and that is why the value is a claim rather than a comment.** None of
+ * this panel's three tables draws the predictor, so the field has no consumer and reverting it to
+ * the step-1 `predictor: null` reddens **zero of 9489 tests** — measured by step 6's break harness,
+ * not assumed. That is `m13-review-resolved`'s "a pinned decision with no net is a comment", and the
+ * cheapest honest fix is to make the fabricated micro reachable from a test rather than to leave a
+ * wrong value guarded by prose. {@link hasMicroTables} is exported on the same terms.
  */
-function preRunMicro(
+export function preRunMicro(
   recording: readonly CycleTrace[],
   scheme: BranchPrediction,
 ): OutOfOrderMicro | null {

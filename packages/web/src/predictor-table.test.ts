@@ -241,6 +241,81 @@ describe('owners — which branch owns which row', () => {
     }
   });
 
+  /**
+   * ⚠ **The same filter guards TRAINING, and that half had NO net until the break harness said so —
+   * which makes this the fifth instance of the finding, arriving inside the file that names it.**
+   *
+   * `trainsThisCycle` and `ownerIndex` each call `isConditionalBranch`, and the test above covers
+   * only the second. Dropping it from the first reddened **zero of 9489 tests**: every training
+   * assertion in this file runs on `nested-loop.s`, which contains no `jal` and no `jalr`, so a view
+   * that lit a row for an unconditional jump — a row the machine never wrote, whose counter would
+   * then sit at its seed under a moving highlight — would have shipped in silence.
+   *
+   * Two call sites of one predicate need two tests, on the one program that can tell them apart.
+   */
+  it('does not TRAIN a row for `jal`/`jalr` either — the other half of the same filter', () => {
+    for (const model of MODELS) {
+      const recorded = record('call-return', model.make, { branchPrediction: 'dynamic-2bit' });
+      const trains = recorded.flatMap(
+        (t) => buildPredictorTable(t, recorded, 'dynamic-2bit')!.trains,
+      );
+      // `call-return.s` resolves three transfers — the `jal`, the `bge` and the `ret` — and exactly
+      // ONE of them trains. Both counts are asserted: the first is the non-vacuity (there really are
+      // two unconditional transfers here to be filtered out), the second is the claim.
+      const resolves = recorded.flatMap((t) =>
+        t.events.filter((e) => e.type === 'branch-resolved'),
+      );
+      expect(resolves, `${model.id}: call-return resolves three transfers`).toHaveLength(3);
+      expect(trains, `${model.id}: only the conditional branch trains`).toHaveLength(1);
+      expect(trains[0]!.text).toContain('bge');
+      expect(trains[0]!.index).toBe(6);
+    }
+  });
+
+  /**
+   * ⚠ **The id → pc join goes through the WHOLE recording, and the corpus cannot tell that apart
+   * from the narrow join — measured: rewriting it to read only the cursor's own `instructions[]`
+   * reddens ZERO of 9489 tests.** That is not because the choice is idle; it is because all four
+   * models happen to keep a resolving instruction listed on its resolve cycle (measured at step 6:
+   * zero resolvers absent from their own cycle across 672 runs). Depending on it would put a
+   * four-model assumption inside a helper whose whole job is to be handed a trace — the shape that
+   * left `cache-grid.ts` blank on one model for a milestone.
+   *
+   * A real recording therefore cannot state this claim, so it is pinned on a SYNTHETIC trace: the
+   * only construction that separates the two joins is one where the resolver is genuinely absent
+   * from its own cycle's `instructions[]`. Labelled synthetic because this file's whole discipline
+   * is otherwise "derive from a real run, never a fixture" — this is the documented exception, not
+   * a lapse.
+   */
+  it('joins a resolver that has already left `instructions[]` — synthetic, the only reachable case', () => {
+    const real = record('nested-loop', () => new PipelineProcessor(), {
+      branchPrediction: 'dynamic-2bit',
+    });
+    // A real cycle that trains, and the real instruction that trained it.
+    const cycle = real.find(
+      (t) => (buildPredictorTable(t, real, 'dynamic-2bit')?.trains.length ?? 0) > 0,
+    )!;
+    const resolved = cycle.events.find((e) => e.type === 'branch-resolved')!;
+    const branch = real.flatMap((t) => t.instructions).find((i) => i.id === resolved.instr)!;
+
+    // The same cycle with the resolver REMOVED from its own instruction list — a model that retires
+    // an instruction in the cycle it resolves would record exactly this.
+    const stripped: CycleTrace = {
+      ...cycle,
+      instructions: cycle.instructions.filter((i) => i.id !== branch.id),
+    };
+    const recording = real.map((t) => (t.cycle === cycle.cycle ? stripped : t));
+
+    const table = buildPredictorTable(stripped, recording, 'dynamic-2bit')!;
+    expect(table.trains, 'the wide join still finds the branch').toHaveLength(1);
+    expect(table.trains[0]!.pc).toBe(branch.pc);
+    expect(table.trains[0]!.index).toBe(predictorIndex(branch.pc));
+
+    // Non-vacuity: the cycle really was stripped, so a narrow join would have found nothing here.
+    expect(stripped.instructions.some((i) => i.id === branch.id)).toBe(false);
+    expect(cycle.instructions.some((i) => i.id === branch.id)).toBe(true);
+  });
+
   it('leaves every row unowned for a program with no branches', () => {
     // Three corpus programs are branchless (`add`, `byte-loads`, `store-forward`). The table is
     // still drawn in full — it is the machine, not the program — and every row says so.
