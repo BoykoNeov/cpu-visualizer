@@ -1,0 +1,114 @@
+{
+  "id": "bet-that-learns",
+  "title": "The bet that learns, and the bit that lets it forget",
+  "program": "nested-loop",
+  "model": "pipeline",
+  "config": {
+    "forwarding": true,
+    "branchPrediction": "dynamic-1bit",
+    "cache": null
+  },
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The same small loop, run four separate times. This machine keeps a note about every branch it has seen.",
+        "detailed": "In \"The bet, and what it costs when it's wrong\" the machine had exactly one guess and always made it: every branch not taken, or every branch taken, forever. Neither machine could learn anything, because neither remembered anything. This one does. It keeps a table of sixteen counters — the PREDICTOR panel below — and looks up a branch by its address before guessing. The program is built to make that matter: a six-iteration inner loop, entered four separate times, so every branch here is one the machine has already met.",
+        "expert": "The table is indexed by the branch's address and holds nothing else: no target, no tag, no history of other branches. Address 24 lands on row 6, address 8 on row 2, address 32 on row 8 — sixteen entries, so the index is bits 5 to 2 of the pc. The whole scheme is that lookup plus a saturating counter, which is the smallest thing that can be called a memory and still be a predictor."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 12
+        },
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The first branch never goes anywhere. The counter says so, the machine does nothing, and that is free.",
+        "detailed": "`bne x0, x0, done` asks whether zero differs from zero. It never does, so this branch falls through every single time, on all four passes. Its counter is row 2, it starts at the not-taken end of its range and never leaves — so the machine places no bet, keeps fetching the next instruction in line, and is right at no cost at all. Watch row 2 as the program runs: it is the one row that never moves. A machine that bets taken on every branch it can compute would guess wrong here four times over, and pay two cycles each time.",
+        "expert": "A correct not-taken prediction is the only genuinely free case in this pipeline: no redirect, no flush, no penalty. Note there is no `branch-predicted` event here — a not-taken bet is the absence of an action, so there is nothing to report until the branch resolves. This row is where the counter beats the always-taken machine outright, and it is worth separating from the loop below: the counter wins here by declining a bet, and wins there by remembering one. Two different mechanisms, and only the second is what a dynamic predictor is usually sold on."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 16,
+          "predicted": false
+        },
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The loop's own branch, met for the first time. The machine has no opinion yet, guesses wrong — and writes it down.",
+        "detailed": "`bne t1, x0, inner` is the branch this whole program is about, and this is the first time the machine has ever seen it. Its counter, row 6, starts at not taken, so no bet is placed and fetch runs straight on past the loop. The branch is taken. Two cycles are thrown away — and then the interesting part: the counter is updated with what actually happened. On this 1-bit machine that single step is the whole of its memory, so row 6 flips from not taken to taken in one go. The 2-bit machine takes the same step and only reaches weakly taken; it needs two agreements before it will bet.",
+        "expert": "`predicted: false`, `actual: true` — a cold miss, and every scheme pays it. A saturating counter has no way to be right the first time, which is why the textbook's warm-start numbers do not describe a real run: this leading mispredict is charged to the 1-bit table and the 2-bit table alike. The update happens at resolution, in EX, and it is the only write this table ever takes."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 16,
+          "predicted": true
+        },
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "Second time around, the machine bets on it — and wins. That is the memory paying for itself.",
+        "detailed": "Same branch, second iteration, and now the machine has something to go on: row 6 says taken, so it computes `pc + imm` in Decode and redirects fetch there before Execute has compared anything. The branch is taken, the bet was right, and one cycle is lost instead of two. Every remaining iteration of this pass looks exactly like this one. Nothing about the branch changed between the last step and this one — only what the machine remembered about it.",
+        "expert": "The bet is placed in ID by the branch-target adder, one stage before the answer exists, and it is an ACTION rather than a report — which is why it raises its own `branch-predicted` event and kills the instruction behind it. A correct taken bet still costs 1; reaching 0 would need a branch-target buffer predicting from the pc in IF, which this machine deliberately does not have. So a warm counter converts a 2-cycle loss into a 1-cycle one, and never into nothing."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 28,
+          "predicted": true
+        },
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The loop ends. The bet was wrong this once — and the counter forgets everything it learnt.",
+        "detailed": "Six iterations in, `t1` reaches zero and the branch finally falls through. The machine had bet taken, so it pays the full two cycles to take that back. That part is unavoidable: a loop has to end, and the predictor cannot know which pass is the last one. What is NOT unavoidable is the second half. Look at row 6 after this cycle. This 1-bit counter has one step of memory, so one disagreement puts it all the way back to not taken — five correct iterations, erased by one exit. A 2-bit counter would drop from strongly taken to weakly taken and still be betting taken. Keep that difference in mind; the next step is where it is paid for.",
+        "expert": "`predicted: true`, `actual: false` — a misprediction, and the redirect fires because `predicted` and `actual` differ, not because the branch was taken. Every scheme that bets pays this exit, once per pass, four times in the run; it is the one cost the counter cannot argue with. The asymmetry the next step turns on is that a 1-bit counter's state after this update is indistinguishable from a counter that has never seen the branch at all, while a 2-bit counter's is not."
+      }
+    },
+    {
+      "trigger": {
+        "event": "branch-resolved",
+        "where": {
+          "target": 16,
+          "predicted": false
+        },
+        "nth": 2
+      },
+      "narration": {
+        "essentials": "Back in the loop, and the machine gets it wrong again — because the exit wiped its memory. Set PREDICT to 2-bit and this step disappears.",
+        "detailed": "The outer loop has come round and the inner loop is running again. Same branch, same address, same row — and the machine is wrong about it for the second time, exactly as wrong as it was before it had ever seen the branch. One exit was enough to undo five correct iterations. This happens on the second pass, the third and the fourth: three re-entries, three mispredicts, and none of them are cold. Now set the PREDICT control to 2-bit and step back through the run. This step will not be here, because the event it points at does not happen on that machine — a 2-bit counter comes out of the exit still betting taken, and the re-entry is simply right.",
+        "expert": "This is the whole case for the second bit, and it is a case about RE-ENTRY rather than about loops in general. A branch entered once is predicted equally well by both widths, which is why every other loop in the example library separates them by nothing: the 1-bit table only loses where a branch is left and returned to. Set PREDICT to 2-bit to watch it go: this step is anchored on a `branch-resolved` with `predicted: false` on the loop's own branch, and on the 2-bit machine there is exactly one of those in the entire run — the cold miss two steps back."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 24
+        },
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "Twenty-four either way. The counters changed how long it took, never what it computed.",
+        "detailed": "The loop body ran twenty-four times and `a0` holds 24, and that is true on every one of these machines — a guess can cost you cycles and can never cost you an answer. What it costs is worth reading off the transport: with PREDICT at 1-bit this run takes 134 cycles, at 2-bit it takes 131. Those three cycles are the three re-entries, one per later pass. Both beat the machine that always bets taken, which takes 137 — and the reason is the guard from the second step, not the loop. One last thing worth scrubbing back for: the table does not finish tidy. The fourth pass exits like the other three, so the run ends with row 6 knocked back down.",
+        "expert": "Signed, and the ledger is per row rather than per run. Charge 2 for a misprediction, 1 for a correct taken bet, 0 for a correct fall-through. On the guard the always-taken machine pays 8 and both counters pay nothing. On the loop's branch it pays 28, the 1-bit table 32 and the 2-bit table 29. On the outer branch it pays 5 and both counters 6. Every scheme sits on the same 96-cycle floor, so the totals are the counts: the always-taken machine's 41 makes 137, the 1-bit table's 38 makes 134, and the 2-bit table's 35 makes 131. Note what that says about counting mistakes — the 1-bit machine mispredicts TEN times against the always-taken machine's NINE and finishes sooner anyway, because a mispredict count carries no information about what a correct prediction cost."
+      }
+    }
+  ]
+}

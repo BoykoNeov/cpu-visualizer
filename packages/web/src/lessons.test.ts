@@ -9,7 +9,7 @@ import {
   type Lesson,
   type LessonStep,
 } from '@cpu-viz/curriculum';
-import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
+import { MAX_ISSUE_WIDTH, predictorIndex } from '@cpu-viz/engine-common';
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
@@ -951,10 +951,20 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     //
     // Deliberately NOT cross-checked against `model`. That would re-impose the coincidence above as
     // a law and redden the day someone lawfully teaches `lw` on the pipeline. This test names the
-    // two lessons whose subject is a µarch; if that stops being true, a human should be the one to
+    // lessons whose subject is a µarch; if that stops being true, a human should be the one to
     // say so.
+    //
+    // A THIRD joins the track at the dynamic-branch-prediction plan's step 8, and it belongs here
+    // for the same reason `branch-bet` does: its subject is what the hardware remembers between two
+    // executions of one branch. It is the M12 shape — a DELTA against a machine the learner has
+    // already met — but unlike "The deeper machine" the delta is a KNOB rather than a model, so it
+    // extends this track instead of opening one.
     const machine = LESSON_TRACKS.find((t) => t.track === 'The machine');
-    expect([...(machine?.lessons ?? [])].sort()).toEqual(['branch-bet', 'forwarding-bubble']);
+    expect([...(machine?.lessons ?? [])].sort()).toEqual([
+      'bet-that-learns',
+      'branch-bet',
+      'forwarding-bubble',
+    ]);
 
     // The cache track's membership, by name for the same reason: "is this lesson about the memory
     // hierarchy" is pedagogy, not derivable. All three are `pipeline` (like the machine track), so
@@ -1111,10 +1121,16 @@ describe('authored lessons (INV-6)', () => {
     // cycles, so it is the one lesson in the library whose subject no event can witness. What it
     // teaches is what the other two cannot: an extra slot that is genuinely USED and buys nothing,
     // because the machine repartitioned the same five instructions into the same number of groups.
-    expect(LESSONS.length).toBe(25);
+    //
+    // An EIGHTH pipeline lesson closes the dynamic-branch-prediction feature at its step 8, and it
+    // is the first lesson in the library whose independent variable is a knob with FOUR positions
+    // rather than two. It declares `dynamic-1bit` and asks the reader for `dynamic-2bit`; its
+    // config-exclusive step is alive at the DECLARED position and dies on the flip, which is
+    // `branch-bet`'s shape run backwards — the step disappearing IS the thing being taught.
+    expect(LESSONS.length).toBe(26);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
-    // Five pipeline lessons now: the two flagships plus the cache track — all of the machine and
+    // Six pipeline lessons now: the three flagships plus the cache track — all of the machine and
     // cache tracks, which is the set whose narration could NOT be borrowed onto another model
     // (nothing else stalls, speculates, or caches).
     expect(
@@ -1122,6 +1138,7 @@ describe('authored lessons (INV-6)', () => {
         .map((l) => l.id)
         .sort(),
     ).toEqual([
+      'bet-that-learns',
       'branch-bet',
       'cache-conflict',
       'cache-spatial',
@@ -2272,6 +2289,387 @@ describe('branch-bet — the milestone’s thesis, guided (M4 step 7)', () => {
     }
     // The declaration is present regardless — the point of the test above, not a contradiction of it.
     expect(declared.forwarding).toBe(true);
+  });
+});
+
+/**
+ * `bet-that-learns`' oracle (the dynamic-branch-prediction plan, step 8) — the library's first
+ * lesson whose independent variable is a knob with FOUR positions rather than two, and the first
+ * whose config-exclusive step is alive at the DECLARED position and DIES on the flip.
+ *
+ * That inversion is the whole design and it is worth stating before the assertions, because it
+ * reverses where the danger sits. `branch-bet` and the three M14 width lessons all open on the
+ * machine WITHOUT the idea and ask the reader to switch it on, so their exclusive steps are dead at
+ * the opening and the hazard is a reader never flipping (`m11-m12-review-resolved` finding 2: the
+ * runner skips an unanchored step in SILENCE). Here the exclusive step is step 5, the second
+ * re-entry misprediction, and it exists only on the 1-bit machine the lesson declares — so a reader
+ * who never flips sees the lesson whole. The flip REMOVES a step, and the removal is the payload:
+ * the event stops happening because the second bit stops the counter forgetting.
+ *
+ * Four things the generic sweep cannot see, each pinned below:
+ *
+ * **(1) The live-step SETS, in both directions.** The sweep's rule is "every step anchors in at
+ * least one position", which is satisfied by this lesson at every prediction position for the wrong
+ * reasons — so the sets are asserted per scheme, including that flipping to 2-bit removes exactly
+ * index 5 and nothing else. M14's `width-moved-the-work` had to assert set EQUALITY for the same
+ * class of reason; this is its mirror image.
+ *
+ * **(2) The `nth` trap, measured rather than reasoned.** Step 5's trigger is
+ * `branch-resolved{target: 16, predicted: false}` at `nth: 2`, and a `where` filter on `predicted`
+ * changes WHICH events match — so the same `nth` re-points at a different iteration when the scheme
+ * changes. It does, and the sweep is blind to it: under `static-not-taken` every resolution reports
+ * `predicted: false`, so `nth: 2` lands on the SECOND ITERATION OF THE FIRST PASS while the prose
+ * talks about re-entering the loop. Only the declaration keeps that prose off that machine, so the
+ * occurrence is pinned at the declared position AND the decoy is pinned at the position that offers
+ * it — the M14 rule that an anchor's protection must be asserted, not remembered.
+ *
+ * **(3) Every number in the prose, attributed.** Six steps are live at more than one prediction
+ * position, and three of them quote cycle counts belonging to machines the reader may not be on.
+ * {@link statesNumberBeside} runs over each, so "134" must appear beside the words that name the
+ * 1-bit machine rather than merely somewhere in the paragraph — `where-widening-stops`' guard, one
+ * axis over.
+ *
+ * **(4) The counter values the panel draws.** The narration's causal claim is about row 6's counter
+ * crossing the exit — 1 down to 0 on the 1-bit table, 3 down to 2 on the 2-bit one — and no event
+ * carries it. It is read from `micro.predictor`, the same field `predictor-table.ts` folds, at the
+ * cycle each step anchors to.
+ */
+describe('bet-that-learns — the counter that remembers across a loop exit (BP step 8)', () => {
+  const GUARD_PC = 8; // `bne x0, x0, done` — the loop-skip test that is false on every pass
+  const INNER_PC = 24; // `bne t1, x0, inner` — the branch the whole program is about
+  const INNER_ROW = 6; // predictorIndex(24) = (24 >>> 2) & 15
+  const GUARD_ROW = 2; // predictorIndex(8)
+
+  const lesson = (): Lesson => byId('bet-that-learns');
+
+  /** The lesson's own declared machine with only the scheme varied — everything else from the JSON. */
+  const record = (scheme: ProcessorConfig['branchPrediction']): readonly CycleTrace[] => {
+    const declared = lesson().config;
+    if (!declared) throw new Error('bet-that-learns must declare the machine its prose describes');
+    return recordLesson(lesson(), { ...declared, branchPrediction: scheme });
+  };
+
+  /** The predictor table as RECORDED on a cycle (post-cycle), which is what the panel draws. */
+  const countersAt = (trace: readonly CycleTrace[], cycle: number): readonly number[] => {
+    const micro = trace.find((c) => c.cycle === cycle)?.state.micro as
+      | { predictor?: { counters: readonly number[] } | null }
+      | undefined;
+    expect(micro?.predictor, `no predictor table recorded on cycle ${cycle}`).toBeTruthy();
+    return micro!.predictor!.counters;
+  };
+
+  /** Which occurrence of its own pc is the instruction this step anchored to? (the `nth` trap) */
+  const occurrenceOf = (trace: readonly CycleTrace[], anchored: AnchoredStep): number => {
+    const pcs = pcById(trace);
+    const target = (anchoredEvent(trace, anchored) as { instr: string }).instr;
+    const pc = pcs.get(target);
+    let seen = 0;
+    for (const cycle of trace) {
+      for (const event of cycle.events) {
+        if (event.type !== 'branch-resolved') continue;
+        if (pcs.get(event.instr) !== pc) continue;
+        seen += 1;
+        if (event.instr === target) return seen;
+      }
+    }
+    throw new Error('the anchored instruction never resolved a branch');
+  };
+
+  const liveAt = (scheme: ProcessorConfig['branchPrediction']): number[] =>
+    anchorLesson(lesson(), record(scheme))
+      .filter((s) => s.cycle !== null)
+      .map((s) => s.index);
+
+  it('declares the 1-bit machine — the one the reader is asked to leave', () => {
+    // The independent variable, and the thing that makes every "134" in the prose a claim about a
+    // machine the shell actually opens on. `predictionPosition` rather than a string compare,
+    // because the shell's control identity is what the reader flips.
+    expect(lesson().model).toBe('pipeline');
+    expect(predictionPosition(lesson().config!.branchPrediction)).toBe('1-bit');
+    // Forwarding ON is a CONTROL here, and it is pinned because the plan's own step-0 table
+    // (182 / 177 / 174 / 171) was measured with it OFF. Every number this lesson quotes was
+    // re-read at the declared position; declaring the other one silently falsifies all of them.
+    expect(lesson().config!.forwarding).toBe(true);
+    expect(lesson().config!.cache).toBeNull();
+  });
+
+  it('THE FLIP REMOVES A STEP, and it is the second re-entry misprediction', () => {
+    // (1) The live-step sets, in both directions. Seven steps authored; all seven live on the
+    //     declared machine, six on the 2-bit machine, and the missing index is 5.
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    expect(liveAt('dynamic-1bit'), 'the declared machine plays the lesson whole').toEqual(all);
+    expect(liveAt('dynamic-2bit'), 'the flip removes exactly the re-entry step').toEqual(
+      all.filter((i) => i !== 5),
+    );
+
+    // (2) The event stops happening — the claim step 5's prose makes about WHY it disappears.
+    //     Counted over the whole run rather than at the anchor: on the 2-bit machine there is
+    //     exactly ONE `predicted: false` resolution of the loop's branch in 131 cycles, the cold
+    //     miss step 2 anchors on, which is why `nth: 2` has nothing to point at.
+    const missedInnerBets = (trace: readonly CycleTrace[]): number =>
+      eventCount(
+        trace,
+        (e) => e.type === 'branch-resolved' && e.target === 16 && !e.predicted && e.actual === true,
+      );
+    expect(missedInnerBets(record('dynamic-1bit')), 'one cold miss plus three re-entries').toBe(4);
+    expect(missedInnerBets(record('dynamic-2bit')), 'the cold miss, and nothing else').toBe(1);
+  });
+
+  it('the anchors point at the instructions the prose describes, at the DECLARED position', () => {
+    const trace = record('dynamic-1bit');
+    const anchored = anchorLesson(lesson(), trace);
+
+    // Step 1 — the guard. Its resolution reports the FALL-THROUGH as its target (pc + 4 = 12),
+    // which is what makes `target: 12` a filter that cannot slide onto either loop branch.
+    expect(anchoredPc(trace, anchored[1]!)).toBe(GUARD_PC);
+    expect(anchoredEvent(trace, anchored[1]!)).toMatchObject({
+      type: 'branch-resolved',
+      predicted: false,
+      actual: false,
+    });
+
+    // Step 2 — the cold miss, on the loop's branch, its FIRST execution.
+    expect(anchoredPc(trace, anchored[2]!)).toBe(INNER_PC);
+    expect(occurrenceOf(trace, anchored[2]!)).toBe(1);
+    expect(anchoredEvent(trace, anchored[2]!)).toMatchObject({ predicted: false, actual: true });
+
+    // Step 3 — the first bet that pays, and the prose says "second iteration" out loud. The
+    // occurrence is the assertion: `predicted: true` alone is satisfied by iteration 1 on the
+    // always-taken machine, which bets blind.
+    expect(anchoredPc(trace, anchored[3]!)).toBe(INNER_PC);
+    expect(occurrenceOf(trace, anchored[3]!)).toBe(2);
+
+    // Step 4 — the exit: the SIXTH execution, the one where `t1` reaches zero.
+    expect(anchoredPc(trace, anchored[4]!)).toBe(INNER_PC);
+    expect(occurrenceOf(trace, anchored[4]!)).toBe(6);
+    expect(anchoredEvent(trace, anchored[4]!)).toMatchObject({ predicted: true, actual: false });
+
+    // Step 5 — the re-entry: the SEVENTH execution, i.e. the first of the second pass. This is the
+    // assertion the whole lesson leans on, and the one an `nth` can silently break.
+    expect(anchoredPc(trace, anchored[5]!)).toBe(INNER_PC);
+    expect(occurrenceOf(trace, anchored[5]!)).toBe(7);
+    expect(anchoredEvent(trace, anchored[5]!)).toMatchObject({ predicted: false, actual: true });
+
+    // Step 6 — the closing write, and it is program-unique: `a0` passes through 24 exactly once.
+    expect(
+      eventCount(trace, (e) => e.type === 'reg-write' && e.reg === 10 && e.value === 24),
+      'a0 reaches 24 more than once, so the closing anchor is ambiguous',
+    ).toBe(1);
+  });
+
+  it('⚠ the same nth points at a DIFFERENT iteration on the not-taken machine — the decoy', () => {
+    // The trap, pinned rather than remembered. `static-not-taken` reports `predicted: false` on
+    // EVERY resolution, so step 5's `nth: 2` is alive there and lands on the second iteration of
+    // the FIRST pass — a machine that has not re-entered anything yet, under prose that is entirely
+    // about re-entry. Nothing structural rejects it: the sweep's rule is satisfied, the order check
+    // passes, and the narration resolves. Only `config.branchPrediction` keeps the reader off it.
+    const notTaken = record('static-not-taken');
+    const decoy = anchorLesson(lesson(), notTaken)[5]!;
+    expect(decoy.cycle, 'the decoy is unreachable, so this pin proves nothing').not.toBeNull();
+    expect(anchoredPc(notTaken, decoy)).toBe(INNER_PC);
+    expect(occurrenceOf(notTaken, decoy)).toBe(2);
+    // And the second half of the same fact: on the ALWAYS-TAKEN machine the step is dead, and step
+    // 3's `predicted: true` slides onto iteration ONE — a bet placed with nothing learnt, under
+    // prose whose whole subject is that the machine has learnt something.
+    const taken = record('static-taken');
+    const aTaken = anchorLesson(lesson(), taken);
+    expect(aTaken[5]!.cycle).toBeNull();
+    expect(occurrenceOf(taken, aTaken[3]!)).toBe(1);
+  });
+
+  it('the counter values the panel draws are what the narration says they are', () => {
+    // The causal claim of the lesson, and no trace EVENT carries it: the counter is state, so it is
+    // read from `micro.predictor` — the field `predictor-table.ts` folds — at the cycle each step
+    // anchors to. `micro` is post-cycle, so the value at the anchor is the value AFTER the update.
+    const oneBit = record('dynamic-1bit');
+    const twoBit = record('dynamic-2bit');
+    const aOne = anchorLesson(lesson(), oneBit);
+    const aTwo = anchorLesson(lesson(), twoBit);
+
+    // The guard's row never leaves the not-taken floor on either machine — step 1's claim, and the
+    // reason both counters beat the always-taken machine at all.
+    for (const [trace, anchored] of [
+      [oneBit, aOne],
+      [twoBit, aTwo],
+    ] as const) {
+      expect(countersAt(trace, anchored[1]!.cycle!)[GUARD_ROW]).toBe(0);
+      expect(countersAt(trace, trace.at(-1)!.cycle)[GUARD_ROW]).toBe(0);
+    }
+    expect(
+      eventCount(oneBit, (e) => e.type === 'branch-predicted' && e.target === 12),
+      'the machine placed a bet on a branch that never goes',
+    ).toBe(0);
+
+    // The cold miss moves row 6 one step on both machines — and one step is ALL of a 1-bit
+    // counter's range, which is the asymmetry every later step turns on.
+    expect(countersAt(oneBit, aOne[2]!.cycle!)[INNER_ROW]).toBe(1);
+    expect(countersAt(twoBit, aTwo[2]!.cycle!)[INNER_ROW]).toBe(2);
+
+    // The exit, and the sentence the lesson is built on: the 1-bit counter lands where a counter
+    // that has never seen the branch sits, the 2-bit counter does not.
+    expect(countersAt(oneBit, aOne[4]!.cycle!)[INNER_ROW]).toBe(0);
+    expect(countersAt(twoBit, aTwo[4]!.cycle!)[INNER_ROW]).toBe(2);
+    // Stated as the property rather than as two numbers: the 1-bit table after the exit is EQUAL
+    // to a table that has learnt nothing about this row, and the 2-bit table is strictly above its
+    // own floor. Written this way so that changing the seed or the counter width reddens here.
+    expect(countersAt(oneBit, aOne[4]!.cycle!)[INNER_ROW]).toBe(
+      countersAt(oneBit, 0)[INNER_ROW] ?? 0,
+    );
+    expect(countersAt(twoBit, aTwo[4]!.cycle!)[INNER_ROW]).toBeGreaterThan(
+      countersAt(twoBit, 0)[INNER_ROW]!,
+    );
+
+    // The re-entry: wrong on the 1-bit machine (the step exists), right on the 2-bit one (it does
+    // not). The 2-bit side is asserted on the RESOLUTION at the same instruction rather than on
+    // the missing step, so "it is simply right" is evidence and not an absence.
+    const seventhInner = (trace: readonly CycleTrace[]): TraceEvent => {
+      const pcs = pcById(trace);
+      const hits = trace.flatMap((c) =>
+        c.events.filter((e) => e.type === 'branch-resolved' && pcs.get(e.instr) === INNER_PC),
+      );
+      return hits[6]!;
+    };
+    expect(seventhInner(oneBit)).toMatchObject({ predicted: false, actual: true });
+    expect(seventhInner(twoBit)).toMatchObject({ predicted: true, actual: true });
+
+    // The closing step's own trap, pinned because a rig or a lesson reaching for the end of a run
+    // reads a WEAKENED counter and calls it a bug: the fourth pass exits like the other three, so
+    // neither machine finishes holding a strongly-taken counter on row 6.
+    expect(countersAt(oneBit, oneBit.at(-1)!.cycle)[INNER_ROW]).toBe(0);
+    expect(countersAt(twoBit, twoBit.at(-1)!.cycle)[INNER_ROW]).toBe(2);
+  });
+
+  it('every cycle count in the prose is measured, and stated BESIDE the machine it belongs to', () => {
+    // The M4-step-4 defect one knob over: `forwarding-bubble` shipped "51 cycles" over a transport
+    // reading 49. Here the closing step is live at all four prediction positions and quotes three
+    // of them, so a bare token check would pass on a paragraph that credits the wrong machine.
+    const counts = {
+      'static-not-taken': record('static-not-taken').length,
+      'static-taken': record('static-taken').length,
+      'dynamic-1bit': record('dynamic-1bit').length,
+      'dynamic-2bit': record('dynamic-2bit').length,
+    };
+    expect(counts).toEqual({
+      'static-not-taken': 142,
+      'static-taken': 137,
+      'dynamic-1bit': 134,
+      'dynamic-2bit': 131,
+    });
+    // The delta the lesson exists to explain, derived rather than restated: three re-entries, three
+    // cycles, one per pass after the first.
+    expect(counts['dynamic-1bit'] - counts['dynamic-2bit']).toBe(3);
+
+    const closing = lesson().steps[6]!.narration;
+    for (const tier of ['detailed', 'expert'] as const) {
+      const text = closing[tier];
+      if (text === undefined) continue;
+      if (text.includes('134')) expect(statesNumberBeside(text, '1-bit', '134')).toBe(true);
+      if (text.includes('131')) expect(statesNumberBeside(text, '2-bit', '131')).toBe(true);
+    }
+    // `137` is the always-taken machine's, quoted in the detailed tier by the words "always bets
+    // taken" rather than by a control label — so its attribution is checked against that phrase.
+    expect(statesNumberBeside(closing.detailed!, 'always bets taken', '137')).toBe(true);
+
+    // The answer is scheme-invariant, which is the closing step's actual subject: a guess changes
+    // when, never what. Asserted on the ARCHITECTURAL state, not on the event.
+    for (const scheme of [
+      'static-not-taken',
+      'static-taken',
+      'dynamic-1bit',
+      'dynamic-2bit',
+    ] as const) {
+      expect(record(scheme).at(-1)!.state.registers[10], `a0 under ${scheme}`).toBe(24);
+    }
+  });
+
+  it('the expert ledger adds up — and the machine with MORE mispredictions is faster', () => {
+    // The closing step's expert tier states a per-row ledger and then draws a conclusion from it
+    // that reads like an error. Both halves are measured here, because the conclusion is the whole
+    // reason the ledger is worth printing: a mispredict COUNT says nothing about what a correct
+    // prediction cost, so counting mistakes ranks these machines wrongly.
+    const cost = (trace: readonly CycleTrace[], row: number | null): number => {
+      const pcs = pcById(trace);
+      let total = 0;
+      for (const cycle of trace) {
+        for (const event of cycle.events) {
+          if (event.type === 'branch-predicted') {
+            // A bet costs 1 when it is right; when it is wrong the resolution below charges 2 and
+            // this cycle is part of that. So count only the bets that were NOT overturned.
+            continue;
+          }
+          if (event.type !== 'branch-resolved') continue;
+          const pc = pcs.get(event.instr);
+          if (row !== null && (pc === undefined || predictorIndex(pc) !== row)) continue;
+          if (event.predicted !== event.actual) total += 2;
+          else if (event.predicted) total += 1;
+        }
+      }
+      return total;
+    };
+    const mispredicts = (trace: readonly CycleTrace[]): number =>
+      eventCount(trace, (e) => e.type === 'branch-resolved' && e.predicted !== e.actual);
+
+    const taken = record('static-taken');
+    const oneBit = record('dynamic-1bit');
+    const twoBit = record('dynamic-2bit');
+
+    // Per row, exactly as the expert tier prints it: the guard, the loop's branch, the outer branch.
+    expect([cost(taken, GUARD_ROW), cost(oneBit, GUARD_ROW), cost(twoBit, GUARD_ROW)]).toEqual([
+      8, 0, 0,
+    ]);
+    expect([cost(taken, INNER_ROW), cost(oneBit, INNER_ROW), cost(twoBit, INNER_ROW)]).toEqual([
+      28, 32, 29,
+    ]);
+    expect([cost(taken, 8), cost(oneBit, 8), cost(twoBit, 8)]).toEqual([5, 6, 6]);
+    expect([cost(taken, null), cost(oneBit, null), cost(twoBit, null)]).toEqual([41, 38, 35]);
+
+    // The floor the ledger is added to, derived from the runs rather than asserted: every scheme
+    // pays the same base, so `cycles - penalty` is one number and the three totals above ARE the
+    // three cycle counts the prose quotes.
+    const floors = [taken, oneBit, twoBit].map((t) => t.length - cost(t, null));
+    expect(new Set(floors)).toEqual(new Set([96]));
+
+    // The punchline, and the thing the ledger exists to make defensible.
+    expect(mispredicts(oneBit)).toBe(10);
+    expect(mispredicts(taken)).toBe(9);
+    expect(oneBit.length).toBeLessThan(taken.length);
+  });
+
+  it('the ASK is present at every authored tier of the step that makes it', () => {
+    // `resolveNarration` falls back DOWNWARD, so an ask written only at `detailed` is invisible to
+    // a reader holding the dial at `expert` — M14 step 1's finding, and it reddens exactly one
+    // assertion when stripped from one tier. The asking step is 5, the last thing on the 1-bit
+    // machine the reader sees before the flip removes it.
+    const asking = lesson().steps[5]!.narration;
+    const authored = Object.entries(asking).filter(([, text]) => text !== undefined);
+    expect(authored.length, 'the asking step authors fewer tiers than it appears to').toBe(3);
+    for (const [tier, text] of authored) {
+      expect(text!.toLowerCase(), `the ${tier} tier does not ask for the flip`).toContain('2-bit');
+      expect(
+        /set the PREDICT control to 2-bit|Set PREDICT to 2-bit/i.test(text!),
+        `the ${tier} tier names the control's position without asking for it`,
+      ).toBe(true);
+    }
+  });
+
+  it('is taught AFTER branch-bet, and says so in a sentence that would become false', () => {
+    // The M14 step-4 rule for an order pin: a mention earns a pin only if it LIES when reordered —
+    // a past-tense claim about what the reader has already done, not an invitation. Step 0's
+    // detailed tier says the earlier lesson's machine "had exactly one guess and always made it",
+    // which is a claim about a lesson already read. The sibling mentions of `forwarding-bubble` are
+    // not pinned, because this lesson makes none.
+    //
+    // `toBeGreaterThanOrEqual(0)` rather than a bare `indexOf` comparison: `indexOf` returns -1 for
+    // an id that no longer exists, and -1 is less than every real index, so a RENAME would leave
+    // the pin green on an id nobody ships (measured at M14 step 4).
+    const earlier = LESSON_ORDER.indexOf('branch-bet');
+    const here = LESSON_ORDER.indexOf('bet-that-learns');
+    expect(earlier).toBeGreaterThanOrEqual(0);
+    expect(here).toBeGreaterThanOrEqual(0);
+    expect(earlier).toBeLessThan(here);
+    // The sentence beside the index, so the pin is defensible on its own terms. Its title is quoted
+    // in full, which is also what makes a rename of the EARLIER lesson's title visible here.
+    expect(lesson().steps[0]!.narration.detailed).toContain(byId('branch-bet').title);
   });
 });
 
