@@ -7,14 +7,15 @@ each with a lesson track. **NO milestone is in progress.**
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **three are done** — keyboard clock control, continuous play, and the sticky transport
 bar's per-step jitter (all 2026-07-30; the jitter fix also closed continuous play's sub-880px
-residual and moved both caption thresholds). The corpus is **twelve** programs and the repo runs
-**9497 tests** (branch prediction by step: 7597 / 7606 / 7830 / 7863 / 9466 / 9493 / 9497 after
-steps 1–7), five gates green.
+residual and moved both caption thresholds). The corpus is **twelve** programs, the library is
+**26 lessons**, and the repo runs **11193 tests** (branch prediction by step: 7597 / 7606 / 7830 /
+7863 / 9466 / 9493 / 9497 / 11193 after steps 1–8 — and **1633 of that last jump is a stale sweep
+axis finally running**, not new assertions), five gates green.
 
-**Open work:** dynamic branch prediction (**steps 0–7 done, 3–7 on 2026-08-09; ONLY step 8, the
-lesson, is left**), URL permalinks, session persistence, and
+**Open work:** URL permalinks, session persistence, and
 the `/code-review ultra` fan-out over `89bb26e..HEAD` (user-triggered; the no-arg form bundles the
-local branch and needs no PR).
+local branch and needs no PR). **Dynamic branch prediction is ✅ COMPLETE — all steps 0–8, finished
+2026-08-09.**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
 that area. Keep this index to one line per entry; detail belongs in the file, never here.
@@ -48,21 +49,19 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 
 ## Post-M14 work
 
-- [Dynamic branch prediction](dynamic-branch-prediction.md) — **steps 0–7 DONE; ONLY step 8, the
-  lesson, remains — the only thing in flight.** Four models bet from a counter table, the panel draws
-  it, and the browser pass found and fixed one defect (52 checks). The file carries a per-step
-  section; its recurring findings are that **INV-8 is a false net on the latch models and a real one
-  on the OoO**, that **a break count EXPIRES when the suite grows**, and that **the canonical
+- [Dynamic branch prediction](dynamic-branch-prediction.md) — **✅ COMPLETE, steps 0–8.** Four models
+  bet from a counter table, the panel draws it, and `bet-that-learns` teaches it. The file carries a
+  per-step section; its recurring findings are that **INV-8 is a false net on the latch models and a
+  real one on the OoO**, that **a break count EXPIRES when the suite grows**, and that **the canonical
   demonstration of a mechanism is usually not the test of it** (five instances, `call-return.s` the
-  witness each time). **Read before authoring step 8's lesson — it has its ANCHOR now (cursors 37
-  and 53 on `nested-loop.s`, where one knob flips a MISPREDICT into a CORRECT), plus its two
-  sentences (depth and width argue for a counter for OPPOSITE reasons), and step 8's own browser
-  pass must drive the LESSON path, which step 7 could not.** Also read before any view fold over a
-  per-cycle event; before adding a corpus program (six pinned sites, not three), a field to any
-  model's `micro`, or a knob to a model that speculates; before writing a rig dump (**`defaultConfig()`
-  is not the shell's `OPENING_KNOBS`**); and before trusting a cross-model naming agreement or a
-  break row you wrote by hand. Reusable sweeps live in `M:\claud_projects\temp\bp-step0|5|6|7\`,
-  named in the file.
+  witness each time). **Read before authoring any lesson whose flip REMOVES a step, before trusting a
+  measured cursor pair without its config beside it (37/53 is forwarding OFF, 29/40 is ON), and after
+  any break table — step 8's row 9 reddened ZERO because a number the tests derive and never read
+  back out of the NARRATION is a comment.** Also read before any view fold over a per-cycle event;
+  before adding a corpus program (six pinned sites, not three), a field to any model's `micro`, or a
+  knob to a model that speculates; before writing a rig dump (**`defaultConfig()` is not the shell's
+  `OPENING_KNOBS`**); and before trusting a cross-model naming agreement or a break row you wrote by
+  hand. Reusable sweeps live in `M:\claud_projects\temp\bp-step0|5|6|7|8\`, named in the file.
 - [Keyboard clock control](keyboard-clock-control.md) — arrows/Home/End, and the **index of the
   four UX gaps** (two still open, with the greps confirming each absent). Read before any interaction
   feature: deleting one `addEventListener` left **68 of 68 headless tests green while the browser
@@ -116,7 +115,9 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   tree — commit before you break.**
 - [M14 width lessons](m14-width-lessons-step0.md) — the width DELTA track. **Read before authoring a
   width lesson**, and before choosing between a striking event and a safe anchor: **anchor on the one
-  whose existence conditions match the prose.** Also: a lesson can have NO config-exclusive step.
+  whose existence conditions match the prose.** Also: a lesson can have NO config-exclusive step —
+  and its `CONFIG_AXES` staleness finding recurred on the PREDICTION axis at branch prediction's
+  step 8, so read it before trusting any axis-shaped sweep to still enumerate the shell's product.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
 - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.

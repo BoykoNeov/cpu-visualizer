@@ -5,17 +5,86 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T17:30:07.288Z
+  modified: 2026-08-09T18:49:16.589Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 7 complete — steps 3–7 on
+**Plan: `docs/plans/dynamic-branch-prediction.md`. ✅ COMPLETE — steps 0 through 8, steps 3–8 on
 2026-08-09. ALL FOUR betting models bet from a live counter table, train it at resolve, record it
-deep-copied, the panel DRAWS it, and the browser pass has run.** A 1-bit/2-bit
+deep-copied, the panel DRAWS it, and `bet-that-learns` teaches it.** A 1-bit/2-bit
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
-and [[continuous-play]]. **ONLY STEP 8 — the lesson — remains.** The
+and [[continuous-play]]. The
 full measured tables live in the plan; only what a future session would otherwise re-derive is here.
-Repo at 9497 tests.
+Repo at **11193 tests**.
+
+## Step 8 — the lesson, and the sweep axis that had been half-asleep for five steps (2026-08-09)
+
+Shipped: `content/lessons/bet-that-learns.json` (7 steps) + its `index.json` slot + its oracle, and
+FIRST, as its own commit, the fix below. 9497 → **11193**, five gates. Scratch at
+`M:\claud_projects\temp\bp-step8\` (`dump.test.ts`, `break.mjs`, `lesson-eyeball.mjs`).
+
+⚠ **`CONFIG_AXES`' PREDICTION axis was stale — a literal `[static-not-taken, static-taken]` while
+step 3 grew the control to FOUR positions.** Every lesson on a betting model was swept at HALF the
+machines a user can park it on, and the two missing positions were the two a predictor lesson is
+about. **Fix it BEFORE authoring**, or the new lesson gets a net that never runs either scheme it
+teaches. Derived from `PREDICTION_POSITIONS`/`schemeForPosition` (the control's own reachable set,
+so `'none'` stays collapsed for free). **Only the five position-COUNT pins reddened — every lesson
+content assertion passes at both dynamic positions**, the identical result [[m14-width-lessons-step0]]
+got on the width axis. **9497 → 11130: 1633 assertions that were never running.** Third instance of
+the class that axis's own docblock names; ask of ANY axis-shaped sweep whether the product it
+enumerates is still the product the shell offers.
+
+⚠ **The plan's flagship cursor pair 37/53 is FORWARDING OFF; the shipped lesson declares it ON and
+its pair is 29/40.** The step-0b table (182/177/174/171) is forwarding OFF too — at ON it is
+**142/137/134/131**. Nothing transfers. Same class as step 7's `defaultConfig()` vs `OPENING_KNOBS`
+lie: **a measured cursor is only an oracle for the config it was measured in**, so write the config
+beside the number or a future session reports a defect against a correct app.
+
+⚠ **The config-exclusive step is ALIVE at the declared config and DIES on the flip — a first, and
+it inverts where the danger sits.** `branch-bet` and the M14 width lessons open WITHOUT the idea and
+ask you to switch it on, so their exclusive steps are dead at the opening and the hazard is a reader
+never flipping ([[m11-m12-review-resolved]] #2). Here step 5 is the second re-entry misprediction and
+the 2-bit machine has no such event: **the rail goes 7 dots to 6 and the removal IS the payload.**
+A reader who never flips still sees the lesson whole. Two alternatives were rejected on MEASUREMENT:
+a 2-bit-exclusive step (every 2-bit-only anchor lands in pass FOUR — bet counts 20 vs 23, so only
+`nth ≥ 21` separates them) and M14's no-exclusive-step anchor-vector shape (throws the dot away).
+
+⚠ **The `predicted: true` filter on the EXIT step is a measured design decision.** Step 5's trigger
+is `branch-resolved{target:16, predicted:false}` at `nth: 2`; under `static-not-taken` every
+resolution says `predicted: false`, so that nth lands on pass ONE's second iteration — **before** the
+exit step, i.e. an ORDER VIOLATION in all six not-taken positions. Scoping the exit with
+`predicted: true` kills it there. **The decoy itself is not removable**: no declarative `where`
+separates 1-bit's re-entry from static-not-taken's second iteration, because locally the two machines
+do the identical thing. Only the declaration protects the prose — so the oracle pins the decoy.
+
+⚠ **A number a test DERIVES and never reads back out of the NARRATION is a comment — break row 9,
+which reddened ZERO.** The expert closing prints a per-row penalty ledger (guard 8/0/0, loop branch
+28/32/29, outer 5/6/6, totals 41/38/35 over a 96-cycle floor); every figure was computed in the
+oracle and compared against another computation, so misstating one in the prose was invisible.
+Re-reading for that class then found a second: the opening tier recites three addresses and their
+rows, and the OUTER branch's row 8 was in no constant, no assertion and no comment.
+**After a break table, re-read the narration for every number the tests happen to know and never
+look at.** 12 rows total, 9 red on the first pass, all 12 after the two closures.
+
+⚠ **The browser pass's prose defect was a PASSING check whose printed VALUE disagreed with the
+narration.** §6's label said "the transport reads 134 cycles" while its assertion read `last === 133`
+— both true, of different things. The transport numbers cycles from ZERO, so a 134-cycle run ends at
+`cycle 133 / 133`, and the closing step said "read it off the transport" while naming only 134. That
+is `forwarding-bubble`'s "51 over a transport reading 49" arriving through an **indexing convention**,
+where declaring harder cannot help. **Read the VALUES a green check prints, not only its colour.**
+
+**The pass: 39 checks, 3 rig lies, 0 app defects** (`lesson-eyeball.mjs`, reusing `bp-step7/rig.mjs`
+unchanged). It is the pass step 7 recorded as owed — the lesson path had never been driven, and
+`startLesson` dragging a **four-position** knob out of a declaration is untestable anywhere else.
+Measured clean: the `hasPredictorTable` gate driven from a lesson for the first time (absent on
+`single-cycle`, present after the drag, sixteen rows), the rail 7 → 6 with exactly the re-entry text
+gone and the survivors in order, cursor 40 flipping MISPREDICT → CORRECT, and **row 6's WORDS**
+(`not taken` / `weakly taken` / `strongly taken`) — `PredictorTableView.counterWord` is view-only and
+no headless test of this lesson touches it, so the browser is the only net for the prose's vocabulary.
+⚠ The three lies: the owner column draws the pc in **HEX** (`@ 0x00000018`) against a check demanding
+decimal 24; a check read the transport **where the closing step ANCHORS** (cycle 121, the last write
+of `a0`) while the prose quotes the run's END — **a step's anchor and the run's end are different
+cursors**; and the §6 label above.
 
 ## Step 7 — the browser pass, and the docblock that declared the panel exempt (2026-08-09)
 
