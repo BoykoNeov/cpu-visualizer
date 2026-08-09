@@ -30,7 +30,14 @@ import { PairingReadout } from './PairingReadoutView';
 import { PLAY_SPEEDS, SPEED_LABELS, type PlaySpeed } from './playback';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
-import { predictsTaken, type BranchPrediction } from './session';
+import {
+  hasTakenBetPath,
+  predictionPosition,
+  schemeForPosition,
+  PREDICTION_POSITIONS,
+  type BranchPrediction,
+  type PredictionPosition,
+} from './session';
 import { getThemeChoice, MONO, setThemeChoice, T, type ThemeChoice } from './theme';
 import {
   chipText,
@@ -490,15 +497,21 @@ export function App(): React.JSX.Element {
                     // events to draw), and with prediction on the bet's adder and redirect appear. The view
                     // already holds both positions; the user set them.
                     //
-                    // `predictsTaken` collapses the knob HERE, at the shell's edge, exactly once: three
-                    // scheme names, two machines, and a diagram can only draw a machine.
+                    // `hasTakenBetPath` collapses the knob HERE, at the shell's edge, exactly once:
+                    // five scheme names, and a diagram can only draw HARDWARE. The question it asks
+                    // is deliberately not "which scheme is selected" — a dynamic predictor bets taken
+                    // as soon as a counter warms, so the branch-target adder and its wires are as
+                    // present under `'dynamic-1bit'` as under `'static-taken'`. Drawing them absent
+                    // because the scheme is not literally `'static-taken'` would contradict the
+                    // machine on screen (INV-5). That is why it is a different function from
+                    // `predictionPosition`, which is the control's question.
                     <PipelineDatapath
                       trace={sim.cycleTrace}
                       cycleKey={sim.cursor}
                       tier={tier}
                       config={{
                         forwarding: sim.forwarding,
-                        predictTaken: predictsTaken(sim.branchPrediction),
+                        predictTaken: hasTakenBetPath(sim.branchPrediction),
                       }}
                       followed={followed}
                     />
@@ -517,7 +530,7 @@ export function App(): React.JSX.Element {
                       tier={tier}
                       config={{
                         forwarding: sim.forwarding,
-                        predictTaken: predictsTaken(sim.branchPrediction),
+                        predictTaken: hasTakenBetPath(sim.branchPrediction),
                       }}
                       followed={followed}
                     />
@@ -532,7 +545,7 @@ export function App(): React.JSX.Element {
                       trace={sim.cycleTrace}
                       cycleKey={sim.cursor}
                       tier={tier}
-                      config={{ predictTaken: predictsTaken(sim.branchPrediction) }}
+                      config={{ predictTaken: hasTakenBetPath(sim.branchPrediction) }}
                       followed={followed}
                     />
                   ) : activeModel.datapath === 'superscalar' ? (
@@ -557,7 +570,7 @@ export function App(): React.JSX.Element {
                       tier={tier}
                       config={{
                         forwarding: sim.forwarding,
-                        predictTaken: predictsTaken(sim.branchPrediction),
+                        predictTaken: hasTakenBetPath(sim.branchPrediction),
                         issueWidth: sim.issueWidth,
                       }}
                       followed={followed}
@@ -1103,19 +1116,37 @@ function ForwardingToggle(props: { on: boolean; setOn: (on: boolean) => void }):
  * second control to change the MACHINE rather than the picture. Same shape as the forwarding toggle
  * beside it, and that is the finding: prediction rides M3's config seam without widening it.
  *
- * **Two positions for three scheme names, and the arithmetic is the honest part.** The config type
- * offers `'none' | 'static-not-taken' | 'static-taken'`; the pipeline gives them TWO behaviors,
- * because a machine with no predictor does not stop and wait — it keeps fetching, and the
- * fall-through IS the not-taken path (M4 step 1). A three-position control would assert three
- * machines exist. That is not extra detail, it is a contradiction of the tier below it (INV-5), and
- * it fails the rule the forwarding toggle already lives by: *a control that cannot move anything is
- * worse than no control* — two of the three positions could not move anything. So the positions are
- * the BEHAVIORS. `'none'` is unreachable from here (it is only ever the opening value, straight out
- * of `defaultConfig()`), and nothing is lost, because there is no third machine to reach.
+ * **FOUR positions for five scheme names, and the arithmetic is the honest part.** The config type
+ * offers `'none' | 'static-not-taken' | 'static-taken' | 'dynamic-1bit' | 'dynamic-2bit'`; the
+ * pipeline gives them FOUR machines, because a machine with no predictor does not stop and wait —
+ * it keeps fetching, and the fall-through IS the not-taken path (M4 step 1). So `'none'` and
+ * `'static-not-taken'` share a position and the other three get their own. A five-position control
+ * would assert five machines exist; a two-position one would draw four as two. Either is a
+ * contradiction of the tier below it (INV-5), and each fails the rule the forwarding toggle already
+ * lives by: *a control that cannot move anything is worse than no control.* `'none'` stays
+ * unreachable from here (it is only ever the opening value, straight out of `defaultConfig()`), and
+ * nothing is lost, because it is not a machine of its own.
  *
- * The completeness of that claim is pinned in `simulator.test.ts` against the engine — the three
- * schemes record exactly TWO distinct traces — so a dynamic scheme joining the union fails a test
- * rather than being silently drawn as "not taken".
+ * **It was two positions until the dynamic-branch-prediction plan's step 3, and growing it was part
+ * of that step rather than a follow-up.** Step 1 added the two dynamic names to the union while the
+ * engine still ignored them, so classifying them as "not taken" was TRUE of the shipped machine.
+ * Step 3 wired the pipeline's counter table and it stopped being true in the same commit — which is
+ * why the tripwire below is a test and not a comment.
+ *
+ * The completeness of that claim is pinned in `simulator.test.ts` against the engine — the five
+ * schemes record exactly FOUR distinct traces, pairwise — so a sixth scheme joining the union fails
+ * a test rather than being silently drawn as one of these four.
+ *
+ * ⚠ **Between step 3 and step 5 the two dynamic positions are honored by the PIPELINE ALONE**, and
+ * on the deep pipeline, superscalar and out-of-order core they currently re-record a trace identical
+ * to "not taken" — the button moves, the machine does not. That is a temporary understatement of the
+ * same kind as `PipelineMicro.predictor` still recording `null`, and it is named here rather than
+ * left to be discovered: `simulator.test.ts`'s inertness test lists those three models explicitly,
+ * so step 5 turns it RED on arrival instead of letting the window close unnoticed. The browser pass
+ * (step 7) runs after step 5, so no user-facing check falls inside the window. The alternative —
+ * a `dynamicBranchPrediction` capability gating the two positions per model — was rejected: it
+ * churns six capability literals and `models.test.ts`'s exact honoring-model list TWICE, once now
+ * and once at step 5, to ship a schema field whose only content is "step 5 has not happened yet".
  *
  * The `title`s carry M4's two findings, which is where the honesty budget goes: that "no predictor"
  * and "predict not-taken" are one machine, and that a correct bet is not FREE (getting to 0 needs a
@@ -1137,7 +1168,7 @@ export function PredictionToggle(props: {
   setScheme: (scheme: BranchPrediction) => void;
 }): React.JSX.Element {
   const { scheme, setScheme } = props;
-  const taken = predictsTaken(scheme);
+  const lit = predictionPosition(scheme);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <span
@@ -1151,25 +1182,51 @@ export function PredictionToggle(props: {
         Predict
       </span>
       <div className="seg">
-        {([false, true] as const).map((position) => (
+        {PREDICTION_POSITIONS.map((position) => (
           <button
-            key={String(position)}
-            className={position === taken ? 'seg-btn seg-btn--on' : 'seg-btn'}
-            onClick={() => setScheme(position ? 'static-taken' : 'static-not-taken')}
-            aria-pressed={position === taken}
-            title={
-              position
-                ? 'Predict TAKEN — the machine bets in ID and redirects fetch to the branch target. Even a CORRECT bet is not free: everything fetched behind the branch is off the predicted path and dies, so the deeper the front end, the more it costs (getting to zero needs a branch-target buffer, a fancier tier). A wrong bet costs the whole front end, twice over — once for the bet and once for the correction. jalr can never be predicted: its target is in a register.'
-                : 'Predict NOT TAKEN — the machine keeps fetching the next instruction, and every branch that turns out taken throws away the whole front end behind it. This is also what a machine with NO predictor does: the fall-through IS the not-taken path.'
-            }
+            key={position}
+            className={position === lit ? 'seg-btn seg-btn--on' : 'seg-btn'}
+            onClick={() => setScheme(schemeForPosition(position))}
+            aria-pressed={position === lit}
+            title={PREDICTION_TITLES[position]}
           >
-            {position ? 'taken' : 'not taken'}
+            {position}
           </button>
         ))}
       </div>
     </div>
   );
 }
+
+/**
+ * What each position claims about the machine — the control's whole honesty budget, kept out of the
+ * component so the four strings can be read against each other rather than down a JSX tree.
+ *
+ * **The two static titles name the MECHANISM and deliberately name no number** (M11 step 5's doing):
+ * they used to say "a correct bet costs 1 cycle; a wrong one costs 2", true of the 5-stage machine
+ * back when this control rendered nowhere else. The deep pipeline honors prediction too, and there
+ * the same bet costs 2 and the same misprediction 4 — a tooltip stating another model's constant is
+ * a contradiction of the machine on screen (INV-5), not a lawful simplification.
+ *
+ * **The two dynamic titles hold that line and add one of their own: they describe the counter, never
+ * a cycle count and never which scheme "wins".** On this corpus the honest answer would be
+ * embarrassing — over the original eleven programs `dynamic-2bit` beat `static-taken` by a single
+ * cycle and `dynamic-1bit` tied it, because every loop there is entered once, so a warm taken-bet is
+ * already right on every iteration and a counter only ever pays its cold start. `nested-loop.s`
+ * exists to make the difference legible (4 outer passes: 182 / 177 / 174 / 171 across the four
+ * positions, strictly ordered, no ties) and it is the program the lesson will teach from. A tooltip
+ * promising "faster" would be false on eleven of the twelve corpus programs.
+ */
+const PREDICTION_TITLES: Record<PredictionPosition, string> = {
+  'not taken':
+    'Predict NOT TAKEN — the machine keeps fetching the next instruction, and every branch that turns out taken throws away the whole front end behind it. This is also what a machine with NO predictor does: the fall-through IS the not-taken path.',
+  taken:
+    'Predict TAKEN — the machine bets in ID and redirects fetch to the branch target. Even a CORRECT bet is not free: everything fetched behind the branch is off the predicted path and dies, so the deeper the front end, the more it costs (getting to zero needs a branch-target buffer, a fancier tier). A wrong bet costs the whole front end, twice over — once for the bet and once for the correction. jalr can never be predicted: its target is in a register.',
+  '1-bit':
+    'A 1-BIT DYNAMIC predictor — the machine remembers what each branch did LAST time, in a 16-entry table indexed by the branch address, and bets the same way again. It starts cold (not taken), so a loop visibly learns on its first pass. One bit has no hysteresis: a loop that exits mispredicts the exit AND then mispredicts again on re-entry, having been talked out of its habit by a single counter-example. Two branches whose addresses share an entry share a counter, and interfere.',
+  '2-bit':
+    'A 2-BIT SATURATING predictor — the same 16-entry table, but each counter needs TWO wrong answers in a row to change its mind. That is the whole difference: a loop exit only weakens the counter instead of flipping it, so re-entry is still predicted taken and the second mispredict disappears. Watch it on nested-loop, where the inner loop is entered four times. It also starts cold, so it still learns each branch from scratch.',
+};
 
 /**
  * The cache toggle (M6 step 5) — the milestone's flagship experiment (§12.3), and the THIRD control

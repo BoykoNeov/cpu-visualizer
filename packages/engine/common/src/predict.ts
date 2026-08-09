@@ -48,16 +48,24 @@ import type { DecodedInstruction } from '@cpu-viz/isa';
  * thesis. `call-return.s` is expected to get SLOWER under predict-taken precisely because its
  * `jal` improves while its `ret` (a `jalr`) cannot.
  */
-const PC_RELATIVE_TRANSFERS: ReadonlySet<string> = new Set([
-  // Unconditional, and always taken — so a taken-predictor is always RIGHT about `jal`.
-  'jal',
-  // Conditional: PC-relative target, direction unknown until EX compares.
+const CONDITIONAL_BRANCHES: ReadonlySet<string> = new Set([
+  // PC-relative target, direction unknown until EX compares. **The only words a dynamic counter
+  // table has anything to say about** — see {@link isConditionalBranch}.
   'beq',
   'bne',
   'blt',
   'bge',
   'bltu',
   'bgeu',
+]);
+
+const PC_RELATIVE_TRANSFERS: ReadonlySet<string> = new Set([
+  // Unconditional, and always taken — so a taken-predictor is always RIGHT about `jal`.
+  'jal',
+  // ...plus every conditional branch, DERIVED rather than re-listed: a mnemonic added to the set
+  // above must not have to be remembered here too, or the two sets drift and a new branch becomes
+  // conditional-for-the-counter while staying unpredictable-for-the-bet.
+  ...CONDITIONAL_BRANCHES,
 ]);
 
 /**
@@ -91,4 +99,37 @@ export function speculativeTarget(d: DecodedInstruction, pc: number): number | n
  */
 export function isPredictable(d: DecodedInstruction): boolean {
   return PC_RELATIVE_TRANSFERS.has(d.mnemonic);
+}
+
+/**
+ * Is `d` a **conditional** branch — a transfer whose DIRECTION is genuinely in question?
+ *
+ * The narrower sibling of {@link isPredictable}, and it exists for one reason: a dynamic counter
+ * table is a memory of directions, and only these words have a direction to remember. It separates
+ * `jal` from the six branches, which {@link isPredictable} deliberately does not (there, both are
+ * "ID can compute where this goes").
+ *
+ * **This is the predicate that spells the dynamic-branch-prediction plan's two `jal` decisions**,
+ * both pinned CLOSED at step 3 on measured seeds:
+ *   - **`jal` does not CONSULT the table** — it is unconditionally taken, so a counter can only be
+ *     wrong about it. Priced at exactly 1 cycle on `call-return.s` (16 bypassing, 17 consulting a
+ *     cold weakly-not-taken counter), landing squarely on M4's own `+1` witness.
+ *   - **`jal` and `jalr` do not UPDATE it** — measured at zero effect on this corpus (no jump shares
+ *     an index with a conditional branch at 16, 8 or 4 entries), so it is a pedagogy call rather
+ *     than a timing one: a table whose every row is a conditional branch reads cleaner.
+ *
+ * ⚠ **Both policies are CALL-SITE policy and this predicate is the whole of their mechanism.** Step
+ * 2 kept `BranchPredictor`'s API at `predict(pc)` / `update(pc, actual)` precisely so these
+ * questions stayed open for the models to answer — a constructor taking a decode would have closed
+ * them inside a package forbidden from importing a model. So the four wiring sites (steps 3 and 5)
+ * each gate on this, and the plan's derived cycle tables were computed under exactly this policy:
+ * if a call site and the table disagree, the acceptance numbers fail with no way to tell which of
+ * the two is wrong.
+ *
+ * `jalr` is absent here for the same reason it is absent from {@link speculativeTarget}'s set — its
+ * target lives in a register — but note the two absences are different facts: `jalr` is
+ * unpredictable, `jal` is perfectly predictable and simply has nothing to learn.
+ */
+export function isConditionalBranch(d: DecodedInstruction): boolean {
+  return CONDITIONAL_BRANCHES.has(d.mnemonic);
 }

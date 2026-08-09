@@ -1,5 +1,7 @@
 import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
+import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { MultiCycleProcessor } from '@cpu-viz/engine-multi-cycle';
+import { OutOfOrderProcessor } from '@cpu-viz/engine-out-of-order';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
 import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
@@ -15,7 +17,13 @@ import { describe, expect, it } from 'vitest';
 // different set — the seam runs from the widget to the engine, so both ends must be the real ones.
 import { ISSUE_POSITIONS } from './App';
 import { EXAMPLE_PROGRAMS } from './programs';
-import { predictsTaken, type BranchPrediction } from './session';
+import {
+  predictionPosition,
+  schemeForPosition,
+  PREDICTION_POSITIONS,
+  type BranchPrediction,
+  type PredictionPosition,
+} from './session';
 import { loadSource } from './simulator';
 
 /**
@@ -287,47 +295,56 @@ describe('loadSource forwarding config — the crown jewel on the live timeline 
 });
 
 /**
- * The claim the prediction control's SHAPE rests on (M4 step 4). The config type offers three
- * scheme names; the shell renders a two-position control, so it owes an account of the third.
+ * The claim the prediction control's SHAPE rests on (M4 step 4, regrown at the
+ * dynamic-branch-prediction plan's step 3). The config type offers FIVE scheme names; the shell
+ * renders a FOUR-position control, so it owes an account of the fifth.
  *
  * That account is `'none'` and `'static-not-taken'` are the same machine — M4 step 1's finding,
  * pinned in the engine's own suite. What is pinned HERE is the consequence the view depends on and
- * the engine has no opinion about: **two positions are COMPLETE.** Every scheme the union can hold
- * records as one of the two the control can reach, so nothing is hidden by omitting `'none'` from
- * the UI — there is no third machine to hide (INV-5: a view may omit detail, never contradict).
+ * the engine has no opinion about: **four positions are COMPLETE, and no two of them are the same
+ * machine.** Every scheme the union can hold records as one of the four the control can reach, so
+ * nothing is hidden by omitting `'none'` from the UI (INV-5: a view may omit detail, never
+ * contradict) — and the four are pairwise distinct, so no button is a second door to a machine
+ * another button already reaches.
  *
- * The reverse claim is the one that makes it worth testing: a three-position control would assert
- * three machines exist, which is false, and would break the rule the forwarding toggle already
- * lives by — *a control that cannot move anything is worse than no control.*
+ * The reverse claims are what make it worth testing, and there are now two. A five-position control
+ * would assert five machines exist, which is false. A TWO-position control — what shipped from M4
+ * until step 3 — draws four machines as two, the same contradiction pointing the other way, and
+ * that is what this test caught the moment the pipeline first consulted a counter table:
+ * `record('dynamic-1bit')` stopped equalling the not-taken recording and the assertion below went
+ * red on the exact commit that made it false. That was the BEHAVIOR tripwire M4 armed for this
+ * step, and it is why growing the control belongs to step 3 rather than to a follow-up.
+ *
+ * ⚠ **The program is `nested-loop.s`, and swapping it for a shorter one would make the
+ * pairwise claim vacuous in a way nothing would report.** That claim needs a program on which all
+ * four machines genuinely differ, and most of the corpus is not one: on `sum-loop.s` — which this
+ * test used until step 3 — the two dynamic schemes record IDENTICALLY, because its loop is entered
+ * once, and a 1-bit and a 2-bit counter place exactly the same bets when nothing ever gets a second
+ * chance to change their minds. `nested-loop.s` was authored at step 0b precisely to separate them
+ * (182 / 177 / 174 / 171 cycles across the four positions, strictly ordered, no ties).
  */
-describe('the prediction control has two positions because the machine has two behaviors', () => {
+describe('the prediction control has four positions because the machine has four behaviors', () => {
   /**
-   * Every scheme name in the union, mapped to the control position that claims it. A
-   * `Record` over the union rather than an array, so a scheme added to `ProcessorConfig` (a
-   * dynamic 2-bit predictor is the named candidate — M4 defers it) is a COMPILE error right here
-   * and must be classified deliberately. An array would typecheck while leaving the newcomer
+   * Every scheme name in the union, mapped to the control position that claims it. A `Record` over
+   * the union rather than an array, so a scheme added to `ProcessorConfig` is a COMPILE error right
+   * here and must be classified deliberately. An array would typecheck while leaving the newcomer
    * unswept, which is the M3 step-0 vacuity shape: a case list that cannot reach the collision.
+   *
+   * **It has now fired TWICE, and the two firings are different events worth telling apart.** At
+   * step 1 the two dynamic names joined the union and this Record went red — the named candidate
+   * arriving, and having to be classified rather than silently swept up; they were classified
+   * `'not taken'` because the engine ignored them, which was true of the shipped machine. At step 3
+   * the engine started consulting a counter table and that classification became false — caught not
+   * by this Record, which still typechecked perfectly, but by the `toEqual` beneath it. **A compile
+   * tripwire sees a name ARRIVE; only a behavior tripwire sees a name start MEANING something.**
+   * Both were needed and neither could have found the other's event.
    */
-  const SCHEME_POSITION: Record<BranchPrediction, 'taken' | 'not taken'> = {
+  const SCHEME_POSITION: Record<BranchPrediction, PredictionPosition> = {
     none: 'not taken',
     'static-not-taken': 'not taken',
     'static-taken': 'taken',
-    // The two dynamic schemes joined the union at the dynamic-branch-prediction plan's step 1, and
-    // this Record went red exactly as designed — the named candidate arriving, and having to be
-    // classified rather than silently swept up. **They are classified 'not taken' because the ENGINE
-    // IGNORES THEM, not because they are not-taken machines.** Every honoring model still reads
-    // `config.branchPrediction === 'static-taken'`, so a `dynamic-*` run really is byte-identical to
-    // a not-taken one today, and this classification is the truth about the shipped machine.
-    //
-    // ⚠ **It stops being true at step 3, and the assertion below is positioned to say so.** The
-    // moment the pipeline consults a counter table, `record('dynamic-1bit')` stops equalling
-    // `notTaken` and this test goes RED — which is the whole point of the two tripwires being
-    // separate: the Record is the COMPILE tripwire and it fired at step 1; the `toEqual` is the
-    // BEHAVIOR tripwire and it fires at step 3, when the control must genuinely grow a position
-    // rather than keep drawing a third machine as a second. Step 3's acceptance names this failure,
-    // so it reads as arrival rather than regression. Do not pre-empt it by restructuring this test.
-    'dynamic-1bit': 'not taken',
-    'dynamic-2bit': 'not taken',
+    'dynamic-1bit': '1-bit',
+    'dynamic-2bit': '2-bit',
   };
 
   /**
@@ -338,34 +355,57 @@ describe('the prediction control has two positions because the machine has two b
    */
   const ALL_SCHEMES = Object.keys(SCHEME_POSITION) as BranchPrediction[];
 
-  /** `sum-loop` on the pipeline under one scheme — the whole recording, not its length. */
+  /** `nested-loop` on the pipeline under one scheme — the whole recording, not its length. */
   const record = (scheme: BranchPrediction): readonly CycleTrace[] => {
-    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'nested-loop')!;
     const result = loadSource(program.source, () => new PipelineProcessor(), {
       ...defaultConfig(),
       branchPrediction: scheme,
     });
-    if (!result.ok) throw new Error('unreachable: sum-loop should assemble');
+    if (!result.ok) throw new Error('unreachable: nested-loop should assemble');
     result.loaded.recorder.runToEnd();
     return result.loaded.recorder.recorded;
   };
 
-  it('every scheme the config can hold records as one of the two reachable positions', () => {
-    const taken = record('static-taken');
-    const notTaken = record('static-not-taken');
+  it('every scheme the config can hold records as one of the four reachable positions', () => {
+    const byPosition = new Map<PredictionPosition, readonly CycleTrace[]>(
+      PREDICTION_POSITIONS.map((position) => [position, record(schemeForPosition(position))]),
+    );
 
-    // Non-vacuity FIRST: the two positions are genuinely different machines. Without this the
-    // whole test passes trivially on an engine that ignores the knob — which is exactly the
-    // blind spot M4 step 3 measured (a pipeline ignoring `branchPrediction` leaves conformance
-    // 32/32 green), reappearing in the view's own suite.
-    expect(taken).not.toEqual(notTaken);
+    // Non-vacuity FIRST, and at step 3 it becomes a PAIRWISE claim rather than a single inequality.
+    // Without it the whole test passes trivially on an engine that ignores the knob — the blind spot
+    // M4 step 3 measured, where a pipeline ignoring `branchPrediction` leaves conformance 32/32
+    // green. What is new with four positions is the DUPLICATE: a `'dynamic-2bit'` mis-wired to build
+    // a 1-bit table records exactly what the 1-bit button records, so both buttons work, both light
+    // correctly, and one of them is a second door to the same machine. Only every pair can see that,
+    // and a single `taken !== notTaken` control would have stayed green through all of it.
+    PREDICTION_POSITIONS.forEach((a, i) => {
+      PREDICTION_POSITIONS.slice(i + 1).forEach((b) => {
+        expect(byPosition.get(a), `${a} and ${b} must be different machines`).not.toEqual(
+          byPosition.get(b),
+        );
+      });
+    });
 
-    // ...and every name in the union IS one of them. Whole traces, never cycle counts: two
-    // machines agreeing on timing could still differ in events (M4 step 1's rule, and it is why
-    // `'none' ≡ 'static-not-taken'` was pinned by `toEqual` rather than by a number).
+    // This test's independent classification must agree with the one the CONTROL actually renders.
+    // The Record above is deliberately a second, hand-maintained copy — that is what makes it a
+    // compile tripwire — and this is what stops the copy from drifting into a test that pins a
+    // mapping the shell does not use. Without it, `predictionPosition` could be transposed and this
+    // suite would go on certifying the old table.
+    for (const scheme of ALL_SCHEMES) {
+      expect(predictionPosition(scheme), `${scheme}'s shipped position`).toBe(
+        SCHEME_POSITION[scheme],
+      );
+    }
+
+    // ...and every name in the union IS one of the four. Whole traces, never cycle counts: two
+    // machines agreeing on timing can still differ in events (M4 step 1's rule, and why
+    // `'none' equals 'static-not-taken'` was pinned by `toEqual` rather than by a number). That is
+    // not hypothetical here — the two dynamic schemes agree on the cycle count of most of this
+    // corpus and differ only on the programs whose loops are entered more than once.
     for (const scheme of ALL_SCHEMES) {
       expect(record(scheme), `${scheme} should record as its control position`).toEqual(
-        predictsTaken(scheme) ? taken : notTaken,
+        byPosition.get(SCHEME_POSITION[scheme]),
       );
     }
   });
@@ -391,6 +431,23 @@ describe('the prediction control has two positions because the machine has two b
    * these same five names into two genuinely different recordings (`expect(taken).not.toEqual(
    * notTaken)`). So "every scheme records the same" is a fact about these two models, not about a
    * comparison too weak to separate anything.
+   *
+   * ⚠ **A SECOND, TEMPORARY inertness claim joined it at step 3, and it is an arrival tripwire
+   * rather than a contract.** Step 3 wires the counter table into the pipeline ALONE; the deep
+   * pipeline, the superscalar and the out-of-order core all report
+   * `configurableBranchPrediction: true` and all three still read
+   * `config.branchPrediction === 'static-taken'`, so on those three a `'dynamic-*'` run is
+   * byte-identical to a not-taken one. The shell's control shows all four positions on every model
+   * that bets, so for the length of the step-3→step-5 window two of its buttons move the BUTTON and
+   * not the machine on three of the four — the same temporary understatement as
+   * `PipelineMicro.predictor` still recording `null`.
+   *
+   * Naming those three models here is what keeps that window from closing unnoticed: **step 5 makes
+   * this assertion FAIL**, and that failure is the arrival. The alternative — a
+   * `dynamicBranchPrediction` capability gating the two positions per model — was rejected because
+   * it churns six capability literals and `models.test.ts`'s exact honoring-model list twice, once
+   * now and once at step 5, for a schema field whose only content is "step 5 has not happened yet".
+   * When step 5 lands, delete the second block; do not widen it.
    */
   it('is inert for the models that do not honor it — all five schemes, whole traces', () => {
     const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
@@ -429,6 +486,31 @@ describe('the prediction control has two positions because the machine has two b
         expect(recordOn(make, scheme), `${model} should ignore ${scheme} entirely`).toEqual(
           baseline,
         );
+      }
+    }
+
+    // The TEMPORARY half — see the ⚠ above. These three honor `'static-taken'` and are therefore not
+    // inert to the knob at all; what they are inert to, until step 5, is the DYNAMIC half of the
+    // union alone. So the baseline is `'static-not-taken'` rather than `'none'`, and the sweep is
+    // the two dynamic names rather than all five. **Delete this block at step 5; do not widen it.**
+    for (const [model, make] of [
+      ['deep-pipeline', () => new DeepPipelineProcessor()],
+      ['superscalar', () => new SuperscalarProcessor()],
+      ['out-of-order', () => new OutOfOrderProcessor()],
+    ] as const) {
+      // Non-vacuity for THIS block, in its own terms: these models do honor the knob, so a helper
+      // that had stopped applying it would show up here as `'static-taken'` matching not-taken.
+      expect(
+        recordOn(make, 'static-taken'),
+        `${model} honors the static knob, so this block is about the dynamic half only`,
+      ).not.toEqual(recordOn(make, 'static-not-taken'));
+
+      const notTaken = recordOn(make, 'static-not-taken');
+      for (const scheme of ['dynamic-1bit', 'dynamic-2bit'] as const) {
+        expect(
+          recordOn(make, scheme),
+          `${model} does not honor ${scheme} until step 5 — if this fails, step 5 has landed and this block should be DELETED`,
+        ).toEqual(notTaken);
       }
     }
   });

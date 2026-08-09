@@ -215,42 +215,115 @@ export interface LessonOpening {
 
 /**
  * The branch-prediction scheme, named off the config rather than re-declared — one union, in the
- * schema that owns it. Three names; the pipeline gives them **two behaviors** (`'none'` and
- * `'static-not-taken'` are one machine, M4 step 1), which is why {@link predictsTaken} exists and
- * why the shell's control has two positions rather than three.
+ * schema that owns it. **Five names; the pipeline gives them FOUR machines** (`'none'` and
+ * `'static-not-taken'` are still one, M4 step 1) — which is why {@link predictionPosition} exists
+ * and why the shell's control has four positions rather than five or two.
  */
 export type BranchPrediction = ProcessorConfig['branchPrediction'];
 
 /**
- * Does this scheme bet that a branch is TAKEN? The shell's whole reading of the knob, in one
- * place, because it decides two things that must agree: which position of the control is lit, and
- * whether {@link Simulator.setBranchPrediction} has anything to re-record.
+ * Which position of the shell's prediction control a scheme is — **the shell's whole reading of the
+ * knob's IDENTITY**, and the thing that decides two facts which must never disagree: which button is
+ * lit, and whether {@link Simulator.setBranchPrediction} has a different timeline to re-record.
  *
- * **Why a predicate and not value-equality.** `'none'` and `'static-not-taken'` are the same
- * machine, so a control whose "not taken" position is lit for BOTH is telling the truth — but a
- * no-op guard written as `next === current` would not know that, and clicking the already-lit "not
- * taken" button while the config still reads `'none'` (which is what `defaultConfig()` opens on)
- * would re-record a byte-identical trace and dump the cursor back to pre-run. A visible cursor
- * loss from clicking a lit button. The guard is on the BEHAVIOR; so is the highlight.
+ * **A position rather than a boolean, as of the dynamic-branch-prediction plan's step 3.** It was
+ * `predictsTaken(scheme): boolean` for M4's three names, and that shape was correct for exactly as
+ * long as the engine ignored the two dynamic ones. The moment step 3 wired the pipeline's counter
+ * table there were **four machines behind five names**, and a boolean can only ever name two —
+ * `'dynamic-1bit'` would have collapsed into "not taken", which is a third machine drawn as a second
+ * and is the INV-5 contradiction the two-position control was justified by AVOIDING in the first
+ * place. The union grew, so the return type grew with it.
+ *
+ * ⚠ **The boolean's residue was a live defect, and it is the reason this is one function and not
+ * two.** `setBranchPrediction`'s no-op guard read `predictsTaken(next) === predictsTaken(current)`,
+ * so switching from "not taken" to `'dynamic-1bit'` compared `false === false`, skipped the
+ * re-record, and left the user looking at the OLD machine's trace under the new scheme's label. No
+ * headless test could see it (`browser-is-the-only-net`), because the state string did move. Keying
+ * both the highlight and the guard off one identity function is what makes that class unreachable
+ * rather than fixed.
+ *
+ * **Why a mapping and not value-equality.** `'none'` and `'static-not-taken'` remain ONE machine —
+ * a processor with no predictor keeps fetching, so the fall-through IS the not-taken path (M4 step
+ * 1) — so a `next === current` guard would re-record a byte-identical trace when the user clicks the
+ * already-lit "not taken" button while the config still reads `'none'` (which is what
+ * `defaultConfig()` opens on), dumping the cursor back to pre-run. A visible cursor loss from
+ * clicking a lit button.
  *
  * This is a view-local rule about the shell's control, not a re-statement of engine internals
- * (INV-3) — its justification is a measured engine fact, pinned in `simulator.test.ts`: the schemes
- * produce exactly TWO distinct recordings, so two positions cover the machine. If a dynamic scheme
- * ever behaves differently, that test fails and forces the control to grow a position rather than
- * silently classifying the newcomer as "not taken".
- *
- * ⚠ **`'dynamic-1bit'` and `'dynamic-2bit'` joined the union at the dynamic-branch-prediction
- * plan's step 1 and fall through to `false` here — because the ENGINE ignores them, not because
- * they are not-taken machines.** Every honoring model still reads
- * `config.branchPrediction === 'static-taken'`, so a dynamic run is byte-identical to a not-taken
- * one and this predicate is telling the truth about the shipped machine. It stops being the truth
- * at step 3: the `simulator.test.ts` assertion described above is positioned to go red at exactly
- * that moment, which is the sentence above working as designed rather than a regression. Whether
- * the control then grows two positions or five is step 3's call — this predicate's `boolean` return
- * is the thing that will have to change shape, so do not build anything new on it meanwhile.
+ * (INV-3) — its justification is a measured engine fact, pinned in `simulator.test.ts`: the five
+ * schemes produce exactly FOUR distinct recordings, so four positions cover the machine with none to
+ * spare. A sixth scheme reddens the `Record` below rather than being swept into an existing button.
  */
-export function predictsTaken(scheme: BranchPrediction): boolean {
-  return scheme === 'static-taken';
+export type PredictionPosition = 'not taken' | 'taken' | '1-bit' | '2-bit';
+
+/**
+ * Scheme ⇒ position. A total `Record`, so a scheme added to the union cannot reach the control
+ * unclassified — the same compile tripwire shape as `simulator.test.ts`'s `SCHEME_POSITION`, which
+ * is what fired when the dynamic names landed at step 1.
+ */
+const PREDICTION_POSITION_OF: Record<BranchPrediction, PredictionPosition> = {
+  none: 'not taken',
+  'static-not-taken': 'not taken',
+  'static-taken': 'taken',
+  'dynamic-1bit': '1-bit',
+  'dynamic-2bit': '2-bit',
+};
+
+export function predictionPosition(scheme: BranchPrediction): PredictionPosition {
+  return PREDICTION_POSITION_OF[scheme];
+}
+
+/**
+ * Position ⇒ the scheme a click on it writes. The inverse of {@link PREDICTION_POSITION_OF} over the
+ * REACHABLE names: `'none'` is unreachable from the control (it is only ever the opening value,
+ * straight out of `defaultConfig()`) and nothing is lost, because it is not a fourth machine.
+ *
+ * Declared as data next to its inverse rather than as a `switch` in the component, so the
+ * round-trip — click a position, read the position back — is a property a test can state in one
+ * line instead of a claim spread across two files.
+ */
+const SCHEME_FOR_POSITION: Record<PredictionPosition, BranchPrediction> = {
+  'not taken': 'static-not-taken',
+  taken: 'static-taken',
+  '1-bit': 'dynamic-1bit',
+  '2-bit': 'dynamic-2bit',
+};
+
+/**
+ * The control's positions, in display order — derived from {@link SCHEME_FOR_POSITION} rather than
+ * re-listed, so a position cannot exist in the mapping and be missing from the control.
+ *
+ * ⚠ **The order is the KEY ORDER of that literal, which makes the order of its lines load-bearing
+ * and otherwise invisible.** Reordering them reorders the buttons on screen. It reads left-to-right
+ * as an increasing amount of machinery — no memory, a fixed bet, one bit of memory, two — which is
+ * the order the lesson walks, so it is a deliberate sequence and not the order they were typed in.
+ */
+export const PREDICTION_POSITIONS = Object.keys(
+  SCHEME_FOR_POSITION,
+) as readonly PredictionPosition[];
+
+export function schemeForPosition(position: PredictionPosition): BranchPrediction {
+  return SCHEME_FOR_POSITION[position];
+}
+
+/**
+ * Does this machine have a taken-bet PATH at all — the branch-target adder in ID, and the wires that
+ * feed the pc mux from it?
+ *
+ * **A different question from {@link predictionPosition}, which is why it is a different function.**
+ * The datapath diagrams gate nodes and wires on a `predictTaken` boolean (`datapath-pipeline.ts`,
+ * and its three siblings): those are claims about the HARDWARE the machine has, not about which
+ * scheme is selected. A dynamic predictor bets taken as soon as a counter warms, so the adder and
+ * its wires are genuinely there — drawing them absent would contradict the machine on screen, the
+ * same INV-5 failure as drawing a third machine as a second.
+ *
+ * ⚠ **Derived from the position map rather than from a second list of scheme names**, deliberately.
+ * Two hand-maintained lists is how the shell would come to light the "1-bit" button while drawing a
+ * machine with no branch-target adder — and `m13-width-planned.md` records four-site divergence as
+ * this repo's measured failure mode. One source, one place to be wrong.
+ */
+export function hasTakenBetPath(scheme: BranchPrediction): boolean {
+  return predictionPosition(scheme) !== 'not taken';
 }
 
 /**

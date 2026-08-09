@@ -22,7 +22,7 @@ import {
   originNameOf,
   OPENING_KNOBS,
   openingKnobs,
-  predictsTaken,
+  predictionPosition,
   type BranchPrediction,
   type Session,
   type SessionKnobs,
@@ -219,11 +219,12 @@ export interface Simulator {
    * shape as {@link setForwarding}, for the same reason: the trace genuinely changes, so a fresh
    * recording IS the mechanism.
    *
-   * The no-op guard is on the BEHAVIOR, not the value: `'none'` and `'static-not-taken'` are one
+   * The no-op guard is on the MACHINE, not the value: `'none'` and `'static-not-taken'` are one
    * machine, so asking for the scheme the machine is already running re-records nothing even when
    * the string differs. Without that, clicking the already-lit "not taken" button at startup (where
    * the config still reads `'none'`) would throw away the cursor to rebuild a byte-identical
-   * timeline.
+   * timeline. ⚠ It is `predictionPosition`, NOT a taken/not-taken boolean — see the implementation
+   * for the defect that distinction was hiding once the dynamic schemes became real machines.
    */
   setBranchPrediction: (scheme: BranchPrediction) => void;
   /**
@@ -555,10 +556,19 @@ export function useSimulator(): Simulator {
 
   const setBranchPrediction = useCallback(
     (scheme: BranchPrediction) => {
-      // Guarded on BEHAVIOR, not on the string — see `setBranchPrediction` in the interface. The
+      // Guarded on the MACHINE, not on the string — see `setBranchPrediction` in the interface. The
       // state still moves to the requested name so the config reads as what the user asked for; it
       // is only the RE-RECORD that is skipped, because there is no different timeline to build.
-      const same = predictsTaken(scheme) === predictsTaken(knobs.current.branchPrediction);
+      //
+      // ⚠ **This read `predictsTaken(next) === predictsTaken(current)` until the dynamic-branch-
+      // prediction plan's step 3, and that comparison became WRONG the moment the engine honored a
+      // counter table**: both `'static-not-taken'` and `'dynamic-1bit'` answered `false`, so
+      // switching between them skipped the re-record and left the user reading the old machine's
+      // trace under the new scheme's name. The state string moved, so every headless test stayed
+      // green — `browser-is-the-only-net` again. `predictionPosition` collapses exactly the one
+      // pair that IS one machine (`'none'` ≡ `'static-not-taken'`) and nothing else.
+      const same =
+        predictionPosition(scheme) === predictionPosition(knobs.current.branchPrediction);
       knobs.current.branchPrediction = scheme; // read by loadInto below (and every later load)
       setBranchPredictionState(scheme);
       if (same) return; // same machine — keep the cursor where it is

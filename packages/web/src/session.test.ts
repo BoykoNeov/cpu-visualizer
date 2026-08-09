@@ -16,7 +16,10 @@ import {
   OPENING_KNOBS,
   openingKnobs,
   originNameOf,
-  predictsTaken,
+  hasTakenBetPath,
+  predictionPosition,
+  schemeForPosition,
+  PREDICTION_POSITIONS,
   type BranchPrediction,
   type LessonOpening,
   type SessionKnobs,
@@ -325,23 +328,64 @@ describe('a lesson opens on the model + config it declares', () => {
 });
 
 /**
- * The shell's whole reading of a three-named, two-behaviored knob (M4 step 4). The claim that
- * makes two positions COMPLETE — that the three schemes are two machines — is an engine fact and
- * is measured in `simulator.test.ts`; these pin the mapping the control and its no-op guard share.
+ * The shell's whole reading of a five-named, FOUR-machined knob (M4 step 4, regrown at the
+ * dynamic-branch-prediction plan's step 3). The claim that makes four positions COMPLETE — that the
+ * five schemes are four machines, pairwise distinct — is an engine fact and is measured in
+ * `simulator.test.ts`; these pin the mapping the control and its no-op guard share.
+ *
+ * **The block's claim changed shape here, it was not renamed.** It read "three names, two behaviors"
+ * against a `predictsTaken(scheme): boolean`, which was correct for exactly as long as the engine
+ * ignored the two dynamic names. The `'none'` case below is the one part that survives verbatim, and
+ * it is still the load-bearing one: it is the only collapse in the mapping.
  */
-describe('predictsTaken — three scheme names, two behaviors', () => {
-  it('only static-taken bets', () => {
-    expect(predictsTaken('static-taken')).toBe(true);
-    expect(predictsTaken('static-not-taken')).toBe(false);
+describe('predictionPosition — five scheme names, four machines', () => {
+  it('each machine gets its own position, and only static-taken is the fixed taken bet', () => {
+    expect(predictionPosition('static-taken')).toBe('taken');
+    expect(predictionPosition('static-not-taken')).toBe('not taken');
+    expect(predictionPosition('dynamic-1bit')).toBe('1-bit');
+    expect(predictionPosition('dynamic-2bit')).toBe('2-bit');
   });
 
   it("'none' reads as not-taken: a machine with no predictor keeps fetching", () => {
-    // M4 step 1's finding, and the reason the control can have two positions without lying: "no
+    // M4 step 1's finding, and the reason four positions cover five names without lying: "no
     // prediction" and "predict not taken" are one policy under two names, because the fall-through
     // IS the not-taken path. So the "not taken" button is lit for BOTH — including at startup,
     // where `defaultConfig()` is what the shell opens on.
-    expect(predictsTaken('none')).toBe(false);
-    expect(predictsTaken(defaultConfig().branchPrediction)).toBe(false);
+    expect(predictionPosition('none')).toBe('not taken');
+    expect(predictionPosition(defaultConfig().branchPrediction)).toBe('not taken');
+  });
+
+  /**
+   * **The round trip, and it is the only thing standing between the two maps and a drift that lights
+   * one button while recording another scheme.** `predictionPosition` and `schemeForPosition` are
+   * separate object literals — one total over the five schemes, one over the four positions — so
+   * nothing but this test makes them inverses. A transposed pair (`'1-bit' → 'dynamic-2bit'`) would
+   * typecheck, render four correctly-labelled buttons, and silently record the wrong machine on two
+   * of them; `m13-width-planned.md` records exactly that class (five of eight knobs share a type
+   * with a sibling, so a transposition is green on both the suite and `tsc`).
+   */
+  it('position → scheme → position is the identity on every position', () => {
+    expect(PREDICTION_POSITIONS).toHaveLength(4); // ...and the sweep below is therefore not empty
+    for (const position of PREDICTION_POSITIONS) {
+      expect(predictionPosition(schemeForPosition(position)), position).toBe(position);
+    }
+  });
+
+  /**
+   * The datapath's question, which is NOT the control's — see `hasTakenBetPath`'s docblock. A
+   * dynamic machine has the branch-target adder and the wires that feed the pc mux from it, because
+   * it bets taken the moment a counter warms; drawing them absent would contradict the machine on
+   * screen (INV-5). Pinned separately from the position map because the two are free to disagree —
+   * that is the whole reason they are two functions — and because a `hasTakenBetPath` quietly
+   * rewritten as `scheme === 'static-taken'` would blank three nodes and two wires on the diagram
+   * while every button still lit correctly.
+   */
+  it('the datapath draws a taken-bet path for every scheme that can bet taken', () => {
+    expect(hasTakenBetPath('static-taken')).toBe(true);
+    expect(hasTakenBetPath('dynamic-1bit')).toBe(true);
+    expect(hasTakenBetPath('dynamic-2bit')).toBe(true);
+    expect(hasTakenBetPath('static-not-taken')).toBe(false);
+    expect(hasTakenBetPath('none')).toBe(false);
   });
 });
 

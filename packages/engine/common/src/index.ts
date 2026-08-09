@@ -39,7 +39,7 @@ export { MAX_ISSUE_WIDTH } from './issue-width';
  * `engine-pipeline` continues to re-export only the READ surface to consumers above it, so the
  * web's "render a cache, never drive one" boundary (M6 step 6) is unchanged.
  */
-export { speculativeTarget, isPredictable } from './predict';
+export { speculativeTarget, isPredictable, isConditionalBranch } from './predict';
 
 export {
   type CacheLine,
@@ -86,6 +86,7 @@ export {
   type PredictorState,
   type DynamicScheme,
   BranchPredictor,
+  isDynamicScheme,
   PREDICTOR_ENTRIES,
   predictorIndex,
 } from './predictor';

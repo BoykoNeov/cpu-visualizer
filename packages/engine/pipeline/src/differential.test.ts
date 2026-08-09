@@ -48,7 +48,24 @@ import { PipelineProcessor } from './index';
  * The prediction × cache cells are where a miss-stall and a branch flush contend for the same
  * cycle — exactly where a leak would hide — so the full cross product, not a diagonal, is the net.
  */
-const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
+/**
+ * **All FIVE schemes from the dynamic-branch-prediction plan's step 3** — 2 forwarding × 5 schemes ×
+ * 3 caches, and the invisibility argument above is what makes the two new columns worth their cost
+ * rather than redundant. A dynamic predictor guesses differently on every branch instance, so it
+ * drives the machine down a different sequence of wrong paths than either static scheme does; if
+ * speculation LEAKS — a wrong-path instruction reaching MEM, a squash arriving a cycle late — these
+ * are the cells that visit the leaking path. That is also exactly why the matrix cannot be the
+ * step's only net: a dynamic scheme that was silently ignored, or one trained on the wrong pc, is
+ * green in all fifty cells, because none of them can see WHEN an answer arrives. `timing.test.ts`
+ * and `dynamic-predict.test.ts` are the nets for that.
+ */
+const SCHEMES = [
+  'none',
+  'static-not-taken',
+  'static-taken',
+  'dynamic-1bit',
+  'dynamic-2bit',
+] as const;
 const CACHES: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
 const CONFIGS: ProcessorConfig[] = [false, true].flatMap((forwarding) =>
   SCHEMES.flatMap((branchPrediction) =>

@@ -28,7 +28,7 @@ import { MAX_ISSUE_WIDTH } from '@cpu-viz/engine-common';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { IssueOrderToggle, PredictionToggle, RobSizeControl, WidthToggle } from './App';
-import type { BranchPrediction } from './session';
+import { schemeForPosition, type BranchPrediction, type PredictionPosition } from './session';
 
 const noop = (): void => {};
 
@@ -41,17 +41,29 @@ const litPosition = (html: string): string | null => {
   return lit.length === 1 ? lit[0]! : null;
 };
 
-describe('the prediction control has two positions, not one per scheme name (M4 step 4)', () => {
-  it('renders exactly two buttons', () => {
+describe('the prediction control has one position per MACHINE, not per scheme name', () => {
+  it('renders exactly four buttons — one per machine, for five scheme names', () => {
     // The whole decision in one number. `'none'` is deliberately unreachable from the UI: it is
     // only ever the opening value, straight out of `defaultConfig()`, and nothing is lost by
-    // omitting it because there is no third machine to reach.
-    expect((render('none').match(/<button/g) ?? []).length).toBe(2);
+    // omitting it because it is not a machine of its own — it is `'static-not-taken'` under a
+    // second name.
+    //
+    // **It was two until the dynamic-branch-prediction plan's step 3**, and the number moved for a
+    // reason worth keeping next to it: the two dynamic schemes were in the union from step 1, but
+    // the engine ignored them, so drawing them as "not taken" was TRUE of the shipped machine.
+    // Step 3 wired the pipeline's counter table and made it false in the same commit. Four is
+    // therefore not "five names minus the unreachable one" — it is the count of machines, which is
+    // what `simulator.test.ts` measures against the engine (five schemes, four pairwise-distinct
+    // recordings). If a sixth scheme is ever added, THAT test is what says whether this number
+    // becomes five.
+    expect((render('none').match(/<button/g) ?? []).length).toBe(4);
   });
 
-  it('lights exactly one position, and it names a behavior rather than a scheme', () => {
+  it('lights exactly one position, and it names a machine rather than a scheme', () => {
     expect(litPosition(render('static-taken'))).toBe('taken');
     expect(litPosition(render('static-not-taken'))).toBe('not taken');
+    expect(litPosition(render('dynamic-1bit'))).toBe('1-bit');
+    expect(litPosition(render('dynamic-2bit'))).toBe('2-bit');
   });
 
   it("lights 'not taken' for 'none' — the coincidence the whole shape rests on", () => {
@@ -59,6 +71,32 @@ describe('the prediction control has two positions, not one per scheme name (M4 
     // `defaultConfig()` opens on, so a shell that lit neither position (or both) would greet every
     // user with a toggle showing no state at all, on the pipeline's very first load.
     expect(litPosition(render('none'))).toBe('not taken');
+  });
+
+  /**
+   * Every position the control renders must be REACHABLE — clicking it must write a scheme that
+   * lights that same position back.
+   *
+   * `session.test.ts` pins the round trip through the two mapping literals; this pins it through the
+   * RENDER, which is a different claim and the one this repo has been burned by. `m13-width-planned`
+   * records a test keyed off a pure fold rather than the render as this codebase's signature defect
+   * — it recurred eight times, twice inside the fix written to stop it. A `PREDICTION_POSITIONS`
+   * that had drifted from what the buttons draw would satisfy the fold test and fail here.
+   */
+  it('every rendered button lights itself back', () => {
+    // The labels the control ACTUALLY draws, scraped from the markup rather than re-derived from
+    // `PREDICTION_POSITIONS` — a sweep over the constant would agree with itself no matter what the
+    // buttons said.
+    const labels = [...render('none').matchAll(/<button[^>]*>([^<]*)</g)].map((m) => m[1]!);
+    expect(labels).toEqual(['not taken', 'taken', '1-bit', '2-bit']);
+
+    // `renderToStaticMarkup` cannot click (see this file's header), so the click is driven through
+    // the same mapping the button's `onClick` closes over, and the round trip is closed against the
+    // RENDER: re-render under the scheme that click would write, and the same button must light.
+    for (const label of labels) {
+      const scheme = schemeForPosition(label as PredictionPosition);
+      expect(litPosition(render(scheme)), `${label} must light itself back`).toBe(label);
+    }
   });
 });
 

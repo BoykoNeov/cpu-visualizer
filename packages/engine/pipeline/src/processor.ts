@@ -57,8 +57,11 @@
 import { decode, defForMnemonic, type DecodedInstruction } from '@cpu-viz/isa';
 import {
   speculativeTarget,
+  isConditionalBranch,
+  isDynamicScheme,
   access,
   newCache,
+  BranchPredictor,
   type CacheState,
   type PredictorState,
 } from '@cpu-viz/engine-common';
@@ -199,12 +202,19 @@ export interface PipelineMicro {
    */
   readonly cache: CacheState | null;
   /**
-   * The branch history table's counters, or `null` when the configured scheme has no memory — which
-   * is every scheme shipped before the dynamic-branch-prediction feature, and therefore **always,
-   * as of that plan's step 1**: nothing constructs a predictor yet, so this is `null` on every
-   * recorded cycle until step 3 wires the bet site. The field lands early on purpose (the type must
-   * exist before step 2's class can return it), and landing it in all four honoring models at once
-   * is the point — see below.
+   * The branch history table's counters, or `null` when the configured scheme has no memory.
+   *
+   * ⚠ **Still `null` on every recorded cycle, INCLUDING under `'dynamic-1bit'` / `'dynamic-2bit'`,
+   * and as of step 3 that is no longer because there is nothing to report.** This model now drives a
+   * real {@link BranchPredictor} — the bet site consults it and EX trains it — but the RECORDING is
+   * the plan's step 4, deliberately held back so that step's break harness has something to break.
+   * Wiring the snapshot here would have dissolved step 4 into a line of step 3, which is the same
+   * trade step 2 refused when it kept `snapshot()` returning the live table rather than a defensive
+   * copy. So between step 3 and step 4 this field UNDERSTATES the machine, which is a temporary lie
+   * and is why it is stated rather than left to be inferred from a `null`.
+   *
+   * `web/src/models.test.ts` asserts only that the KEY is present on every recorded cycle, so `null`
+   * here keeps that guard honest meanwhile — it is pinning the spelling, not the value.
    *
    * ⚠ **Spelled `predictor` in `DeepPipelineMicro`, `SuperscalarMicro` and `OutOfOrderMicro` too,
    * and that agreement is load-bearing rather than tidy.** `cache-grid.ts`'s own header records the
@@ -477,8 +487,28 @@ export class PipelineProcessor implements Processor {
    * `'static-not-taken'` both mean "keep fetching the fall-through", which is one machine under two
    * names — see {@link PIPELINE_CAPABILITIES}. Collapsing the three-valued config to a boolean here
    * is the honest encoding of that, rather than a `switch` with two identical arms.
+   *
+   * **It stays a boolean for the STATIC half of the union and does not grow a third value**, because
+   * the dynamic schemes do not answer "bet taken?" from the config at all — they answer it per
+   * branch, from {@link predictor}. A boolean plus a nullable object says exactly that; a
+   * three-valued enum would invite a call site to ask the config a question only the table can
+   * answer. See {@link betTarget}, which is the one place either is read.
    */
   private predictTaken = false;
+  /**
+   * The branch history table (dynamic-branch-prediction step 3), or `null` under every static scheme
+   * — so `null` is the M4 machine, unchanged, and the whole dynamic path below is inert under it.
+   * That inertness is the same contract `cacheConfig` states one field down, and it is what makes
+   * "the three existing schemes' cycle counts are unchanged corpus-wide" a claim this design can
+   * keep rather than merely hope for: with no predictor there is no counter to consult.
+   *
+   * **Single-buffered and mutated in place** by EX, exactly like {@link cache} — which is why
+   * recording it (step 4) needs a DEEP copy, and why this model's `micro.predictor` is still `null`
+   * meanwhile. Constructed once per {@link reset} from `config.branchPrediction`, so the counter
+   * width is derived in ONE place for all four wiring sites (step 2's reason for taking the scheme
+   * in its constructor rather than threading a config through every call).
+   */
+  private predictor: BranchPredictor | null = null;
   /**
    * The D-cache config (M6), or `null` for the cache-less machine that every prior milestone ran and
    * that `defaultConfig()` still selects. When null, the entire cache path below is inert and MEM is
@@ -496,6 +526,11 @@ export class PipelineProcessor implements Processor {
   reset(image: ProgramImage, config: ProcessorConfig = defaultConfig()): void {
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
+    // A fresh, COLD table per run (INV-1: same program + config ⇒ identical trace, so no state may
+    // survive a reset) — the same lifetime as `cache` on the line below, and for the same reason.
+    this.predictor = isDynamicScheme(config.branchPrediction)
+      ? new BranchPredictor(config.branchPrediction)
+      : null;
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.registers = makeRegisters();
@@ -1064,6 +1099,23 @@ export class PipelineProcessor implements Processor {
         actual: taken,
         target: nextPc,
       });
+      // TRAINING (dynamic-branch-prediction step 3), and this is the only place it happens. The
+      // counter learns what the branch ACTUALLY did, from the branch's OWN pc — the same pc the bet
+      // was placed with, one stage earlier, which is what makes the two touch one counter.
+      //
+      // **Conditional branches only**: `jal` and `jalr` are pinned not to update (measured at zero
+      // effect on this corpus — no jump shares an index with a branch at 16, 8 or 4 entries — so
+      // the call is pedagogy: every row of the table is then a word with a direction to remember).
+      //
+      // ⚠ **Resolve-time and commit-time are the same instant HERE, and that is a fact about the
+      // 5-stage machine rather than a decision this step gets to make.** An instruction in an older
+      // transfer's shadow is flushed from the latches at the clock edge, so it never reaches EX at
+      // all — a branch that resolves in this model always retires. The two come apart only where a
+      // branch can resolve and then be killed (the OoO core), which is why the plan pins that fork
+      // before step 5 and why nothing about it can be inferred from this line.
+      if (this.predictor !== null && isConditionalBranch(d)) {
+        this.predictor.update(ie.pc, taken);
+      }
       if (predicted !== taken) {
         // `nextPc` is the correction for BOTH directions with no branching on which way we were
         // wrong: the schema defines it as "the resolved next pc, whichever way it went", so a
@@ -1196,10 +1248,10 @@ export class PipelineProcessor implements Processor {
     // reverse order (EX before ID) precisely so EX's correction is already visible here, which is
     // what makes "the correction always beats the bet" structural rather than a rule to enforce.
     //
-    // `predictTaken` gates it, so under 'none'/'static-not-taken' this is dead and the machine is
+    // `betTarget` gates it, so under 'none'/'static-not-taken' this is dead and the machine is
     // byte-for-byte M3's. A halt is not a transfer, so the `isArchHalt` squash above cannot
     // coincide with a bet.
-    const target = this.predictTaken ? speculativeTarget(d, fd.pc) : null;
+    const target = this.betTarget(d, fd.pc);
     if (target !== null) {
       ctx.bet = true;
       ctx.redirect = target; // applied at the clock edge, AFTER IF has fetched the fall-through
@@ -1223,6 +1275,41 @@ export class PipelineProcessor implements Processor {
       b,
       predictedTaken: target !== null,
     };
+  }
+
+  /**
+   * **The bet, in one place** — where this word would be predicted to go, or `null` for "no bet"
+   * (not a predictable transfer, or predicted not-taken). Every scheme in the union is answered
+   * here, which is the point of it being a method: the ID stage asks one question and never learns
+   * which scheme it is running under.
+   *
+   * The three cases, in the order they are decided:
+   *
+   *  1. **Not a PC-relative transfer** ⇒ no bet, under every scheme. `speculativeTarget` is asked
+   *     FIRST so that `jalr` and ordinary arithmetic never reach a counter — a table indexed by pc
+   *     would happily hand back an answer for an `addi`, and training on one would be a row of the
+   *     table describing nothing.
+   *  2. **No table** (`'none'` / `'static-not-taken'` / `'static-taken'`) ⇒ M4's machine verbatim,
+   *     `predictTaken` alone. The dynamic path is inert, not merely unused.
+   *  3. **A table** ⇒ a conditional branch asks its counter; `jal` bypasses it and is simply bet
+   *     taken. That bypass is the plan's pinned decision, priced at 1 cycle on `call-return.s`, and
+   *     it is spelled by {@link isConditionalBranch} rather than inline so the four wiring sites
+   *     cannot answer it four ways — see that predicate for both `jal` decisions and their measured
+   *     seeds.
+   *
+   * ⚠ **Read-only: consulting the table never trains it.** Training is EX's job, at resolution,
+   * when the answer exists — and the two must stay in different stages or a branch would learn from
+   * itself before it resolved. `pc` is the branch's OWN address in both calls, which is what makes
+   * the bet and the training touch the same counter; the prediction-string test on `nested-loop.s`
+   * is the net for that, because passing the wrong pc to `update` leaves every cycle count on this
+   * corpus unchanged wherever the two rows happen not to alias.
+   */
+  private betTarget(d: DecodedInstruction, pc: number): number | null {
+    const target = speculativeTarget(d, pc);
+    if (target === null) return null;
+    if (this.predictor === null) return this.predictTaken ? target : null;
+    if (!isConditionalBranch(d)) return target;
+    return this.predictor.predict(pc) ? target : null;
   }
 
   /**
@@ -1358,8 +1445,11 @@ export class PipelineProcessor implements Processor {
       exMem: latches.exMem,
       memWb: latches.memWb,
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
-      // Always null until the plan's step 3 constructs a predictor; the DEEP COPY that has to
-      // arrive with it is specified in `PipelineMicro.predictor`'s docblock, next to the cache's.
+      // ⚠ **Still null even though step 3 now DRIVES a predictor** — this model bets from a live
+      // counter table, and this line reports none. That is the plan's sequencing, not an oversight:
+      // recording it is step 4, which exists as its own step so its break harness (make the copy
+      // shallow, see what stays green) has something to break. The DEEP COPY it must arrive with is
+      // specified in `PipelineMicro.predictor`'s docblock, next to the cache's one line up.
       predictor: null,
     };
     return {

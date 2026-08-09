@@ -31,7 +31,7 @@ import {
   lessonSections,
   orderLessons,
 } from './lessons';
-import { predictsTaken } from './session';
+import { predictionPosition } from './session';
 import { loadSource } from './simulator';
 
 /**
@@ -1208,9 +1208,14 @@ describe('authored lessons (INV-6)', () => {
           expect(caps.configurableForwarding, `${lesson.model} honors forwarding`).toBe(true);
         }
         // `'none'` and `'static-not-taken'` are the same machine, so leaning on prediction means
-        // asking for a DIFFERENT one — naming not-taken by its explicit name is not a lean.
+        // asking for a DIFFERENT one — naming not-taken by its explicit name is not a lean. This is
+        // a MACHINE-identity question, so it is `predictionPosition` and not `hasTakenBetPath`: a
+        // lesson declaring `'dynamic-1bit'` leans on prediction just as hard as one declaring
+        // `'static-taken'`, and a taken/not-taken boolean could not tell the two apart from each
+        // other OR `'dynamic-2bit'` from either.
         if (
-          predictsTaken(lesson.config.branchPrediction) !== predictsTaken(neutral.branchPrediction)
+          predictionPosition(lesson.config.branchPrediction) !==
+          predictionPosition(neutral.branchPrediction)
         ) {
           expect(caps.configurableBranchPrediction, `${lesson.model} honors prediction`).toBe(true);
         }
@@ -1901,7 +1906,7 @@ describe('forwarding-bubble — the flagship experiment (M3 step 8)', () => {
     // are properties of the WHOLE machine — under `static-taken` the same program runs 70 and 49 —
     // so a lesson quoting them must pin prediction even though prediction is not its subject.
     // Without this the shell parks the user on whatever scheme they last chose, and the prose lies.
-    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    expect(predictionPosition(lesson().config!.branchPrediction)).toBe('not taken');
   });
 
   it('THE BUBBLE VANISHES: the branch interlocks with forwarding off, and forwards with it on', () => {
@@ -2064,7 +2069,7 @@ describe('branch-bet — the milestone’s thesis, guided (M4 step 7)', () => {
     // first (M3 step 8's reasoning for opening forwarding-off). Not-taken is also `defaultConfig()`
     // and the machine M3 shipped, so the lesson starts from what the user already has.
     expect(lesson().model).toBe('pipeline');
-    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    expect(predictionPosition(lesson().config!.branchPrediction)).toBe('not taken');
   });
 
   it('THE BET WINS: jal mispredicts under not-taken, and is bet on correctly under taken', () => {
@@ -4944,7 +4949,7 @@ describe('deep-bubble-survives — forwarding stops being enough (M12 step 1)', 
     expect(lesson().config?.forwarding).toBe(true);
     // And the control knob, for the reason `forwarding-bubble` pins its own: the closing step quotes
     // 74 and 51, and both move under `static-taken` (to 70 and 49).
-    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    expect(predictionPosition(lesson().config!.branchPrediction)).toBe('not taken');
     expect(lesson().config!.cache).toBeNull();
   });
 
@@ -5072,7 +5077,7 @@ describe('deep-bet-pays-double — the speculation penalty doubles too (M12 step
 
   it('opens where nothing bets, so the four-cycle branch is visible before the fix', () => {
     expect(lesson().model).toBe('deep-pipeline');
-    expect(predictsTaken(lesson().config!.branchPrediction)).toBe(false);
+    expect(predictionPosition(lesson().config!.branchPrediction)).toBe('not taken');
     // Forwarding is pinned as a CONTROL rather than as this lesson's subject: it is not what the
     // prose is about, but every cycle count the closing step quotes moves with it (109 and 95 with
     // it off), so it has to be declared. Same rule as `forwarding-bubble` pinning prediction.

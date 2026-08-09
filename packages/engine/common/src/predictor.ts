@@ -133,6 +133,29 @@ const COUNTER_BITS: Record<DynamicScheme, number> = {
 };
 
 /**
+ * Does this scheme own a counter table? The narrowing every wiring site needs before it can
+ * construct a {@link BranchPredictor} (step 3 for the pipeline, step 5 for the other three).
+ *
+ * **It tests membership of {@link COUNTER_BITS} rather than the `'dynamic-'` PREFIX, and that is the
+ * whole reason it exists as a function instead of four inline `startsWith` calls.** A prefix test
+ * would be a second, independent spelling of {@link DynamicScheme}'s template literal — agreeing with
+ * it "by construction", which is precisely the kind of agreement step 1 measured as enforced by
+ * nothing (a divergent field name passed typecheck and all 7591 tests). Keyed off the `Record`, the
+ * runtime answer and the compile-time type have ONE source: a third dynamic scheme reddens
+ * `COUNTER_BITS` at `tsc`, and the moment that error is fixed this predicate already knows the
+ * newcomer. A prefix test would instead have silently returned `true` for a scheme with no width
+ * defined, and `new BranchPredictor` would have built a table of `NaN` counters.
+ *
+ * It also repairs half of the prefix-conditionality {@link DynamicScheme} documents: a scheme
+ * spelled `'bht-3bit'` still would not widen the TYPE, but it could not slip past this test either.
+ */
+export function isDynamicScheme(
+  scheme: ProcessorConfig['branchPrediction'],
+): scheme is DynamicScheme {
+  return scheme in COUNTER_BITS;
+}
+
+/**
  * A pc-indexed table of saturating counters — **the whole dynamic predictor** (step 2).
  *
  * A class rather than `cache.ts`'s functions-over-a-state-object, and the difference is not taste.
