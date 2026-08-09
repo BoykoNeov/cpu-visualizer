@@ -1258,7 +1258,9 @@ remaining two.
 Shipped: `web/src/predictor-table.ts` (the pure fold), `PredictorTableView.tsx` (the HTML half),
 their two test files, the CSS, the App slot, `counterGeometry` + `coldPredictorState` in
 `engine-common`, and the `preRunMicro` fix the step's own text demanded. 9466 → 9493 tests, five
-gates green. Two commits: the panel, then the break harness's closures.
+gates green — `build` included, and it is the only one that exercises library emit, since Vitest and
+the dev server both alias workspace imports to SOURCE. Four commits: the panel, the break harness's
+closures, the review residual's tripwire, and the correction to what that tripwire claimed.
 
 ### The blocking question was the fold's SHAPE, and it had to be measured first
 
@@ -1320,20 +1322,37 @@ to its own zero, which for a counter table is a SEED.
 three of them in tests, which a grep for the component name would also have found but a default
 value would have hidden.
 
-### Break table — MEASURED, ten mutations, and four reddened NOTHING
+### Break table — MEASURED, eleven mutations, and four reddened NOTHING
 
-| #   | Mutation                                         | Red       | Note                                                                            |
-| --- | ------------------------------------------------ | --------- | ------------------------------------------------------------------------------- |
-| 1   | `trainsThisCycle` drops `isConditionalBranch`    | **0 → 1** | a real hole, closed — see below                                                 |
-| 2   | `ownerIndex` drops `isConditionalBranch`         | 3         |                                                                                 |
-| 3   | `trained` derived from a counter diff            | 2         | the headline decision; the saturating-counter tests are what catch it           |
-| 4   | `previous` inverted from the update              | 1         |                                                                                 |
-| 5   | `predictorIndex` rotated by one, in the fold     | 5         | **includes the render-keyed case** — this is what makes a wrong row lit visible |
-| 6   | owners built from the cursor's trace only        | 2         |                                                                                 |
-| 7   | id→pc join through this cycle's `instructions[]` | **0 → 1** | closed on a synthetic trace                                                     |
-| 8   | `preRunMicro` back to `predictor: null`          | **0 → 1** | closed by exporting it                                                          |
-| 9   | App gate on the SCHEME instead of a trace fact   | **0**     | NOT closed — see below                                                          |
-| 10  | `strength` reported for a 1-bit counter          | 2         |                                                                                 |
+| #   | Mutation                                                     | Red       | Note                                                                            |
+| --- | ------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------- |
+| 1   | `trainsThisCycle` drops `isConditionalBranch`                | **0 → 1** | a real hole, closed — see below                                                 |
+| 2   | `ownerIndex` drops `isConditionalBranch`                     | 3         |                                                                                 |
+| 3   | `trained` derived from a counter diff                        | 2         | the headline decision; the saturating-counter tests are what catch it           |
+| 4   | `previous` inverted from the update                          | 1         |                                                                                 |
+| 5   | `predictorIndex` rotated by one, in the fold                 | 5         | **includes the render-keyed case** — this is what makes a wrong row lit visible |
+| 6   | owners built from the cursor's trace only                    | 2         |                                                                                 |
+| 7   | id→pc join through this cycle's `instructions[]`             | **0 → 1** | closed on a synthetic trace                                                     |
+| 8   | `preRunMicro` back to `predictor: null`                      | **0 → 1** | closed by exporting it                                                          |
+| 9   | App gate on the SCHEME instead of a trace fact               | **0**     | NOT closed — see below                                                          |
+| 10  | `strength` reported for a 1-bit counter                      | 2         |                                                                                 |
+| 11  | a model records the table LAZILY (null for its first cycles) | 29        | added AFTER review; **28 of the 29 are step 4's per-cycle replay** — see below  |
+
+⚠ **Row 11 was found by REVIEW, not by the harness, and its result narrowed the test written for
+it.** The fold reads `predictorOf(trace)?.counters ?? cold`, so a cycle whose `micro.predictor` came
+back null would draw a COLD table for a frame that has none — silently, every cycle, with nothing on
+screen to say the counters are fiction. None of rows 1–10 aimed at it, and `models.test.ts` asserts
+only that the KEY exists, under a static config where `null` is the honest value. Measured before any
+test was written (336 runs / 14,108 cycles): **unreachable — zero null cycles, zero missing keys,
+zero wrong-length arrays**, against a static control of 7,142 cycles that ARE null (which is what
+makes "non-null" a property of the SCHEME rather than of a field that is always populated). So it is
+a tripwire, not coverage. ⚠ **Then the class was broken two ways, and the sharp one is the finding:**
+a model recording null on EVERY cycle reddens 3 in `predictor-table.test.ts` (the gate and the
+training sweep see it too), but the LAZY variant — null for the first five cycles only — reddens 29,
+of which **28 are `deep-pipeline/src/dynamic-predict.test.ts`'s per-cycle replay from step 4**. The
+engine side already covers this per model; the new test's actual content is the claim stated in the
+layer that owns the fallback, across all four models at once. **Third time this feature has had to
+run a break before believing a sole-net claim** (step 3's replay, step 4's control, now this).
 
 ⚠ **Row 1 is the fifth instance of this feature's recurring finding, and it arrived inside the file
 that names it.** `isConditionalBranch` has two call sites in the fold — owners and trains — and only
