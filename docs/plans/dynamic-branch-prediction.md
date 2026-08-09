@@ -210,8 +210,8 @@ logic four times.
       reads the field until step 6. So there was no test that read the table at an early cursor;
       there was no test that read the table at all. The step's whole content is writing that net.
 
-- [ ] **5. The other three models.** `deep-pipeline` **DONE 2026-08-09** (results in the step-5
-      section below); `superscalar`, `out-of-order` remain. Each should be
+- [ ] **5. The other three models.** `deep-pipeline` and `superscalar` **DONE 2026-08-09** (results
+      in the step-5 section below); `out-of-order` remains. Each should be
       an ask-and-tell diff (see the multiplier section). Acceptance: INV-8 green per model across
       the full scheme matrix; the superscalar's per-lane bets and the OoO's speculation depth
       unchanged in shape.
@@ -1085,6 +1085,72 @@ Four rows are worth more than their count:
   reader has a net a field without one cannot have. That is step 4's lesson from the other side.
 - **Row 1 confirms the differential is a false net here too.** With the bet ignoring the predictor
   entirely, all 122 INV-8 cells stay green and the only red is the new file.
+
+### Model 2 of 3 — `superscalar`, DONE 2026-08-09
+
+Shipped: the same four pieces plus a `dynamic-predict.test.ts` carrying a width axis, and INV-8
+widened to five schemes (an extra 480 cells). 8017 → 8755 tests, five gates green.
+
+**At width 1 this machine is the 5-stage and its table reproduces the pipeline's cell for cell** —
+derived offline first, then verified. **At width ≥ 2 the derivation stops working**, exactly as the
+plan warned: a bet kills its mate, so it re-partitions the schedule rather than merely paying a
+penalty, and `cycles(scheme) = cycles(nt) − P(nt) + P(scheme)` is false. The wide cells are therefore
+MEASURED and labelled, with three independent things carrying them instead of a derivation:
+
+1. **`cycles = G + L + P + 4` balances** under both dynamic schemes at every width — this package's
+   own identity for the static schemes, with `P` priced per instance from the engine's outcomes.
+2. **The bet STRING is width-invariant**, asserted rather than assumed. That is what pins the POLICY
+   where the cycle counts cannot.
+3. **A program that never bets records IDENTICALLY to `static-not-taken`** at every width — the net
+   for the partition itself. Five of the twelve qualify, and the list is DERIVED from the bet strings
+   so a program cannot stay on it by accident. ⚠ The comparison strips `micro.predictor`, and that
+   exception is INV-2 rather than a weakening: a machine with a table honestly reports a COLD one
+   where a machine without reports `null`.
+
+**The finding, and it is the mirror of the deep pipeline's.** ⚠ **At width 2 `static-taken` LOSES on
+`nested-loop.s` — 175 against not-taken's 172 — and the dynamic schemes are the only ones that
+win** (168 and 165). M13 pinned the sign flip; what is new is why a counter repairs it. `Q` is 57
+under not-taken, **26** under `static-taken`, and **35 / 32** under the dynamic schemes: a predictor
+that declines the bets it would lose keeps the pairs a blanket bet destroys, while still collecting
+most of the correct-bet savings. **So depth and width argue for a counter for OPPOSITE reasons** —
+depth makes a wrong bet cost double, width makes every bet cost a pair — which is the pair of
+sentences step 8's lesson can be built on. The 5-stage, which has neither, is where the aggregate
+case looks thin.
+
+#### Break table — MEASURED, six rows, and row 3 is the one to read
+
+| #   | Mutation                                        | Reddens                            |
+| --- | ----------------------------------------------- | ---------------------------------- |
+| 1   | the bet ignores the predictor (knob unhonored)  | **47**                             |
+| 2   | `snapshot()` handed straight through — an alias | **20** — the third model to say 20 |
+| 3   | **a real PER-LANE table**, one per slot         | **0**                              |
+| 4   | `update` handed the wrong pc (`nextPc`)         | **59**                             |
+| 5   | `jal` CONSULTS the table                        | **6**                              |
+| 6   | `jal`/`jalr` UPDATE the table                   | **3** — as on the other two        |
+
+⚠ **Row 3 says the "ONE table, not one per lane" decision had NO NET, and the useful part is why.**
+Per-lane tables can differ from one shared table only for a branch that issues from more than one
+SLOT; otherwise each lane's table sees exactly the branches it bets on. Across the corpus × every
+width × both dynamic schemes there is **exactly one** such branch — `nested-loop.s`'s guard at pc 8,
+landing in `EX.2` and `EX.0` on different passes at widths 3 and 4 — and it is `bne x0, x0`, **never
+taken**, so its counter sits at the floor in every table that could hold it. **The corpus has a
+lane-alternating branch and it is the one branch whose counter never moves.**
+
+Closed the way `m13-review-resolved` asks: not with a test that pretends to cover it, but with one
+that pins both halves and therefore turns red the day a TAKEN branch alternates lanes. The schema is
+a partial net meanwhile — `SuperscalarMicro.predictor` is a bare `PredictorState`, so a per-lane
+machine that RECORDED its lanes would not typecheck; what it cannot catch is one that keeps two
+tables internally and records one, which is precisely the mutation measured.
+
+⚠ **The test's first draft aggregated slots ACROSS widths and reported three branches.** A branch is
+`EX.0` at width 1 and `EX.1` at width 2 — true, and it says nothing about whether one machine's lanes
+could disagree. **Alternation is a property of one RUN.** A sweep that pools runs answers a different
+question than the one it is named for.
+
+⚠ **And the file took 72 seconds against the whole repo's 22 before it was fixed.** The width axis
+multiplies every sweep by four, and `issuedPerCycle` was quadratic while identical cells were
+re-run dozens of times. Memoized runs plus one index pass: 1.6s. **A test file wide enough to be
+worth writing is wide enough to need its inner loop looked at.**
 
 #### The test file's home, decided once for all three models
 
