@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultConfig, type ProcessorCapabilities } from '@cpu-viz/trace';
 import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
 import { MODELS, modelById, engineConfigFor, DEFAULT_MODEL_ID } from './models';
+import { type BranchPrediction } from './session';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
 
@@ -172,6 +173,99 @@ describe('the model table', () => {
         ).toBe(true);
       }
     }
+  });
+
+  /**
+   * **All four betting models make the SAME bets, and this is the only place that can say so**
+   * (dynamic-branch-prediction step 5's close-out). Each model's own `dynamic-predict.test.ts` pins
+   * its bet string as a literal, and those four literals happen to be equal — but four files each
+   * agreeing with itself is not the same claim as the four agreeing with each other, and it is
+   * exactly the shape step 1 measured as unenforced when a divergent `predictor` spelling passed
+   * typecheck and all 7591 tests.
+   *
+   * **The failure this catches, specifically:** step 5's own break harness recorded that a
+   * copy-paste which changes a model's policy and then "fixes" that model's table to match keeps its
+   * package green. Nothing inside that package can see it, because the literal and the engine moved
+   * together. Here they cannot: one string is compared across four engines.
+   *
+   * ⚠ **That the strings agree at all is a CONSEQUENCE, not a law** — it holds because prediction
+   * changes when things happen rather than what happens, because all four models share one bet
+   * policy by importing `isConditionalBranch`/`predictorIndex` rather than restating it, and —
+   * on the out-of-order core alone — because no wrong-path branch ever trains the table on this
+   * corpus. If a future corpus program made a squashed branch train, THIS test is where the family
+   * stops being one family, and the OoO's own suite says so at the same moment.
+   */
+  it('every betting model makes the SAME bets — one string, four engines', () => {
+    const betting = MODELS.filter((m) => m.capabilities.configurableBranchPrediction);
+    expect(betting.map((m) => m.id)).toHaveLength(4);
+
+    const betsOf = (
+      program: string,
+      model: (typeof MODELS)[number],
+      scheme: BranchPrediction,
+    ): string => {
+      const source = EXAMPLE_PROGRAMS.find((p) => p.name === program)!.source;
+      const result = loadSource(source, model.make, {
+        ...defaultConfig(),
+        branchPrediction: scheme,
+      });
+      if (!result.ok) throw new Error(`unreachable: ${program} should assemble`);
+      result.loaded.recorder.runToEnd();
+      return result.loaded.recorder.recorded
+        .flatMap((t) => t.events)
+        .filter((e) => e.type === 'branch-resolved')
+        .map((e) => (e.predicted ? 'T' : 'N'))
+        .join('');
+    };
+
+    // ⚠ **TWO programs, and the second one is the whole point of this test.** The first draft swept
+    // `nested-loop.s` alone — the program authored to make this feature legible — and it caught
+    // NOTHING: a real policy divergence (the deep pipeline made to let `jal` CONSULT the table, with
+    // its own package's literals "fixed" to match) left all 32 tests here green, because
+    // `nested-loop.s` contains no `jal` and no `jalr`. `call-return.s` is the corpus's only witness
+    // for both, and M4 pinned it as such long before this feature existed.
+    //
+    // That is this plan's own recurring finding — **the canonical demonstration of a mechanism is
+    // usually not the test of it** — arriving inside the test written to close the gap it names.
+    // Verified the other way too: with `call-return.s` swept, that same mutation reddens this test.
+    const PINNED: Record<string, Record<'dynamic-1bit' | 'dynamic-2bit', string>> = {
+      // Separates 1-bit from 2-bit: the only program whose four schemes are strictly ordered.
+      'nested-loop': {
+        'dynamic-1bit': 'NNTTTTTNNNTTTTTTNNTTTTTTNNTTTTTT',
+        'dynamic-2bit': 'NNTTTTTNNTTTTTTTNTTTTTTTNTTTTTTT',
+      },
+      // Pins the two `jal` decisions and `jalr`'s permanent unpredictability. `TNN` against an
+      // actual `TNT`: position 1 is the `jal`, bet taken WITHOUT consulting a cold counter (which
+      // would read `N`); position 3 is the `ret`, unpredictable under every scheme.
+      'call-return': { 'dynamic-1bit': 'TNN', 'dynamic-2bit': 'TNN' },
+    };
+
+    for (const [program, byScheme] of Object.entries(PINNED)) {
+      for (const [scheme, expected] of Object.entries(byScheme)) {
+        for (const model of betting) {
+          expect(
+            betsOf(program, model, scheme as BranchPrediction),
+            `${model.id} on ${program} under ${scheme}`,
+          ).toBe(expected);
+        }
+      }
+    }
+
+    // Non-vacuity, in this test's own terms rather than by pointing elsewhere: the helper must be
+    // capable of telling schemes apart at all, and the two dynamic strings must genuinely differ on
+    // the program chosen to separate them — otherwise "all four agree" would be satisfied by a
+    // helper that had quietly stopped applying the knob.
+    const one = betting[0]!;
+    expect(betsOf('nested-loop', one, 'dynamic-1bit')).not.toBe(
+      betsOf('nested-loop', one, 'dynamic-2bit'),
+    );
+    expect(betsOf('nested-loop', one, 'static-taken')).not.toBe(
+      betsOf('nested-loop', one, 'dynamic-2bit'),
+    );
+    // ...and `call-return` really does carry the jump the other program lacks, which is the whole
+    // reason it is here: a `static-taken` machine bets its `jal` AND its `bge`, a dynamic one bets
+    // only the `jal`.
+    expect(betsOf('call-return', one, 'static-taken')).toBe('TTN');
   });
 
   /**
