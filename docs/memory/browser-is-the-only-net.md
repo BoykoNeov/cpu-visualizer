@@ -5,15 +5,25 @@ metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-07-30T09:49:41.091Z
+  modified: 2026-08-09T17:30:43.360Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
 The headless suite structurally cannot see it: `vitest.config.ts` sets `environment: 'node'`, there
 is **no jsdom and no driver installed**, and every web test is `renderToStaticMarkup`. It renders;
-it does not click. `App.test.tsx`'s own docblock names this gap, and the record is that **9 of the
-last 10 view steps shipped a defect no green suite could see** — the ISA panel made it 9/10 with
-**four defects while 80 tests passed**.
+it does not click. `App.test.tsx`'s own docblock names this gap, and the record is now **10 of the
+last 11 view steps shipped a defect no green suite could see** — the ISA panel made it 9/10 with
+**four defects while 80 tests passed**, and the branch-predictor panel made it 10/11 on 2026-08-09
+(33px of cursor-driven height jitter, [[panel-jitter-and-height-reserves]], with the whole 9493-test
+suite green through it).
+
+⚠ **The browser is also the only place some gates can be tested AT ALL, and that is worth a number
+rather than a shrug.** Nothing in this repo renders `<App/>`, so its slot gates (`showPredictor`,
+`showCache`, `showMicro`, `showIssue`) are untestable **by position** — a defect recorded as
+"reddens 0" for four milestones. Fired in the browser at step 7 of the predictor work: gating the
+predictor panel on the scheme instead of on a trace fact is **0 red of 9497 headless, 2 red of 52 in
+the browser**. Same shape as [[keyboard-clock-control]]'s 68/68 and [[continuous-play]]'s 47/47 —
+**when a decision has no headless net, the browser pass is where you state its cost as a pair.**
 
 **Why:** measured repeatedly, not assumed — e.g. hardcoding `predictTaken: false` in `App` leaves
 **all 775 tests green**; deleting `branchPrediction` from `loadInto` fails nothing. A control can be

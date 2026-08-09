@@ -1,21 +1,95 @@
 ---
 name: dynamic-branch-prediction
-description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 THROUGH 6 DONE - step 6 on 2026-08-09; the predictor panel ships, all four betting models bet from a live counter table, train it at resolve and record it deep-copied. Steps 7-8 remain: the browser pass, a lesson). Read before step 7, before writing any view fold over a per-cycle event (COUNT the events before choosing between a scalar and a list - a saturating counter means a diff-keyed highlight goes dark for exactly the branches that have been LEARNT), before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy - all four models reddened exactly 20), before adding a knob to a model that speculates, before writing a cross-model test, and before trusting a break row you wrote by hand. Headlines: INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core (180 dynamic-only cells caught wrong-path instructions COMMITTING); a break-table count EXPIRES when the suite grows; depth and width argue for a counter for OPPOSITE reasons; the never-bets identity is a theorem on the superscalar and FALSE on the OoO; two call sites of one predicate need TWO tests and call-return.s is the only witness - AGAIN; App slot gates are untestable BY POSITION; and the cross-model test written to close a gap swept the wrong program and caught nothing. Also the reusable method for pricing an unbuilt config knob offline, and exactly where it stops working.'
+description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0 THROUGH 7 DONE - steps 3-7 on 2026-08-09; the predictor panel ships, all four betting models bet from a live counter table, and the browser pass has run. ONLY STEP 8, the lesson, remains). Read before step 8, before writing any view fold over a per-cycle event (COUNT the events before choosing between a scalar and a list - a saturating counter means a diff-keyed highlight goes dark for exactly the branches that have been LEARNT), before deep-copying anything into a micro snapshot (a wrapper spread is exactly as broken as no copy - all four models reddened exactly 20), before adding a knob to a model that speculates, before writing a cross-model test, and before trusting a break row you wrote by hand. Headlines: a "height is constant BY CONSTRUCTION" docblock is scoped to the thing it was reasoned about and a panel is not only its rows (33px of cursor-driven jitter, 900-1180px); App slot gates are untestable BY POSITION and the browser closed it at headless 0 / browser 2; a rig dump is only an oracle for the config the app is ACTUALLY in, and defaultConfig() is not OPENING_KNOBS; INV-8 is a FALSE net on the three latch models and a REAL one on the out-of-order core (180 dynamic-only cells caught wrong-path instructions COMMITTING); a break-table count EXPIRES when the suite grows; depth and width argue for a counter for OPPOSITE reasons; the never-bets identity is a theorem on the superscalar and FALSE on the OoO; two call sites of one predicate need TWO tests and call-return.s is the only witness - AGAIN. Also the reusable method for pricing an unbuilt config knob offline, and exactly where it stops working.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T16:11:33.936Z
+  modified: 2026-08-09T17:30:07.288Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 6 complete — step 6 on 2026-08-09.
-ALL FOUR betting models bet from a live counter table, train it at resolve, record it deep-copied,
-and the panel DRAWS it.** A 1-bit/2-bit
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0 through 7 complete — steps 3–7 on
+2026-08-09. ALL FOUR betting models bet from a live counter table, train it at resolve, record it
+deep-copied, the panel DRAWS it, and the browser pass has run.** A 1-bit/2-bit
 saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
 `configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
-and [[continuous-play]]. **Steps 7–8 remain: the browser pass, the lesson.** The
+and [[continuous-play]]. **ONLY STEP 8 — the lesson — remains.** The
 full measured tables live in the plan; only what a future session would otherwise re-derive is here.
-Repo at 9493 tests.
+Repo at 9497 tests.
+
+## Step 7 — the browser pass, and the docblock that declared the panel exempt (2026-08-09)
+
+**52 checks, one real defect, four rig lies — of the 4 failures in the first full run, ONE was the
+app.** Rig at `M:\claud_projects\temp\bp-step7\`: `rig.mjs` (CDP plumbing + page helpers, ported
+from `m13-step9`), `dump.test.ts` + `widest.test.ts` (pre-browser dumps), `recon.mjs`,
+`eyeball.mjs` (the 52), `probe-jitter.mjs`/`probe-fixed.mjs` (the defect before and after).
+
+⚠ **THE DEFECT: the panel's height stepped 33px with the CURSOR, between 900px and 1180px** — flat
+at ≥1200 (`main` is capped at `maxWidth: 1200`) and flat at ≤890 (both states wrap). Identical on
+the 5-stage and on the crowded OoO config, `dBelow` 33 at every width in the band. Cause: the one
+cursor-dependent string in the panel (`no branch resolved this cycle` ~200px vs a full
+`MISPREDICT … row 6: 3 → 2` ~470px) sat in the heading's `flexWrap: wrap` row. **The carry-forward
+rule is about the DOCBLOCK, not the CSS: `predictor-table.ts` said "its height is constant by
+construction" as the reason no reserve was needed — true of the sixteen ROWS, written about the
+PANEL. A "by construction" height claim is scoped to the thing it was reasoned about, and a panel is
+not only its rows.** Third instance of [[panel-jitter-and-height-reserves]]'s class, and the second
+found AFTER that class was declared closed (the sticky bar was the first).
+
+**The fix is the transport bar's, not the cache grid's** — move the cursor-dependent text out of the
+wrapping row, never reserve its peak width inside it (reserving makes every cursor as wide as the
+peak, so the row wraps at ALL cursors: stable and stably worse; and a ghost manufactures a fresh
+decoy for every document-wide selector). ⚠ **Second half, which would have been a fresh 1px defect:
+once the caption owns a row, ITS line box IS the row's height** — the two states were 0.75rem/sans
+and 0.78rem/MONO, the cache grid's `IDLE_TAG_RESERVE` finding, latent while the caption shared a row
+with an `<h2>` and load-bearing the moment it did not. One element, hue and words only.
+
+**Re-measured after the fix over 27 widths × 3 configs: FLAT everywhere**, including the corpus's
+WIDEST caption (68 chars, `array-sum-twice.s` @269 under 1-bit — found by measuring all 178 train
+cycles, since `nested-loop.s`'s widest is only 66). Guard in `layout-stability.test.tsx` (26 → 30):
+reverting the fix reddens **4 of 9497, all four of them these**. Re-measuring rather than trusting
+the guard is the point — that file's own scar is a fix that shipped with a passing guard while the
+browser measured no change.
+
+⚠ **BREAK ROW 9 IS CLOSED, and the number is the deliverable: headless 0 of 9497, browser 2 of 52.**
+Step 6 recorded the App slot gate as untestable BY POSITION. Gating on the scheme instead of
+`hasPredictorTable` leaves `npm test` fully green while a user holding `2-bit` on the pipeline and
+switching to single-cycle gets a counter table drawn for a machine with none. Same shape as
+[[keyboard-clock-control]]'s 68/68 and [[continuous-play]]'s 47/47.
+
+⚠ **THE FLAGSHIP IS ONE CURSOR PAIR, and step 8 should anchor there.** Under BOTH dynamic schemes
+`nested-loop.s`'s inner loop exits at cycle **37** and re-enters at **53**: at 53, 1-bit reads
+`MISPREDICT … row 6: 0 → 1` and 2-bit reads `CORRECT … row 6: 2 → 3`. One knob, same cursor,
+opposite verdict. (And note the run's LAST cycle holds no strongly-taken counter — step 6's finding;
+anything reaching for the end reads a weakened counter and calls it a bug.)
+
+⚠ **THREE OF THE FOUR RIG LIES WERE THE RIG'S EXPECTATIONS, NOT ITS SELECTORS** — the newer half of
+[[browser-rig-vacuity-traps]]:
+
+- **A dump is only an oracle for the config the app is actually in, and "the default config" is TWO
+  different things here.** `ProcessorConfig` leaves `issueWidth`/`outOfOrderIssue`/`robSize`
+  **optional**, so `defaultConfig()` hands the engine `undefined` and each model falls back to its
+  OWN default, while the shell opens on `session.ts`'s `OPENING_KNOBS` (1 / false / 16). A 26-cycle
+  disagreement on the OoO (104 vs 130) that read exactly like a broken model picker.
+- ⚠ **Never restore by clearing a style the FRAMEWORK owns.** The counterfactual hid
+  `span[1].parentElement` — which IS the header div — then restored with `style.display = ''`,
+  stripping the `display: flex` React never re-sets because the prop did not change. The NEXT
+  section then reported "the header wraps at 1400px", which was that corruption. Use
+  `visibility: hidden` + `position: absolute`, and **re-navigate between sections that mutate the
+  DOM**: a rig's later sections inherit its earlier sections' damage.
+- **A check demanded that an app-wide CONSTANT be theme-dependent.** `T.ink3` is `--ink-3` =
+  `#898781` in all three CSS blocks by design (8 call sites); requiring the unowned row's ink to
+  move between palettes reports a defect against a deliberate decision. Assert the surface's OWN new
+  ink (`monoGreen` `#0a8a6b`→`#35bf95`, `monoAmber` `#a06400`→`#d9a441`) and pin the invariance as
+  its own check.
+
+**Measured clean, so a future pass need not re-run it:** the six-column row grid neither wraps nor
+scrolls the page down to 800px, **0 of 16 owner columns ellipsised** on any corpus program, all
+sixteen rows one height (23.38px), the follow ring lights exactly the resolving branch's row and
+nothing for a non-branch, and the panel is byte-identical at all three depth tiers (it takes no
+`tier` prop). **Not settled:** the pip meter fills `counter + 1` pips so a counter at 0 lights one
+and the meter is never empty — recorded as a reviewer's question, not a browser finding; the
+multi-owner aliasing path is still unreachable from the corpus; and **the LESSON path was not
+driven, because there is no predictor lesson until step 8 — step 8's own pass must drive it.**
 
 ## Step 6 — the panel, and the shape that had to be counted before it was typed (2026-08-09)
 

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 573123f6-87e0-4ded-b6e3-f2357201c7ae
-  modified: 2026-07-30T09:20:07.035Z
+  modified: 2026-08-09T17:32:33.099Z
 ---
 
 Once you can drive the app ([[browser-rig-cdp-recipe]]), the remaining failure mode is a check that
@@ -54,6 +54,34 @@ the lever moves" rule below, in its other direction: there the APP's contract mo
 the app grew a NEIGHBOUR. Before re-running an old rig after any layout work, ask what new elements
 answer to its selectors. The fix is the scoping rule below, stated on the component's own ARIA
 (`section[aria-label="Lesson narration"]`).
+
+**⚠ A PRE-BROWSER DUMP IS ONLY AN ORACLE FOR THE CONFIG THE APP IS ACTUALLY IN — and "the default
+config" can be two different things** (2026-08-09, the predictor's step 7). The dump ran each model
+on `defaultConfig()`; `ProcessorConfig` leaves `issueWidth` / `outOfOrderIssue` / `robSize`
+**optional**, so the engine got `undefined` and fell back to its OWN defaults, while the shell opens
+on `session.ts`'s `OPENING_KNOBS` (1 / false / 16). The out-of-order column came out 104 against the
+app's 130 and read exactly like a broken model picker. The dump rule this file already states
+("read every expected NUMBER from the dump") has a precondition: **the dump must be handed the
+knobs the shell opens on, not the ones the type makes convenient.** Check optional config fields
+first — they are where the two defaults diverge silently.
+
+**⚠ NEVER RESTORE A COUNTERFACTUAL BY CLEARING A STYLE THE FRAMEWORK OWNS, AND RE-NAVIGATE AFTER
+ONE** (same pass). A rig hid an element with `style.display = 'none'` and restored with
+`style.display = ''`. React had set `display: flex` from a style prop that did not change, so it
+never re-set it — the row silently became `display: block` for the REST OF THE RUN, and the next
+section reported "the header wraps at 1400px", which was that damage rather than a finding. Two
+rules: use `visibility: hidden` + `position: absolute` (which also removes the ghost from the a11y
+tree), and **re-navigate between sections that mutate the DOM** — a rig's later sections inherit its
+earlier sections' damage, which is the leftover-state trap below aimed at your own script instead of
+at the app. Also: target the counterfactual precisely — `span[1].parentElement` was the CONTAINER,
+so the "hide one caption" probe hid the whole header and its number meant nothing.
+
+**⚠ A CHECK THAT REQUIRES AN APP-WIDE CONSTANT TO BE A VARIABLE REPORTS A DEFECT AGAINST A DECISION**
+(same pass). "The panel's ink must differ between palettes" failed on the unowned row — because
+`T.ink3` is `--ink-3` = `#898781` in **all three** CSS blocks by design, 8 call sites. Assert the
+surface's OWN new ink, and pin the invariance as its own check so the next reader is not told twice.
+General form: before asserting that a value moves with a mode, grep whether it is defined per-mode
+at all.
 
 **Scope every panel read to its own `<section>`.** An unscoped search for a leaf whose text is a
 data-memory ADDRESS finds the REGISTERS panel first, where a register holds that same address as a

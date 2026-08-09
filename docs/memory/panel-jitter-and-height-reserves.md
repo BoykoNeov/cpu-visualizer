@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 1159b994-75bd-457b-95ff-85fe2ac2c2bf
-  modified: 2026-07-30T18:19:46.254Z
+  modified: 2026-08-09T17:30:31.013Z
 ---
 
 Stepping the clock resized five panels, and since the shell is a vertical stack each one shoved every
@@ -133,6 +133,31 @@ so every viewport ≥1200px is ONE layout and sweeping wider widths measures the
   `transport-sweep` (14 widths × every cursor), `budget-probe`, `threshold-probe`,
   `verify-thresholds`, `narrow-probe`, `follow-and-lesson` (the follow flip AND both ends of the
   lesson list — the path four consecutive passes forgot), `shot-bar`.
+
+**⚠ THE CLASS REOPENED A THIRD TIME (2026-08-09, the predictor panel — fixed), and this one was
+armoured by a DOCBLOCK rather than missed by a sweep.** `predictor-table.ts` argued the branch-
+predictor panel needed no reserve because it draws all sixteen counter rows on every cycle, "so its
+height is constant by construction". True of the ROWS; written about the PANEL. The heading row was
+a `flexWrap: wrap` flex holding the one cursor-dependent string in the surface, so between **900px
+and 1180px** the panel was 487.9px on a quiet cycle and 520.9px on a resolve — **33px appearing and
+disappearing as the clock stepped**, every surface below moving with it. Flat at ≥1200px only
+because `main`'s cap makes one layout, and flat at ≤890px because both states wrap.
+
+- **The transferable rule is about the CLAIM: a "by construction" height argument is scoped to the
+  thing it was reasoned about, and a panel is not only its rows.** Ask what else is in the box. This
+  is the sticky bar's lesson ("a bar is not a panel") one level in — there the sweep's SELECTOR was
+  too narrow, here the reasoning's SUBJECT was.
+- **The fix was the sticky bar's again** — move the cursor-dependent text out of the wrapping row,
+  onto its own line — and reserving-in-row was rejected for the same measured reason. A ghost was
+  also rejected on the decoy ground this file records two paragraphs up.
+- ⚠ **Moving a caption onto its own row makes ITS line box the row's height**, which promotes the
+  cache grid's content/font/size finding from latent to load-bearing: the two states were 0.75rem
+  sans and 0.78rem mono. One element, hue and words only. **Expect this every time you relocate a
+  two-state string out of a shared row.**
+- The residual question ("can the caption's own row wrap?") was answered by MEASURING the corpus's
+  widest caption (68 chars, `array-sum-twice.s` @269) rather than estimating: 21px at every width
+  down to 620px. Guard in `layout-stability.test.tsx` (26 → 30 tests), verified by reverting —
+  4 red of 9497, all four of them these.
 
 **Scope: cursor-driven change only.** A width flip, the depth dial and picking a lesson are deliberate
 acts and a panel may resize on them — the line the narration panel's own comment already drew. Also
