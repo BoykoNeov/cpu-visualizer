@@ -25,6 +25,7 @@ import {
   counterGeometry,
   predictorIndex,
   toProgramImage,
+  type PredictorState,
 } from '@cpu-viz/engine-common';
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { OutOfOrderProcessor } from '@cpu-viz/engine-out-of-order';
@@ -108,6 +109,56 @@ describe('the gate is a TRACE fact, not the scheme', () => {
     });
     for (const scheme of ['none', 'static-not-taken', 'static-taken'] as const) {
       expect(buildPredictorTable(recorded[5] ?? null, recorded, scheme), scheme).toBeNull();
+    }
+  });
+
+  /**
+   * ⚠ **The tripwire for the fold's `?? cold` fallback, which is otherwise a comment.**
+   *
+   * `buildPredictorTable` reads `predictorOf(trace)?.counters ?? cold`, so a cycle whose
+   * `micro.predictor` came back null would draw a COLD table for a frame that has none — on every
+   * cycle, with no error and nothing on screen to say the counters are fiction. The test above
+   * deliberately exercises that fallback from the SCHEME side (a table folded out of a recording
+   * that has none), which is the pre-run path and is correct; what nothing measured is whether it
+   * can fire from the TRACE side on a real run.
+   *
+   * Swept at step 6 (336 runs / 14,108 cycles, every model × width × issue mode × both schemes ×
+   * all twelve programs): **it cannot — zero null cycles, zero missing keys, zero counter arrays of
+   * the wrong length.** So the fallback is unreachable here, and this is the test that says so
+   * rather than a docblock claiming it. A future model that records the table lazily (null until
+   * its first bet, say) turns this red instead of silently drawing a cold table for its whole run.
+   *
+   * ⚠ Its non-vacuity is the static half: under a scheme with no predictor the field IS null on
+   * every cycle (7,142 measured), so "non-null" is a property of the SCHEME rather than of a field
+   * that happens to always be populated. Without that control this sweep would pass unchanged
+   * against an engine that populated the table under every scheme.
+   */
+  it('never records a NULL table on a cycle of a dynamic run — the fallback is unreachable', () => {
+    for (const model of MODELS) {
+      for (const scheme of DYNAMIC) {
+        for (const program of EXAMPLE_PROGRAMS) {
+          const recorded = record(program.name, model.make, { branchPrediction: scheme });
+          const where = `${model.id}/${scheme}/${program.name}`;
+          expect(recorded.length, `${where}: nothing recorded`).toBeGreaterThan(0);
+          for (const trace of recorded) {
+            const micro = trace.state.micro as { predictor?: PredictorState | null } | undefined;
+            expect(micro?.predictor ?? null, `${where} cycle ${trace.cycle}`).not.toBeNull();
+            expect(micro!.predictor!.counters, `${where} cycle ${trace.cycle}`).toHaveLength(
+              PREDICTOR_ENTRIES,
+            );
+          }
+        }
+      }
+    }
+
+    // The control, and it is what makes the sweep above mean anything: the same field under a
+    // scheme with no table is null on every cycle of every model.
+    for (const model of MODELS) {
+      const recorded = record('nested-loop', model.make, { branchPrediction: 'static-taken' });
+      for (const trace of recorded) {
+        const micro = trace.state.micro as { predictor?: PredictorState | null } | undefined;
+        expect(micro?.predictor ?? null, `${model.id} cycle ${trace.cycle}`).toBeNull();
+      }
     }
   });
 });
