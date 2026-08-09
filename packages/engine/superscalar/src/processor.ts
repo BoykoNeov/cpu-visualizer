@@ -93,6 +93,9 @@ import {
   access,
   newCache,
   MAX_ISSUE_WIDTH,
+  BranchPredictor,
+  isConditionalBranch,
+  isDynamicScheme,
   type CacheState,
   type PredictorState,
 } from '@cpu-viz/engine-common';
@@ -234,9 +237,9 @@ export interface SuperscalarMicro {
    */
   readonly cache: CacheState | null;
   /**
-   * The branch history table's counters, or `null` when the configured scheme has no memory. **Null
-   * on every recorded cycle as of the dynamic-branch-prediction plan's step 1** — nothing
-   * constructs a predictor until step 3 wires the pipeline and step 5 reaches this model.
+   * The branch history table's counters, or `null` when the configured scheme has no memory —
+   * which is every static scheme, so `null` IS the M7/M13 machine. Live since the
+   * dynamic-branch-prediction plan's **step 5**, which wired this model's bet and training sites.
    *
    * **ONE table for the whole machine, not one per lane** — which is why this is a bare
    * {@link PredictorState} and not an array, unlike every latch field above it. A per-lane predictor
@@ -603,6 +606,21 @@ export class SuperscalarProcessor implements Processor {
    * a boolean is the honest encoding of that, rather than a `switch` with two identical arms.
    */
   private predictTaken = false;
+  /**
+   * The branch history table (dynamic-branch-prediction step 5), or `null` under every static
+   * scheme — so `null` is the M7/M13 machine unchanged and the whole dynamic path is inert under it.
+   *
+   * ⚠ **ONE table for the machine, not one per lane, and that is a pinned decision rather than an
+   * economy.** A per-lane table would be a different and unrealistic processor: two lanes would
+   * disagree about the same branch depending on which slot happened to fetch it, so a program's
+   * bets would depend on its alignment. The plan pins "one table per machine" for the OoO core for
+   * the identical reason, and this is where the four wiring sites first make the question concrete.
+   *
+   * **Single-buffered and mutated in place** by EX's training call, exactly like {@link cache} —
+   * hence the `.slice()` in {@link snapshotState}. Constructed once per {@link reset} so the counter
+   * width is derived in ONE place for every lane.
+   */
+  private predictor: BranchPredictor | null = null;
   /** The D-cache config, or `null` for the cache-less machine `defaultConfig()` selects. */
   private cacheConfig: CacheConfig | null = null;
   /** The single-buffered tag/valid state, mutated in place by {@link access}; null iff no cache. */
@@ -635,6 +653,11 @@ export class SuperscalarProcessor implements Processor {
     this.width = width;
     this.forwarding = config.forwarding;
     this.predictTaken = config.branchPrediction === 'static-taken';
+    // A fresh, COLD table per run (INV-1: no state may survive a reset), and ONE table for the whole
+    // machine rather than one per lane — see {@link predictor}.
+    this.predictor = isDynamicScheme(config.branchPrediction)
+      ? new BranchPredictor(config.branchPrediction)
+      : null;
     this.cacheConfig = config.cache;
     this.cache = config.cache === null ? null : newCache(config.cache);
     this.registers = makeRegisters();
@@ -1317,6 +1340,21 @@ export class SuperscalarProcessor implements Processor {
         actual: taken,
         target: nextPc,
       });
+      // TRAINING (dynamic-branch-prediction step 5), the only place it happens on this model. The
+      // counter learns what the branch ACTUALLY did, from the branch's OWN pc — the same pc the bet
+      // was placed with in ID, which is what makes the two touch one counter. Conditional branches
+      // only, spelled by the shared {@link isConditionalBranch} so the wiring sites cannot answer
+      // the two `jal` decisions differently.
+      //
+      // ⚠ **Resolve-time and commit-time coincide here, and the LANE-AWARE SQUASH above is why.**
+      // Slots are walked oldest-first, and a slot whose older sibling has already raised
+      // `ctx.squash` this cycle returns before reaching this line — no ALU, no `branch-resolved`,
+      // and now no training either. So a branch that trains the table always retires, and the
+      // update-on-resolve vs update-on-commit fork the plan holds open for the OoO core cannot be
+      // observed on this machine. Widening did not change that: the rule is per-slot, not per-lane.
+      if (this.predictor !== null && isConditionalBranch(d)) {
+        this.predictor.update(ie.pc, taken);
+      }
       if (predicted !== taken) {
         // `nextPc` is the correction for BOTH directions with no branching on which way we were
         // wrong: the schema defines it as "the resolved next pc, whichever way it went".
@@ -1501,9 +1539,9 @@ export class SuperscalarProcessor implements Processor {
       // overwriting the very redirect that condemned it. The reverse stage walk (EX before ID) is
       // precisely what makes "the correction always beats the bet" structural.
       //
-      // `predictTaken` gates it, so under 'none'/'static-not-taken' this is dead. A halt is not a
+      // `betTarget` gates it, so under 'none'/'static-not-taken' this is dead. A halt is not a
       // transfer, so the `isArchHalt` squash above cannot coincide with a bet.
-      const target = this.predictTaken ? speculativeTarget(d, fd.pc) : null;
+      const target = this.betTarget(d, fd.pc);
       if (target !== null) {
         ctx.bet = { slot: s, target };
         ctx.redirect = target; // applied at the clock edge, AFTER IF has fetched the fall-through
@@ -1560,6 +1598,33 @@ export class SuperscalarProcessor implements Processor {
         ctx.next.ifId[s - issued] = ctx.prev.ifId[s] ?? null;
       }
     }
+  }
+
+  /**
+   * **The bet, in one place** — where this word would be predicted to go, or `null` for "no bet"
+   * (not a predictable transfer, or predicted not-taken). Identical in shape to the 5-stage's and
+   * the deep pipeline's, deliberately: the plan's step-5 risk is four models answering one policy
+   * four ways, so all three decisions below are shared predicates rather than inline tests.
+   *
+   *  1. **Not a PC-relative transfer** ⇒ no bet, under every scheme.
+   *  2. **No table** ⇒ M4's machine verbatim, `predictTaken` alone. The dynamic path is inert.
+   *  3. **A table** ⇒ a conditional branch asks its counter; `jal` bypasses it and is bet taken.
+   *
+   * ⚠ **Called per SLOT, against one shared table, and the ordering matters.** The issue loop walks
+   * slots oldest-first and a bet ENDS the group, so at most one bet is placed per cycle and it is
+   * always the oldest transfer in the group — the same instruction that would have been bet at
+   * width 1. Two lanes therefore never race for a counter, and a program's bets do not depend on
+   * which slot happened to fetch its branch. The pairing rules already forbid two transfers in one
+   * group, so this is structural rather than a property of the corpus.
+   *
+   * ⚠ **Read-only: consulting the table never trains it.** Training is EX's, at resolution.
+   */
+  private betTarget(d: DecodedInstruction, pc: number): number | null {
+    const target = speculativeTarget(d, pc);
+    if (target === null) return null;
+    if (this.predictor === null) return this.predictTaken ? target : null;
+    if (!isConditionalBranch(d)) return target;
+    return this.predictor.predict(pc) ? target : null;
   }
 
   /**
@@ -1787,13 +1852,14 @@ export class SuperscalarProcessor implements Processor {
    *   recording, replaying a cold cache as warm-from-the-start. `recorder.test.ts` now pins it,
    *   because time-travel is the only layer at which it is observable at all.
    *
-   * ⚠ **"Uniquely so" is true on THIS model and stops being true at the dynamic-branch-prediction
-   * plan's step 5**, when `predictor` becomes the second load-bearing deep copy — single-buffered
-   * and mutated in place for the identical reason, and with the identical 694-tests-green failure
-   * mode. Flagged here because this docblock, not the field's, is what someone deciding what to copy
-   * reads. **The pipeline already did it** at step 4: `.slice()` the counters, and NOT a spread of
-   * the `PredictorState` wrapper, which builds a fresh object around the same array and aliases
-   * every cycle anyway while passing an identity check on the object.
+   * ⚠ **"Uniquely so" stopped being true at the dynamic-branch-prediction plan's step 5**: the
+   * counter table is the SECOND load-bearing deep copy — single-buffered and mutated in place for
+   * the identical reason, with the identical everything-stays-green failure mode. Flagged here
+   * because this docblock, not the field's, is what someone deciding what to copy reads.
+   * **`.slice()` the counters, and NOT a spread of the `PredictorState` wrapper**, which builds a
+   * fresh object around the same array and aliases every cycle anyway while passing an identity
+   * check on the object — measured on the 5-stage as reddening the identical 20 tests as no copy at
+   * all, and reproduced cell for cell on the deep pipeline.
    */
   private snapshotState(latches: Latches): MachineState {
     const micro: SuperscalarMicro = {
@@ -1803,9 +1869,11 @@ export class SuperscalarProcessor implements Processor {
       exMem: latches.exMem.slice(),
       memWb: latches.memWb.slice(),
       cache: this.cache === null ? null : { lines: this.cache.lines.map((l) => ({ ...l })) },
-      // Always null until the plan's step 5 reaches this model; the deep copy that must arrive
-      // with it is specified in `SuperscalarMicro.predictor`'s docblock, next to the cache's.
-      predictor: null,
+      // The counter table (step 5), copied the same way and for the same reason as the cache above.
+      // `.slice()` is the whole of it: `PredictorState` holds counters and nothing else, so copying
+      // the array IS the deep copy — and both cheaper spellings alias. ONE table, not one per lane.
+      predictor:
+        this.predictor === null ? null : { counters: this.predictor.snapshot().counters.slice() },
     };
     return {
       pc: this.pc,

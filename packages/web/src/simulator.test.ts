@@ -497,14 +497,12 @@ describe('the prediction control has four positions because the machine has four
     // half of the union alone. So the baseline is `'static-not-taken'` rather than `'none'`, and the
     // sweep is the two dynamic names rather than all five.
     //
-    // ⚠ **`'deep-pipeline'` was removed here when step 5 wired it** — it bets from a counter table
-    // now, so its dynamic recordings differ from not-taken and this assertion was RED against it
-    // before the wiring landed, which is the arrival this block exists to produce. When the last
-    // name goes, the block goes with it: an empty loop asserts nothing while still reading as a net.
-    const STILL_INERT = [
-      ['superscalar', () => new SuperscalarProcessor()],
-      ['out-of-order', () => new OutOfOrderProcessor()],
-    ] as const;
+    // ⚠ **`'deep-pipeline'` and then `'superscalar'` were removed here as step 5 wired them** —
+    // each bets from a counter table now, so its dynamic recordings differ from not-taken and this
+    // assertion was RED against it before its wiring landed, which is the arrival this block exists
+    // to produce. When the last name goes, the block goes with it: an empty loop asserts nothing
+    // while still reading as a net.
+    const STILL_INERT = [['out-of-order', () => new OutOfOrderProcessor()]] as const;
     expect(STILL_INERT.length, 'when this hits zero, DELETE the block').toBeGreaterThan(0);
     for (const [model, make] of STILL_INERT) {
       // Non-vacuity for THIS block, in its own terms: these models do honor the knob, so a helper

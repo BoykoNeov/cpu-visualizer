@@ -46,7 +46,24 @@ import { MAX_ISSUE_WIDTH, SuperscalarProcessor } from './index';
  * pipeline's own pinned cycle counts against this engine, so a faithful port must reproduce them to
  * the cycle.
  */
-const SCHEMES = ['none', 'static-not-taken', 'static-taken'] as const;
+/**
+ * ⚠ **The two dynamic schemes joined at the dynamic-branch-prediction plan's step 5, and green
+ * cells here are NOT evidence this model honors them.** Speculation is architecturally invisible by
+ * construction, so a machine that ignored `'dynamic-1bit'` entirely passes every cell — measured on
+ * the 5-stage at step 3, where the knob was left unhonored on purpose and all 50 cells stayed green
+ * while `dynamic-predict.test.ts` went red. `m7-superscalar-engine` records INV-8 as a FALSE net
+ * outright. What the extra columns buy is coverage of paths the static schemes never take: a
+ * dynamic scheme mispredicts in BOTH directions on the same branch within one run, and at width > 1
+ * it re-partitions issue groups differently on every pass — which is where a speculation LEAK (a
+ * wrong-path write surviving its squash) would hide.
+ */
+const SCHEMES = [
+  'none',
+  'static-not-taken',
+  'static-taken',
+  'dynamic-1bit',
+  'dynamic-2bit',
+] as const;
 const CACHES: (CacheConfig | null)[] = [null, CACHE_SMALL, CACHE_LARGE];
 
 /**
