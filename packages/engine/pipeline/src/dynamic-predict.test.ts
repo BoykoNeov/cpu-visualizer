@@ -33,13 +33,34 @@ import { PipelineProcessor } from './index';
  *
  * **1. The prediction STRING, replayed event-for-event.** For every program and both dynamic
  * schemes, the ordered sequence of `branch-resolved.predicted` must equal what an offline
- * `BranchPredictor`, driven by the same branches in the same order, would have said. This is the
- * claim the other two cannot make, and the concrete defect it exists for is **`update` handed the
- * wrong pc**: train the table at the target address, or at the next instruction's address, and on
- * this corpus almost every cycle count stays exactly right — the counters still learn, just in
- * different rows, and rows only interact where two branches alias. `nested-loop.s` is the corpus's
- * only aliasing witness and it aliases at 4 entries, not the pinned 16. A wrong-pc predictor is
- * therefore INVISIBLE to claim 3 and visible here.
+ * `BranchPredictor`, driven by the same branches in the same order, would have said. It reaches each
+ * branch's pc by a completely different route than the engine did — `branch-resolved` carries
+ * neither a pc nor a mnemonic, so the replay joins through `instr-fetch` and re-decodes the
+ * encoding.
+ *
+ * ⚠ **This was written to be the UNIQUE net for an `update` handed the wrong pc, and the break
+ * harness measured that it is not — the claim was wrong and the corrected version is more useful.**
+ * The prediction was that training the wrong row would leave cycle counts intact, because rows only
+ * interact where two branches alias and this corpus's only aliasing witness aliases at 4 entries
+ * rather than the pinned 16. Measured, `update(nextPc)` reddens **31** tests including **six cycle
+ * counts**: decoupling the row you train from the row you read does not merely relabel the table,
+ * it makes every counter answer for a branch that is not the one being predicted, which changes the
+ * bets themselves. Claim 3 sees it perfectly well.
+ *
+ * The wrong-pc mutation that IS invisible to both is the other one — **a CONSISTENT shift**, where
+ * predict and update move together (`predictorIndex` rotated by one entry). Nothing in the engine,
+ * the trace, or this file can see it, because a rotation is a bijection on rows and collisions
+ * survive it exactly; the plan says the same of a non-zero `TEXT_BASE`. The only thing that catches
+ * it is `predictor.test.ts`'s unit tests on `predictorIndex` itself — the arithmetic that shipped
+ * with NO test at step 1 and was closed retroactively. So the index function's own tests are not
+ * redundant with anything here; they are the sole net for their own defect class.
+ *
+ * **What this replay actually buys, then, is LOCALIZATION rather than coverage** — when a cycle
+ * count moves, it names the branch and the bet that moved it — plus one genuine catch of its own: a
+ * step-5 copy-paste that changes a policy in a model and "fixes" the replay to match would keep
+ * this green and would still fail claim 2, whose strings are literals. Stated as measured, because
+ * a test file that claims to be the only net for a defect it does not uniquely catch is worse than
+ * one that says what it is.
  *
  * **2. The literal strings, pinned.** The replay above proves the engine agrees with the class; it
  * does not pin the POLICY the two of them share. Written out, `call-return.s`'s `TNN` says three

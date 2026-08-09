@@ -6,12 +6,13 @@ each with a lesson track. **NO milestone is in progress.**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **two are done** — keyboard clock control and continuous play (both 2026-07-30). The
-corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7606
-tests** (7597 after branch prediction's step 1, 7606 after step 2), five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
+corpus is now **twelve** programs (`nested-loop.s` landed 2026-07-30) and the repo runs **7828
+tests** (7597 after branch prediction's step 1, 7606 after step 2, 7828 after step 3), five gates green. A third shell fix landed 2026-07-30: the **sticky transport bar's per-step
 jitter** (user-reported), which also closed continuous play's sub-880px residual and moved both
 caption thresholds — see [Panel jitter](panel-jitter-and-height-reserves.md). **Open work: dynamic
-branch prediction (plan written, STEPS 0, 0b, 1 AND 2 DONE — step 2 on 2026-08-09; the class exists
-but nothing constructs it, so still no engine behavior — the only thing in flight), URL permalinks,
+branch prediction (plan written, STEPS 0, 0b, 1, 2 AND 3 DONE — step 3 on 2026-08-09; the PIPELINE
+now bets from a live counter table, so the feature has real behavior for the first time — the only
+thing in flight), URL permalinks,
 session persistence, and
 the `/code-review ultra` fan-out over `89bb26e..HEAD`** (user-triggered; the no-arg form bundles the
 local branch and needs no PR).
@@ -45,11 +46,18 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 ## Post-M14 work
 
 - [Dynamic branch prediction](dynamic-branch-prediction.md) — **the only thing in flight.** Steps 0,
-  0b, 1 and **2** done (schema + the `BranchPredictor` class; nothing constructs one, so still no
-  engine behavior); `nested-loop.s` is in the corpus. Step 2 adds three rules: **an API that accepts
-  a richer argument silently answers the questions that argument encodes**; **a getter made
-  defensive can dissolve a later step's whole content**; and **the canonical demo sequence is
-  usually not the test of the mechanism** — `TTTTNTTTT` does not pin the taken threshold. **Read
+  0b, 1, 2 and **3** done — the PIPELINE now bets from a counter table and trains it, and every
+  derived cell of the step-0 tables reproduced EXACTLY. Step 3's lessons are about the TESTS: **a
+  replay written to be the unique net for a defect caught nothing alone** (break the class and see
+  who else reddens before claiming a test is the only net); **the wrong-pc mutation that is truly
+  invisible is the CONSISTENT shift**, caught solely by `predictorIndex`'s own unit tests; **a view
+  predicate serving more than one question hides a defect in the one it answers worst** (a
+  taken/not-taken boolean silently skipped the re-record on a dynamic scheme, and NOTHING headless
+  saw it); and **a scheduling window wants an arrival tripwire, not a schema field**. Step 2 adds
+  three more: **an API that accepts a richer argument silently answers the questions that argument
+  encodes**; **a getter made defensive can dissolve a later step's whole content**; and **the
+  canonical demo sequence is usually not the test of the mechanism** — `TTTTNTTTT` does not pin the
+  taken threshold. **Read
   before adding ANY corpus program** (it cost SIX pinned sites, not three), **before adding a field
   to any model's `micro`** (two of its three sites are whole-micro literals passed as ARGUMENTS, and
   one is a COMPONENT), and **before trusting any cross-model naming agreement — "by construction" was

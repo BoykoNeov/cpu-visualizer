@@ -1,19 +1,79 @@
 ---
 name: dynamic-branch-prediction
-description: "The CPU Visualizer's dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1 AND 2 DONE — step 2 on 2026-08-09; schema + the BranchPredictor class, still no engine behavior and nothing constructs one). Read before choosing a shared class's API, before making a getter defensive, and before trusting the canonical demo sequence as a test. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites, not three), before adding a field to any model's `micro` (two of the three sites are whole-micro literals passed as ARGUMENTS, invisible to a grep), and before trusting a cross-model naming agreement — 'by construction' was enforced by nothing and a divergent spelling passed typecheck plus all 7591 tests. Also the reusable method for pricing an unbuilt config knob offline."
+description: 'The CPU Visualizer dynamic-branch-prediction feature (plan docs/plans/dynamic-branch-prediction.md, STEPS 0, 0b, 1, 2 AND 3 DONE - step 3 on 2026-08-09; the PIPELINE now bets from a live counter table and trains it, the shell control has four positions, and micro.predictor is still null by design). Read before wiring the other three models (step 5), before splitting a view predicate that serves more than one question, and before trusting a break row you wrote by hand - FOUR consecutive steps have had one come out wrong. Also: a replay test written to be the unique net for a defect caught NOTHING alone; the wrong-pc mutation that is truly invisible is the CONSISTENT shift, and only predictorIndex own unit tests see it. Read before adding ANY corpus program (nested-loop.s cost SIX pinned sites), before adding a field to any model micro, and before trusting a cross-model naming agreement. Also the reusable method for pricing an unbuilt config knob offline.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 6ec4b2ad-1f1a-45e6-8d48-6e4215353ac0
-  modified: 2026-08-09T11:21:07.458Z
+  modified: 2026-08-09T15:10:00.000Z
 ---
 
-**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1 AND 2 complete — step 2 on
-2026-08-09. Steps 3–8 untouched; NO engine behavior anywhere, and nothing constructs a
-`BranchPredictor` yet.** A 1-bit/2-bit saturating BHT riding `micro.predictor` (following
-`micro.cache`), wired into the four `configurableBranchPrediction` models. Not a milestone — a
-feature, like [[keyboard-clock-control]] and [[continuous-play]]. The full measured tables live in
-the plan; only what a future session would otherwise re-derive is here.
+**Plan: `docs/plans/dynamic-branch-prediction.md`. Steps 0, 0b, 1, 2 AND 3 complete — step 3 on
+2026-08-09. The PIPELINE has real behavior; the other three betting models do not (step 5), and
+`micro.predictor` is still recorded `null` everywhere (step 4, deliberately).** A 1-bit/2-bit
+saturating BHT riding `micro.predictor` (following `micro.cache`), wired into the four
+`configurableBranchPrediction` models. Not a milestone — a feature, like [[keyboard-clock-control]]
+and [[continuous-play]]. The full measured tables live in the plan; only what a future session would
+otherwise re-derive is here. Repo at 7828 tests.
+
+## Step 3 — the wiring, and what the break harness said about the test written FOR it (2026-08-09)
+
+Shipped: `betTarget(d, pc)` + an EX training call in `engine/pipeline`, `isConditionalBranch` and
+`isDynamicScheme` in `engine-common`, a four-position prediction control. 7606 → 7828, five gates.
+
+⚠ **Acceptance (b) came out EXACT.** Every derived cell of the step-0/0b tables — 12 programs × 4
+schemes × both forwarding positions — reproduced by the real engine with no correction, including
+`nested-loop.s` 182/177/174/171 and all four corpus totals. So the offline pricing method is
+validated end to end, and step 5 can trust the same method for the other three models' tables. It
+also discharges step 0's one ARGUMENT: `S` really is scheme-invariant.
+
+⚠ **The headline lesson is about a TEST, not the engine. A replay test written to be the UNIQUE net
+for `update` handed the wrong pc caught NOTHING alone.** The reasoning was that training the wrong
+row leaves cycle counts intact (rows interact only where branches alias, and this corpus's only
+witness aliases at 4 entries, not the pinned 16). Measured: `update(nextPc)` reddens 31 tests
+including **six cycle counts** — decoupling the row you train from the row you read changes the bets
+themselves. Across eleven mutations the replay never fired without the cycle table firing too. What
+it buys is **localization**, plus one real catch: a step-5 copy-paste that changes a policy and
+"fixes" the replay to match keeps it green and still fails the **literal pinned strings**, which is
+why those are written out rather than replayed. **Generalize: before claiming a test is the only net
+for a defect class, break that class and see who else goes red.**
+
+⚠ **The wrong-pc mutation that IS invisible is the CONSISTENT shift** — `predictorIndex` rotated by
+one entry, predict and update moving together. A rotation is a bijection on rows, so collisions
+survive exactly (the plan's `TEXT_BASE` argument, now measured): engine, trace and replay all see
+nothing. **The sole net is `predictor.test.ts`'s unit tests on `predictorIndex`** — the arithmetic
+that shipped with NO test at step 1. Those tests are not redundant with the wiring tests above them;
+they cover a class nothing else reaches.
+
+⚠ **A shell predicate serving more than one question hides a defect in the question it answers
+worst.** `predictsTaken(scheme): boolean` served three: the lit button, the re-record no-op guard,
+and the datapath's "draw the branch-target adder". The moment the engine honored a counter table it
+was wrong for the first two — `setBranchPrediction`'s guard compared `false === false` for "not
+taken" vs `'dynamic-1bit'`, **skipped the re-record**, and showed the old machine's trace under the
+new label. The state string moved, so nothing headless could see it ([[browser-is-the-only-net]],
+same shape as [[keyboard-clock-control]]'s 68/68). Break row 9: reverting the guard reddens **zero**
+tests. Split into `predictionPosition` (machine identity) and `hasTakenBetPath` (does the hardware
+exist — a dynamic machine's answer is YES), the second DERIVED from the first so two lists cannot
+drift.
+
+**A temporary capability flag was the wrong fix, and the reasoning transfers.** Between steps 3 and 5
+two of four buttons are honored by the pipeline alone, so on three models they move the button and
+not the machine. A `dynamicBranchPrediction` capability would churn six capability literals and
+`models.test.ts`'s exact honoring-model list **twice** — now and at step 5 — for a field whose only
+content is "step 5 hasn't happened yet". Instead the existing inertness test NAMES the three models,
+so **step 5 turns it red on arrival**. One test edit. Generalize: when a gap is a scheduling WINDOW
+rather than a design flaw, encode it as an arrival tripwire, not as schema.
+
+**Two more measured rows worth carrying.** `jal`/`jalr` updating the table reddens **zero** tests of
+any kind — a pinned decision with no net whatsoever, held only by `isConditionalBranch`'s docblock
+(the plan predicted zero TIMING effect; the truth is broader). And with the knob **entirely
+unhonored**, all 50 INV-8 cells stay green and `timing.test.ts` too — the widened differential matrix
+is a false net for "is this scheme honored at all", exactly as [[m7-superscalar-engine]] records.
+
+Both `jal` decisions are now CLOSED (bypass the table; do not update it), spelled by a shared
+`isConditionalBranch` so step 5's three sites cannot answer them three more ways. Resolve-time and
+commit-time coincide in the 5-stage machine as a FACT (a squashed instruction never reaches EX), so
+the OoO fork is still genuinely open — pin it before step 5.
 
 ## Step 2 — `BranchPredictor`, and what its API shape is protecting (2026-08-09)
 

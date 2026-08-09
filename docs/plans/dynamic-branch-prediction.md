@@ -1,11 +1,15 @@
 # Dynamic branch prediction — the predictor gets a memory
 
-**Status: STEPS 0, 0b, 1 AND 2 DONE — step 2 on 2026-08-09. No engine BEHAVIOR yet.** The corpus is
+**Status: STEPS 0, 0b, 1, 2 AND 3 DONE — step 3 on 2026-08-09. The PIPELINE now has a real
+predictor.** The corpus is
 measured (see the step-0 results section), `content/programs/nested-loop.s` is authored, hand-derived
 into three timing tables and three shape tables, and committed; the schema carries five scheme names,
-`PredictorState`, and a `predictor` field on all four honoring models' `micro`; and `BranchPredictor`
-— the state machine itself — is written and unit-tested. **All of it inert: nothing constructs a
-predictor** (see the step-1 and step-2 sections). Steps 3–8 are untouched. Every claim
+`PredictorState`, and a `predictor` field on all four honoring models' `micro`; `BranchPredictor` —
+the state machine itself — is written and unit-tested; and the five-stage pipeline **bets from it and
+trains it**, with the shell's control grown to four positions. Step 3 reproduced every derived cycle
+count in the step-0 and step-0b tables exactly. **Still inert on the other three betting models**
+(step 5), and `micro.predictor` is still recorded as `null` everywhere (step 4, deliberately — its
+break harness needs something to break). Steps 4–8 remain. Every claim
 below about the current code is a grep or a quoted docblock, cited inline; every claim about what a
 dynamic predictor will _do_ is a prediction, and the ones worth being wrong about are called out as
 step-0 measurements rather than assumed. **Not a milestone** — spec §12's roadmap finished at M10, and M11–M14 discharged the
@@ -163,7 +167,8 @@ logic four times.
       2-bit only weakens. Measured, not assumed (step 0's harness). Acceptance: unit tests on the
       state machine alone, green before any processor sees it.
 
-- [ ] **3. Wire the pipeline (one model only).** Replace the `predictTaken` constant with the
+- [x] **3. Wire the pipeline (one model only).** — **DONE 2026-08-09; results in the step-3 section
+      below.** Replace the `predictTaken` constant with the
       predictor object at the ID bet site and the EX resolution site. ⚠ **`branch-predicted` fires
       only when the bet is TAKEN** — the schema says so explicitly ("There is no not-taken bet …
       emitting `{ taken: false }` would assert an action the machine did not take"). A dynamic
@@ -713,6 +718,133 @@ assertion in the repo can see it; the delegation is a _reading_ guarantee that o
 `PREDICTOR_ENTRIES` moves. Stating it beats a test that pretends to cover it — the honest form of
 step 1's "a harness aimed at the headline risk misses what shipped alongside it".
 
+## Step 3 — DONE 2026-08-09. The pipeline consults a table, and a boolean stops being enough
+
+Shipped: `betTarget(d, pc)` and an EX training call in `engine/pipeline`, `isConditionalBranch` +
+`isDynamicScheme` in `engine-common`, and a **four-position** prediction control in the shell.
+7606 → 7828 tests, five gates green. `micro.predictor` is still `null` — step 4.
+
+### The engine, and the three things the call site had to decide
+
+**`betTarget` is the one place any scheme is read**, and it decides in the order that keeps a counter
+away from words that have no direction: not a PC-relative transfer ⇒ no bet under any scheme; no
+table ⇒ M4's `predictTaken` verbatim; a table ⇒ a conditional branch asks its counter and `jal`
+bypasses it. Training is EX's, at resolution, on the branch's OWN pc, conditional branches only.
+
+**Both `jal` decisions are now CLOSED on their measured seeds** (bypass; do not update) and are
+spelled by a shared `isConditionalBranch` rather than inline, so steps 5's three sites cannot answer
+them three more ways. That predicate is the whole mechanism of a policy the plan's derived tables
+were computed under — if a call site and the table disagree, the acceptance numbers fail with no way
+to tell which of the two is wrong.
+
+**Resolve-time and commit-time coincide in this model, and that is a FACT rather than a decision.**
+An instruction in an older transfer's shadow is flushed from the latches at the clock edge, so it
+never reaches EX: a branch that resolves here always retires. The fork the plan holds open for the
+OoO core is untouched by this step, and nothing about it can be inferred from this line.
+
+`isDynamicScheme` narrows off `COUNTER_BITS`'s keys rather than a `'dynamic-'` prefix test. A prefix
+test would be a second, independent spelling of `DynamicScheme`'s template literal — agreeing "by
+construction", which is step 1's headline lesson about agreements enforced by nothing. Keyed off the
+`Record`, a third scheme reddens `tsc` and then the predicate already knows it; a prefix test would
+have returned `true` for a scheme with no width and built a table of `NaN`.
+
+### The web: four positions for five names, and a defect the split exposed
+
+`predictsTaken(scheme): boolean` split into **`predictionPosition`** (machine identity: the lit
+button and the no-op guard) and **`hasTakenBetPath`** (does the machine have the branch-target adder
+— the datapath's question, and a dynamic machine's answer is YES). Two functions because they are two
+questions; `hasTakenBetPath` derives from the position map rather than a second list of scheme names,
+so the shell cannot come to light the "1-bit" button while drawing a machine with no adder.
+
+⚠ **The boolean's residue was a live defect, not a tidiness argument.** `setBranchPrediction`'s no-op
+guard read `predictsTaken(next) === predictsTaken(current)`, so switching from "not taken" to
+`'dynamic-1bit'` compared `false === false`, **skipped the re-record**, and left the user reading the
+old machine's trace under the new scheme's label. The state string moved, so nothing headless could
+see it — `browser-is-the-only-net` again, and the same shape as `keyboard-clock-control`'s 68/68.
+Break row 9 confirms it: reverting the guard to the boolean reddens **zero** tests.
+
+⚠ **Between step 3 and step 5 two of the four buttons are honored by the PIPELINE ALONE.** The other
+three betting models still read `config.branchPrediction === 'static-taken'`, so on them a dynamic
+selection re-records a trace identical to not-taken — the button moves, the machine does not. **A
+`dynamicBranchPrediction` capability was considered and REJECTED**: it churns six capability literals
+and `models.test.ts`'s exact honoring-model list twice, once now and once at step 5, to ship a schema
+field whose only content is "step 5 has not happened yet". Instead `simulator.test.ts`'s inertness
+test names the three models explicitly, so **step 5 turns it red on arrival** — one test edit, and the
+window cannot close unnoticed. Delete that block at step 5; do not widen it.
+
+### Acceptance — and (b) came out exact
+
+**Every cell of the step-0 and step-0b tables reproduced by a real engine**, all 12 programs × 4
+schemes × both forwarding positions, including `nested-loop.s`'s 182 / 177 / 174 / 171 and all four
+corpus totals (662 / 637 / 637 / 636 off, 479 / 454 / 454 / 453 on, over the original eleven). The
+columns were DERIVED before an engine could run one; they needed no correction.
+
+That also discharges the one thing step 0 could only argue: **`S` is scheme-invariant.** The derived
+columns were `N + 4 + S + P` with `S` assumed constant across schemes, and a closed form cannot check
+its own assumption. `dynamic-predict.test.ts` measures the cycles instead.
+
+(a) INV-8 across the new matrix — `differential.test.ts` goes 30 → 50 cells. (c) the three existing
+schemes unchanged corpus-wide — `timing.test.ts` untouched and green, which IS the claim; restating
+its columns would be a copy that can only drift. ⚠ The plan's "confirm M4's timing pins cover all
+four models" is **step 5's** problem: this step touches only the pipeline, whose pins are complete.
+
+### Break table — MEASURED, eleven mutations, and the headline row was WRONG
+
+Committed first (risk 5), editor not `Set-Content`, `git checkout --` between rows. Full suite each.
+
+| #   | Mutation                                             | Reddens                                 |
+| --- | ---------------------------------------------------- | --------------------------------------- |
+| 1   | `update` handed the wrong pc (`nextPc`)              | **31** — strings, replays, **6 cycles** |
+| 2   | `jal` CONSULTS the table                             | **5** — call-return's strings + cycles  |
+| 3   | `jal`/`jalr` UPDATE the table                        | **0**                                   |
+| 4   | the bet ignores the predictor (knob unhonored)       | **36** — 35 dynamic-predict + 1 control |
+| 5   | `predict` consulted at the TARGET pc                 | **31**                                  |
+| 6   | trained on what it PREDICTED, not what happened      | **31**                                  |
+| 7   | `isDynamicScheme` tests the prefix, not the `Record` | **0**                                   |
+| 8   | the two position maps TRANSPOSED                     | **3** — App render, session, simulator  |
+| 9   | the no-op guard reverted to the boolean              | **0**                                   |
+| 10  | `predictorIndex` ROTATED by one entry                | **2** — `predictor.test.ts` alone       |
+| 11  | `branch-predicted` fires on a not-taken bet          | **6** — across four files               |
+
+Six rows are worth more than their count:
+
+- ⚠ **Row 1 falsified the reason `dynamic-predict.test.ts`'s replay was written, and the corrected
+  version is the more useful claim.** The prediction was that training the wrong row leaves cycle
+  counts intact — rows only interact where branches alias, and this corpus's only aliasing witness
+  aliases at 4 entries, not the pinned 16. Measured: **six cycle counts move.** Decoupling the row you
+  train from the row you read does not relabel the table, it makes every counter answer for a branch
+  that is not the one being predicted, which changes the bets themselves. **Fourth consecutive step
+  where a hand-written break row came out wrong. The rule remains: run it.**
+- **Row 10 is the wrong-pc mutation that IS invisible — and it is invisible to the replay too.** A
+  CONSISTENT shift (predict and update moving together) is a bijection on rows; collisions survive it
+  exactly, which is the plan's own `TEXT_BASE` argument, now measured. Nothing in the engine, the
+  trace, or the new test file sees it. The **only** net is `predictor.test.ts`'s unit tests on
+  `predictorIndex` — the arithmetic that shipped with NO test at step 1. So those tests are not
+  redundant with the wiring tests above them; they are the sole net for their own defect class.
+- **Taken together, rows 1, 5, 6 and 10 say the replay caught nothing ALONE.** Every mutation it
+  reddened, the cycle table reddened too. What it actually buys is **localization** — it names the
+  branch and the bet — plus one genuine unique catch: a step-5 copy-paste that changes a policy and
+  "fixes" the replay to match keeps it green and still fails the **literal strings**, which is why
+  claim 2 is written out rather than replayed. Recorded rather than claimed, because a file asserting
+  it is the only net for a defect it does not uniquely catch is worse than one that says what it is.
+- **Row 3 is a pinned decision with NO net, and that is now measured rather than assumed.** Making
+  jumps update reddens nothing at all — the plan predicted zero TIMING effect (no jump shares an index
+  with a conditional branch at 16, 8 or 4 entries) and the truth is broader: no test of any kind sees
+  it. It is a pedagogy call, and `isConditionalBranch`'s docblock is the only thing holding it.
+- **Row 4 confirms the differential matrix is a FALSE NET here, in its own new cells.** With the knob
+  entirely unhonored, **all 50 INV-8 cells stay green** and so does `timing.test.ts`; the only red is
+  `dynamic-predict.test.ts` plus the control's four-position test. The matrix was still worth widening
+  — it visits wrong paths the static schemes never take, which is where a speculation LEAK would hide —
+  but it can say nothing about whether a dynamic scheme is honored at all.
+- **Row 8 is why the round trip is a test.** Two hand-maintained map literals are inverses only
+  because something says so; transposed, they typecheck, render four correctly-labelled buttons, and
+  silently record the wrong machine on two of them. Three tests catch it, and one of them is the
+  RENDER-keyed one — `m13-width-planned`'s signature defect is a test keyed off a pure fold instead.
+
+Row 7 is the honest counterpart of step 2's inline-index row: value-identical today, so nothing can
+see it. It is a reading guarantee that starts paying when a third scheme arrives, and saying so beats
+a test that pretends to cover it.
+
 ## Acceptance criteria
 
 - [ ] Load **`nested-loop.s`** (step 0b), pick **1-bit**, step through, and watch the counter table train —
@@ -734,8 +866,8 @@ step 1's "a harness aimed at the headline risk misses what shipped alongside it"
 | **Does a SQUASHED branch update the predictor?**     | In the OoO model a branch can resolve and then be killed by an older mispredict, so update-on-resolve vs update-on-commit is a real behavioral fork — **invisible to INV-8**, and sitting exactly where step 5's copy-paste pressure peaks, so four models could quietly answer it four ways. Seed: **update-on-resolve** (simpler; the machine learns from what it saw), with commit-time as the realistic alternative. **Pin BEFORE step 5, not during**                                                                                                                                                                                                     | _(open)_      |
 | Table size                                           | **16, as a MODULE CONSTANT (`PREDICTOR_ENTRIES`), not a `ProcessorConfig` field.** Step 0b narrowed it to 8-or-16 (only 4 aliases: `nested-loop.s`'s guard at pc 8 and inner branch at pc 24 collide on index 2 there, costing `dynamic-2bit` 181 against 171). **16 breaks the tie because every derived number in the step-0 and step-0b tables was computed at `(pc>>>2)&15`** — so those cycle counts stay usable as step 3's acceptance target with no row re-derived. A config knob was rejected on scope: it is a `trace` schema change dragging every config literal and conformance matrix, to expose a lever whose whole measured range is one cliff | **CLOSED**    |
 | Index function's HOME                                | **A standalone pure `predictorIndex(pc)` beside the types, not only a method on step 2's class.** Step 6 must highlight the entry touched this cycle and derives it from `pc` (INV-3), but the mutating class stays package-private to the engines — so the view could never reach a method. This is `cache.ts`'s `lineIndex` boundary exactly: render a table, never drive one                                                                                                                                                                                                                                                                                | **CLOSED**    |
-| **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore                                                                                                                                                                                                                                                                                                                         | _(open)_      |
-| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner                                                                                                                                                                                                                                                                                                                                                                                                  | _(open)_      |
+| **Does `jal` consult the counter?**                  | **No — an unconditional jump is simply predicted taken, bypassing the table.** Step 0 priced this fork at **exactly 1 cycle on `call-return.s`** (16 vs 17), i.e. squarely on M4's `+1` witness. Consulting costs a cold mispredict on a branch whose answer is known at decode, which is noise the reader must then be told to ignore. **Pinned at step 3, spelled by `isConditionalBranch` in `engine/common/predict.ts`** so the four wiring sites cannot answer it four ways — the break harness reddens 5 tests when `jal` is made to consult, one of them `call-return.s`'s cycle count                                                                  | **CLOSED**    |
+| Does `jal` / `jalr` **update** the counter?          | Seed **no** for both. Measured **zero** effect on this corpus (no `jal`/`jalr` shares an index with a conditional branch at 16, 8 or 4 entries) — so this is a pedagogy call, not a timing one: a table whose rows are all conditional branches reads cleaner. **Pinned NO at step 3** — and the harness confirms the "no timing net" half: making jumps update reddens **ZERO** tests, the only mutation of the eleven that is invisible to the entire suite                                                                                                                                                                                                  | **CLOSED**    |
 | Index function                                       | pc bits alone, no tag — a mispredict from aliasing is a true fact about this machine (INV-5)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _(open)_      |
 | Initial counter state                                | Weakly-not-taken, so a loop's first pass visibly _learns_ rather than starting right. **Step 0 measured the alternative and it is not neutral: strongly-not-taken (`00`) makes the 2-bit predictor SLOWER than the 1-bit on all four single-entry loops** (`array-sum` 72 vs 71, and likewise `strided-sum`, `sum-loop`, `slow-op-loop`) — a demo that would show the "better" predictor losing                                                                                                                                                                                                                                                                | _(open)_      |
 | Does `branch-predicted` fire on a not-taken bet?     | **No** — the schema forbids it; a dynamic not-taken prediction is silent, like `'none'`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
