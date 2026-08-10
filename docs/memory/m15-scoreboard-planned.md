@@ -1,17 +1,21 @@
 ---
 name: m15-scoreboard-planned
-description: 'M15 — the scoreboard (CDC 6600), the seventh model: PLANNED ONLY as of 2026-08-10, nothing built, five decisions gating. Read before starting it, and read it before ANY model that wants a latency source: slowOpLatency is cluster-gated by configurableOutOfOrder AND has no UI control at all, so a model depending on it shows nothing until a lesson exists. Also holds the measured finding that the corpus has ZERO reachable WAW/WAR hazards, which is what makes INV-8 a false net here before step 6 and a real one after.'
+description: 'M15 — the scoreboard (CDC 6600), the seventh model: PLANNED ONLY as of 2026-08-10, nothing built, ALL decisions pinned, and step 0 is BLOCKED on the user-triggered /code-review ultra pass over 89bb26e..HEAD. Read before starting it, and read it before ANY model that wants a latency source: slowOpLatency is cluster-gated by configurableOutOfOrder AND has no UI control at all, so a model depending on it shows nothing until a lesson exists. Also holds the measured finding that the corpus has ZERO reachable WAW/WAR hazards, which is what makes INV-8 a false net here before step 6 and a real one after.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T02:37:42.828Z
+  modified: 2026-08-10T02:46:25.623Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: NOT STARTED, nothing built, five ⛔ gating
-decisions open.** The user picked "scoreboarding" from a list of candidate architectures on
-2026-08-10; **they did not pin the scope** (this-model-alone, lesson track deferred to M16) — that
-is the plan's recommendation and its decision 10.
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: NOT STARTED, nothing built, but ALL ELEVEN
+DECISIONS PINNED.** The user picked "scoreboarding" from a list of candidate architectures, then
+pinned the three that were genuinely theirs (the other eight follow from facts measured in the
+code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
+lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEFORE step 0** — so
+**step 0 is BLOCKED on a review only the user can trigger.** The reason that ordering was chosen
+is specific: step 5 edits the shared shell seam (`models.ts`, `engineConfigFor`, `useSimulator`),
+which a seventh model would otherwise be sitting on top of unreviewed.
 
 **Why this model:** M9 built Tomasulo with renaming already in it, so the product shows what
 renaming _does_ without ever showing the machine that lacks it. WAW and WAR exist nowhere in the
