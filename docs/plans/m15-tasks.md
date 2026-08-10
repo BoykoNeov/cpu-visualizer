@@ -316,6 +316,16 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       the **datapath placeholder is genuinely gone** on this model and still present on a model that
       has neither picture — the suppression is headlessly netted only as a pure predicate.
 
+      ⚠ **And check the EMPTY-RECORDING state, a deliberate consequence rather than a bug, and
+      reachable only in the browser.** The gate is a trace fact
+      (`showsDatapathSlot(activeModel, showScoreboard || showMicro)`), so with **no program loaded
+      or an assembly error** both flags are false and "Scoreboard datapath — coming soon" comes
+      back — the very false promise step 7 removed. `showsDatapathSlot(scoreboard, false) === true`
+      is the test that PINS that behaviour, on purpose: it is what keeps the placeholder reachable
+      for a future model with neither picture. Decide at step 8 whether an empty editor showing it
+      is acceptable, or whether the predicate should key on the MODEL rather than the recording —
+      which would be the shell learning a model by name, so it is a real trade rather than a fix.
+
 ## Step 0, as built (2026-08-10)
 
 `packages/engine/scoreboard` = `@cpu-viz/engine-scoreboard`, on M11's step-0 shape (`bfbdfc2`):
@@ -1094,8 +1104,17 @@ goes red and claim 2 becomes a real cross-model claim for the first time. All th
 
 `packages/web/src/scoreboard-tables.ts` (the pure fold) + `ScoreboardTablesView.tsx` (the drawing)
 
-- their two suites, wired into `App.tsx` on a trace fact. **+110 tests**, repo **11772 → 11872
-  passing** (11773 → 11873 including the one skipped file), **97 → 98 test files**. Five gates green.
+- their two suites, wired into `App.tsx` on a trace fact. **+100 tests**, repo **11772 → 11872
+  passing** (11773 → 11873 including the one skipped file), **97 → 99 test files on step 2's
+  including-the-skip basis** (96 → 98 passing). Five gates green.
+
+  ⚠ **Both of those numbers were wrong in the first draft of this section, and in its own terms —
+  step 4's finding, recurring.** It claimed "+110 tests" beside a delta that reads 100
+  (73 + 17 fold/view, +6 in `layout-stability`, +4 in `models`), and "97 → 98 files" while adding
+  TWO files, which is right on neither basis. Fixed by **re-measuring the baseline at `9c3cfc8~1`**
+  rather than reconciling on paper: `96 passed | 1 skipped (97)` before, `98 | 1 (99)` after. Step
+  4 caught this off by one; here it was off by ten and by a whole basis. **A count written beside
+  the run that contradicts it is not a typo, it is an unmeasured number.**
 
 ### ⚠ The instruction table ACCUMULATES, and the measurement is what decided it
 

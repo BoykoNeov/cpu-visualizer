@@ -28,8 +28,13 @@ unreviewed — **that seam scrutiny is now DONE (see step 5)**. **Next: step 8, 
 
 `packages/web/src/scoreboard-tables.ts` (pure fold) + `ScoreboardTablesView.tsx` (drawing) + their
 two suites, wired into `App.tsx` on a trace fact (`micro.registerResult`, unique to this model
-across all seven and swept as a test against the other six). **+110 tests**, repo **11772 → 11872
-passing**, 97 → 98 files, five gates green.
+across all seven and swept as a test against the other six). **+100 tests**, repo **11772 → 11872
+passing**, **97 → 99 files on the including-the-skip basis** (96 → 98 passing), five gates green.
+⚠ **Both counts were wrong in the first draft and wrong IN THEIR OWN TERMS — step 4's finding,
+recurring at ten times the size.** "+110" sat beside a delta that reads 100, and "97 → 98 files"
+was written while adding TWO files, which is right on neither basis. Fixed by RE-MEASURING the
+baseline at `9c3cfc8~1`, not by reconciling on paper. **A count written beside the run that
+contradicts it is not a typo, it is an unmeasured number.**
 
 ⚠ **THE DESIGN CALL, and it was decided by a measurement taken before any code.** The seeded shape
 was "a pure fold over the trace + `micro`". Drawing `micro.instructions` straight through would be
