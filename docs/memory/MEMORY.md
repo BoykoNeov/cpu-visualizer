@@ -12,10 +12,10 @@ residual and moved both caption thresholds). The corpus is **twelve** programs, 
 7863 / 9466 / 9493 / 9497 / 11193 after steps 1–8 — and **1633 of that last jump is a stale sweep
 axis finally running**, not new assertions), five gates green.
 
-**Open work:** URL permalinks, session persistence, and
-the `/code-review ultra` fan-out over `89bb26e..HEAD` (user-triggered; the no-arg form bundles the
-local branch and needs no PR). **Dynamic branch prediction is ✅ COMPLETE — all steps 0–8, finished
-2026-08-09.**
+**Open work:** **M15 — the scoreboard (CDC 6600), PLANNED 2026-08-10, nothing built, five gating
+decisions open**; URL permalinks; session persistence; and the `/code-review ultra` fan-out over
+`89bb26e..HEAD` (user-triggered; the no-arg form bundles the local branch and needs no PR).
+**Dynamic branch prediction is ✅ COMPLETE — all steps 0–8, finished 2026-08-09.**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
 that area. Keep this index to one line per entry; detail belongs in the file, never here.
@@ -118,6 +118,10 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   whose existence conditions match the prose.** Also: a lesson can have NO config-exclusive step —
   and its `CONFIG_AXES` staleness finding recurred on the PREDICTION axis at branch prediction's
   step 8, so read it before trusting any axis-shaped sweep to still enumerate the shell's product.
+- [M15 scoreboard — PLANNED](m15-scoreboard-planned.md) — the seventh model, nothing built. Read
+  before any model that needs a latency source (**`slowOpLatency` has no UI control and is
+  cluster-gated**) and before trusting INV-8's net status — the corpus has **zero reachable
+  WAW/WAR**, so it is a false net here until step 6 and a real one after.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
 - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
