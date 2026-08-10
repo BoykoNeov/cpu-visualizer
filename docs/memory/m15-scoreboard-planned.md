@@ -1,15 +1,16 @@
 ---
 name: m15-scoreboard-planned
-description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEP 0 DONE 2026-08-10 (package scaffolded, DAG guardrails verified in five directions), no machine built, all decisions pinned, and the /code-review ultra gate DISCHARGED. Read before ANY model that wants a latency source: slowOpLatency is cluster-gated by configurableOutOfOrder AND has no UI control at all, so a model depending on it shows nothing until a lesson exists. Holds the measured finding that the corpus has ZERO reachable WAW/WAR hazards (INV-8 a false net here before step 6, real after), and step 0s finding that a new model package needs FIVE lint probe cells, not three — plus the vitest alias nobody exercises until step 5.'
+description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0 AND 1 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and is proved against four stubs. Read before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), and before trusting a source-level corpus scan (it missed the la pseudo-expansion, so the ZERO-reachable-WAW claim was half wrong).'
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T04:09:35.317Z
+  modified: 2026-08-10T04:55:00.762Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEP 0 DONE, no machine built, ALL ELEVEN
-DECISIONS PINNED.** The user picked "scoreboarding" from a list of candidate architectures, then
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0 AND 1 DONE — the machine exists and
+runs, ALL ELEVEN DECISIONS PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
+from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
 lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEFORE step 0** — a gate
@@ -17,9 +18,77 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 1, the model MVP** — build the **2 INT + 1 MEM** machine (see the resolved
-STOP below), proved by a hand-built WAW/WAR program inside the test file, not a corpus program; the
-corpus one is priced at step 6, after the coefficients are known.
+unreviewed. **Next: step 2, the INV-8 differential** — and step 1 already measured what step 3
+predicts about it (table below).
+
+## Step 1 — the machine, and the THREE things the plan did not price (2026-08-10)
+
+`packages/engine/scoreboard/src/processor.ts` + a 46-test `processor.test.ts`. Repo **11194 →
+11239** tests. Reverse stage walk `WB → EX/MEM → RO → ID → IF`, with **every Write-Result effect
+batched to the CLOCK EDGE** — that one deferral is what reproduces the textbook cadence (H&P's
+worked example: a unit freed by a write in cycle N issues at N+1, not N) with no "not before cycle
+N+1" bookkeeping anywhere else. The other three cadence rules fall straight out of the walk order.
+
+⚠ **1. A plan-pinned stall vocabulary did not survive contact, and the reason generalizes: decision
+3 ("no predictor, a taken branch flushes the front end") is UNIMPLEMENTABLE as written.** With `RO`
+non-blocking and no ROB, a younger instruction can reach Write-Result while an older branch is still
+parked on an operand, and a landed write cannot be taken back. So **Issue must stop at an unresolved
+transfer** — forced by INV-8, not chosen — which then makes decision 3's sentence literally true
+(with Issue held, the front end IS the `IF` slot). Cost: a **fifth stall reason `'control'`**, plus
+splitting `'structural'` into `'structural-int'`/`'structural-mem'`. **The lesson: a "no predictor"
+decision on a machine with no recovery structure is a decision about ISSUE, not about the front end
+— check what the machine can UNDO before pinning what it may run past.**
+
+⚠ **2. `pc` cannot be "the retiring instruction's `nextPc`" on any out-of-order-completion model.**
+Every earlier model uses that rule and it is only well-defined because retirement is in order. Read
+that way here, `pc` moves **BACKWARD** mid-run (jumps to 16 at cycle 6, back to 4 at cycle 10) at
+every recorded cursor position — while still ending on the right value where INV-8 looks, so the
+conformance net cannot see it. Fix: advance `pc` across the completed program-order **prefix** via
+an issue-order queue that holds no values and can undo nothing (it is NOT a ROB). **Read this before
+defining `pc` on any future model that completes out of order.**
+
+⚠ **3. `MEM_LATENCY = 4` is DERIVED, and the derivation is the transferable part.** `WB = RO + 1 +
+L`; a load and the integer ops behind it write at `4+L`, 6, 7. `L=2` **ties** the first (no reorder
+at all), `L=3` beats the first by one and **ties** the second — a photo finish on the milestone's
+own acceptance criterion, collapsed by an issue skew of two. `L=4` clears every skew the machine can
+reach (two INT units ⇒ at most two in flight beside a load). **Pick a latency against the acceptance
+program at every REACHABLE skew, not the one you happened to write down.**
+
+### The mutation check, run early — and what it says about INV-8
+
+| Stub          | step-1 unit tests | corpus INV-8 (12)                                                                              |
+| ------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| WAR check     | 3 red             | **12/12 GREEN** (confirms step 3's guess)                                                      |
+| WAW check     | 3 red             | **12/12 GREEN** (confirms step 3's guess)                                                      |
+| control block | 2 red             | **2 RED** — `array-sum-twice`, `nested-loop`                                                   |
+| `pc` prefix   | 2 red             | 4 red, but via the DRAIN GUARD, not a pc equality — compound mutation, do not cite as a pc net |
+
+So **INV-8 is already a REAL net for the control mechanism** and stays a false one for WAW/WAR until
+step 6. Neither red program needs a load: a branch parked one cycle on the `addi` before it is window
+enough. ⚠ **First witness written for the control hole was TOO WEAK** — a plain `addi`/`beq`/`addi`
+kept INV-8 green under the stub, because the wrong-path instruction could not find a free integer
+unit in time. The witness had to park the branch on a LOAD to open a nine-cycle window. **A stall
+event reddening is not the same as a VALUE reddening; write the witness that corrupts.**
+
+### ⚠ The step-0 corpus scan was HALF WRONG — it read source, not the assembled stream
+
+The "zero reachable WAW or WAR hazards" claim below: **the WAR half holds** (zero `'war'` stalls in
+the whole corpus). **The WAW half does not** — `'waw'` fires on **6 of 12** programs, because
+`la rd, label` expands to `lui rd` / `addi rd, rd`, two writers to one register one instruction
+apart. Both claims can be true at once because those pairs produce WAW **stalls** (timing) and never
+WAW **corruption** (the younger `addi` also READS the register, so it waits anyway) — which is why
+the mutation row above is still green. **Consequence for step 6: the promoted program needs a WAW
+pair whose younger writer does NOT read the older one's destination, or INV-8 will not redden.**
+
+Smaller things pinned at step 1: stall **cadence** is a contract (one event per stalled instruction
+per stalled cycle — step 3 asserts a multiset); `location` stays in the **stage** vocabulary
+(`IF ID RO EX MEM WB`) and never an FU name, or `stageFamily()` mints an `INT` family and the
+"`pipeline-map.ts` needs no edit" criterion breaks invisibly; `micro` is snapshotted **after** the
+clock edge, so a unit can show `Rj`/`Rk` set in the same cycle its stall says it could not read
+(flagged for step 7); the machine is **deadlock-free by construction** (only a unit that has not read
+can block a WAR, and a unit waiting on a producer has `R` clear — so it can never block the write it
+waits for), guarded anyway by a loud "cycle advanced nothing" throw. The trace-schema UNCHANGED
+criterion **paid out**: six stall reasons and a new `location` value, `packages/trace` untouched.
 
 ## ✅ RESOLVED STOP — two FUs made WAR UNREACHABLE; the machine is now 2 INT + 1 MEM
 
@@ -109,7 +178,8 @@ following multi-cycle's "one instruction per stage is this model's definition, n
 (`multi-cycle/src/processor.ts:82`). Ask of any latency knob: _does the shell render a control for
 it, and what else does its capability flag turn on?_
 
-⚠ **The corpus has ZERO reachable WAW or WAR hazards — measured, not assumed**
+⚠ **The corpus has ZERO reachable WAW or WAR hazards — measured, not assumed** — ⚠ **and step 1
+MEASURED THE WAW HALF WRONG; see the correction above. WAR holds; WAW fires on 6 of 12 via `la`.**
 (`M:\claud_projects\temp\m15-corpus-scan\scan.mjs`, 2026-08-10). Static candidates exist and all
 collapse: the two WAW candidates are both in `branch-flavors.s`, where the `a0` pair sits on
 mutually exclusive branch paths and the `a1` pair is two integer-ALU writers sharing one FU under
@@ -127,8 +197,9 @@ Stages `IF ID RO EX/MEM WB` — `ID` **is** Issue and `WB` **is** Write-Result, 
 stage families carry a validated hue (`PHASE_COLORS` is exactly `IF ID EX MEM WB`, `theme.ts:44-50`);
 only `RO` falls back to the neutral accent. **`RO` is per-FU and non-blocking** — shared and
 blocking, it makes WAR unreachable and deletes half the subject. No predictor. Stall reasons
-`'waw' | 'war' | 'structural' | 'operand'` — **never `'raw'`**, which is pinned repo-wide to mean
-"forwarding is off". Refuse `cache` and `issueWidth > 1`; ignore everything else (note
+**as built at step 1: `'waw' | 'war' | 'operand' | 'structural-int' | 'structural-mem' |
+'control'`** (the plan seeded four; see step 1's finding 1) — **never `'raw'`**, which is pinned
+repo-wide to mean "forwarding is off". Refuse `cache` and `issueWidth > 1`; ignore everything else (note
 `engineConfigFor` clamps **`cache` only** today, so a second refusing knob is a real extension).
 
 Two falsifiable UNCHANGED criteria, both STOPs: the trace schema needs no edit (`stall.reason` is a

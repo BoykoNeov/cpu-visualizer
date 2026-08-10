@@ -415,6 +415,52 @@ describe('control: Issue stops dead at an unresolved transfer', () => {
     expect(finalRegs(traces)[2]).toBe(0);
   });
 
+  /**
+   * **The witness that makes the block load-bearing rather than tidy**, and it is a different
+   * program from the one above on purpose: with the block removed, `SOURCE` still comes out right,
+   * because the wrong-path `addi` cannot find a free integer unit before the branch resolves. Only
+   * a branch PARKED ON A LOAD opens a window wide enough for a younger instruction to write back
+   * inside it — and once it has, there is no reorder buffer to take it back.
+   *
+   * ```
+   * lui  x5, 0x10000   INT0   IF 0  ID 1  RO 2       EX 3       WB 4
+   * lw   x1, 0(x5)     MEM    IF 1  ID 2  RO 5       MEM 6..9   WB 10
+   * beq  x1, x0, done  INT1   IF 2  ID 3  RO 11      EX 12      <- parked 4..10 on x1
+   * addi x4, x0, 99    INT0   IF 3  ID 5  RO 6       EX 7       WB 8   <- WITHOUT the block
+   * ```
+   *
+   * The loaded word is 0, so the branch is taken and `addi x4, x0, 99` is wrong-path — yet it
+   * would have written x4 at cycle 8, four cycles before the branch even knew its own answer.
+   *
+   * **This is a hand-built witness, not a corpus one, and the distinction is measured**: no corpus
+   * program has a conditional branch whose source comes from a load, so today's corpus reaches the
+   * `'control'` STALL everywhere and this corruption nowhere. Same status as WAR — see the plan's
+   * step 6, where a corpus program with a real pair turns INV-8 into a genuine net here.
+   */
+  it('a branch parked on a load cannot be overtaken — the write would be unrecoverable', () => {
+    const traces = runAll(
+      '    .data\nz:  .word 0\n    .text\n_start:\n' +
+        '    lui  x5, 0x10000\n' +
+        '    lw   x1, 0(x5)\n' +
+        '    beq  x1, x0, done\n' +
+        '    addi x4, x0, 99\n' +
+        'done:\n' +
+        '    addi x6, x0, 7\n',
+    );
+    // The branch resolves at cycle 12; every earlier write-back belongs to the two instructions
+    // OLDER than it. Nothing on the fall-through path ever reaches Write-Result.
+    expect(regWrites(traces)).toEqual([
+      [4, 5, 0x10000000, 'i0'],
+      [10, 1, 0, 'i1'],
+      [16, 6, 7, 'i4'],
+    ]);
+    expect(finalRegs(traces)[4]).toBe(0);
+    // Held from the cycle after the branch issues until the cycle before it resolves. Cycle 12
+    // emits no stall: Execute is walked before Issue, so the branch is already resolved by the
+    // time Issue looks — and by then the wrong-path instruction it was holding has been flushed.
+    expect(stallsOf(traces, 'control').map(([c]) => c)).toEqual([4, 5, 6, 7, 8, 9, 10, 11]);
+  });
+
   it('records the resolution with no bet — this machine predicts nothing', () => {
     const traces = runAll(SOURCE);
     const resolved = traces.flatMap((t) => t.events.filter((e) => e.type === 'branch-resolved'));

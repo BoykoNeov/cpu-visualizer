@@ -1,7 +1,11 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEP 0 DONE, 2026-08-10 — the package exists and the DAG guardrails are verified in five
-directions, but no machine is built yet. Next is step 1.** The `/code-review ultra` gate is
+**Status: STEP 1 DONE, 2026-08-10 — the machine exists and runs the whole corpus.** `ScoreboardProcessor`
+walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
+classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
+stubbed code. Step 1 also found **three things this plan did not price** — see "Step 1, as built".
+Next is step 2 (the INV-8 differential), and note step 1 already measured what step 3 predicts about
+it. The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -169,13 +173,14 @@ lint` red on the two denied directions and green on the allowed one, verified by
       (now `INT0`, `INT1`, `MEM`), register-result status — so the step-7 view's width claim was
       priced against the wrong FU count and should be re-measured, not inherited.
 
-- [ ] **1. The model MVP.** `Processor` implementation, the stages above, the three status tables
-      in `micro`, INV-4 stable ids across an out-of-order lifetime, the intrinsic FU latencies, and
-      the four stall reasons. Its proof is a **hand-built WAW/WAR program inside the test file**,
-      not a corpus program — M11's `+6`-constant precedent. Deriving corpus tables before the
+- [x] **1. The model MVP — ✅ DONE 2026-08-10.** `Processor` implementation, the stages above, the
+      three status tables in `micro`, INV-4 stable ids across an out-of-order lifetime, the intrinsic
+      FU latencies, and the stall reasons. Its proof is a **hand-built WAW/WAR program inside the test
+      file**, not a corpus program — M11's `+6`-constant precedent. Deriving corpus tables before the
       machine's coefficients are known means deriving twice (see step 6). Acceptance: hand-derived
       unit tests pin a WAW stall at Issue and a WAR stall at Write-Result by cycle and by
       `stall.reason`, and a program whose write-backs are provably out of program order.
+      **Result: met — see "Step 1, as built" below.**
 
 - [ ] **2. INV-8 differential.** `runConformance('scoreboard', () => new ScoreboardProcessor())`
       over the full corpus × the config matrix this model actually honors. Acceptance: green.
@@ -305,15 +310,143 @@ proves is vitest's `include` glob and the model id. Do not read a green step 0 a
 Gates: `npm test` **11193 passed / 1 skipped = 11194 total** (11193 → 11194, 92 → 93 files — the one
 new smoke test), `tsc -b` green, `npm run lint` clean, `npm run build` green, `format:check` clean.
 
+## Step 1, as built (2026-08-10)
+
+`packages/engine/scoreboard/src/processor.ts` (~900 lines with its docblocks) + a 46-test
+`processor.test.ts`. Repo **11194 → 11239** tests, 93 → 94 files; `tsc -b`, `lint`, `build`,
+`format:check` all green. The machine runs all twelve corpus programs to a halt and is
+architecturally equal to the golden reference on every one (measured — step 2 formalizes it).
+
+### The three things this plan did not price
+
+**1. ⚠ Issue must STOP at an unresolved control transfer, and that is forced by INV-8, not chosen.**
+Decision 3 pins no predictor and says a taken branch "simply flushes the front end". With `RO`
+non-blocking (decision 2b) and no reorder buffer, nothing otherwise stops a younger instruction
+reaching Write-Result while an older branch is still parked on an operand — and a landed write
+cannot be taken back. So Issue holds, which makes decision 3's sentence literally true: with Issue
+held, the front end IS the `IF` slot and nothing else.
+
+**This is REACHED, not merely reachable, and by the corpus** — stubbing the block reddens INV-8 on
+**`array-sum-twice.s` and `nested-loop.s`**, neither of which needs a load: a branch parked one cycle
+on the `addi` immediately before it is window enough for the fall-through instruction to take the
+other integer unit and write back. So **INV-8 is a REAL net for THIS mechanism from step 2 on**,
+unlike the WAW/WAR mechanisms it is blind to (below). The test file also carries the hand-built
+load-parked witness, which opens a nine-cycle window instead of a one-cycle one.
+
+**Cost: a fifth stall reason, `'control'`, amending decision 6** (a non-gating row). The
+alternatives were reusing `'structural'` — which claims a unit is exhausted when none is, beside a
+table that visibly shows one free — or emitting nothing, which leaves the machine stopped with
+nothing in the trace to say why. `'raw'` remains untouchable (pinned repo-wide to "forwarding is
+off"). Same amendment splits `'structural'` into **`'structural-int'` / `'structural-mem'`**, which
+decision 4's own amendment note had already asked for.
+
+**2. ⚠ Architectural `pc` cannot be "the retiring instruction's `nextPc`" here.** Every earlier model
+uses that rule and it is only well-defined because retirement is in order — which is exactly what
+this model breaks. Read that way, `pc` moves **BACKWARD** mid-run: on the out-of-order witness it
+would jump to 16 at cycle 6 and back to 4 at cycle 10, at every recorded cursor position, while
+still ending on the right value where INV-8 looks. `pc` advances across the completed program-order
+**prefix** instead, via an issue-order queue that holds no values and can undo nothing (it is not a
+ROB). ⚠ The isolated evidence for this rule is the step-1 unit test, NOT INV-8: the "whoever
+completed last" mutation also perturbs the drain path, so the 4 corpus programs it reddens
+(`array-sum`, `strided-sum`, `byte-loads`, `store-forward`) trip the **drain guard**, not a `pc`
+equality. Do not cite them as a pc net.
+
+**3. `MEM_LATENCY = 4`, derived rather than picked.** With `WB = RO + 1 + L`, a load and the
+independent integer ops issued behind it write back at `4 + L`, 6 and 7. `L = 2` **ties** the load
+with the first (no reorder at all); `L = 3` beats the first by one and ties the second — a
+one-cycle photo finish on the milestone's own acceptance criterion, collapsed by an issue skew of
+two. `L = 4` clears both, by 2 and by 1, and two integer units is exactly how many can be in flight
+beside a load, so it is clear of every REACHABLE skew rather than of the one that was measured.
+Step 3 hand-derives every coefficient from this constant.
+
+### The mutation check, run early (step 3 still owes its own)
+
+Four stubs, each applied to `processor.ts`, run, and reverted (never a `git checkout` harness —
+[[m13-width-planned]]'s destroyed tree; the tree was committed first regardless).
+
+| Stub          | step-1 unit tests | corpus INV-8 (12 programs)                 |
+| ------------- | ----------------- | ------------------------------------------ |
+| WAR check     | 3 red             | **12/12 GREEN**                            |
+| WAW check     | 3 red             | **12/12 GREEN**                            |
+| control block | 2 red             | **2 RED** (array-sum-twice, nested-loop)   |
+| `pc` prefix   | 2 red             | 4 red — but via the DRAIN GUARD, see above |
+
+**Rows 1 and 2 confirm the plan's step-3 prediction ahead of time**: INV-8 is a false net for WAW
+and WAR on today's corpus, and step 6 is what turns it into a real one. Row 3 is the finding: it is
+already a real net for the control mechanism.
+
+### ⚠ The corpus DOES have reachable WAW hazards — the step-0 scan missed the pseudo-instructions
+
+`docs/memory/m15-scoreboard-planned.md` records "zero reachable WAW or WAR hazards", measured at
+step 0. **The WAR half holds** (zero `'war'` stalls anywhere in the corpus). **The WAW half does
+not**: `'waw'` stalls fire on **6 of 12** programs, because `la rd, label` expands to
+`lui rd, …` / `addi rd, rd, …` — two writers to one register, one instruction apart. The scan read
+source mnemonics, not the assembled stream.
+
+The distinction that keeps both claims true at once: those pairs produce WAW **stalls** (timing) but
+never WAW **corruption** (architecture), because the younger `addi` also READS the register and so
+waits on the producer regardless. That is why row 2 of the table above is still green. The step-6
+program must therefore contain a WAW pair whose younger writer does **not** read the older one's
+destination, or it will not turn INV-8 red.
+
+### Measured corpus baseline — ⚠ NOT the step-3 oracle
+
+Recorded so accidental drift is visible, and flagged because step 3's whole method is to hand-derive
+from the recurrence FIRST and compare afterwards. **Do not read a number out of this table into a
+derivation.** Neutral config, `MEM_LATENCY = 4`:
+
+| program             | cycles | stall reasons observed                             |
+| ------------------- | ------ | -------------------------------------------------- |
+| `add.s`             | 9      | structural-int 2                                   |
+| `array-sum.s`       | 89     | control 6, operand 26, structural-int 32, waw 7    |
+| `array-sum-twice.s` | 346    | control 28, operand 124, structural-int 151, waw 6 |
+| `branch-flavors.s`  | 21     | control 2, structural-int 5                        |
+| `byte-loads.s`      | 22     | operand 2, structural-mem 8, waw 3                 |
+| `call-return.s`     | 23     | control 2, structural-int 5                        |
+| `nested-loop.s`     | 222    | control 36, operand 4, structural-int 59, waw 8    |
+| `paired-branches.s` | 13     | control 2, structural-int 2                        |
+| `slow-op-loop.s`    | 74     | control 6, operand 12, structural-int 29           |
+| `store-forward.s`   | 23     | operand 2, structural-mem 8, waw 3                 |
+| `strided-sum.s`     | 89     | control 6, operand 26, structural-int 32, waw 7    |
+| `sum-loop.s`        | 80     | control 10, structural-int 23                      |
+
+`'war'` is **absent from every row** — the one hazard this milestone exists for is invisible on the
+shipped corpus, which is precisely what step 6 is for. `array-sum.s` and `strided-sum.s` are
+identical here (same instruction shape; this model is cache-blind), so they are not two data points.
+
+### Smaller things worth carrying
+
+- **Stall CADENCE is a contract**: exactly one `stall` event per stalled instruction per stalled
+  cycle. Step 3 asserts a multiset, so the count is load-bearing, not an implementation detail.
+- **`location` stays in the STAGE vocabulary** (`IF ID RO EX MEM WB`), never `INT0`/`INT1`. An FU
+  name there would mint a new `stageFamily` and silently break the "`pipeline-map.ts` needs no edit"
+  criterion below — no engine test looks at a hue. Pinned by a test that enumerates the location set.
+- **`micro` is snapshotted AFTER the clock edge**, like `state.registers`. Consequence a view author
+  must know: a unit can show `Rj`/`Rk` set in the same cycle its stall event says it could not read —
+  both true, one cycle apart. Flagged for step 7.
+- **The machine is deadlock-free by construction, and the argument is short**: only a unit that has
+  NOT read its operands can block a WAR, and a unit waiting on a producer has `R` clear for that
+  operand — so a unit can never block the very write it waits for. A `WAR`-blocked write is only ever
+  blocked by an OLDER unit, and the oldest unit in the machine always advances. A loud
+  "cycle advanced nothing" throw guards it anyway, since determinism makes one stuck cycle infinite.
+- **`add.s`-style drain**: `pc` past the end of `.text` and `halted` both match the reference, and a
+  guard throws if the machine ever reports halted with instructions still in flight.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
 make quietly. Both are predictions this plan is willing to be wrong about in public:
 
-- [ ] **The trace schema needs no edit.** `stall` is `{ reason: string; stage; instr }` — a
-      free-form reason, verified 2026-08-10 at `packages/trace/src/schema.ts:57` — so `'waw'` and
-      `'war'` need no schema change. `location` is a plain string, so `'RO'` needs none either.
-- [ ] **`pipeline-map.ts` needs no edit.** It derives the stage set from the recording and hues by
+- [x] **The trace schema needs no edit — ✅ PAID OUT at step 1.** `stall` is
+      `{ reason: string; stage; instr }` — a free-form reason, verified 2026-08-10 at
+      `packages/trace/src/schema.ts:57` — so `'waw'` and `'war'` need no schema change, and neither
+      did the two reasons step 1 added on top of them (`'control'`, and the `'structural-*'` split).
+      `location` is a plain string, so `'RO'` needed none either. **The whole model was built with
+      `packages/trace` untouched**, which is the criterion.
+- [ ] **`pipeline-map.ts` needs no edit.** ⚠ Step 1 bought half of this and cannot buy the other
+      half: the engine now provably emits only `IF ID RO EX MEM WB` as `location` (a test enumerates
+      the set), so no FU name can leak into `stageFamily()`. But **nothing renders this model until
+      step 5**, so the criterion stays open. It derives the stage set from the recording and hues by
       stage FAMILY. `stageFamily()` strips a lane suffix and trailing digits, so this model's
       families are `IF`, `ID`, `RO`, `EX`, `MEM`, `WB` — and `PHASE_COLORS` holds exactly
       `IF ID EX MEM WB` (read at `theme.ts:44-50`), so **five of six already carry a validated
@@ -333,9 +466,12 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 - [ ] For **every** corpus program, final register + memory state equals the golden reference
       (INV-8), at every config this model honors.
 - [ ] Two instructions provably write back **out of program order**, and `follow()` tracks each
-      across the other.
-- [ ] Forwarding on vs. off produces a **byte-identical** trace on this model (the inertness
-      contract, asserted).
+      across the other. ⚠ Half met at step 1: the out-of-order write-back is asserted by cycle
+      (margins of 4 and 2 on `lw` / `addi` / `addi`), and the ids are proved stable and contiguous
+      across it. `follow()` is the recorder's, so it waits for step 4.
+- [x] **Forwarding on vs. off produces a byte-identical trace ✅ (step 1)** — and so does every
+      branch-prediction scheme and the whole out-of-order cluster. This machine has no bypass network
+      at all, so the inertness contract is asserted as whole-trace equality, not a comment.
 - [ ] All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check`.
 - [ ] Both falsifiable UNCHANGED criteria paid out, or the STOP was brought back to review.
 
@@ -349,7 +485,7 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 | 3   | ⛔ Does the machine speculate?                   | **No predictor: `branchPrediction` is IGNORED** and a taken branch simply flushes the front end. The CDC 6600 had no dynamic prediction, and adding one puts speculative recovery on a machine with no ROB — the hardest thing in the milestone, for a lesson that is not this milestone's                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **PINNED 2026-08-10: no predictor.**                                                                                                                                        |
 | 4   | ⛔ Where latency comes from                      | **Model-intrinsic heterogeneous FU latencies, NOT `slowOpLatency`.** **THREE FUs: TWO integer (1 cycle each, both report `EX`) and one memory (multi-cycle, reports `MEM`).** ⚠ Amended 2026-08-10 after step 0 — the original "two FUs to start" makes WAR **unreachable**, since the only multi-cycle latency is the memory FU, so anything parked at `RO` waits on a load that owns the single memory port while the waiter owns the only integer FU, leaving no FU for a younger writer (see step 1-PRE for the derivation and the witness program). ⚠ `slowOpLatency` is gated by `configurableOutOfOrder`, which also gates the issue-order toggle and the ROB-size control (`App.tsx:387-392`) — so honoring it means either offering a ROB size on a machine with no ROB, or splitting a capability flag across seven models. And it has **no UI control at all** (`useSimulator.ts:356-361`), reset to 1 on every free-play load, so a model depending on it shows nothing until M16 authors a lesson. Intrinsic latency dodges all of it, follows multi-cycle's precedent, and needs no capability flag | **PINNED 2026-08-10: intrinsic latencies** — forced by the shell finding. **FU count AMENDED 2026-08-10 by the user to 2 integer + 1 memory** — forced by WAR reachability. |
 | 5   | Which knobs are REFUSED vs. IGNORED              | **Refuse** `cache` and `issueWidth > 1` (throw at `reset()`, clamp in `engineConfigFor` — the `deep-pipeline` precedent; note it clamps `cache` only today). **Ignore** `forwarding`, `branchPrediction`, `outOfOrderIssue`, `robSize`, `slowOpLatency` (the M4/M7 inertness contract, asserted by a byte-identical-trace test). Capability flags: `configurableOutOfOrder: false` is then honest, since none of the cluster is honored                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10.**                                                                                                                                                      |
-| 6   | Stall reason vocabulary                          | `'waw'`, `'war'`, `'structural'`, `'operand'`. **Not `'raw'`** — that string is pinned repo-wide to mean "forwarding is off" (`pairing-readout.ts`, `lessons.test.ts`), and this machine has no forwarding knob at all                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | **PINNED 2026-08-10.**                                                                                                                                                      |
+| 6   | Stall reason vocabulary                          | **PINNED 2026-08-10; AMENDED at step 1 to SIX reasons** — `'waw'`, `'war'`, `'operand'`, **`'structural-int'`**, **`'structural-mem'`**, **`'control'`**. The structural split is decision 4's own amendment note cashed in: unsplit, it reads false beside a table that visibly shows a free unit. `'control'` is FORCED by INV-8, not chosen — Issue cannot pass an unresolved transfer on a machine with no ROB, and stubbing the block reddens INV-8 on two corpus programs. `'raw'` still untouchable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 7   | Load/store handling                              | **The memory FU of decision 4 — blocking, single memory port**, reporting `location: 'MEM'` for every cycle it occupies (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package). Its multi-cycle latency is what makes WAW/WAR reachable on ordinary programs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **PINNED 2026-08-10.**                                                                                                                                                      |
 | 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | **PINNED 2026-08-10: last.**                                                                                                                                                |
 | 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **PINNED 2026-08-10: no wire diagram** in this milestone.                                                                                                                   |
