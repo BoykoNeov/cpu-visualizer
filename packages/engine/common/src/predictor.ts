@@ -215,7 +215,12 @@ export function coldPredictorState(scheme: DynamicScheme): PredictorState {
 export function isDynamicScheme(
   scheme: ProcessorConfig['branchPrediction'],
 ): scheme is DynamicScheme {
-  return scheme in COUNTER_BITS;
+  // `Object.hasOwn`, not `in`: the latter walks the prototype chain, so a scheme spelled
+  // `'toString'` or `'constructor'` would answer true and hand `new BranchPredictor` a width of
+  // `undefined` — the table of `NaN` counters this predicate exists to prevent, arriving by the
+  // one route the `Record` keying does not close. Reachable because lesson JSON is cast without
+  // runtime validation; `lessons.test.ts` closes the other half by checking the scheme is real.
+  return Object.hasOwn(COUNTER_BITS, scheme);
 }
 
 /**

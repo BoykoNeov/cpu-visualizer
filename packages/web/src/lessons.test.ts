@@ -1265,6 +1265,27 @@ describe('authored lessons (INV-6)', () => {
         if (lesson.config.forwarding !== neutral.forwarding) {
           expect(caps.configurableForwarding, `${lesson.model} honors forwarding`).toBe(true);
         }
+        // FIRST, that the scheme EXISTS. `content/lessons/*.json` is `import.meta.glob`'d and cast
+        // `as Lesson` with no runtime validation, so `tsc` never sees these strings — and prediction
+        // was the one knob with no membership check, while `program`/`model`/`depthDefault` each get
+        // a `toContain` and `cache` an identity against the shipped constant. The lean check below
+        // cannot stand in for it: an unknown scheme makes `predictionPosition` return `undefined`,
+        // which is `!==` the neutral position, so the typo takes the TRUE branch and then passes on
+        // a model that honors prediction. Asserted through `predictionPosition` rather than against a
+        // list of the five names, deliberately: `PREDICTION_POSITION_OF` is a total `Record` over the
+        // union, so a sixth scheme reddens at `tsc` there and this check knows it immediately — where
+        // a literal list here would be a second, independent spelling of the union, the exact
+        // agreement-by-construction `isDynamicScheme`'s docblock exists to avoid.
+        //
+        // What the typo costs, and why it is worth a test rather than a comment: `dynamic-2-bit`
+        // records on the not-taken machine, lights NO position in `PredictionToggle` (all four
+        // buttons compare against `undefined`) and hides the predictor panel — while the narration
+        // describes a counter learning. `bet-that-learns` is the first lesson to declare a dynamic
+        // scheme, so this became reachable when the union grew from three names to five.
+        expect(
+          predictionPosition(lesson.config.branchPrediction),
+          `${lesson.id} declares an unknown branch-prediction scheme`,
+        ).toBeDefined();
         // `'none'` and `'static-not-taken'` are the same machine, so leaning on prediction means
         // asking for a DIFFERENT one — naming not-taken by its explicit name is not a lean. This is
         // a MACHINE-identity question, so it is `predictionPosition` and not `hasTakenBetPath`: a
