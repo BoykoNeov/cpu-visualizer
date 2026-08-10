@@ -13,10 +13,9 @@ residual and moved both caption thresholds). The corpus is **twelve** programs, 
 7863 / 9466 / 9493 / 9497 / 11193 after steps 1–8 — and **1633 of that last jump is a stale sweep
 axis finally running**, not new assertions), five gates green.
 
-**Open work:** **M15 — the scoreboard (CDC 6600), STEP 0 DONE 2026-08-10; the `/code-review ultra`
-gate is discharged, but a ⛔ STOP now blocks step 1 — the pinned two-FU inventory makes WAR
-UNREACHABLE and needs a second integer FU, which is the user's call**; URL permalinks; and session
-persistence.
+**Open work:** **M15 — the scoreboard (CDC 6600), STEP 0 DONE 2026-08-10, next is step 1 (the model
+MVP, now a 2-integer + 1-memory machine after decision 4 was amended); the `/code-review ultra` gate
+is discharged**; URL permalinks; and session persistence.
 **Dynamic branch prediction is ✅ COMPLETE — all steps 0–8, finished 2026-08-09.**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
@@ -123,9 +122,10 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
 - [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **step 0 of 8 done**.
   Read before any model that needs a latency source (**`slowOpLatency` has no UI control and is
   cluster-gated**) and before trusting INV-8's net status — the corpus has **zero reachable
-  WAW/WAR**, so it is a false net here until step 6 and a real one after. **Read the ⛔ STOP first:
-  two FUs cannot produce a WAR stall at all** — before pinning any FU inventory, hand-build the
-  hazard the model exists to show and check an FU is FREE for the younger instruction. Step 0 also
+  WAW/WAR**, so it is a false net here until step 6 and a real one after. **The machine is 2 INT +
+  1 MEM — amended from two FUs because two cannot produce a WAR stall at all**; before pinning any
+  FU inventory, hand-build the hazard the model exists to show and check an FU is actually FREE for
+  the younger instruction. Step 0 also
   adds: a new model package needs **five** lint probe cells, not three (one checked by its MESSAGE,
   not its exit code), and **all four of its declared import edges are unexercised** at step 0.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by

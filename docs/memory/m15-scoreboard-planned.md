@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T03:55:05.142Z
+  modified: 2026-08-10T04:09:35.317Z
 ---
 
 **Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEP 0 DONE, no machine built, ALL ELEVEN
@@ -17,13 +17,22 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: NOT step 1 — a ⛔ STOP is open first (two FUs make WAR unreachable, below).**
-Step 1 itself is the model MVP, proved by a hand-built WAW/WAR program inside the test file, not a
-corpus program — the corpus one is priced at step 6, after the coefficients are known.
+unreviewed. **Next: step 1, the model MVP** — build the **2 INT + 1 MEM** machine (see the resolved
+STOP below), proved by a hand-built WAW/WAR program inside the test file, not a corpus program; the
+corpus one is priced at step 6, after the coefficients are known.
 
-## ⛔ STOP before step 1 — two FUs make WAR UNREACHABLE (derived 2026-08-10)
+## ✅ RESOLVED STOP — two FUs made WAR UNREACHABLE; the machine is now 2 INT + 1 MEM
 
-**The pinned decision-4 inventory (integer 1-cycle + one blocking memory FU) cannot produce a single
+**Raised and resolved 2026-08-10, before any engine code.** The user amended decision 4 to **two
+integer FUs (1 cycle each, both reporting `EX`) plus one blocking memory FU**. Two consequences for
+step 1: the **`structural`** stall reason must say WHICH FU class is exhausted (otherwise a student
+reads "structural" while an integer unit sits visibly free), and the FU-status table now has three
+rows (`INT0`, `INT1`, `MEM`), so **step 7's view width was priced against the wrong FU count and
+must be re-measured, not inherited**.
+
+The derivation, kept because the shape is what transfers:
+
+**The original decision-4 inventory (one integer 1-cycle FU + one blocking memory FU) cannot produce a single
 WAR stall**, which would delete half the milestone's subject. Derived on paper by trying to
 hand-build step 1's opening WAR program and failing. A WAR stall needs an older instruction parked
 at `RO` with a source still unread while a younger one reaches Write-Result on that register. **The
@@ -33,11 +42,11 @@ waiter owns the only integer FU, so **no FU is left for a younger writer**. It s
 `structural`, in-order blocking Issue stalls everything behind it, the load finishes, the waiter
 reads at `RO`, window closed. Witness: `lw x1, 0(x5)` / `add x3, x1, x2` / `lw x2, 0(x6)`.
 
-**Fix: a SECOND integer FU** (2 int + 1 mem) — `lw x1` on mem / `add x3, x1, x2` on int A parked at
-`RO` / `addi x2, x0, 5` on int B, one cycle, reaches WB → WAR on `x2`. Historically honest too (the
-6600 had ten FUs, precisely so instructions could get past each other). **It is a STOP, not a patch:
-decision 4 is a ⛔ gating row the user pinned at "two FUs to start", and the count changes every
-hand-derived coefficient from step 3 on.**
+**Fix, now PINNED: a SECOND integer FU** (2 int + 1 mem) — `lw x1` on mem / `add x3, x1, x2` on int
+A parked at `RO` / `addi x2, x0, 5` on int B, one cycle, reaches WB → WAR on `x2`. Historically
+honest too (the 6600 had ten FUs, precisely so instructions could get past each other). **It was a
+STOP and not a patch because decision 4 is a ⛔ gating row the user pinned at "two FUs to start", and
+the count changes every hand-derived coefficient from step 3 on.**
 
 ⚠ **The transferable shape: this is the SAME collapse the corpus scan already measured** on
 `branch-flavors.s`'s `a1` WAW candidate — "two integer-ALU writers sharing one FU under in-order
@@ -112,6 +121,8 @@ throughout. The step-3 mutation check must therefore be **re-run at step 6**.
 
 ## The other pinned decisions
 
+**FUs: 2 integer (1 cycle, both `EX`) + 1 blocking memory (multi-cycle, `MEM`)** — amended from two
+to three 2026-08-10; see the resolved STOP above.
 Stages `IF ID RO EX/MEM WB` — `ID` **is** Issue and `WB` **is** Write-Result, chosen so five of six
 stage families carry a validated hue (`PHASE_COLORS` is exactly `IF ID EX MEM WB`, `theme.ts:44-50`);
 only `RO` falls back to the neutral accent. **`RO` is per-FU and non-blocking** — shared and
