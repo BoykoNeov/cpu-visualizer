@@ -1,7 +1,8 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEPS 1–4 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
-the golden reference, its SCHEDULE is pinned too, and it is now drivable through the recorder.**
+**Status: STEPS 1–5 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
+the golden reference, its SCHEDULE is pinned too, it is drivable through the recorder, and it is now
+SELECTABLE IN THE BROWSER.**
 `ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
@@ -13,7 +14,11 @@ is the headline: the matrix is a real net for WAW and NOTHING at corpus scale ne
 added the recorder suite — a proof, not a build — closing acceptance criterion 4 with `follow()`
 over **strictly nested** lifetimes, and turning up the finding step 7 most needs: **the two tables a
 view draws from disagree on a flush cycle, and an Issue stall repeats `IF` while its event says
-`stage: 'ID'`**. Next is step 5 (web enablement). The `/code-review ultra` gate is
+`stage: 'ID'`**. Step 5 put it in the picker (last, decision 8), gave `engineConfigFor` its **second
+clamp** — the function is PROTECTION again, since this model refuses a width and its control vanishes
+with it — and paid out the `pipeline-map.ts` UNCHANGED criterion on the shipped bundle, 36/36. It
+also turned up a **STOP for step 7: the `RO` fallback hue is byte-identical to `IF`'s**, a collision
+no test in this repo can see. Next is step 6 (promote the WAW/WAR program into the corpus). The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -232,7 +237,7 @@ lint` red on the two denied directions and green on the allowed one, verified by
       recorder tests green; a scrub to any cycle reproduces the recorded state exactly.
       **Result: met — see "Step 4, as built" below.**
 
-- [ ] **5. Web enablement — `models.ts`.** One `ModelChoice` row (`datapath: 'none'` until step 7),
+- [x] **5. Web enablement — `models.ts`. ✅ DONE 2026-08-10.** One `ModelChoice` row (`datapath: 'none'` until step 7),
       `MODEL_DESCRIPTION`, picker position, and the capability flags. Two things M11 learned the
       hard way, both of which apply verbatim. **The churn is FOUR exhaustive `toEqual` lists, not
       three** — the id list, both `honoring()` lists, and the datapath table in `models.test.ts`;
@@ -247,6 +252,9 @@ lint` red on the two denied directions and green on the allowed one, verified by
       and only a browser can see it.
       Acceptance: the model is drivable end-to-end in `npm run dev`; every refused knob is
       clamped rather than thrown; the pipeline map draws it with no edit to `pipeline-map.ts`.
+      **Result: met — see "Step 5, as built" below. Acceptance was taken on the SHIPPED `vite
+preview` bundle rather than the dev server, which is strictly stronger evidence (only preview
+      excludes a stale/absent `dist`), 36/36 checks green.**
 
 - [ ] **6. Promote the WAW/WAR program into `content/programs/`.** One corpus, three jobs (INV-7),
       so the demonstration must be a real corpus program and not a test fixture — but it is priced
@@ -735,6 +743,116 @@ green control cells were a WINDOW measurement rather than an absence.**
 - **`instr-retire` follows write-back exactly**, asserted as a list. On M9 those two orders
   disagree; here they cannot, and that impossibility IS the distinction from a reorder buffer.
 
+## Step 5, as built (2026-08-10)
+
+`models.ts` + the web trio + `SCOREBOARD_MODEL_DESCRIPTION`. Repo **11293 → 11303** passing
+(11294 → 11304 including the one skipped file), 97 files unchanged — the new claims went into
+existing suites rather than a new file, so the map's render claims keep ONE owner. Five gates green.
+Browser pass: **36/36 on the shipped `vite preview` bundle.**
+
+The row sits **last** (decision 8) with `datapath: 'none'`, and the picker order argument is worth
+keeping because it looks like it contradicts M11's. The deep pipeline was INSERTED mid-array rather
+than appended, deliberately, and this one is appended — the difference is what the row is FOR. A
+step along the road the reader is walking belongs in its place on the road; a PREDECESSOR met after
+its successor only reads as one if the successor is already behind you. The description carries that
+framing ("the out-of-order machine before register renaming"), which is why decision 8 pinned
+position and wording together.
+
+### The description says two things it must not, and both would contradict the engine
+
+It does **not** say "out-of-order issue". Issue here is in order and BLOCKING, and stops dead at an
+unresolved transfer — step 1's `'control'` finding, forced by INV-8. Only COMPLETION reorders. The
+out-of-order row sits directly above and honors an `outOfOrderIssue` toggle, so a blurred line makes
+the two rows read as one claim. And it does not promise dramatic reordering: step 3 measured the
+dominant term as the **0.5-IPC turnaround ceiling**, not a hazard, so most corpus cycles are
+`structural-int`. The superscalar's "up to" hedge exists for exactly this failure.
+
+### ⚠ `engineConfigFor` is PROTECTION again, and the predicate is the flag — not the model id
+
+M11 step 6 implemented the deep pipeline's cache, and from then until today no shipped engine refused
+anything, so the function was normalization only. The scoreboard refuses `issueWidth != 1` by name.
+**The crash path is a click sequence**: set the superscalar 4-wide, pick Scoreboard, and the width
+control is GONE (it renders only under `configurableIssueWidth`) — so the reader cannot unset the
+value that throws. Verbatim the M11 step-5 crash on a new knob, and the same argument forces
+clamping over an error message: a refused knob is precisely one whose control has been taken away.
+
+The predicate is `configurableIssueWidth`, not `model.id === 'scoreboard'`, because
+`ProcessorCapabilities` has no "refuses" bit distinct from an "ignores" bit and the shell gates
+everything else on flags. That means the clamp also reaches the four width-BLIND models.
+
+⚠ **That extension was re-measured rather than inherited from M13, and the warrant is a grep, not a
+green suite.** `pipeline`, `deep-pipeline`, `single-cycle` and `multi-cycle` do not mention
+`issueWidth` anywhere in their `processor.ts`. **The suite would have stayed green either way** —
+the timing suites drive engines directly and never cross this seam. Clamp value is **1, not
+`undefined`**: the shell holds a POSITION (`session.ts` opens at 1, `useSimulator` always passes a
+number), and the engines' own `?? 1` already agrees with it.
+
+⚠ **The `issueWidth` skip in `engine-config.test.ts`'s scope test is CONDITIONAL on the flag.** The
+obvious blanket `continue` deletes a net: it would then permit a width clamp on the superscalar and
+the out-of-order core, which is verbatim the M13 step 6 half-dead toggle (`min(w, 2)` — right at
+widths 1 and 2, silently wrong at 3 and 4) one layer above where M13 fixed it.
+
+### The mutation check — two stubs, predictions written first, both held
+
+| Stub                                               | repo-wide result                                              |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| drop the `issueWidth` clamp from `engineConfigFor` | **3 red of 11304**, in exactly 2 files                        |
+| `?? T.accent` → another hue in `PipelineMapView`   | **1 red of 11304** — the sole net in the repo is written here |
+
+The first reddens the refuses-a-width load, the clamp-scope `toEqual`, and the handed-1 sweep; the
+identity test and the conditional-skip test stayed **green**, as predicted. ⚠ **The second is the
+finding: the map's documented neutral fallback had NO net anywhere in the repo until today.** Every
+shipped model's stage families all carry a validated `PHASE_COLORS` hue, so `RO` is the first family
+any model has ever drawn without one — the fallback was documented, reachable in principle, and
+exercised by nothing.
+
+### ⚠ THE HUE FINDING — the `RO` fallback COLLIDES with `IF`, and it is a browser-only fact
+
+Decision 2's stated payoff is "five of six families carry a validated hue; only `RO` falls back to
+the neutral accent, staying legible by its cell TEXT". The first half is true. **The second half is
+not neutral: `--accent` and `--phase-if` hold the SAME literal in every theme** — `#3987e5` in dark
+and system, `#2a78d6` in light (measured over the live `documentElement` in all three theme states,
+`M:/claud_projects/temp/m15-step5/hue-probe.mjs`). They are two independently declared tokens in
+`styles.css` that happen to agree, not an alias, so nothing links them and nothing would catch a
+future divergence either.
+
+So on the map, `IF` and `RO` are drawn in an **identical** hue. The relief rule holds — both cells
+carry their own text, so nothing is unreadable — but the map's hue premise ("one cycle reads as N
+instructions in N colors") is false for two of six families on this model, and `RO` is not a rare
+cell here: `array-sum` draws **60** of them, the second-largest family after `IF`. The screenshot is
+a wall of one blue.
+
+⚠ **No test in this repo can see this**, and that is the transferable part. The fold and the view
+both hand out the STRING `var(--accent)`, which is `!==` the string `var(--phase-if)`; the collision
+exists only after CSS resolves both. This joins "no test here can see a click" and "no test here can
+see a HEIGHT" — **no test here can see a COLOR either.**
+
+**Left as a STOP for step 7 rather than fixed here**, because every available fix is a decision this
+plan pinned elsewhere: a sixth phase hue is the "no new color token" criterion (which would also
+need the dataviz palette validator re-run); re-pointing `RO` at some other existing token is a
+choice about what `RO` _means_; and leaving it is defensible on the relief rule alone. Step 7 owns
+this model's picture and should decide with the tables in front of it.
+
+### Smaller things worth carrying
+
+The web trio landed in ONE edit (package dep + tsconfig `paths` + Vite alias), per M11's note that
+the three are checked by different gates and splitting them is how one gets forgotten. This is also
+the first thing to resolve the scoreboard **by workspace name** — step 0 flagged that its
+`vitest.config.ts` alias would sit unexercised for five steps, and it did.
+
+⚠ **Three rig failures on the first run, and all three were the RIG.** The control captions are
+written capitalized and uppercased by CSS, so a selector matching the on-screen spelling finds
+nothing (the depth-dial trap, one control over); the map legend carries a static mark key as a
+sibling span, so an unfiltered read reports a seventh "family"; and the register row is four `<td>`s,
+so `textContent` runs them together as `a0x100x0000003755` and a `\b55\b` match fails against an app
+that is RIGHT. All three are failure modes the rig memories already name. **Fix the rig and re-run —
+do not explain a failure away**; the fixed run is the evidence.
+
+The absences are the product on this model, so §0b of the pass asserts each of the four knob controls
+IS present on the superscalar before §3 asserts it is gone on the scoreboard, and the 4-wide
+superscalar recording is confirmed at **59 cycles** (a clamped 1-wide would read 72) so the crash
+path is entered from a genuinely 4-wide position rather than a nominal one.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -746,10 +864,16 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
       did the two reasons step 1 added on top of them (`'control'`, and the `'structural-*'` split).
       `location` is a plain string, so `'RO'` needed none either. **The whole model was built with
       `packages/trace` untouched**, which is the criterion.
-- [ ] **`pipeline-map.ts` needs no edit.** ⚠ Step 1 bought half of this and cannot buy the other
-      half: the engine now provably emits only `IF ID RO EX MEM WB` as `location` (a test enumerates
-      the set), so no FU name can leak into `stageFamily()`. But **nothing renders this model until
-      step 5**, so the criterion stays open. It derives the stage set from the recording and hues by
+- [x] **`pipeline-map.ts` needs no edit — ✅ PAID OUT at step 5**, and it paid out in the strong
+      form: the shared fold and the shared view draw this model with **`packages/web/src/pipeline-map.ts`
+      and `PipelineMapView.tsx` both untouched**, verified headlessly (six families derived from
+      `array-sum`, five from `sum-loop` — the non-vacuity a hard-coded list fails) and in the
+      browser (60 `RO` cells, legend in first-seen order). ⚠ **But read the step-5 hue finding
+      below before step 7 quotes "only `RO` falls back to the neutral accent" as a good outcome —
+      that fallback COLLIDES with `IF`.** Step 1 had bought half of this: the engine provably emits
+      only `IF ID RO EX MEM WB` as `location` (a test enumerates
+      the set), so no FU name can leak into `stageFamily()`. The other half needed a renderer. It
+      derives the stage set from the recording and hues by
       stage FAMILY. `stageFamily()` strips a lane suffix and trailing digits, so this model's
       families are `IF`, `ID`, `RO`, `EX`, `MEM`, `WB` — and `PHASE_COLORS` holds exactly
       `IF ID EX MEM WB` (read at `theme.ts:44-50`), so **five of six already carry a validated

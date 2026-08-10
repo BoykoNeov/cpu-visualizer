@@ -1,16 +1,17 @@
 ---
 name: m15-scoreboard-planned
-description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-4 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, and it is drivable through the recorder. Read before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
+description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-5 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, it is drivable through the recorder, and it is SELECTABLE IN THE BROWSER. Step 5 left a STOP for step 7: the map's RO fallback hue is BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), a collision NO TEST HERE CAN SEE because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T09:18:58.940Z
+  modified: 2026-08-10T14:05:03.509Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–4 DONE — the machine exists,
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–5 DONE — the machine exists,
 runs, is pinned against the golden reference, its SCHEDULE is pinned too, and it is drivable
-through the recorder; ALL ELEVEN DECISIONS PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
+through the recorder, and SELECTABLE IN THE BROWSER; ALL ELEVEN DECISIONS PINNED (decision 6 amended
+at step 1).** The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
@@ -19,7 +20,73 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 5 (web enablement).**
+unreviewed — **that seam scrutiny is now DONE (see step 5)**. **Next: step 6 (promote the WAW/WAR
+program into the corpus).**
+
+## Step 5 — the picker row, a second clamp, and the hue nobody could test (2026-08-10)
+
+`models.ts` + the web trio + `SCOREBOARD_MODEL_DESCRIPTION`. **+10 tests**, repo **11293 → 11303**
+passing, **97 files UNCHANGED** — the new claims went into existing suites so the map's render
+claims keep ONE owner. Five gates green. Browser pass **36/36 on the shipped `vite preview` bundle**.
+
+⚠ **`engineConfigFor` is PROTECTION again after four milestones as normalization, and the crash
+path is a CLICK SEQUENCE.** The scoreboard refuses `issueWidth != 1` by name; the width control
+renders only under `configurableIssueWidth`, so "superscalar at 4-wide → pick Scoreboard" lands the
+reader on a model whose control for the throwing value **is no longer on screen to unset** —
+verbatim the M11 step-5 crash on a new knob. Same argument forces clamping over an error message.
+
+⚠ **The predicate is the capability FLAG, never the model id** — `ProcessorCapabilities` has no
+"refuses" bit distinct from an "ignores" bit, and the shell gates everything else on flags. So the
+clamp also reaches the four width-BLIND models, **and that extension's warrant is a GREP, not a green
+suite**: the timing suites drive engines directly and never cross this seam, so they stay green
+either way. Re-measured at M15 rather than inherited from M13. Clamp to **1, not `undefined`** (the
+shell holds a position). ⚠ And the `issueWidth` skip in `engine-config.test.ts`'s scope test must be
+**CONDITIONAL on the flag** — a blanket `continue` permits a width clamp on the superscalar and OoO,
+verbatim the M13 half-dead toggle one layer up.
+
+**Mutations, predictions written first, both held:** dropping the clamp → **3 red of 11304** in
+exactly 2 files (the identity and conditional-skip tests stayed green as predicted); changing the
+map's `?? T.accent` → **1 red of 11304**, i.e. **the sole net in the whole repo is the one written
+today** — every shipped model's families all carry a validated hue, so `RO` is the first family any
+model has ever drawn without one and the documented fallback was exercised by nothing.
+
+⚠ **THE HUE FINDING, a STOP handed to step 7: the `RO` fallback is byte-identical to `IF`.**
+`--accent` and `--phase-if` hold the SAME literal in every theme (`#3987e5` dark/system, `#2a78d6`
+light) — two independently declared tokens in `styles.css` that happen to agree, not an alias. So
+decision 2's payoff sentence is half wrong: five of six families do carry a validated hue, but the
+sixth's "neutral" fallback COLLIDES with the first, and `RO` is the second-largest family on
+`array-sum` (60 cells). The relief rule holds (cell TEXT), so nothing is unreadable — but the map's
+premise that one cycle reads as N instructions in N colors is false here. **Left unfixed on purpose:
+every fix is a pinned decision elsewhere** (a sixth hue is the "no new color token" criterion plus a
+palette re-validation; re-pointing `RO` is a choice about what `RO` means; leaving it is defensible).
+⚠ **No test in this repo can see it** — both layers hand out the STRING `var(--accent)`, which is
+`!==` `var(--phase-if)`; the collision exists only after CSS resolves. Joins the family:
+**no test here can see a click, a HEIGHT, or a COLOR.**
+
+**The picker position argument, which looks like it contradicts M11's and does not.** The deep
+pipeline was INSERTED mid-array; this is APPENDED (decision 8). A step ALONG the road belongs in its
+place on the road; a PREDECESSOR met after its successor only reads as one if the successor is
+already behind you — which is why decision 8 pinned position and wording together, and why the
+description says "the out-of-order machine before register renaming".
+
+⚠ **The description must not say "out-of-order issue"** — issue is in order and BLOCKING here (step
+1's `'control'` finding); only COMPLETION reorders, and the OoO row sits directly above with an
+`outOfOrderIssue` toggle. It also must not promise dramatic reordering: step 3's 0.5-IPC turnaround
+ceiling means most corpus cycles are `structural-int`.
+
+⚠ **Three rig failures on the first run, ALL THREE the rig, each a failure mode the memories already
+name**: control captions are capitalized in source and uppercased by CSS (matching the on-screen
+spelling finds nothing — the depth-dial trap); the map legend carries a static mark key as a sibling
+span, so an unfiltered read reports a seventh "family"; and the register row is four `<td>`s, so
+`textContent` reads `a0x100x0000003755` and a `55` match fails against an app that is RIGHT.
+**Fix the rig and re-run — never explain a failure away.** Rig at
+`M:/claud_projects/temp/m15-step5/` (`eyeball.mjs` 36 checks + `dump.json` taken first +
+`hue-probe.mjs`). The absences ARE the product on this model, so §0b asserts each knob control is
+PRESENT on the superscalar first, and the 4-wide recording is confirmed at 59 cycles (1-wide is 72).
+
+The web trio (package dep + tsconfig `paths` + Vite alias) landed in ONE edit per M11's note, and
+this is the first thing to resolve the scoreboard **by workspace name** — step 0 predicted its
+`vitest` alias would sit unexercised for five steps, and it did.
 
 ## Step 4 — the recorder, and the two tables that DISAGREE (2026-08-10)
 

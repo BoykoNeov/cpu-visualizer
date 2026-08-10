@@ -1,6 +1,6 @@
 ---
 name: browser-is-the-only-net
-description: 'In CPU Visualizer no headless test can see a click (no jsdom, renderToStaticMarkup only) — 9 of 10 view steps shipped a defect only the browser caught. The hub for browser verification: the claim and the proof, then pointers to the CDP recipe, Chrome cleanup, vacuity traps, and screenshot limits.'
+description: 'In CPU Visualizer no headless test can see a click (no jsdom, renderToStaticMarkup only) — 9 of 10 view steps shipped a defect only the browser caught. It cannot see a HEIGHT or a COLOR either: a token collision (two CSS vars holding the same literal) is invisible because the layers hand out the var() STRINGS and only CSS resolves them. The hub for browser verification: the claim and the proof, then pointers to the CDP recipe, Chrome cleanup, vacuity traps, and screenshot limits.'
 metadata:
   node_type: memory
   type: project
@@ -24,6 +24,17 @@ rather than a shrug.** Nothing in this repo renders `<App/>`, so its slot gates 
 predictor panel on the scheme instead of on a trace fact is **0 red of 9497 headless, 2 red of 52 in
 the browser**. Same shape as [[keyboard-clock-control]]'s 68/68 and [[continuous-play]]'s 47/47 —
 **when a decision has no headless net, the browser pass is where you state its cost as a pair.**
+
+⚠ **It cannot see a COLOR either — the third member of the family, found 2026-08-10 (M15 step 5).**
+The pipeline map hues a cell by its stage family and falls back to `T.accent` for a family with no
+validated phase hue. The scoreboard's `RO` is the first such family any shipped model has ever drawn,
+and **`--accent` and `--phase-if` hold the same literal in every theme** (`#3987e5` dark/system,
+`#2a78d6` light) — two independently declared tokens in `styles.css` that happen to agree. So `IF`
+and `RO` render in an IDENTICAL hue. **No test here can reach that fact**: the fold and the view both
+hand out the string `var(--accent)`, which is `!==` the string `var(--phase-if)`; the collision only
+exists after CSS resolves both. Measure a color the way you measure a height — off
+`getComputedStyle` in a real browser, in **every theme state** (system / light / dark, which are three
+states, not two). See [[m15-scoreboard-planned]].
 
 **Why:** measured repeatedly, not assumed — e.g. hardcoding `predictTaken: false` in `App` leaves
 **all 775 tests green**; deleting `branchPrediction` from `loadInto` fails nothing. A control can be
