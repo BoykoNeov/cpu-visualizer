@@ -140,12 +140,22 @@ describe('the picture the surface exists for reaches the markup', () => {
   it('prints a stall stage as text, never as a location', () => {
     const html = draw(record('register-reuse'), 19);
     expect(html).toContain('waw @ID');
-    // The row's own `unit` cell is the only positional claim it makes, and an unissued
-    // instruction has none.
+
+    // ⚠ **This assertion is cell-EXACT, and the mutation check is why.** The first draft asked
+    // whether the row "contains a dash" and whether it mentions a unit name — and a stub that put
+    // `stall.stage` straight into the unit cell passed BOTH: an unissued row already has four
+    // dashes in its cycle columns, and `ID` is not a unit name. Zero red in 11 872. The row's
+    // positional claim is one specific cell, so that is the cell to read.
     const row = html.split('<tr').find((r) => r.includes('waw @ID'))!;
-    expect(row).toContain('—');
-    expect(row).not.toContain('INT0');
-    expect(row).not.toContain('INT1');
+    const cells = [...row.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((m) => m[1]!);
+    expect(cells).toHaveLength(8);
+    // Columns: pc, instruction, UNIT, issue, read-op, exec-done, write, stalled-by.
+    expect(cells[2]).toBe('—');
+    // …and the stage string appears in the stall column and nowhere else in the row.
+    expect(cells[7]).toContain('ID');
+    for (const [i, text] of cells.entries()) {
+      if (i !== 7) expect([i, text.includes('ID')]).toEqual([i, false]);
+    }
   });
 });
 

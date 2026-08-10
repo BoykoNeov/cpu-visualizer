@@ -270,16 +270,23 @@ describe('a flush casualty is derived, and the derivation is exact', () => {
    *
    * Cross-checked here against the ground truth step 4 pinned — on a flush cycle
    * `trace.instructions` sights TWO ids at `IF` and `micro` rows ONE, and the extra one is the
-   * casualty. Over the whole corpus, both sets agree exactly.
+   * casualty. Over the whole corpus, both sets agree exactly: 0/4/23/1/0/1/23/0/0/5/0/4/9.
+   *
+   * ⚠ **The first draft of this test was a FALSE NET, and the step-7 mutation check is what said
+   * so.** It read the final cursor only and looped
+   * `for (const id of derived) expect(casualties.has(id))` — so a stub producing NO casualties at
+   * all iterated zero times and passed. It was green under exactly the change it exists to catch.
+   * The union over every cursor, compared as a SET in both directions, is the shape that cannot go
+   * vacuous: for a program with casualties both sides are non-empty, and for a program without one
+   * it still says "no false positives".
    */
   it.each(ALL)('matches the ids the flush contract names — %s', (name) => {
     const recording = record(name);
-    const final = recording[recording.length - 1]!;
-    const derived = new Set(
-      at(recording, final.cycle)
-        .instructions.filter((r) => r.flushed)
-        .map((r) => r.id),
-    );
+    // Every cursor, not just the last: the trailing window drops older casualties off the top.
+    const derived = new Set<string>();
+    for (const t of recording) {
+      for (const r of at(recording, t.cycle).instructions) if (r.flushed) derived.add(r.id);
+    }
 
     const casualties = new Set<string>();
     for (const t of recording) {
@@ -288,8 +295,7 @@ describe('a flush casualty is derived, and the derivation is exact', () => {
       for (const i of t.instructions)
         if (i.location === 'IF' && !rowed.has(i.id)) casualties.add(i.id);
     }
-    // The window may have dropped older casualties, so the derived set is the visible subset.
-    for (const id of derived) expect([name, id, casualties.has(id)]).toEqual([name, id, true]);
+    expect([name, [...derived].sort()]).toEqual([name, [...casualties].sort()]);
   });
 
   /** Non-vacuity: the corpus must actually produce one, or the claim above is about nothing. */
