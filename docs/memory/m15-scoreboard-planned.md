@@ -1,6 +1,6 @@
 ---
 name: m15-scoreboard-planned
-description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-6 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, it is drivable through the recorder, and it is SELECTABLE IN THE BROWSER. Step 5 found and FIXED a collision that had shipped since M9: the pipeline map's no-hue fallback was BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), invisible to every test here because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. It was worst on the OUT-OF-ORDER model, 82% of whose map is the fallback and where IF vs ROB# is the whole distinction. Fixed by re-pointing at the existing NEUTRAL token --ink-3 (no new color token, so the pinned criterion held), and its regression test FAILED TO FAIL on the first draft because it asserted about a token rather than reading the value the view EMITS. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (at step 2 both arrived on the step cap). Step 6 promoted register-reuse.s and FLIPPED INV-8 from a false net into a REAL one on both hazards (14/14 green under each stub at step 3, 1 of 15 red under each now) - read it before any future mutation re-run (copying a mutation table SHAPE silently drops any suite added since it was written: the three-column table missed recorder.test.ts, which WAR reddens and WAW does not), before hand-building a hazard on this machine (a WAR pair occupies BOTH integer units for the whole window its load claim is live, so the two hazards need two SEPARATE slow producers - third sighting, now a rule), before asserting the ABSENCE of a stall reason on any model (the out-of-order core emits NO stall event of any kind, so that acceptance line was vacuous; the web layer is the only one allowed to hold a cross-model claim), before maintaining a HISTORICAL cohort like the-eleven-programs-that-predate-X, and before quoting "every table re-derived by hand" without its derived/measured split."
+description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-7 DONE 2026-08-10, only the browser pass left. Step 7 shipped the three status tables as this model's canonical picture (not a datapath — decision 9), and its two findings transfer far past this milestone. FIRST: the instruction table ACCUMULATES over the recording rather than drawing micro straight through, because the live window is nearly blind to out-of-order completion — 4 rows peak, and the cycles showing a younger write beside an older blank number ZERO on 7 of 13 programs and ONE on the very program promoted to demonstrate it; the engine's O(n) bound on micro is about the RECORDER, not the picture, and a view folding the already-recorded trace pays it once per cursor. SECOND, and the transferable one: the mutation check found TWO tests green under the very stubs they exist to catch, both the same species — an assertion necessary but not sufficient, which passes on broken code while reading like a guard. One was the single trap step 4 wrote down specifically for step 7 (a stall's stage used as a position) and it scored ZERO red in 11872; the other's mutation table MATCHED ITS PREDICTION EXACTLY and still hid a false net, because a per-item loop over a derived collection is vacuous exactly when the collection is what broke. Read before writing any layout guard (unit NAMES cannot count unit ROWS; a text slice at a fixed offset from a marker class reads only CSS), before asserting no row is a bare mnemonic (ecall), before adding a panel whose canonical picture replaces a datapath (App suppresses the slot via a PURE predicate, because the shell seam is unreachable without jsdom), and before trusting a mutation table that agrees with its forecast. Step 5 found and FIXED a collision that had shipped since M9: the pipeline map's no-hue fallback was BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), invisible to every test here because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. It was worst on the OUT-OF-ORDER model, 82% of whose map is the fallback and where IF vs ROB# is the whole distinction. Fixed by re-pointing at the existing NEUTRAL token --ink-3 (no new color token, so the pinned criterion held), and its regression test FAILED TO FAIL on the first draft because it asserted about a token rather than reading the value the view EMITS. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (at step 2 both arrived on the step cap). Step 6 promoted register-reuse.s and FLIPPED INV-8 from a false net into a REAL one on both hazards (14/14 green under each stub at step 3, 1 of 15 red under each now) - read it before any future mutation re-run (copying a mutation table SHAPE silently drops any suite added since it was written: the three-column table missed recorder.test.ts, which WAR reddens and WAW does not), before hand-building a hazard on this machine (a WAR pair occupies BOTH integer units for the whole window its load claim is live, so the two hazards need two SEPARATE slow producers - third sighting, now a rule), before asserting the ABSENCE of a stall reason on any model (the out-of-order core emits NO stall event of any kind, so that acceptance line was vacuous; the web layer is the only one allowed to hold a cross-model claim), before maintaining a HISTORICAL cohort like the-eleven-programs-that-predate-X, and before quoting "every table re-derived by hand" without its derived/measured split."
 metadata:
   node_type: memory
   type: project
@@ -8,11 +8,12 @@ metadata:
   modified: 2026-08-10T14:05:03.509Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–6 DONE — the machine exists,
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–7 DONE — the machine exists,
 runs, is pinned against the golden reference, its SCHEDULE is pinned too, it is drivable
-through the recorder, it is SELECTABLE IN THE BROWSER, and the corpus now carries the WAW/WAR
-program that makes INV-8 a REAL net on it; ALL ELEVEN DECISIONS PINNED (decision 6 amended
-at step 1).** The user picked "scoreboarding"
+through the recorder, it is SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR
+program that makes INV-8 a REAL net on it, and IT HAS ITS CANONICAL PICTURE (the three status
+tables); ALL ELEVEN DECISIONS PINNED (decision 6 amended
+at step 1). ONLY STEP 8 — THE BROWSER PASS — IS LEFT.** The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
@@ -21,8 +22,85 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed — **that seam scrutiny is now DONE (see step 5)**. **Next: step 7 (the bespoke view —
-the three status tables), which still owes the step-5 HUE STOP its answer.**
+unreviewed — **that seam scrutiny is now DONE (see step 5)**. **Next: step 8, the browser pass.**
+
+## Step 7 — the three status tables, and the window that could not show a reorder (2026-08-10)
+
+`packages/web/src/scoreboard-tables.ts` (pure fold) + `ScoreboardTablesView.tsx` (drawing) + their
+two suites, wired into `App.tsx` on a trace fact (`micro.registerResult`, unique to this model
+across all seven and swept as a test against the other six). **+110 tests**, repo **11772 → 11872
+passing**, 97 → 98 files, five gates green.
+
+⚠ **THE DESIGN CALL, and it was decided by a measurement taken before any code.** The seeded shape
+was "a pure fold over the trace + `micro`". Drawing `micro.instructions` straight through would be
+**nearly blind to out-of-order completion, this model's whole distinguishing feature**: the live
+window **peaks at 4 rows**, and the cycles where a younger row shows a `writeResult` while an older
+ISSUED row is still blank number **ZERO on 7 of the 13 programs** and **ONE** on `register-reuse.s`
+— the program step 6 promoted to demonstrate exactly that. So the table **ACCUMULATES** over the
+recording, capped at a 10-row trailing window. At cursor 25 the write column reads
+`4 5 9 15 18 17 22 25` — 18 above 17, the textbook's picture, standing rather than flashing.
+⚠ **The engine's bound is about the RECORDER, not the picture** (O(n) `micro`, O(n²) recorder on a
+loop) — a view folding the ALREADY-recorded trace pays it once per cursor. Accumulated rows reach
+**157** on `array-sum-twice`, which is why the cap exists; and a cap makes the height constant **by
+construction** rather than by a measured reserve, unlike all three of `MicroTablePanel`'s.
+
+⚠ **THE MUTATION CHECK'S REAL YIELD: two tests that were GREEN under the very stubs they exist to
+catch, both the same species — an assertion NECESSARY BUT NOT SUFFICIENT, which passes on broken
+code while reading like a guard.** Seven stubs of the DECISIONS (not random lines), a column per
+suite that exists NOW (step 6's rule), predictions written first; **six of seven held exactly**.
+
+| Stub                           | fold (73) | view (17) | layout (36) | models (44) | repo   |
+| ------------------------------ | --------- | --------- | ----------- | ----------- | ------ |
+| no accumulation (live window)  | **12**    | 2         | 0           | 0           | **14** |
+| `stall.stage` in the UNIT cell | 0         | **1**     | 0           | 0           | 1      |
+| no pre-run fabrication         | 2         | 2         | **6**       | 0           | **10** |
+| no `minHeight` reserve         | 0         | 0         | 1           | 0           | 1      |
+| no `nowrap` on the captions    | 0         | 0         | 1           | 0           | 1      |
+| `primaryStall` = `stalls[0]`   | 1         | 1         | 0           | 0           | 2      |
+| datapath slot always shown     | 0         | 0         | 0           | 1           | 1      |
+
+⚠ **The `stall.stage` stub was predicted at 1 red and measured ZERO of 11 872 — the one trap step 4
+wrote down SPECIFICALLY for step 7, unguarded.** The test asked whether the stalled row "contains a
+dash" and whether it mentions a unit name; putting the stage into the unit cell passed both, because
+an unissued row already has four dashes in its cycle columns and `ID` is not a unit name. Fixed to be
+**cell-exact**. ⚠ **And the accumulation stub's first measurement MATCHED ITS PREDICTION EXACTLY
+(4/2/0/0/6) and still hid a false net** — the sharper form of the lesson: _a table agreeing with its
+forecast is not thereby a table of real nets_. The flush cross-check looped
+`for (const id of derived) expect(...)` over the final cursor, so a stub producing NO casualties
+iterated zero times and passed. Rewritten as a two-way SET equality over every cursor: 4 → **12**.
+**A per-item loop over a derived collection is vacuous exactly when the collection is what broke.**
+
+**The flush casualty is DERIVED** — never issued AND no longer rowed, which is exact because an
+instruction leaves `IF` only by issuing (leaving an `issue` cycle forever) or by being killed.
+Cross-checked against step 4's ground truth on all 13 programs: **0/4/23/1/0/1/23/0/0/5/0/4/9**.
+
+**Register-result draws ALL 32**, not the claimed subset (the rename map's shape one model over):
+it is the textbook's geometry, the claimed count moves with the cursor at a peak of **3** so a
+subset would need a reserve, and the whole file is what shows a reader a claim is RARE.
+
+**The turnaround ceiling is stated and DERIVED** (`3 + INT_LATENCY` / `3 + MEM_LATENCY`), tied to the
+`structural-int` explanation rather than shipped as free prose, so a re-derived timing table cannot
+leave it behind. ⚠ **Both cursor-dependent strings are pinned to unwrappable line boxes** — the
+predictor panel shipped "constant by construction" correctly ABOUT ITS ROWS and a browser pass
+measured it false OF THE PANEL, because its one moving string sat in the heading and wrapped.
+
+**App no longer gives this model a datapath slot.** Beside the tables the "coming soon" placeholder
+promises a diagram decision 9 declined and points the reader away from the picture above it.
+`showsDatapathSlot(model, bespokePicture)` suppresses it for exactly that case and **keeps the
+placeholder reachable** for a model with neither. ⚠ It is a PURE FUNCTION because the decision is
+otherwise unreachable headlessly — `App` cannot render without jsdom, the same hole `engineConfigOf`
+was extracted to close at the M13 review.
+
+Smaller: ⚠ **unit NAMES cannot count unit ROWS** (`INT0` also appears in the instruction table's
+unit column and in every register cell it claimed — a name count reads 3 where the table has 1 row;
+the guard counts marker classes). ⚠ **A text slice at a fixed offset from a marker class reads only
+CSS** — the inline style is longer than the string after it, so a generous-looking 200-char slice
+reports every cursor identical, a non-vacuity guard passing by measuring the wrong bytes. ⚠ **"No
+row is a bare mnemonic" is FALSE, not strict** — `ecall` has no operands. The **id → assembly join is
+recording-wide** although it need not be (zero misses measured on all 13), because "is a row listed
+on its own cycle" is a per-MODEL fact and burying it is how `cache-grid.ts` blanked a shipped model.
+**`primaryStall` prefers a hazard**, and the discriminating cycle is real: `register-reuse`@19 emits
+`operand` first, `waw` second.
 
 ## Step 6 — the corpus program, and INV-8 flipping to a REAL net (2026-08-10)
 

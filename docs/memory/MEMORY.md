@@ -6,13 +6,14 @@ now selectable** (M15's scoreboard joined the picker at its step 5); six have a 
 scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
-library is **26 lessons**, the repo runs **11772 passing tests** (11773 counting the one skipped
+library is **26 lessons**, the repo runs **11872 passing tests** (11873 counting the one skipped
 file), five gates green.
 
-**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0–6 of 8 DONE
-2026-08-10 — the corpus now carries `register-reuse.s` and INV-8 has FLIPPED into a real net on both
-hazards; next is step 7 (the three status tables); the `/code-review ultra` gate is discharged**; URL permalinks; session persistence. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8,
-2026-08-09).**
+**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0–7 of 8 DONE
+2026-08-10 — the corpus carries `register-reuse.s`, INV-8 has FLIPPED into a real net on both
+hazards, and the model now has its canonical picture (three status tables, NOT a datapath); ONLY
+THE BROWSER PASS IS LEFT; the `/code-review ultra` gate is discharged**; URL permalinks; session
+persistence. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8, 2026-08-09).**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
 that area. **Keep this index to one line per entry; detail belongs in the file, never here.**
@@ -94,8 +95,13 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   width lesson**, and before choosing between a striking event and a safe anchor: **anchor on the one
   whose existence conditions match the prose.** Its `CONFIG_AXES` staleness finding recurred on the
   PREDICTION axis — read before trusting any axis-shaped sweep to enumerate the shell's product.
-- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0–5 of
-  8 done**, with a per-step section. ⚠ **The map's no-hue fallback was BYTE-IDENTICAL to `IF`'s and
+- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0–7 of
+  8 done**, with a per-step section. ⚠ **Step 7's two findings outlive the milestone: a view may
+  need to ACCUMULATE what `micro` bounds (the engine's cap is about the recorder, not the picture —
+  the live window shows this model's reorder on ONE cycle of thirteen programs), and the mutation
+  check caught TWO tests green under the stubs they exist to catch — one of them the single trap an
+  earlier step wrote down for this one, and one whose table MATCHED ITS PREDICTION EXACTLY while
+  hiding a vacuous per-item loop.** ⚠ **The map's no-hue fallback was BYTE-IDENTICAL to `IF`'s and
   had shipped on the out-of-order model since M9 (82% of that map) — FIXED at step 5 by re-pointing
   at `--ink-3`; its regression test failed to fail on the first draft.** Read before touching
   `engineConfigFor` (protection again; gate on the FLAG, and a green suite is not the warrant),

@@ -1,8 +1,9 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEPS 1–5 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
-the golden reference, its SCHEDULE is pinned too, it is drivable through the recorder, and it is now
-SELECTABLE IN THE BROWSER.**
+**Status: STEPS 0–7 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
+the golden reference, its SCHEDULE is pinned too, it is drivable through the recorder, it is
+SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR program that makes INV-8 a real net on it,
+and IT HAS ITS CANONICAL PICTURE — the three status tables. Only step 8, the browser pass, is left.**
 `ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
@@ -22,7 +23,11 @@ no test in this repo can see. Step 6 promoted `register-reuse.s` and **flipped I
 net into a real one on BOTH hazards** — the milestone's own prediction, paid out by re-running step
 3's two mutations. It also found the second acceptance line VACUOUS as written: the out-of-order core
 emits no `stall` event of any kind, so "shows no WAW stall" there is true of any machine at all.
-Next is step 7 (the three status tables). The `/code-review ultra` gate is
+Step 7 shipped the three status tables, and its one departure from the seeded shape is argued from
+a measurement: the instruction table **accumulates**, because the live `micro` window shows this
+model's out-of-order completion on **one cycle of thirteen programs**. Its mutation check found two
+tests that were green under the very stubs they exist to catch — including the one trap step 4 wrote
+down specifically for step 7. Next is step 8 (the browser pass). The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -275,13 +280,17 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       implied: the four out-of-order `dynamic-predict` cells are MEASURED, not derived, on that
       file's own documented method.**
 
-- [ ] **7. The bespoke view — the three status tables.** Unlike every previous model, this one's
+- [x] **7. The bespoke view — the three status tables. ✅ DONE 2026-08-10.** Unlike every previous model, this one's
       canonical picture is **not** a wire-and-box datapath: it is the scoreboard's three tables
       evolving cycle by cycle. Build it in the two-halves shape (a pure fold over the trace +
       `micro`, tested headlessly; a thin React view that owns drawing only). Whether a wire-level
       datapath _also_ ships is a decision below, seeded "not in this milestone". Acceptance: the
       pure fold has its own tests; render smoke tests via `renderToStaticMarkup`; no new color
       token (see the falsifiable criteria).
+      **Result: met — see "Step 7, as built" below. The one departure from the seeded shape is
+      argued from a measurement: the instruction table ACCUMULATES over the recording rather than
+      drawing `micro` straight through, because the live window is nearly blind to this model's
+      whole distinguishing feature.**
 
 - [ ] **8. Browser pass over the SHIPPED bundle.** `vite preview`, not the dev server. Read every
       hand-derived number live. Per `docs/memory/browser-is-the-only-net.md`, this is where the
@@ -294,6 +303,18 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       prior model draws five or fewer, and the out-of-order draws two. The legend is a horizontal row
       inside the map panel, so it is precisely the width-moves-with-the-content case that memory is
       about. Step 5's pass ran at **1600×1400 only** and made no width claim.
+
+      ⚠ **And step 7 added three more width-sensitive surfaces, each with a specific question the
+      headless guards cannot answer.** (1) The **register-result grid** is eight fixed columns of
+      thirty-two cells — at a narrow viewport, does a cell's `reg → unit` pair still fit on one
+      line, or does the grid become five rows instead of four? That would be a height change no test
+      here can see. (2) The **functional-unit table has eleven columns** (`Fi Fj Fk Qj Qk Rj Rk` plus
+      four), the widest table in the shell — does it overflow the panel? (3) Both cursor-dependent
+      strings are pinned to `nowrap` with an ellipsis, so the failure mode is no longer a wrapped
+      line but a **TRUNCATED sentence**: read the stall caption at the narrow viewport and check the
+      explanation is still legible rather than cut at "both integer units are still…". Also confirm
+      the **datapath placeholder is genuinely gone** on this model and still present on a model that
+      has neither picture — the suppression is headlessly netted only as a pure predicate.
 
 ## Step 0, as built (2026-08-10)
 
@@ -1069,6 +1090,141 @@ goes red and claim 2 becomes a real cross-model claim for the first time. All th
   new program would make nicer") is met in the file's own header, with the measurement: zero `'war'`
   stalls across twelve programs, and every existing `'waw'` a `la` expansion that cannot corrupt.
 
+## Step 7, as built (2026-08-10)
+
+`packages/web/src/scoreboard-tables.ts` (the pure fold) + `ScoreboardTablesView.tsx` (the drawing)
+
+- their two suites, wired into `App.tsx` on a trace fact. **+110 tests**, repo **11772 → 11872
+  passing** (11773 → 11873 including the one skipped file), **97 → 98 test files**. Five gates green.
+
+### ⚠ The instruction table ACCUMULATES, and the measurement is what decided it
+
+The seeded shape was "a pure fold over the trace + `micro`". Drawing `micro.instructions` straight
+through would have been that, and it would have been **nearly blind to out-of-order completion —
+this model's whole distinguishing feature.** Measured over all thirteen corpus programs before a
+line of the view was written:
+
+- the live window **peaks at four rows**;
+- the number of cycles on which a younger row shows a `writeResult` while an older ISSUED row is
+  still blank is **zero on seven of the thirteen programs**, and **one** on `register-reuse.s` —
+  the program step 6 promoted to demonstrate exactly that.
+
+So the reorder would flash for a single cycle out of thirty-one and be gone. Accumulated, it is a
+standing artifact: at cursor 25 on `register-reuse.s` the write-result column reads
+`4 5 9 15 18 17 22 25`, with `i4`'s **18 above** `i5`'s **17**, which is the textbook's picture and
+the reason the textbook prints it that way.
+
+⚠ **The engine's bound is about the RECORDER, not about the picture**, and reading it as the latter
+is the trap. `micro.instructions` is capped so `micro` is not O(n) per cycle and the recorder not
+O(n²) on a loop program — a cost the engine must not pay. A view folding the ALREADY-recorded trace
+pays it once per cursor move. The accumulated row count reaches **157** on `array-sum-twice.s`, so
+the fold caps at a **ten-row trailing window** — which makes the table's height constant **by
+construction** rather than by a measured reserve, unlike all three of `MicroTablePanel`'s.
+
+### The flush casualty is DERIVED, and the derivation is exact
+
+"Never issued AND no longer rowed" is not a heuristic: an instruction leaves `IF` in exactly two
+ways, and one of them leaves an `issue` cycle behind forever. Cross-checked against the ground
+truth step 4 pinned (on a flush cycle `trace.instructions` sights two ids at `IF` and `micro` rows
+one): both sets agree exactly on all thirteen programs — **0/4/23/1/0/1/23/0/0/5/0/4/9**.
+
+### The three tables need no measured reserve, and the two strings that could still move
+
+All three are fixed by construction — a capped window, the three units (idle rows included, because
+the table is the MACHINE), and all thirty-two registers. ⚠ **That is a claim about the ROWS, and the
+predictor panel is the cautionary tale**: it shipped the same claim, correctly about its rows, and a
+browser pass measured it false OF THE PANEL because the one cursor-dependent string sat in the
+heading row and wrapped. So both cursor-dependent strings here — the stall caption and the window
+count — are pinned to line boxes that **cannot wrap**, and both are guarded in
+`layout-stability.test.tsx` along with a byte-identical heading row.
+
+**Register-result draws all thirty-two rather than the claimed subset** (the rename map's shape one
+model over), for two reasons pointing the same way: it is the textbook's own geometry, and the
+claimed count moves with the cursor at a peak of **three**, so a claimed-only table would need a
+reserve. Drawing the whole file is also what shows a reader that a claim is RARE — which is half of
+why the two hazards are rare.
+
+### The turnaround ceiling is stated, and DERIVED so it cannot go stale
+
+Step 3 required this view to say out loud that the dominant cost here is not a hazard. Both numbers
+come from the engine's own latency constants (`3 + INT_LATENCY`, `3 + MEM_LATENCY`), so a re-derived
+timing table cannot leave the sentence behind, and the `structural-int` explanation carries the
+0.5-IPC consequence rather than shipping it as free prose beside the reason it belongs to.
+
+### App no longer gives this model a datapath slot
+
+`datapath` stays `'none'` (decision 9) — but beside the tables the "coming soon" placeholder
+promises a wire diagram this milestone deliberately declined and points the reader at the register
+panel while the picture they want is directly above it. `showsDatapathSlot(model, bespokePicture)`
+suppresses the slot for exactly that case and **keeps the placeholder REACHABLE** for the case it
+was written for (neither a diagram nor a bespoke panel). ⚠ It is a pure function because the
+decision is otherwise **unreachable from any headless test** — `App` cannot be rendered without
+jsdom, the same hole `engineConfigOf` was extracted to close at the M13 review.
+
+### The mutation check — seven stubs of the DECISIONS, predictions written first
+
+Not a copy of step 5's or step 6's table: it has a column per suite that exists **now**, including
+the two files added today. Step 6's own lesson is that copying a table's shape silently drops any
+suite added since.
+
+| #     | Stub (each one a decision this step made)               | fold (73) | view (17) | layout (36) | models (44) | repo-wide |
+| ----- | ------------------------------------------------------- | --------- | --------- | ----------- | ----------- | --------- |
+| **A** | do not accumulate — draw the live `micro` window        | **12**    | 2         | 0           | 0           | **14**    |
+| **B** | put `stall.stage` in the row's UNIT cell (a position)   | 0         | **1**     | 0           | 0           | 1         |
+| **C** | drop the pre-run fabrication (`null` before cycle 0)    | 2         | 2         | **6**       | 0           | **10**    |
+| **D** | drop the instruction table's `minHeight` reserve        | 0         | 0         | 1           | 0           | 1         |
+| **E** | drop `nowrap` from the two caption line boxes           | 0         | 0         | 1           | 0           | 1         |
+| **F** | `primaryStall` takes `stalls[0]` — no hazard preference | 1         | 1         | 0           | 0           | 2         |
+| **G** | `showsDatapathSlot` always true (keep the placeholder)  | 0         | 0         | 0           | 1           | 1         |
+
+**Six of seven predictions held exactly. Both misses were the same species, and finding them is
+what the check was for: an assertion that is NECESSARY BUT NOT SUFFICIENT, which passes on broken
+code while reading like a guard.**
+
+⚠ **B was predicted at 1 red and measured ZERO of 11 872 — the one trap step 4 wrote down
+specifically for step 7, unguarded.** The test asked whether the stalled row "contains a dash" and
+whether it mentions a unit name. Putting the stall's stage straight into the unit cell passed both:
+an unissued row already has four dashes in its cycle columns, and `ID` is not a unit name. Fixed to
+be **cell-exact** — the unit column must be the dash, and the stage may appear in the stall column
+and nowhere else in the row — then confirmed red against the stub before being confirmed green
+against the fix.
+
+⚠ **A's first measurement (4/2/0/0/6) matched its prediction exactly and still hid a false net**,
+which is the sharper version of the same lesson: a table that agrees with its forecast is not
+thereby a table of real nets. The flush-casualty cross-check looped
+`for (const id of derived) expect(casualties.has(id))` over the final cursor only, so a stub
+producing NO casualties iterated zero times and passed — green under precisely the change it exists
+to catch. Rewritten as a set equality in both directions over every cursor, it reddens on 8 of the
+13 programs and A's fold column went **4 → 12**. **A per-item loop over a derived collection is
+vacuous exactly when the collection is what broke.**
+
+### Smaller things worth carrying
+
+- ⚠ **The unit NAMES cannot be counted to count unit ROWS.** `INT0` also appears in the instruction
+  table's unit column and in every register cell that unit has claimed, so a name count reads
+  **three** where the table has one row. The layout guard counts marker classes (`sb-unit-row`,
+  `sb-reg-cell`) instead — written the wrong way first and measured.
+- ⚠ **A text slice taken at a fixed offset from a marker class reads only CSS.** The inline style
+  attribute on each caption is longer than the string it precedes, so a 200-character slice that
+  looks generous reports every cursor identical — a non-vacuity guard passing by measuring the
+  wrong bytes. Extract the text with a regex, not an offset.
+- **The id → assembly join is recording-wide**, although it did not have to be: every id `micro`
+  rows appears in that same cycle's `trace.instructions`, measured across all thirteen programs,
+  **zero misses**. It stays wide because that is a per-MODEL fact about how one `reported` array
+  builds both lists, and burying it in a helper handed a trace is how `cache-grid.ts`'s latch name
+  came to blank a shipped model.
+- ⚠ **"No row is a bare mnemonic" is a FALSE assertion, not a strict one** — `ecall` has no
+  operands, so its formatted text IS its mnemonic and the app printing it is right. The real net is
+  equality against `formatInstruction` of the recording's own decoding, plus a non-vacuity clause.
+- **`primaryStall` prefers a hazard over an earlier non-hazard event**, and the discriminating case
+  is real rather than hypothetical: at cycle 19 of `register-reuse.s` the events are `operand`
+  first and `waw` second. Taking `stalls[0]` explains the operand wait and falls silent on the
+  hazard the program exists to show — while `structural-int` is the largest term in every corpus
+  row, so the caption would spend nearly all its cycles on the turnaround ceiling. Every stall is
+  still visible in its own row's column; the caption chooses only what to put in WORDS.
+- **The panel gate is `micro.registerResult`**, unique to this model across all seven (verified by
+  grep, and swept as a test against the other six recordings) — so the shell never names the model.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -1097,14 +1253,16 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
       legible by its cell text. That is the whole reason the stage names are `ID`/`WB` rather than
       `IS`/`WR`, and why the memory FU reports `MEM`: honest names that also avoid four new
       families.
-- [~] **No new color token.** A genuinely new categorical color means a new token pair in both
-  theme blocks and a re-run of the dataviz palette validator — out of scope here. **Holding as
-  of step 5, and it was TESTED rather than merely respected**: the hue finding above is exactly
-  the pressure this criterion exists to resist, and the fix took an EXISTING token (`--ink-3`)
-  instead of minting a sixth hue. No token was added, no value changed, and the palette
-  validator did not need re-running, because gray is the absence of a categorical assignment
-  rather than another category. Stays open (`~`) until step 7, which is the step that actually
-  draws something new.
+- [x] **No new color token — ✅ PAID OUT at step 7**, the step that actually draws something new.
+      A genuinely new categorical color means a new token pair in both theme blocks and a re-run of
+      the dataviz palette validator. It was TESTED twice rather than merely respected. At **step 5**
+      the hue finding was exactly the pressure this criterion exists to resist, and the fix took an
+      EXISTING token (`--ink-3`) instead of minting a sixth hue — gray is the absence of a categorical
+      assignment rather than another category. At **step 7** the whole three-table surface was drawn
+      from existing `T.*` tokens only: the pure fold names no color at all, and the view's one
+      semantic choice (the two HAZARDS in `T.monoAmber`, everything else in `T.ink3`) reuses tokens the
+      shell already had. **Hue is never the sole carrier** — every stall cell prints its reason word.
+      No token added, no value changed, the palette validator not re-run.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
@@ -1133,8 +1291,14 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
       branch-prediction scheme and the whole out-of-order cluster. This machine has no bypass network
       at all, so the inertness contract is asserted as whole-trace equality, not a comment.
 - [~] All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check`. **Green at every
-  step so far (11772 passing / 1 skipped at step 6); stays open until step 8.**
-- [ ] Both falsifiable UNCHANGED criteria paid out, or the STOP was brought back to review.
+  step so far (11872 passing / 1 skipped at step 7); stays open until step 8.**
+- [x] **Both falsifiable UNCHANGED criteria paid out ✅, and the third (no new color token) with
+      them.** The trace schema needed no edit (step 1) and `pipeline-map.ts` needed none (step 5,
+      in the strong form — both the fold and the renderer untouched). ⚠ **One STOP was raised and
+      WAS brought back to review rather than patched**: step 5's hue collision, which the user
+      resolved by choosing the option the plan did not have (re-point the fallback at an existing
+      neutral token). No token was added at step 7 either, which is the step that drew something
+      new.
 
 ## Decisions to pin (seeded with recommendations — review is a diff, not a brainstorm)
 
@@ -1149,7 +1313,7 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 | 6   | Stall reason vocabulary                          | **PINNED 2026-08-10; AMENDED at step 1 to SIX reasons** — `'waw'`, `'war'`, `'operand'`, **`'structural-int'`**, **`'structural-mem'`**, **`'control'`**. The structural split is decision 4's own amendment note cashed in: unsplit, it reads false beside a table that visibly shows a free unit. `'control'` is FORCED by INV-8, not chosen — Issue cannot pass an unresolved transfer on a machine with no ROB, and stubbing the block reddens INV-8 on two corpus programs. `'raw'` still untouchable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 7   | Load/store handling                              | **The memory FU of decision 4 — blocking, single memory port**, reporting `location: 'MEM'` for every cycle it occupies (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package). Its multi-cycle latency is what makes WAW/WAR reachable on ordinary programs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **PINNED 2026-08-10.**                                                                                                                                                      |
 | 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | **PINNED 2026-08-10: last.**                                                                                                                                                |
-| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **PINNED 2026-08-10: no wire diagram** in this milestone.                                                                                                                   |
+| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet. ⚠ **Step 7 cashed this in and it cost one thing the row did not price:** with no diagram coming, App's "coming soon" placeholder was left promising one, beside the panel that IS the picture — so step 7 also suppresses the datapath SLOT for a model whose canonical picture is a panel (`showsDatapathSlot`). The follow-up condition is now genuinely testable at step 8, since the tables exist to be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **PINNED 2026-08-10: no wire diagram** in this milestone. **Realized at step 7**, placeholder included.                                                                     |
 | 10  | Scope: this model alone? Lesson track?           | **This model alone; lesson track is a separate milestone (M16)** — the M9→M10 / M11→M12 / M13→M14 shape. The user picked the architecture, not the scope, so this row is genuinely open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10 by the user: engine + tables view (steps 0-8); lesson track is M16.**                                                                                   |
 
 ## Ordering — the ultra review ran first ✅ DISCHARGED
