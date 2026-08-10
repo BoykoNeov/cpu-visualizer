@@ -734,6 +734,13 @@ export class ScoreboardProcessor implements Processor {
     const fu = this.freeUnitFor(d)!;
     const fi = destReg(d);
     const { rs1, rs2 } = sourceRegs(d);
+    // Read the register-result table ONCE per source. `Qj`/`Rj` are two views of the same lookup —
+    // "who will write it" and "is anybody going to" — and they must not be able to disagree, since
+    // `Rj` set on a register somebody is still producing would let a unit read a stale value and
+    // would also make it a spurious WAR blocker. Nothing mutates `result[]` between the two reads
+    // today; hoisting means nothing added to this literal later can.
+    const producerJ = this.producerOf(rs1);
+    const producerK = this.producerOf(rs2);
     const slot: Slot = {
       id: fetched.id,
       pc: fetched.pc,
@@ -744,12 +751,12 @@ export class ScoreboardProcessor implements Processor {
       fi,
       fj: rs1,
       fk: rs2,
-      qj: this.producerOf(rs1),
-      qk: this.producerOf(rs2),
+      qj: producerJ,
+      qk: producerK,
       // "Ready and not yet read" — an absent source is ready by definition, and so is one no
       // in-flight instruction has claimed. `x0` is never claimed, so it is always ready.
-      rj: this.producerOf(rs1) === null,
-      rk: this.producerOf(rs2) === null,
+      rj: producerJ === null,
+      rk: producerK === null,
       a: null,
       b: null,
       remaining: 0,
@@ -785,6 +792,11 @@ export class ScoreboardProcessor implements Processor {
   private issueBlocker(d: DecodedInstruction): ScoreboardStallReason | null {
     // No speculation and no reorder buffer: nothing may issue past a transfer that has not
     // answered. See the file header — this is forced by INV-8, not chosen.
+    //
+    // The scan covers the WHOLE queue, including entries that have already written their result and
+    // are only still here because an older instruction has not yet advanced `pc`. That cannot wedge
+    // issue: `resolved` starts `true` for everything except a transfer, and `executeSlot` sets it
+    // before a transfer can leave `'executing'` — so nothing reaches `'done'` unresolved.
     if (this.retireQueue.some((s) => !s.resolved)) return 'control';
     if (this.freeUnitFor(d) === null) return usesMemPort(d) ? 'structural-mem' : 'structural-int';
     // WAW: an in-flight instruction already owns this destination. `fi === 0` claims nothing, so

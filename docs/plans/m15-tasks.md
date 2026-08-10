@@ -411,8 +411,11 @@ derivation.** Neutral config, `MEM_LATENCY = 4`:
 | `sum-loop.s`        | 80     | control 10, structural-int 23                      |
 
 `'war'` is **absent from every row** — the one hazard this milestone exists for is invisible on the
-shipped corpus, which is precisely what step 6 is for. `array-sum.s` and `strided-sum.s` are
-identical here (same instruction shape; this model is cache-blind), so they are not two data points.
+shipped corpus, which is precisely what step 6 is for. ⚠ `array-sum.s` and `strided-sum.s` agree at 89
+not by luck but **by construction** (same instruction shape; this model is cache-blind, so the 4-byte and
+16-byte strides are the same machine): a derivation that reproduces 89 for one reproduces it for the
+other automatically. **They are ONE data point, not two, and neither cross-checks the other** — step 3
+must find its second witness elsewhere.
 
 ### Smaller things worth carrying
 
