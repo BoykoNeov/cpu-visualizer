@@ -58,8 +58,22 @@ import type { SessionKnobs } from './session';
  * Which bespoke SVG datapath view (if any) renders a model's trace. Each model has its OWN
  * hand-authored geometry — lighting single-cycle's one-tick datapath with a multi-cycle trace
  * (whose phases spread across cycles) would draw a CONTRADICTORY picture, an INV-5 violation — so
- * the web shell dispatches on this discriminator rather than a plain has/has-not flag. `'none'`
- * falls back to a placeholder for models whose datapath isn't built yet.
+ * the web shell dispatches on this discriminator rather than a plain has/has-not flag.
+ *
+ * The two non-diagram values say DIFFERENT things, and keeping them apart is what makes
+ * {@link showsDatapathSlot} honest:
+ *
+ *  - **`'none'`** — a diagram belongs here and is not built yet. The slot appears and falls back to
+ *    the "coming soon" placeholder, which is the truthful thing to say.
+ *  - **`'panel'`** — this model's canonical picture is deliberately NOT a wire diagram; it is a
+ *    panel elsewhere on the page. No slot, and no promise of a diagram that is not coming.
+ *
+ * ⚠ **`'panel'` exists because the step-8 browser pass measured the alternative.** The gate used to
+ * key on a trace fact alone, so with an empty program the scoreboard fell back to `'none'` and the
+ * shell promised a wire diagram M15 had deliberately declined (decision 9) — measured as the ONLY
+ * state in the whole product that reaches the placeholder at all, since every other model has a
+ * real diagram. A model's own picture is a property the MODEL knows, not something to re-derive
+ * from whether a program happens to be loaded.
  */
 export type DatapathKind =
   | 'single-cycle'
@@ -68,6 +82,7 @@ export type DatapathKind =
   | 'deep-pipeline'
   | 'superscalar'
   | 'out-of-order'
+  | 'panel'
   | 'none';
 
 /** A selectable microarchitecture: its id, a display label, and how to make a fresh engine. */
@@ -203,10 +218,17 @@ export const MODELS: readonly ModelChoice[] = [
     // `'none'` through step 6, on the superscalar / out-of-order / deep-pipeline precedent: a
     // `DatapathKind` means "a diagram of this kind EXISTS", so declaring one early makes the table
     // in `models.test.ts` assert a diagram nothing draws while App silently falls through to the
-    // placeholder. Step 7 ships this model's canonical picture, and it is NOT a wire-and-box
+    // placeholder. Step 7 shipped this model's canonical picture, and it is NOT a wire-and-box
     // datapath at all (decision 9) — it is the scoreboard's three status tables evolving cycle by
-    // cycle. Whether a wire diagram ever joins it is a follow-up, so this value may well stay.
-    datapath: 'none',
+    // cycle.
+    //
+    // ⚠ **`'panel'` since step 8, and the browser is what moved it.** At `'none'` the slot's
+    // suppression rested entirely on a trace fact, so an EMPTY editor put the "Scoreboard datapath
+    // — coming soon" placeholder back on screen — measured live as the only state anywhere in the
+    // product that reaches it, every other model having a real diagram. Saying `'panel'` states
+    // what is actually true of this model in every state, and leaves `'none'` meaning what it
+    // always meant, so a future model with neither picture still gets the placeholder.
+    datapath: 'panel',
     capabilities: SCOREBOARD_CAPABILITIES,
   },
 ];
@@ -215,23 +237,33 @@ export const MODELS: readonly ModelChoice[] = [
  * Should the shell give this model a datapath SLOT at all — or is its canonical picture something
  * other than a wire-and-box diagram?
  *
- * A model with a `DatapathKind` always gets the slot. A model at `'none'` normally gets it too, and
- * falls through to the "coming soon" placeholder, which is the honest answer while nothing bespoke
- * exists. **M15 made a third case reachable for the first time: a model whose canonical picture is
- * a PANEL rather than a diagram.** The scoreboard's is its three status tables (decision 9 pinned
- * that no wire diagram ships this milestone, and it is a follow-up only if the tables read as a
- * spreadsheet), so beside that panel the placeholder promises a diagram the plan deliberately
- * declined and tells the reader to go and watch the register panel instead — while the picture they
- * want is directly above it.
+ * A model with a drawable `DatapathKind` always gets the slot. **M15 made a second case reachable
+ * for the first time: a model whose canonical picture is a PANEL rather than a diagram.** The
+ * scoreboard's is its three status tables (decision 9 pinned that no wire diagram ships this
+ * milestone, and it is a follow-up only if the tables read as a spreadsheet), so beside that panel
+ * the placeholder promises a diagram the plan deliberately declined and tells the reader to go and
+ * watch the register panel instead — while the picture they want is directly above it.
  *
  * So the slot is suppressed for exactly that case, and the placeholder stays REACHABLE for the case
- * it was written for: a future model with neither a diagram nor a bespoke panel still gets it.
+ * it was written for: a model at `'none'` — a diagram that belongs here and is not built yet.
  *
- * `bespokePicture` is a TRACE fact the caller has already computed (`hasScoreboardTables`,
- * `hasMicroTables`), not a model name — this function must not learn one, for the same reason
+ * ## The two conditions, and why BOTH are here
+ *
+ * `datapath: 'panel'` is a property the MODEL declares about itself, and it holds in every state,
+ * including before a single cycle is recorded. `bespokePicture` is a TRACE fact the caller has
+ * already computed (`hasScoreboardTables`, `hasMicroTables`) and covers a model that grows a
+ * bespoke picture without declaring one.
+ *
+ * ⚠ **The trace fact ALONE was the shipped version, and step 8 measured what it costs.** With an
+ * empty or unassembled program both flags are false, so the scoreboard's slot came back and the
+ * shell promised "Scoreboard datapath — coming soon" — the exact sentence step 7 removed, in the
+ * one state a reader reaches by clearing the editor. Measured live: that was the ONLY route to the
+ * placeholder anywhere in the product, because all six other models draw a real diagram. Neither
+ * condition names a model, which is the property to preserve — the same reason
  * {@link engineConfigFor} gates on a capability flag rather than an id.
  */
 export function showsDatapathSlot(model: ModelChoice, bespokePicture: boolean): boolean {
+  if (model.datapath === 'panel') return false;
   return model.datapath !== 'none' || !bespokePicture;
 }
 

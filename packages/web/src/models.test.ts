@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, type ProcessorCapabilities } from '@cpu-viz/trace';
 import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
-import { MODELS, modelById, engineConfigFor, showsDatapathSlot, DEFAULT_MODEL_ID } from './models';
+import {
+  MODELS,
+  modelById,
+  engineConfigFor,
+  showsDatapathSlot,
+  DEFAULT_MODEL_ID,
+  type ModelChoice,
+} from './models';
 import { type BranchPrediction } from './session';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
@@ -330,18 +337,21 @@ describe('the model table', () => {
       // would be the failure this test hunts — none of them draw a ROB, an RS or a CDB, so an
       // out-of-order trace would light a picture the machine contradicts (INV-5).
       ['out-of-order', 'out-of-order'],
-      // `'none'`, and since M15 step 7 it STAYS `'none'` for a reason rather than pending one.
-      // This model's canonical picture is not a wire-and-box datapath at all: it is the three
-      // status tables, which shipped at step 7 as a PANEL, not as a `DatapathKind` — and decision 9
-      // pinned that no wire diagram ships this milestone. What changed at step 7 is one layer up:
-      // App no longer gives this model a datapath slot at all (see `showsDatapathSlot`), because
-      // beside the tables the "coming soon" placeholder promises a diagram the plan declined and
-      // points the reader away from the picture directly above it. Reusing any neighbour's geometry
-      // here would still be the failure
-      // this test hunts — none of them draw a functional-unit status table or a register-result
-      // table, and every one of them draws a machine that reads its operands in program order, so a
-      // scoreboard trace would light a picture the machine contradicts (INV-5).
-      ['scoreboard', 'none'],
+      // `'panel'` since M15 step 8 — the one value here that is not the name of a diagram, and it
+      // is a POSITIVE statement rather than a pending one. This model's canonical picture is not a
+      // wire-and-box datapath at all: it is the three status tables, which shipped at step 7 as a
+      // panel, and decision 9 pinned that no wire diagram ships this milestone.
+      //
+      // ⚠ It read `'none'` from step 0 through step 7, with the slot suppressed one layer up by a
+      // TRACE fact (`showsDatapathSlot`). The step-8 browser pass measured what that cost: with an
+      // empty or unassembled program the trace fact is false, so the "coming soon" placeholder came
+      // back — promising the very diagram the plan declined, in the only state anywhere in the
+      // product that still reaches it. `'panel'` is true of this model whether or not a program is
+      // loaded. Reusing any neighbour's geometry here would still be the failure this test hunts —
+      // none of them draw a functional-unit status table or a register-result table, and every one
+      // of them draws a machine that reads its operands in program order, so a scoreboard trace
+      // would light a picture the machine contradicts (INV-5).
+      ['scoreboard', 'panel'],
     ]);
   });
 
@@ -377,12 +387,17 @@ describe('the model table', () => {
  */
 describe('the datapath slot', () => {
   it('is shown for every model that HAS a diagram, bespoke panel or not', () => {
+    let checked = 0;
     for (const model of MODELS) {
-      if (model.datapath === 'none') continue;
+      if (model.datapath === 'none' || model.datapath === 'panel') continue;
       // Regardless of whether it also has a bespoke panel — a diagram is never suppressed.
       expect([model.id, showsDatapathSlot(model, true)]).toEqual([model.id, true]);
       expect([model.id, showsDatapathSlot(model, false)]).toEqual([model.id, true]);
+      checked++;
     }
+    // Non-vacuity: the two `continue`s above are the whole shape of this test, and a third value
+    // added to the union would silently empty it.
+    expect(checked).toBe(6);
   });
 
   /**
@@ -393,18 +408,44 @@ describe('the datapath slot', () => {
     expect(showsDatapathSlot(modelById('out-of-order'), true)).toBe(true);
   });
 
-  /** The scoreboard: no diagram, and a panel that IS its picture — so no placeholder. */
-  it('is suppressed for a model whose canonical picture is a panel', () => {
+  /**
+   * The scoreboard: no diagram, and a panel that IS its picture — so no placeholder.
+   *
+   * ⚠ **Asserted at BOTH values of the trace flag, and the `false` half is the step-8 finding.**
+   * Through step 7 the suppression rested on the flag alone, so `false` — an empty editor, or a
+   * program that does not assemble — put "Scoreboard datapath — coming soon" back on screen. The
+   * browser pass measured that as the only route to the placeholder left in the product. A model
+   * declaring `'panel'` is telling the truth about itself in every state, recording or no
+   * recording, which is what this second expectation pins.
+   */
+  it('is suppressed for a model whose canonical picture is a panel — recording or not', () => {
     expect(showsDatapathSlot(modelById('scoreboard'), true)).toBe(false);
+    expect(showsDatapathSlot(modelById('scoreboard'), false)).toBe(false);
   });
 
   /**
    * …and the placeholder stays REACHABLE for the case it was written for. This is the half a
-   * blanket "never show a placeholder" change would delete: a future model with neither a diagram
-   * nor a bespoke panel still needs to say so, rather than silently drawing nothing.
+   * blanket "never show a placeholder" change would delete: a model with neither a diagram nor a
+   * bespoke panel still needs to say so, rather than silently drawing nothing.
+   *
+   * ⚠ **The subject is a CONSTRUCTED model, and that is the honest form rather than a convenience.**
+   * No shipped model sits at `'none'` any more — the step-8 sweep measured all seven and found the
+   * placeholder unreachable on every one of them — so pointing this at a real row would have made
+   * it a claim about the scoreboard again, which is precisely what changed. Written this way it
+   * keeps testing the branch a future model will land on.
    */
   it('is still shown for a model with neither a diagram nor a bespoke picture', () => {
-    expect(showsDatapathSlot(modelById('scoreboard'), false)).toBe(true);
+    const future: ModelChoice = {
+      ...modelById('scoreboard'),
+      id: 'future-model',
+      datapath: 'none',
+    };
+    expect(showsDatapathSlot(future, false)).toBe(true);
+    // And it is the placeholder's own case that is preserved, not a blanket "always show": the
+    // same model WITH a bespoke panel is suppressed.
+    expect(showsDatapathSlot(future, true)).toBe(false);
+    // The premise above, measured rather than asserted in prose.
+    expect(MODELS.filter((m) => m.datapath === 'none').map((m) => m.id)).toEqual([]);
   });
 });
 
