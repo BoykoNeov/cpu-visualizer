@@ -1,6 +1,6 @@
 ---
 name: m15-scoreboard-planned
-description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-5 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, it is drivable through the recorder, and it is SELECTABLE IN THE BROWSER. Step 5 left a STOP for step 7: the map's RO fallback hue is BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), a collision NO TEST HERE CAN SEE because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
+description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-5 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, it is drivable through the recorder, and it is SELECTABLE IN THE BROWSER. Step 5 left an OPEN STOP: the pipeline map's no-hue fallback is BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), a collision NO TEST HERE CAN SEE because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. It is NOT M15's bug: it has SHIPPED on the OUT-OF-ORDER model since M9, where 82% of the map is the fallback and IF vs ROB# is the whole distinction. Three options, and the third (re-point at the existing NEUTRAL token T.ink3) is the one the plan lacked — no new categorical color, but it repaints 82% of the OoO map gray. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
 metadata:
   node_type: memory
   type: project
@@ -44,7 +44,9 @@ shell holds a position). ⚠ And the `issueWidth` skip in `engine-config.test.ts
 **CONDITIONAL on the flag** — a blanket `continue` permits a width clamp on the superscalar and OoO,
 verbatim the M13 half-dead toggle one layer up.
 
-**Mutations, predictions written first, both held:** dropping the clamp → **3 red of 11304** in
+**Mutations, predictions written first, both held — and both are REPORTING-side, so they cover
+neither the picker row's id/label/make pairing (netted by the per-model `toBe` sweep) nor the
+description WORDING, which is uncovered BY DESIGN (nothing here asserts on description prose):** dropping the clamp → **3 red of 11304** in
 exactly 2 files (the identity and conditional-skip tests stayed green as predicted); changing the
 map's `?? T.accent` → **1 red of 11304**, i.e. **the sole net in the whole repo is the one written
 today** — every shipped model's families all carry a validated hue, so `RO` is the first family any
@@ -56,12 +58,35 @@ light) — two independently declared tokens in `styles.css` that happen to agre
 decision 2's payoff sentence is half wrong: five of six families do carry a validated hue, but the
 sixth's "neutral" fallback COLLIDES with the first, and `RO` is the second-largest family on
 `array-sum` (60 cells). The relief rule holds (cell TEXT), so nothing is unreadable — but the map's
-premise that one cycle reads as N instructions in N colors is false here. **Left unfixed on purpose:
-every fix is a pinned decision elsewhere** (a sixth hue is the "no new color token" criterion plus a
-palette re-validation; re-pointing `RO` is a choice about what `RO` means; leaving it is defensible).
+premise that one cycle reads as N instructions in N colors is false here. **Left unfixed on purpose
+and brought back to the user** — see the three options below.
 ⚠ **No test in this repo can see it** — both layers hand out the STRING `var(--accent)`, which is
 `!==` `var(--phase-if)`; the collision exists only after CSS resolves. Joins the family:
 **no test here can see a click, a HEIGHT, or a COLOR.**
+
+⚠⚠ **AND IT IS NOT M15'S BUG — it has SHIPPED on the OUT-OF-ORDER model since M9**, which is the
+question a fix must answer first ("is this the only model that hits the fallback?"). Measured over
+`array-sum`: pipeline / deep-pipeline / superscalar draw **0** hueless cells; the scoreboard draws 60
+of 267 (22%); **the out-of-order draws 241 of 295 — 82%**, because an OoO `location` is uniformly
+`"ROB#tag"` so `stageFamily()` yields just `IF` and `ROB#`. Confirmed live: both are
+`rgb(57, 135, 229)`, and the screenshot is a wall of one blue with two identical legend chips. **On
+that map it is WORSE than here** — `IF` vs `ROB#` is the fetch-versus-in-flight distinction, the
+whole point of the surface — and it survived M9 step 7, the M9+M10 review, and every browser pass
+since, because no model before the scoreboard made anyone ask.
+
+**The option set is THREE, and the third is the one the plan did not have:** (1) a sixth validated
+hue — trips "no new color token" plus a palette re-validation; (2) leave it, defensible on the
+relief rule but leaves the map's own docblock false; (3) **re-point the fallback at an existing
+NEUTRAL token, `T.ink3` (`#898781` in all three theme blocks, already the control-caption color)** —
+no new categorical color, so it plausibly does not touch the criterion, and it makes "neutral" true
+(`--accent` is the INTERACTIVE/BRAND accent, which is WHY it equals `--phase-if`; that is by design
+and will keep tracking it). ⚠ Option 3's cost: it repaints **82% of the out-of-order map gray**, a
+visible change to a shipped model needing its own eyeball — `.pmap-cell` uses `--cell-hue` for the
+border, a 16% `color-mix` background AND the inset underline.
+
+⚠ **Six legend chips is a NEW MAXIMUM in the product** (every prior model draws five or fewer; the
+OoO draws two). Step 8 must re-measure the legend ROW at a narrow viewport rather than inherit the
+five-family measurement — step 5's pass ran at 1600x1400 only and made no width claim.
 
 **The picker position argument, which looks like it contradicts M11's and does not.** The deep
 pipeline was INSERTED mid-array; this is APPENDED (decision 8). A step ALONG the road belongs in its

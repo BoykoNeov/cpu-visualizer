@@ -34,7 +34,16 @@ and `RO` render in an IDENTICAL hue. **No test here can reach that fact**: the f
 hand out the string `var(--accent)`, which is `!==` the string `var(--phase-if)`; the collision only
 exists after CSS resolves both. Measure a color the way you measure a height — off
 `getComputedStyle` in a real browser, in **every theme state** (system / light / dark, which are three
-states, not two). See [[m15-scoreboard-planned]].
+states, not two).
+
+⚠ **And it had ALREADY SHIPPED for two milestones on the out-of-order model**, which is the part
+that makes it a hub entry rather than a milestone footnote. An OoO `location` is uniformly
+`"ROB#tag"`, so that map has exactly two families and **82% of its cells (241 of 295 on `array-sum`)
+take the same fallback** — `IF` and `ROB#` in one identical blue, on the surface whose entire job is
+telling fetch from in-flight. It survived M9 step 7, the M9+M10 review, and every browser pass since.
+**A wall of one color does not look like a bug; it looks like a theme.** That is why nobody caught it
+by eye, and why the check to write is a computed-value COMPARISON between two families, not a
+screenshot. See [[m15-scoreboard-planned]].
 
 **Why:** measured repeatedly, not assumed — e.g. hardcoding `predictTaken: false` in `App` leaves
 **all 775 tests green**; deleting `branchPrediction` from `loadInto` fails nothing. A control can be

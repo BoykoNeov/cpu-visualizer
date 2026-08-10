@@ -282,6 +282,11 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       browser caught. Sweep Chrome with `M:\claud_projects\temp\rig-sweep.ps1` at the START of the
       pass. Acceptance: a written check list, every check passing, with the panel measured at a
       STATED narrow viewport in the app's most crowded state (`panel-jitter-and-height-reserves.md`).
+      ⚠ **Re-measure the map's LEGEND ROW rather than inheriting the five-family measurement.** This
+      model draws **six** legend chips (`IF ID RO EX WB MEM`), a new maximum in the product — every
+      prior model draws five or fewer, and the out-of-order draws two. The legend is a horizontal row
+      inside the map panel, so it is precisely the width-moves-with-the-content case that memory is
+      about. Step 5's pass ran at **1600×1400 only** and made no width claim.
 
 ## Step 0, as built (2026-08-10)
 
@@ -799,8 +804,16 @@ widths 1 and 2, silently wrong at 3 and 4) one layer above where M13 fixed it.
 | drop the `issueWidth` clamp from `engineConfigFor` | **3 red of 11304**, in exactly 2 files                        |
 | `?? T.accent` → another hue in `PipelineMapView`   | **1 red of 11304** — the sole net in the repo is written here |
 
-The first reddens the refuses-a-width load, the clamp-scope `toEqual`, and the handed-1 sweep; the
-identity test and the conditional-skip test stayed **green**, as predicted. ⚠ **The second is the
+⚠ **What the table covers, stated because step 4's own lesson is that a table without a scope
+sentence implies the whole suite was exercised.** Both stubs are **reporting-side**: they change what
+a config carries or what a cell is colored. Neither perturbs the picker row's `id`/`label`/`make`
+pairing (netted instead by `models.test.ts`'s per-model `toBe` identity sweep) and neither touches
+**the description wording, which is uncovered BY DESIGN** — nothing in this repo asserts on a
+description's prose, per the superscalar's own note, so the browser pass reading it back against the
+engine constant is the only check there is.
+
+The first stub reddens the refuses-a-width load, the clamp-scope `toEqual`, and the handed-1 sweep;
+the identity test and the conditional-skip test stayed **green**, as predicted. ⚠ **The second is the
 finding: the map's documented neutral fallback had NO net anywhere in the repo until today.** Every
 shipped model's stage families all carry a validated `PHASE_COLORS` hue, so `RO` is the first family
 any model has ever drawn without one — the fallback was documented, reachable in principle, and
@@ -827,11 +840,47 @@ both hand out the STRING `var(--accent)`, which is `!==` the string `var(--phase
 exists only after CSS resolves both. This joins "no test here can see a click" and "no test here can
 see a HEIGHT" — **no test here can see a COLOR either.**
 
-**Left as a STOP for step 7 rather than fixed here**, because every available fix is a decision this
-plan pinned elsewhere: a sixth phase hue is the "no new color token" criterion (which would also
-need the dataviz palette validator re-run); re-pointing `RO` at some other existing token is a
-choice about what `RO` _means_; and leaving it is defensible on the relief rule alone. Step 7 owns
-this model's picture and should decide with the tables in front of it.
+⚠⚠ **AND IT IS NOT THIS MILESTONE'S BUG — it has SHIPPED on the out-of-order model since M9.**
+Measured after the finding, because "is the scoreboard the only model that hits the fallback?" is
+exactly the question a fix has to answer first. Per model, over `array-sum`, counting cells whose
+family has no `PHASE_COLORS` entry:
+
+| model         | families             | no-hue families | no-hue cells         |
+| ------------- | -------------------- | --------------- | -------------------- |
+| pipeline      | `IF ID EX MEM WB`    | —               | 0 of 234 (0%)        |
+| deep-pipeline | `IF ID EX MEM WB`    | —               | 0 of 398 (0%)        |
+| superscalar   | `IF ID EX MEM WB`    | —               | 0 of 234 (0%)        |
+| out-of-order  | `IF ROB#`            | `ROB#`          | **241 of 295 (82%)** |
+| scoreboard    | `IF ID RO EX WB MEM` | `RO`            | 60 of 267 (22%)      |
+
+An OoO `location` is uniformly `"ROB#tag"`, so `stageFamily()` yields exactly two families and **82%
+of that map is the fallback**. Confirmed live in the browser: `IF` and `ROB#` both resolve to
+`rgb(57, 135, 229)`, and `s5-4-ooo-hue-collision.png` is a solid wall of one blue with two identical
+legend chips. **On that map the collision is worse than here** — `IF` vs `ROB#` is the
+fetch-versus-in-flight distinction, i.e. the whole point of the surface — and it has shipped through
+M9 step 7, the M9+M10 review, and every browser pass since. Nobody looked at the fallback because no
+model before this one made you ask.
+
+**Left as a STOP rather than fixed here, and the option set is THREE, not two:**
+
+1. **A sixth validated phase hue.** Trips the "no new color token" criterion above and needs the
+   dataviz palette validator re-run. The expensive one.
+2. **Leave it.** Defensible on the relief rule alone (every cell carries its own text), and it is
+   what has shipped for two milestones. But it leaves the map's own docblock false where it says a
+   hueless family "renders in the neutral accent rather than being guessed at".
+3. **Re-point the fallback at a genuinely neutral EXISTING token** — `T.ink3` (`--ink-3`), a warm
+   gray that is `#898781` in _all three_ theme blocks and already the color of the control captions.
+   This introduces **no new categorical color**, so it plausibly does not touch the pinned criterion
+   at all; it makes the docblock's word "neutral" true (`--accent` is the _interactive / brand_
+   accent, which is why it equals `--phase-if` — that is by design and will keep tracking it as the
+   theme evolves); and it says "this family has no hue" deliberately instead of by collision.
+   ⚠ **Its cost is that it repaints 82% of the out-of-order map gray**, a visible change to a shipped
+   model that needs its own browser eyeball — `.pmap-cell` uses `--cell-hue` for the border, a 16%
+   `color-mix` background and the inset underline, so a mid-gray must be checked for contrast against
+   `--surface` in both themes.
+
+Option 3 is the one this plan did not have when the finding was written, and it is why the STOP is
+worth bringing back to the user rather than deferring silently to step 7.
 
 ### Smaller things worth carrying
 

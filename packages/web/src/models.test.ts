@@ -474,13 +474,24 @@ describe('the config a model is handed', () => {
     expect(() => loadSource(sumLoop.source, scoreboard.make, unclamped)).toThrow(/issueWidth 4/);
   });
 
-  it('does not clamp the SESSION value — leaving the model restores the geometry', () => {
+  it('does not clamp the SESSION value — leaving the model restores BOTH knobs', () => {
     // The clamp is on the value passed to the engine, never on the shell's state, so
     // pipeline(cache small) → deep pipeline → pipeline finds its cache still small.
     const session = { ...defaultConfig(), cache: CACHE_SMALL };
     engineConfigFor(clamped, session);
     expect(session.cache).toBe(CACHE_SMALL);
     expect(engineConfigFor(pipeline, session).cache).toBe(CACHE_SMALL);
+
+    // ⚠ **The width half, added with the clamp rather than after it.** `models.ts` claims the
+    // return leg for both knobs in prose; without this the width half was a sentence with nothing
+    // behind it, which is this repo's "a pinned decision with no net is a comment". It is the leg
+    // the browser pass does NOT walk — that rig goes superscalar-at-4-wide → Scoreboard and stops,
+    // so the trip BACK is only checked here. Correct by construction (the clamp spreads into a new
+    // object rather than mutating), and construction is exactly what a refactor changes.
+    const wide = { ...defaultConfig(), issueWidth: 4 };
+    expect(engineConfigFor(scoreboard, wide).issueWidth).toBe(1);
+    expect(wide.issueWidth, 'the session kept its own width').toBe(4);
+    expect(engineConfigFor(superscalar, wide).issueWidth, 'and switching back restores it').toBe(4);
   });
 
   /**
