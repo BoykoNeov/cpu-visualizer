@@ -2,20 +2,21 @@
 
 A pedagogical RV32I simulator. **M1–M14 ALL COMPLETE** (spec §12's roadmap finished at M10; M11–M14
 came from the don't-foreclose flag), each code-reviewed with every finding fixed. Six models ship,
-each with a lesson track. **M15 (the scoreboard, a seventh model) is IN PROGRESS — steps 0 and 1 of 8
-done 2026-08-10; the machine exists and runs the whole corpus, next is step 2 (INV-8).**
+each with a lesson track. **M15 (the scoreboard, a seventh model) is IN PROGRESS — steps 0, 1 and 2
+of 8 done 2026-08-10; the machine exists, runs the whole corpus, and is pinned against the golden
+reference — next is step 3 (THE NET, the timing matrix).**
 
 Work since M14 is **UX/product gaps in the shell** plus one new feature. A survey after M14 found
 four UX gaps; **three are done** — keyboard clock control, continuous play, and the sticky transport
 bar's per-step jitter (all 2026-07-30; the jitter fix also closed continuous play's sub-880px
 residual and moved both caption thresholds). The corpus is **twelve** programs, the library is
-**26 lessons**, and the repo runs **11239 tests** (branch prediction by step: 7597 / 7606 / 7830 /
+**26 lessons**, and the repo runs **11253 tests** (branch prediction by step: 7597 / 7606 / 7830 /
 7863 / 9466 / 9493 / 9497 / 11193 after steps 1–8 — and **1633 of that last jump is a stale sweep
 axis finally running**, not new assertions), five gates green.
 
-**Open work:** **M15 — the scoreboard (CDC 6600), STEPS 0+1 DONE 2026-08-10, next is step 2 (the
-INV-8 differential); the `/code-review ultra` gate is discharged**; URL permalinks; and session
-persistence.
+**Open work:** **M15 — the scoreboard (CDC 6600), STEPS 0+1+2 DONE 2026-08-10, next is step 3 (THE
+NET — the timing matrix + the two-part mutation check); the `/code-review ultra` gate is
+discharged**; URL permalinks; and session persistence.
 **Dynamic branch prediction is ✅ COMPLETE — all steps 0–8, finished 2026-08-09.**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
@@ -119,7 +120,13 @@ that area. Keep this index to one line per entry; detail belongs in the file, ne
   whose existence conditions match the prose.** Also: a lesson can have NO config-exclusive step —
   and its `CONFIG_AXES` staleness finding recurred on the PREDICTION axis at branch prediction's
   step 8, so read it before trusting any axis-shaped sweep to still enumerate the shell's product.
-- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0+1 of 8 done**.
+- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0+1+2 of 8 done**.
+  Step 2 sized the differential: **a model that honors NO knob gets ONE config**, and the inert
+  reason and the refused reason must be written down SEPARATELY because they fail differently (one
+  is green-by-identity, the other THROWS). Read before sizing any differential matrix, before
+  reading a red INV-8 cell as a state mismatch (both here arrive on the step cap, from a corrupted
+  loop counter), and before trusting a green cell to mean "no wrong-path write" — it was a WINDOW
+  measurement, and the first draft of the mechanism was reasoned out and wrong twice over.
   Step 1 built the machine and found three things the plan did not price: **a "no predictor" decision
   is really a decision about ISSUE** on a machine with no recovery structure (INV-8 forced a fifth
   stall reason), **`pc` cannot be "the retiring instruction's nextPc" on any out-of-order-completion

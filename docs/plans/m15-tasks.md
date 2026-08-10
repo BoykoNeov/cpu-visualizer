@@ -1,11 +1,13 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEP 1 DONE, 2026-08-10 — the machine exists and runs the whole corpus.** `ScoreboardProcessor`
+**Status: STEPS 1–2 DONE, 2026-08-10 — the machine exists, runs the whole corpus, and is pinned
+against the golden reference.** `ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
 stubbed code. Step 1 also found **three things this plan did not price** — see "Step 1, as built".
-Next is step 2 (the INV-8 differential), and note step 1 already measured what step 3 predicts about
-it. The `/code-review ultra` gate is
+Step 2 added the INV-8 differential at a deliberately **one-config** matrix and re-measured the
+control mutation against it. Next is step 3 (THE NET — the timing matrix), and note step 1 already
+measured what step 3 predicts about the WAW/WAR stubs. The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -182,10 +184,11 @@ lint` red on the two denied directions and green on the allowed one, verified by
       `stall.reason`, and a program whose write-backs are provably out of program order.
       **Result: met — see "Step 1, as built" below.**
 
-- [ ] **2. INV-8 differential.** `runConformance('scoreboard', () => new ScoreboardProcessor())`
-      over the full corpus × the config matrix this model actually honors. Acceptance: green.
-      **State in the docblock that this is a WEAK net here** — see the mutation check at step 3 —
-      so a future reader does not mistake it for coverage of the mechanism.
+- [x] **2. INV-8 differential — ✅ DONE 2026-08-10.** One `runConformance` call with a
+      `ScoreboardProcessor` factory, over the full corpus × the config matrix this model actually
+      honors. Acceptance: green. **State in the docblock that this is a WEAK net here** — see the
+      mutation check at step 3 — so a future reader does not mistake it for coverage of the
+      mechanism. **Result: met — see "Step 2, as built" below.**
 
 - [ ] **3. THE NET — the timing matrix + a two-part mutation check.** This is the discriminator,
       and the plan leads with it for the reason M11 did: a machine that typechecks, passes INV-8,
@@ -434,6 +437,61 @@ must find its second witness elsewhere.
   "cycle advanced nothing" throw guards it anyway, since determinism makes one stuck cycle infinite.
 - **`add.s`-style drain**: `pc` past the end of `.text` and `halted` both match the reference, and a
   guard throws if the machine ever reports halted with instructions still in flight.
+
+## Step 2, as built (2026-08-10)
+
+`packages/engine/scoreboard/src/differential.test.ts` — `runConformance` and a docblock, nothing
+else. **+14 tests** (12 corpus cases + the harness's two vacuity guards), repo **11239 → 11253**,
+94 → 95 files. `test`, `typecheck`, `lint`, `format:check` all green.
+
+**The matrix is ONE config, and the docblock gives two reasons that fail differently** so a later
+reader cannot "restore" an axis: every knob this model ignores is INERT — pinned in
+`processor.test.ts` as a **byte-identical trace** at every position, so an extra column would be
+green by arithmetic identity, which is exactly the false coverage `m7-superscalar-engine` and the
+`deep-pipeline`/`out-of-order` differentials warn about — and the two it refuses (`cache`,
+`issueWidth > 1`) **throw** rather than redden, so those axes would read as a broken suite instead of
+as the scope lever they are. Unlike `deep-pipeline`'s cache refusal, no later step lifts either.
+⚠ Do **not** add an explicit `issueWidth: 1` beside the absent one to make the axis visible:
+`configLabel` defaults both sides before comparing, so the two fold, no label is emitted, and the
+matrix gains twelve duplicate `it()` titles.
+
+**This is the first step that exercises the `@cpu-viz/engine-conformance` import edge at all** —
+step 0 recorded all four of the package's declared edges as unexercised. It matters which gate
+proves it: `npm test` resolves the workspace name through `vitest.config.ts`'s aliases, while
+`tsc -b` resolves it through the root project references and the workspace symlink. A green vitest
+run with a missing declaration is the way this step would report done with a gate red. Both were
+run; the scoreboard's wiring already matched `deep-pipeline`'s byte for byte (test-only edges live
+in `tsconfig.json` `references`, **not** in `package.json` — the repo-wide convention).
+
+### The control mutation, re-run against the real suite
+
+Step 1's early table already stubbed the `'control'` block against an ad-hoc harness and got 2 red.
+Re-running it here **confirms the same two programs** (`nested-loop.s`, `array-sum-twice.s`, ten
+green). Two things behind that count are new, and both went into the docblock because either would
+be misread from the number alone:
+
+- **Both failures arrive on the harness's `MAX_STEPS` cap, not on a state comparison.** The
+  surviving wrong-path instruction is a _loop counter's decrement_, so the corrupted machine never
+  finishes rather than finishing wrong. Probed on `nested-loop.s`: `addi t2, t2, -1` (pc 28, the
+  OUTER pass counter) retires after **every** taken iteration of the INNER branch at pc 24; `t2`
+  reaches −16 and keeps falling, so `bne t2, x0, outer` never terminates. "INV-8 red" here does not
+  mean "registers differ".
+- **The ten green cells are a WINDOW measurement, not an absence of wrong-path writes.** With the
+  hold removed the window is one or two instructions deep, bounded by the stage walk (`stageExecute`
+  runs before `stageIssue`, so the redirect empties `IF` before Issue is asked). The second slot
+  exists only when the branch itself stalls a cycle at `RO` — and **measured over all twelve
+  programs, exactly four have a branch that stalls there at all** (`nested-loop` 4 cycles,
+  `array-sum-twice` 2, `array-sum` 1, `strided-sum` 1) **and none stalls for more than ONE cycle**.
+  Which two programs redden is decided by _what the survivor writes_, not by whether one exists:
+  `array-sum` and `strided-sum` stall a branch at `RO` too and stay green, and in `sum-loop.s` the
+  lone survivor is `li a7, 10`, which writes the value the program was going to write anyway.
+
+Two claims were deliberately left structural rather than measured, and the docblock says so: the ISA
+transcription (ESLint denies the reference import by name, so the differential is the only net on the
+copy — the claim `deep-pipeline` and `out-of-order` both make without a mutation), and the `pc`
+prefix rule (at halt the retire queue is drained by construction, so "completed prefix" and "whoever
+wrote last" **coincide on the final `pc`** — which is why step 1's `pc` mutation reddened through the
+drain guard instead).
 
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 

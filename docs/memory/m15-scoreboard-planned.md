@@ -1,11 +1,11 @@
 ---
 name: m15-scoreboard-planned
-description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0 AND 1 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and is proved against four stubs. Read before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), and before trusting a source-level corpus scan (it missed the la pseudo-expansion, so the ZERO-reachable-WAW claim was half wrong).'
+description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0, 1 AND 2 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and is proved against four stubs. Read before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion, so the ZERO-reachable-WAW claim was half wrong), before sizing a differential matrix for a model that honors no knob (ONE config, and the inert and refused reasons must be given SEPARATELY), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap).'
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T04:55:00.762Z
+  modified: 2026-08-10T07:18:00.560Z
 ---
 
 **Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0 AND 1 DONE — the machine exists and
@@ -18,8 +18,52 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 2, the INV-8 differential** — and step 1 already measured what step 3
-predicts about it (table below).
+unreviewed. **Next: step 3, THE NET (the timing matrix)** — and step 1 already measured what step 3
+predicts about the WAW/WAR stubs (table below).
+
+## Step 2 — the differential, and why its matrix is ONE config (2026-08-10)
+
+`differential.test.ts` is a `runConformance` call and a docblock. **+14 tests** (12 corpus cases +
+the harness's 2 vacuity guards), repo **11239 → 11253**, five gates green.
+
+**The reusable decision: a model that honors NO knob gets ONE config, and the docblock must give the
+two reasons separately because they FAIL DIFFERENTLY.** Knobs this model ignores are INERT (pinned
+elsewhere as a byte-identical trace, so an extra column is green by arithmetic identity — the false
+coverage [[m7-superscalar-engine]] warns about); knobs it REFUSES (`cache`, `issueWidth > 1`) make
+`reset()` **throw**, so those axes read as a broken suite rather than as a scope lever. A reader who
+knows only one reason will "restore" the axis governed by the other. ⚠ And do not add an explicit
+`issueWidth: 1` beside an absent one to make the axis visible — the harness's `configLabel` defaults
+both sides before comparing, so they fold and you get twelve DUPLICATE `it()` titles.
+
+⚠ **This was the first step to exercise the `engine-conformance` import edge at all**, and which
+gate proves it matters: `npm test` resolves the workspace name through vitest aliases, `tsc -b`
+through project references + the workspace symlink. **A green vitest run with a missing declaration
+is how a step reports done with a gate red.** (Wiring already matched `deep-pipeline`: test-only
+edges live in `tsconfig.json` `references`, **never** `package.json`.)
+
+**Re-running the control mutation against the real suite confirmed step 1's 2 red
+(`nested-loop`, `array-sum-twice`) and turned up two things the count alone hides:**
+
+- **Both failures land on the harness's `MAX_STEPS` cap, NOT a state mismatch.** The surviving
+  wrong-path instruction is a _loop counter's decrement_, so the machine never finishes rather than
+  finishing wrong. Probed: `addi t2, t2, -1` (the OUTER counter) retires after every taken iteration
+  of the INNER branch; `t2` → −16 and falling. **"INV-8 red" does not always mean "registers
+  differ" — read the failure, not the color.**
+- **Green cells were a WINDOW measurement, not an absence of wrong-path writes.** The window is 1–2
+  instructions, bounded by the stage walk (Execute runs before Issue, so the redirect empties `IF`
+  first). Measured corpus-wide: **exactly 4 of 12 programs have a branch that stalls at `RO` at all,
+  and none stalls more than ONE cycle.** Which programs redden is decided by _what the survivor
+  writes_, not by whether one exists — `array-sum`/`strided-sum` stall a branch too and stay green,
+  and `sum-loop`'s lone survivor writes the value the program wanted anyway. **A first draft of this
+  paragraph asserted the mechanism from reasoning and was WRONG on two counts** (it claimed a
+  one-deep window everywhere, and blamed a structural stall for an `ecall` that was actually killed
+  by the flush); both were caught by probing rather than by any test.
+
+Two claims stayed **structural, not measured**, and the docblock says which and why: the ISA
+transcription (ESLint denies the reference import, so this suite is the only net on the copy) and
+the `pc` prefix rule (**at halt the retire queue is drained, so "completed prefix" and "whoever wrote
+last" COINCIDE on the final `pc`** — which is why step 1's `pc` mutation reddened through the drain
+guard instead, and why those 4 red programs are not a `pc` net).
 
 ## Step 1 — the machine, and the THREE things the plan did not price (2026-08-10)
 

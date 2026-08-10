@@ -65,6 +65,12 @@
  * `lw x1, 0(x5)` / `beq x1, x0, L` / `addi x4, x0, 7`, where the `addi` writes back four cycles
  * before the branch even knows its own answer.
  *
+ * **"Forced" is measured, not argued** (step 2): stub the `'control'` test in {@link issueBlocker}
+ * and the INV-8 differential reddens on 2 of its 12 cells. Read `differential.test.ts` before
+ * quoting that number — the failures arrive by the harness's step cap rather than by a state
+ * mismatch, and the ten green cells are a WINDOW measurement rather than an absence of wrong-path
+ * writes.
+ *
  * So **Issue does not proceed while an unresolved control transfer is in flight**, which is the
  * historically honest behaviour anyway (the 6600 had no speculation) and is what makes decision 3's
  * "a taken branch simply flushes the front end" literally true: with Issue held, the front end is

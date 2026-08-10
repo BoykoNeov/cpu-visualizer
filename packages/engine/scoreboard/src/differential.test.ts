@@ -42,6 +42,45 @@ import { ScoreboardProcessor } from './index';
  * wrote last" **coincide on the final `pc`** — which is exactly why `processor.ts`'s header says the
  * backward movement is invisible here and checkable only in the recorded snapshots (step 4).
  *
+ * ## The control hold: MEASURED here, because it is this suite's one real claim
+ *
+ * `processor.ts`'s header says holding Issue at an unresolved transfer is "**forced by INV-8, not
+ * chosen**". That is a claim about *this file*, so it is run rather than argued: comment out
+ * `issueBlocker`'s `'control'` test and **2 of the 12 cells redden — `nested-loop.s` and
+ * `array-sum-twice.s`**, the other ten staying green. Step 1 ran the same stub early against an
+ * ad-hoc corpus harness and got the same two programs (`docs/plans/m15-tasks.md`, "the mutation
+ * check, run early"); re-running it against THIS suite is what makes the number this file's own.
+ *
+ * Two details behind that count are new, and neither was predicted:
+ *
+ * - **Both fail on the harness's `MAX_STEPS` cap, not on a state comparison.** The wrong-path
+ *   instruction that survives is a *loop counter's decrement*, so the corrupted machine never
+ *   finishes at all rather than finishing with wrong values. Probed on `nested-loop.s`: `addi t2,
+ *   t2, -1` (the OUTER pass counter, at pc 28) retires after every taken iteration of the INNER
+ *   branch at pc 24 — `t2` reaches −16 and keeps falling, so `bne t2, x0, outer` never terminates.
+ *   A reader who expects "INV-8 red" to mean "registers differ" will misread this failure.
+ * - **Ten green cells are a WINDOW measurement, not an absence of wrong-path writes.** With the hold
+ *   removed, the wrong-path window is **one or two instructions deep across the whole corpus**, and
+ *   the bound comes from the stage walk rather than from anything about the programs: a branch that
+ *   issues at N reads at N+1 and resolves in `EX` at N+2, and `stageExecute` runs BEFORE
+ *   `stageIssue`, so the redirect empties `IF` before Issue is asked. Only what issued in between
+ *   gets through. Probed on `sum-loop.s`: the branch issues at c9, `li a7, 10` (pc 20) issues at
+ *   c10, and the flush at c11 kills the `ecall` still sitting in `IF` — one survivor, and a harmless
+ *   one, since it writes the value the program was going to write anyway. Had the `ecall` issued
+ *   instead, the machine would have halted a whole loop early.
+ *
+ *   The second instruction appears only when the branch itself stalls a cycle at `RO`. **Measured
+ *   over all twelve programs: exactly four contain a branch that stalls there at all**
+ *   (`nested-loop` 4 stall cycles, `array-sum-twice` 2, `array-sum` 1, `strided-sum` 1) **and no
+ *   branch anywhere stalls for more than ONE cycle.** That is the corpus fact doing the work here:
+ *   the header's own witness (`lw` / `beq` on the loaded value / `addi`) opens a much wider window
+ *   by parking the branch at `RO` behind a four-cycle load, and no corpus branch waits on a load.
+ *
+ *   So the ten green cells say "one or two wrong-path instructions, and they did not matter" — not
+ *   "no wrong-path instruction". Which two programs redden is decided by WHAT the survivor writes
+ *   (a live loop counter), not by whether one exists: `array-sum` and `strided-sum` stall a branch
+ *   at `RO` too, and stay green.
+ *
  * ## Why this matrix is ONE config, and not the house 6 / 18 / 36
  *
  * Two independent reasons, stated separately because they fail differently and a future reader
