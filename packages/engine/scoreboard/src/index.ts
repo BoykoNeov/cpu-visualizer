@@ -28,12 +28,25 @@
  * free-play load, so a machine whose only latency source was that knob would never reorder until a
  * lesson milestone authored one.
  *
- * This file is the package scaffold (`docs/plans/m15-tasks.md` step 0). `ScoreboardProcessor` — the
- * stage walk, the three classic status tables in `micro`, and the four stall reasons — lands in
- * step 1, and the timing matrix plus the two-part mutation check that prove the machine is real
- * (rather than a 5-stage wearing scoreboard labels) are step 3. Nothing here is wired into the
- * model picker until step 5.
+ * {@link ScoreboardProcessor} — the stage walk, the three classic status tables in `micro`, and the
+ * stall vocabulary — is step 1. The timing matrix plus the two-part mutation check that prove the
+ * machine is real (rather than a 5-stage wearing scoreboard labels) are step 3, and `MODEL_DESCRIPTION`
+ * plus the model-picker wiring are step 5.
  */
 
 /** Stable id of this model within the model family (handoff §2). */
 export const SCOREBOARD_MODEL_ID = 'scoreboard';
+
+export {
+  ScoreboardProcessor,
+  SCOREBOARD_CAPABILITIES,
+  FU_NAMES,
+  INT_LATENCY,
+  MEM_LATENCY,
+  type Stage,
+  type FuName,
+  type ScoreboardStallReason,
+  type InstructionStatusRow,
+  type FuStatusRow,
+  type ScoreboardMicro,
+} from './processor';
