@@ -541,3 +541,101 @@ describe('the config a model is handed', () => {
     }
   });
 });
+
+/**
+ * **M15 step 6's acceptance criterion, and the discovery that its plain form is VACUOUS.**
+ *
+ * The plan's line reads: *"The same program on `Out-of-order` shows **no** WAW or WAR stall, and on
+ * `Scoreboard` shows both — the same program, two machines, the renaming lesson visible without a
+ * word of prose."* Asserted literally, the first half passes for entirely the wrong reason: the
+ * out-of-order core **emits no `stall` event of any kind, on any program** — grep its `processor.ts`
+ * and there is no `type: 'stall'` anywhere. So "shows no WAW stall" there is true of a machine with
+ * renaming, of a machine without it, and of a machine that does not run at all.
+ *
+ * This is the web layer because it is the only one allowed to hold the claim: `eslint.config.js`
+ * denies model→model imports, so no engine package can compare itself to a sibling, and the picker
+ * is the one place all seven exist side by side.
+ *
+ * What is asserted instead is the pair of claims that ARE falsifiable — every model agrees on the
+ * answer (INV-7/INV-8 across the picker), and exactly one model's trace can NAME either hazard —
+ * plus the vacuity guard itself: each model's TOTAL stall count, so a reader can see which
+ * absences are evidence and which are silence.
+ */
+describe('register-reuse.s across the picker — the renaming lesson, and what a trace cannot say', () => {
+  const program = EXAMPLE_PROGRAMS.find((p) => p.name === 'register-reuse')!;
+
+  /** Every `stall` reason a model emits on this program, with its count. */
+  function stallsByReason(make: (typeof MODELS)[number]['make']): Record<string, number> {
+    const result = loadSource(program.source, make, defaultConfig());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return {};
+    result.loaded.recorder.runToEnd();
+    const counts: Record<string, number> = {};
+    for (const trace of result.loaded.recorder.recorded) {
+      for (const event of trace.events) {
+        if (event.type === 'stall') counts[event.reason] = (counts[event.reason] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  it('all seven models compute the same answer — the half of the claim that is real', () => {
+    // INV-7/INV-8 at the picker layer: one corpus, seven machines, one set of answers. a0 = 24 is
+    // the WAR answer (the older `add` read the t2 it was given, not the 5 written while it waited)
+    // and t1 = 7 is the WAW answer (the younger write is architecturally last).
+    for (const model of MODELS) {
+      const result = loadSource(program.source, model.make, defaultConfig());
+      expect(result.ok, `${model.id} should load register-reuse`).toBe(true);
+      if (!result.ok) continue;
+      result.loaded.recorder.runToEnd();
+      const regs = result.loaded.recorder.currentState().registers;
+      expect(regs[10], `${model.id}: a0 — the WAR answer`).toBe(24);
+      expect(regs[6], `${model.id}: t1 — the WAW answer`).toBe(7);
+      expect(regs[11], `${model.id}: a1 reads the NEW t2`).toBe(14);
+      expect(regs[7], `${model.id}: t2`).toBe(5);
+    }
+  });
+
+  it('only the scoreboard can NAME either hazard — and two models name nothing at all', () => {
+    // The scoreboard is the one machine whose trace says `waw` and `war` out loud, and it says both
+    // on this program. That is the claim the milestone is built on.
+    const scoreboard = stallsByReason(modelById('scoreboard').make);
+    expect(scoreboard.waw, 'WAW: the `la` pair plus the corrupting pair').toBe(5);
+    expect(scoreboard.war, 'WAR: the only WAR stall in the whole corpus').toBe(4);
+
+    // ...and nobody else does. But the ABSENCE is worth nothing without the next assertion, because
+    // two of the six cannot emit a stall event at all.
+    for (const model of MODELS) {
+      if (model.id === 'scoreboard') continue;
+      const counts = stallsByReason(model.make);
+      expect(counts.waw, `${model.id} names no WAW`).toBeUndefined();
+      expect(counts.war, `${model.id} names no WAR`).toBeUndefined();
+    }
+  });
+
+  it('THE VACUITY GUARD: the out-of-order core emits no stall event at all, so its silence is not evidence', () => {
+    // Total stall events per model, measured. The two zeros are the point: on `out-of-order` the
+    // sentence "shows no WAW or WAR stall" is not a fact about renaming, it is a fact about that
+    // model's trace vocabulary — it would read identically on a machine that had every hazard in
+    // the book. `single-cycle` is the honest zero (nothing can stall a machine with one stage).
+    //
+    // ⚠ If the out-of-order core ever starts emitting stalls, THIS test goes red and the previous
+    // one becomes a real cross-model claim for the first time. That is the intended failure: the
+    // guard exists to be falsified by the fix, not to be maintained forever.
+    const totals = Object.fromEntries(
+      MODELS.map((m) => [
+        m.id,
+        Object.values(stallsByReason(m.make)).reduce((sum, n) => sum + n, 0),
+      ]),
+    );
+    expect(totals).toEqual({
+      'single-cycle': 0,
+      'multi-cycle': 0,
+      pipeline: 8,
+      'deep-pipeline': 12,
+      superscalar: 8,
+      'out-of-order': 0,
+      scoreboard: 33,
+    });
+  });
+});
