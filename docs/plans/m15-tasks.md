@@ -442,7 +442,8 @@ must find its second witness elsewhere.
 
 `packages/engine/scoreboard/src/differential.test.ts` — `runConformance` and a docblock, nothing
 else. **+14 tests** (12 corpus cases + the harness's two vacuity guards), repo **11239 → 11253**,
-94 → 95 files. `test`, `typecheck`, `lint`, `format:check` all green.
+**94 → 95 test files — both totals INCLUDING the one skipped file**, which is not this step's and
+is on the same basis as step 1's "93 → 94". `test`, `typecheck`, `lint`, `format:check` all green.
 
 **The matrix is ONE config, and the docblock gives two reasons that fail differently** so a later
 reader cannot "restore" an axis: every knob this model ignores is INERT — pinned in
@@ -485,6 +486,15 @@ be misread from the number alone:
   Which two programs redden is decided by _what the survivor writes_, not by whether one exists:
   `array-sum` and `strided-sum` stall a branch at `RO` too and stay green, and in `sum-loop.s` the
   lone survivor is `li a7, 10`, which writes the value the program was going to write anyway.
+
+⚠ **Those four numbers are BRANCH-only `RO` stalls and are NOT the `operand` column of the baseline
+table above** — a step-3 author must not read one for the other. They coincide on exactly one row,
+and it is the confusable one: `nested-loop.s` shows `operand 4` and has 4 branch `RO` stalls, so
+every operand stall in that program happens to be a branch. **That identity is a coincidence and
+breaks everywhere else** — `array-sum` is operand 26 against 1 branch stall, `array-sum-twice` 124
+against 2, `strided-sum` 26 against 1. The baseline table counts operand stalls by ALL instructions;
+this measurement counts only transfers, because only a transfer's `RO` stall widens the wrong-path
+window.
 
 Two claims were deliberately left structural rather than measured, and the docblock says so: the ISA
 transcription (ESLint denies the reference import by name, so the differential is the only net on the

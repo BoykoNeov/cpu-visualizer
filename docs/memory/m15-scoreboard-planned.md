@@ -55,7 +55,10 @@ edges live in `tsconfig.json` `references`, **never** `package.json`.)
   first). Measured corpus-wide: **exactly 4 of 12 programs have a branch that stalls at `RO` at all,
   and none stalls more than ONE cycle.** Which programs redden is decided by _what the survivor
   writes_, not by whether one exists — `array-sum`/`strided-sum` stall a branch too and stay green,
-  and `sum-loop`'s lone survivor writes the value the program wanted anyway. **A first draft of this
+  and `sum-loop`'s lone survivor writes the value the program wanted anyway. ⚠ **Those four numbers
+  are BRANCH-only `RO` stalls, NOT the plan's `operand` column** — they coincide on exactly the
+  confusable row (`nested-loop` is operand 4 against 4 branch stalls) and break everywhere else
+  (`array-sum` 26 against 1). **A first draft of this
   paragraph asserted the mechanism from reasoning and was WRONG on two counts** (it claimed a
   one-deep window everywhere, and blamed a structural stall for an `ecall` that was actually killed
   by the flush); both were caught by probing rather than by any test.
