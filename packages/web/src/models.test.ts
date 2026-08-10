@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultConfig, type ProcessorCapabilities } from '@cpu-viz/trace';
 import { CACHE_SMALL } from '@cpu-viz/engine-pipeline';
-import { MODELS, modelById, engineConfigFor, DEFAULT_MODEL_ID } from './models';
+import { MODELS, modelById, engineConfigFor, showsDatapathSlot, DEFAULT_MODEL_ID } from './models';
 import { type BranchPrediction } from './session';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
@@ -330,12 +330,14 @@ describe('the model table', () => {
       // would be the failure this test hunts — none of them draw a ROB, an RS or a CDB, so an
       // out-of-order trace would light a picture the machine contradicts (INV-5).
       ['out-of-order', 'out-of-order'],
-      // `'none'` at M15 step 5 — App falls through to the "coming soon" placeholder, which is the
-      // honest picture while nothing bespoke exists. Two reasons it may STAY `'none'` rather than
-      // flip like the three rows above. This model's canonical picture is not a wire-and-box
-      // datapath at all: it is the scoreboard's three status tables evolving cycle by cycle, which
-      // is step 7 and lands as a panel, not as a `DatapathKind`. And decision 9 pinned that no wire
-      // diagram ships this milestone. Reusing any neighbour's geometry here would be the failure
+      // `'none'`, and since M15 step 7 it STAYS `'none'` for a reason rather than pending one.
+      // This model's canonical picture is not a wire-and-box datapath at all: it is the three
+      // status tables, which shipped at step 7 as a PANEL, not as a `DatapathKind` — and decision 9
+      // pinned that no wire diagram ships this milestone. What changed at step 7 is one layer up:
+      // App no longer gives this model a datapath slot at all (see `showsDatapathSlot`), because
+      // beside the tables the "coming soon" placeholder promises a diagram the plan declined and
+      // points the reader away from the picture directly above it. Reusing any neighbour's geometry
+      // here would still be the failure
       // this test hunts — none of them draw a functional-unit status table or a register-result
       // table, and every one of them draws a machine that reads its operands in program order, so a
       // scoreboard trace would light a picture the machine contradicts (INV-5).
@@ -361,6 +363,48 @@ describe('the model table', () => {
         55,
       );
     }
+  });
+});
+
+/**
+ * `showsDatapathSlot` — whether the shell gives a model a datapath SLOT (M15 step 7).
+ *
+ * ⚠ **This exists as a pure function precisely because the thing it decides is unreachable from a
+ * headless test otherwise.** The decision lives in `App`'s slot array, and `App` cannot be rendered
+ * here — no jsdom, by design — which is the same hole `engineConfigOf` was extracted to close at
+ * the M13 review. Three milestones each shipped a shell-seam defect that all their web tests were
+ * blind to. Lifting the predicate out is what gives this one a net at all.
+ */
+describe('the datapath slot', () => {
+  it('is shown for every model that HAS a diagram, bespoke panel or not', () => {
+    for (const model of MODELS) {
+      if (model.datapath === 'none') continue;
+      // Regardless of whether it also has a bespoke panel — a diagram is never suppressed.
+      expect([model.id, showsDatapathSlot(model, true)]).toEqual([model.id, true]);
+      expect([model.id, showsDatapathSlot(model, false)]).toEqual([model.id, true]);
+    }
+  });
+
+  /**
+   * The out-of-order model is the case that proves the predicate is not just "has a bespoke
+   * panel": it HAS one (`MicroTablePanel`) and it also has a diagram, so it keeps both.
+   */
+  it('the out-of-order model keeps its diagram beside its tables', () => {
+    expect(showsDatapathSlot(modelById('out-of-order'), true)).toBe(true);
+  });
+
+  /** The scoreboard: no diagram, and a panel that IS its picture — so no placeholder. */
+  it('is suppressed for a model whose canonical picture is a panel', () => {
+    expect(showsDatapathSlot(modelById('scoreboard'), true)).toBe(false);
+  });
+
+  /**
+   * …and the placeholder stays REACHABLE for the case it was written for. This is the half a
+   * blanket "never show a placeholder" change would delete: a future model with neither a diagram
+   * nor a bespoke panel still needs to say so, rather than silently drawing nothing.
+   */
+  it('is still shown for a model with neither a diagram nor a bespoke picture', () => {
+    expect(showsDatapathSlot(modelById('scoreboard'), false)).toBe(true);
   });
 });
 

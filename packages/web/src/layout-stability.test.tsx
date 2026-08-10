@@ -33,6 +33,7 @@ import { toProgramImage } from '@cpu-viz/engine-common';
 import { assemble } from '@cpu-viz/assembler';
 import { CACHE_LARGE, CACHE_SMALL, PipelineProcessor } from '@cpu-viz/engine-pipeline';
 import { OutOfOrderProcessor } from '@cpu-viz/engine-out-of-order';
+import { ScoreboardProcessor } from '@cpu-viz/engine-scoreboard';
 import { SuperscalarProcessor } from '@cpu-viz/engine-superscalar';
 import { SingleCycleProcessor } from '@cpu-viz/engine-single-cycle';
 import {
@@ -52,6 +53,7 @@ import { CacheGrid } from './CacheGridView';
 import { MicroTablePanel } from './MicroTablePanel';
 import { PairingReadout } from './PairingReadoutView';
 import { PredictorTable } from './PredictorTableView';
+import { ScoreboardTables } from './ScoreboardTablesView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
 import { MemoryPanel, peakDataMemoryRows } from './panels';
 import { readPairing } from './pairing-readout';
@@ -489,6 +491,108 @@ describe('branch predictor: the heading row holds nothing that moves with the cl
     }
     expect(shapes.size).toBe(1);
     expect([...shapes][0]).toContain('font-size:0.78rem');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// The scoreboard status tables (M15 step 7) — three tables whose heights are constant BY
+// CONSTRUCTION, which is a stronger claim than a measured reserve and therefore an easier one to
+// break by accident. The predictor panel above is the cautionary tale: it shipped exactly this
+// claim, correctly, ABOUT ITS ROWS — and a browser pass then measured it false of the PANEL,
+// because the one cursor-dependent string lived in the heading row and wrapped. This panel has TWO
+// such strings, so both are pinned here.
+// ---------------------------------------------------------------------------------------------
+
+describe('scoreboard tables: three tables that cannot change height as the cursor moves', () => {
+  // `register-reuse.s` is the right fixture rather than a long program: it is the one that reaches
+  // every stall shape (both hazards included), so the caption really does move through its states.
+  const recorded = record('register-reuse', defaultConfig(), () => new ScoreboardProcessor());
+  const htmls = cursors(recorded).map((trace) =>
+    renderToStaticMarkup(
+      <ScoreboardTables
+        trace={trace}
+        recording={recorded}
+        followed={null}
+        onFollow={() => undefined}
+      />,
+    ),
+  );
+  const HEAD_END = '<div style="margin-top:0.6rem">';
+  const headingRow = (html: string): string => html.slice(0, html.indexOf(HEAD_END));
+
+  it('the panel is never absent — including at the pre-run cursor', () => {
+    // The floor. A panel that vanishes reserves nothing, and every guard below is satisfied for
+    // free by a panel that renders nothing at all.
+    for (const html of htmls) expect(html).toContain('Scoreboard status tables');
+    expect(htmls[0]).toContain('Scoreboard status tables');
+    expect(htmls[0]).toContain('Register result');
+  });
+
+  it('the heading row is byte-identical at every cursor', () => {
+    // Counted on the render. Move either cursor-dependent string up beside the `<h2>` and this
+    // becomes as large as the number of distinct values it takes across the run.
+    expect(distinct(htmls.map(headingRow)).size).toBe(1);
+    expect(headingRow(htmls[0]!)).toContain('Scoreboard status tables');
+    expect(headingRow(htmls[0]!)).toContain('completion is not');
+  });
+
+  it('both cursor-dependent strings exist, and each is pinned to an unwrappable line box', () => {
+    // The predictor panel's lesson, applied to both. `nowrap` is what makes "constant height by
+    // construction" true of the PANEL and not only of its rows: a string that cannot wrap cannot
+    // add a line, whatever the viewport does to its width.
+    for (const html of htmls) {
+      for (const marker of ['sb-window-note', 'sb-stall-caption']) {
+        const style = new RegExp(`class="${marker}"[^>]*style="([^"]*)"`).exec(html);
+        expect([marker, style === null]).toEqual([marker, false]);
+        expect([marker, style![1]!.includes('white-space:nowrap')]).toEqual([marker, true]);
+        expect([marker, style![1]!.includes('height:20px')]).toEqual([marker, true]);
+      }
+    }
+  });
+
+  it('...while both genuinely vary across the run, so the pinning is doing work', () => {
+    // Non-vacuity, twice. A caption stuck on one string satisfies every guard above. ⚠ The text is
+    // extracted rather than sliced at a fixed offset: the style attribute on each marker is longer
+    // than the string it precedes, so a slice short enough to look reasonable reads only CSS and
+    // reports every cursor identical — a guard that passes by measuring the wrong bytes.
+    const textAfter = (html: string, marker: string): string =>
+      new RegExp(`class="${marker}"[^>]*>(.*?)</`).exec(html)?.[1] ?? '';
+
+    const captions = htmls.map((h) => textAfter(h, 'sb-stall-caption'));
+    expect(distinct(captions).size).toBeGreaterThan(1);
+    expect(htmls.filter((h) => h.includes('no stall this cycle')).length).toBeGreaterThan(0);
+    expect(htmls.filter((h) => h.includes('war @WB')).length).toBeGreaterThan(0);
+
+    const notes = htmls.map((h) => textAfter(h, 'sb-window-note'));
+    expect(distinct(notes).size).toBeGreaterThan(1);
+    expect(notes.filter((n) => n.length > 0).length).toBe(htmls.length);
+  });
+
+  it('the two fixed tables draw the same number of rows and cells at every cursor', () => {
+    // The functional-unit table is the MACHINE (three units, idle ones included) and the
+    // register-result table is the whole register file — so neither can move with the cursor.
+    // Drawing only the BUSY units, or only the CLAIMED registers, is the obvious "tidier" change
+    // and it is what this reddens on.
+    //
+    // ⚠ Counted on the marker classes, not on the unit NAMES: `INT0` also appears in the
+    // instruction table's unit column and in every register cell that unit has claimed, so a
+    // name count reads three where the table has one row (measured — this assertion was written
+    // the wrong way first).
+    const unitRows = htmls.map((h) => count(h, 'sb-unit-row'));
+    const regCells = htmls.map((h) => count(h, 'sb-reg-cell'));
+    expect(distinct(unitRows).size).toBe(1);
+    expect(unitRows[0]).toBe(3);
+    expect(distinct(regCells).size).toBe(1);
+    expect(regCells[0]).toBe(32);
+  });
+
+  it('the instruction table reserves its full window at every cursor, empty or not', () => {
+    // The one table whose row COUNT moves. Its height does not, because the reserve is the cap —
+    // a constant, not a scan of the recording. Dropping the reserve leaves the panel growing a row
+    // at a time for the first ten cycles of every program, pre-run included.
+    const reserve = `min-height:${18 + 10 * 20}px`;
+    for (const html of htmls) expect(html).toContain(reserve);
+    expect(distinct(htmls.map((h) => count(h, reserve))).size).toBe(1);
   });
 });
 

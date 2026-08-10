@@ -211,6 +211,30 @@ export const MODELS: readonly ModelChoice[] = [
   },
 ];
 
+/**
+ * Should the shell give this model a datapath SLOT at all — or is its canonical picture something
+ * other than a wire-and-box diagram?
+ *
+ * A model with a `DatapathKind` always gets the slot. A model at `'none'` normally gets it too, and
+ * falls through to the "coming soon" placeholder, which is the honest answer while nothing bespoke
+ * exists. **M15 made a third case reachable for the first time: a model whose canonical picture is
+ * a PANEL rather than a diagram.** The scoreboard's is its three status tables (decision 9 pinned
+ * that no wire diagram ships this milestone, and it is a follow-up only if the tables read as a
+ * spreadsheet), so beside that panel the placeholder promises a diagram the plan deliberately
+ * declined and tells the reader to go and watch the register panel instead — while the picture they
+ * want is directly above it.
+ *
+ * So the slot is suppressed for exactly that case, and the placeholder stays REACHABLE for the case
+ * it was written for: a future model with neither a diagram nor a bespoke panel still gets it.
+ *
+ * `bespokePicture` is a TRACE fact the caller has already computed (`hasScoreboardTables`,
+ * `hasMicroTables`), not a model name — this function must not learn one, for the same reason
+ * {@link engineConfigFor} gates on a capability flag rather than an id.
+ */
+export function showsDatapathSlot(model: ModelChoice, bespokePicture: boolean): boolean {
+  return model.datapath !== 'none' || !bespokePicture;
+}
+
 /** The model selected on first load. Single-cycle is the simplest first teaching model. */
 export const DEFAULT_MODEL_ID = SINGLE_CYCLE_MODEL_ID;
 

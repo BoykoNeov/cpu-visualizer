@@ -16,7 +16,7 @@ import {
   type TransportAction,
 } from './keyboard';
 import { LESSONS, lessonSections } from './lessons';
-import { MODELS, modelById } from './models';
+import { MODELS, modelById, showsDatapathSlot } from './models';
 import { MultiCycleDatapath } from './MultiCycleDatapathView';
 import { PipelineDatapath } from './PipelineDatapathView';
 import { SuperscalarDatapath } from './SuperscalarDatapathView';
@@ -29,6 +29,8 @@ import { PipelineMap } from './PipelineMapView';
 import { PairingReadout } from './PairingReadoutView';
 import { hasPredictorTable } from './predictor-table';
 import { PredictorTable } from './PredictorTableView';
+import { hasScoreboardTables } from './scoreboard-tables';
+import { ScoreboardTables } from './ScoreboardTablesView';
 import { PLAY_SPEEDS, SPEED_LABELS, type PlaySpeed } from './playback';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { ReorderGroup, type Slot } from './Reorderable';
@@ -229,6 +231,17 @@ export function App(): React.JSX.Element {
   // then switches to the single-cycle model still holds a dynamic scheme while looking at a machine
   // with no predictor at all. See `hasPredictorTable`.
   const showPredictor = hasPredictorTable(sim.recorded);
+  // The scoreboard's three status tables (M15 step 7) — this model's canonical picture, and the
+  // first one in the product that is a PANEL rather than a diagram (decision 9). Gated on the same
+  // kind of TRACE fact as its four neighbours: the recording carries a scoreboard `micro`, whose
+  // `registerResult` no other model emits. The shell never names the model (INV-3).
+  const showScoreboard = hasScoreboardTables(sim.recorded);
+  // ...which is also why the datapath slot goes away here: with the tables on screen, the "coming
+  // soon" placeholder would promise a wire diagram this milestone deliberately declined and point
+  // the reader away from the picture directly above it. The placeholder stays reachable for the
+  // case it was written for — a model with neither a diagram nor a bespoke panel. See
+  // `showsDatapathSlot`.
+  const showDatapath = showsDatapathSlot(activeModel, showScoreboard || showMicro);
 
   return (
     <main
@@ -492,102 +505,132 @@ export function App(): React.JSX.Element {
                     },
                   ] satisfies Slot[])
                 : []),
-              {
-                key: 'datapath',
-                label: 'datapath',
-                node:
-                  activeModel.datapath === 'single-cycle' ? (
-                    <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
-                  ) : activeModel.datapath === 'multi-cycle' ? (
-                    <MultiCycleDatapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
-                  ) : activeModel.datapath === 'pipeline' ? (
-                    // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
-                    // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
-                    // events to draw), and with prediction on the bet's adder and redirect appear. The view
-                    // already holds both positions; the user set them.
-                    //
-                    // `hasTakenBetPath` collapses the knob HERE, at the shell's edge, exactly once:
-                    // five scheme names, and a diagram can only draw HARDWARE. The question it asks
-                    // is deliberately not "which scheme is selected" — a dynamic predictor bets taken
-                    // as soon as a counter warms, so the branch-target adder and its wires are as
-                    // present under `'dynamic-1bit'` as under `'static-taken'`. Drawing them absent
-                    // because the scheme is not literally `'static-taken'` would contradict the
-                    // machine on screen (INV-5). That is why it is a different function from
-                    // `predictionPosition`, which is the control's question.
-                    <PipelineDatapath
-                      trace={sim.cycleTrace}
-                      cycleKey={sim.cursor}
-                      tier={tier}
-                      config={{
-                        forwarding: sim.forwarding,
-                        predictTaken: hasTakenBetPath(sim.branchPrediction),
-                      }}
-                      followed={followed}
-                    />
-                  ) : activeModel.datapath === 'deep-pipeline' ? (
-                    // The deep 7-stage datapath (M11 step 7). Same two structural axes as the
-                    // 5-stage — the forwarding network is absent (not idle) with the toggle off, and
-                    // the bet's adder appears only when the machine bets — because this model honors
-                    // exactly the same two knobs. It also honors the CACHE (step 6), which is
-                    // deliberately NOT an axis here: a miss changes this machine's timing, never its
-                    // structure, and the cache is drawn by the cache-grid panel that gates on a
-                    // trace fact (INV-3). The one thing this view does that no sibling does is fold
-                    // seven stages onto the five validated phase hues, by stage FAMILY.
-                    <DeepPipelineDatapath
-                      trace={sim.cycleTrace}
-                      cycleKey={sim.cursor}
-                      tier={tier}
-                      config={{
-                        forwarding: sim.forwarding,
-                        predictTaken: hasTakenBetPath(sim.branchPrediction),
-                      }}
-                      followed={followed}
-                    />
-                  ) : activeModel.datapath === 'out-of-order' ? (
-                    // The out-of-order datapath (M9 step 7), and the first whose activation reads
-                    // `state.micro` (box occupancy — an OoO `location` is uniformly `"ROB#tag"` and
-                    // carries no stage) as well as `events` (the flow). The one config gate is the
-                    // predictor's bet redirect; issue width and forwarding do NOT restructure a
-                    // pool-based diagram (renaming makes forwarding meaningless, and the FU/ROB/RS are
-                    // drawn as pools, not per-lane), so this view takes only the predict behaviour.
-                    <OutOfOrderDatapath
-                      trace={sim.cycleTrace}
-                      cycleKey={sim.cursor}
-                      tier={tier}
-                      config={{ predictTaken: hasTakenBetPath(sim.branchPrediction) }}
-                      followed={followed}
-                    />
-                  ) : activeModel.datapath === 'superscalar' ? (
-                    // The first datapath with THREE structural axes: the pipeline's two, plus issue
-                    // WIDTH. At `1-wide` the second execute lane and the issue unit are absent — not
-                    // idle — because a width-1 trace has no `.1` occupant and no pairing refusal to
-                    // put there, so the width toggle visibly restructures the diagram rather than
-                    // just changing its numbers.
-                    //
-                    // `issueWidth` is optional on `ProcessorConfig` (only this model needs it), but
-                    // it is NOT optional here and this line does not re-resolve it: `Simulator`
-                    // narrows the knob to a total `number` at its own boundary (`useState(1)`, and
-                    // `lessonOpening` normalizes a lesson's absent width before it ever reaches the
-                    // session). This read `sim.issueWidth ?? 1` until the M13 review — a defaulting
-                    // operator whose left side cannot be nullish, with a comment claiming the
-                    // resolution happened here when it had already happened one layer up. Dead in
-                    // the same way the two `?? 1`s the review's finding 1 is about are dead, and
-                    // named together with them so the family is fixed rather than the instance.
-                    <SuperscalarDatapath
-                      trace={sim.cycleTrace}
-                      cycleKey={sim.cursor}
-                      tier={tier}
-                      config={{
-                        forwarding: sim.forwarding,
-                        predictTaken: hasTakenBetPath(sim.branchPrediction),
-                        issueWidth: sim.issueWidth,
-                      }}
-                      followed={followed}
-                    />
-                  ) : (
-                    <DatapathPlaceholder modelLabel={activeModel.label} />
-                  ),
-              },
+              /* The scoreboard's three status tables (M15 step 7), in the same position and for the
+                 same reason as the out-of-order tables above: under the map, and where the datapath
+                 would be, because it IS the picture on this model. The three are instruction status,
+                 functional-unit status and register-result status — the picture every textbook
+                 prints — and unlike the panel above it there is no diagram coming to sit beneath it
+                 (decision 9). Gated on a TRACE fact, so nothing here names the model (INV-3). */
+              ...(showScoreboard
+                ? ([
+                    {
+                      key: 'scoreboard',
+                      label: 'scoreboard tables',
+                      node: (
+                        <ScoreboardTables
+                          trace={sim.cycleTrace}
+                          recording={sim.recorded}
+                          followed={followed}
+                          onFollow={setFollowed}
+                        />
+                      ),
+                    },
+                  ] satisfies Slot[])
+                : []),
+              ...(!showDatapath
+                ? []
+                : ([
+                    {
+                      key: 'datapath',
+                      label: 'datapath',
+                      node:
+                        activeModel.datapath === 'single-cycle' ? (
+                          <Datapath trace={sim.cycleTrace} cycleKey={sim.cursor} tier={tier} />
+                        ) : activeModel.datapath === 'multi-cycle' ? (
+                          <MultiCycleDatapath
+                            trace={sim.cycleTrace}
+                            cycleKey={sim.cursor}
+                            tier={tier}
+                          />
+                        ) : activeModel.datapath === 'pipeline' ? (
+                          // The only datapath that takes the engine CONFIG as well as the tier: with forwarding
+                          // off the forwarding network is absent, not idle (INV-5 — the trace has no `forward`
+                          // events to draw), and with prediction on the bet's adder and redirect appear. The view
+                          // already holds both positions; the user set them.
+                          //
+                          // `hasTakenBetPath` collapses the knob HERE, at the shell's edge, exactly once:
+                          // five scheme names, and a diagram can only draw HARDWARE. The question it asks
+                          // is deliberately not "which scheme is selected" — a dynamic predictor bets taken
+                          // as soon as a counter warms, so the branch-target adder and its wires are as
+                          // present under `'dynamic-1bit'` as under `'static-taken'`. Drawing them absent
+                          // because the scheme is not literally `'static-taken'` would contradict the
+                          // machine on screen (INV-5). That is why it is a different function from
+                          // `predictionPosition`, which is the control's question.
+                          <PipelineDatapath
+                            trace={sim.cycleTrace}
+                            cycleKey={sim.cursor}
+                            tier={tier}
+                            config={{
+                              forwarding: sim.forwarding,
+                              predictTaken: hasTakenBetPath(sim.branchPrediction),
+                            }}
+                            followed={followed}
+                          />
+                        ) : activeModel.datapath === 'deep-pipeline' ? (
+                          // The deep 7-stage datapath (M11 step 7). Same two structural axes as the
+                          // 5-stage — the forwarding network is absent (not idle) with the toggle off, and
+                          // the bet's adder appears only when the machine bets — because this model honors
+                          // exactly the same two knobs. It also honors the CACHE (step 6), which is
+                          // deliberately NOT an axis here: a miss changes this machine's timing, never its
+                          // structure, and the cache is drawn by the cache-grid panel that gates on a
+                          // trace fact (INV-3). The one thing this view does that no sibling does is fold
+                          // seven stages onto the five validated phase hues, by stage FAMILY.
+                          <DeepPipelineDatapath
+                            trace={sim.cycleTrace}
+                            cycleKey={sim.cursor}
+                            tier={tier}
+                            config={{
+                              forwarding: sim.forwarding,
+                              predictTaken: hasTakenBetPath(sim.branchPrediction),
+                            }}
+                            followed={followed}
+                          />
+                        ) : activeModel.datapath === 'out-of-order' ? (
+                          // The out-of-order datapath (M9 step 7), and the first whose activation reads
+                          // `state.micro` (box occupancy — an OoO `location` is uniformly `"ROB#tag"` and
+                          // carries no stage) as well as `events` (the flow). The one config gate is the
+                          // predictor's bet redirect; issue width and forwarding do NOT restructure a
+                          // pool-based diagram (renaming makes forwarding meaningless, and the FU/ROB/RS are
+                          // drawn as pools, not per-lane), so this view takes only the predict behaviour.
+                          <OutOfOrderDatapath
+                            trace={sim.cycleTrace}
+                            cycleKey={sim.cursor}
+                            tier={tier}
+                            config={{ predictTaken: hasTakenBetPath(sim.branchPrediction) }}
+                            followed={followed}
+                          />
+                        ) : activeModel.datapath === 'superscalar' ? (
+                          // The first datapath with THREE structural axes: the pipeline's two, plus issue
+                          // WIDTH. At `1-wide` the second execute lane and the issue unit are absent — not
+                          // idle — because a width-1 trace has no `.1` occupant and no pairing refusal to
+                          // put there, so the width toggle visibly restructures the diagram rather than
+                          // just changing its numbers.
+                          //
+                          // `issueWidth` is optional on `ProcessorConfig` (only this model needs it), but
+                          // it is NOT optional here and this line does not re-resolve it: `Simulator`
+                          // narrows the knob to a total `number` at its own boundary (`useState(1)`, and
+                          // `lessonOpening` normalizes a lesson's absent width before it ever reaches the
+                          // session). This read `sim.issueWidth ?? 1` until the M13 review — a defaulting
+                          // operator whose left side cannot be nullish, with a comment claiming the
+                          // resolution happened here when it had already happened one layer up. Dead in
+                          // the same way the two `?? 1`s the review's finding 1 is about are dead, and
+                          // named together with them so the family is fixed rather than the instance.
+                          <SuperscalarDatapath
+                            trace={sim.cycleTrace}
+                            cycleKey={sim.cursor}
+                            tier={tier}
+                            config={{
+                              forwarding: sim.forwarding,
+                              predictTaken: hasTakenBetPath(sim.branchPrediction),
+                              issueWidth: sim.issueWidth,
+                            }}
+                            followed={followed}
+                          />
+                        ) : (
+                          <DatapathPlaceholder modelLabel={activeModel.label} />
+                        ),
+                    },
+                  ] satisfies Slot[])),
               /* The branch-predictor table (dynamic-branch-prediction step 6), authored directly
                  under the datapath and ABOVE the cache grid — the order the machine reads in: the
                  predictor is consulted in the front end, the cache is touched near the back. The
