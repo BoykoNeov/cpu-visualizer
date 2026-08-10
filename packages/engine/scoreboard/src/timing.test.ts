@@ -114,10 +114,10 @@ import {
  * reason's STAGE is asserted with it — which is also the corpus-scale statement of the thesis
  * ("WAW stalls at Issue, WAR stalls at Write-Result").
  *
- * ⚠ **`'war'` is absent from every corpus program**, and {@link WAR_IS_ABSENT} asserts that
- * emptiness explicitly rather than leaving it as a table with no such rows. The one hazard this
- * milestone exists for is invisible on the shipped corpus; **step 6 is what closes the hole**, and
- * the mutation table below is where the consequence is measured rather than argued.
+ * ⚠ **`'war'` fires on exactly ONE corpus program** — `register-reuse.s`, promoted at step 6 —
+ * and {@link WAR_IS_ABSENT} asserts both halves: the four cycles there AND the emptiness of the
+ * other twelve. Until that promotion the hazard this milestone exists for was invisible on the
+ * whole corpus; the mutation record above is where closing it is measured rather than argued.
  *
  * ## ⚠ Provenance, stated honestly rather than claimed
  *
@@ -130,38 +130,52 @@ import {
  * table is the DERIVATION printed beside each number, not the order of operations. `tail`, the
  * last-writer identities, `E`, and every per-iteration coefficient are genuinely new here.
  *
- * ## The recorded MUTATION CHECK — run 2026-08-10, both halves, three suites each
+ * ## The recorded MUTATION CHECK — run at step 3, RE-RUN at step 6, and the re-run is the flip
  *
  * Executed as TWO separate mutations, each applied to `processor.ts`, run, and reverted with
  * `git checkout -- packages/engine/scoreboard/src/processor.ts` on a COMMITTED tree (one named
- * file, never a broad path — `docs/memory/m13-width-planned.md`'s destroyed tree). All three
- * suites were run under each stub rather than assumed from prose. **The predictions were written
- * down before the stubs were applied**, and both held:
+ * file, never a broad path — `docs/memory/m13-width-planned.md`'s destroyed tree). Every suite was
+ * run under each stub rather than assumed from prose, and **the predictions were written down
+ * before the stubs were applied** on both occasions.
+ *
+ * **STEP 3, on the twelve-program corpus** (2026-08-10):
  *
  * | Stub                                           | `processor.test.ts` | `differential.test.ts` | **this suite**            |
  * | ---------------------------------------------- | ------------------- | ---------------------- | ------------------------- |
  * | **WAW** — `issueBlocker` never returns `'waw'` | 3 of 46 red         | **14/14 GREEN**        | **7 of 20 red**           |
  * | **WAR** — `warBlocked` always returns `false`  | 3 of 46 red         | **14/14 GREEN**        | **20/20 GREEN**           |
  *
- * The WAW row is **6 matrix cells** — exactly the six programs carrying `'waw'` rows
- * (`array-sum`, `strided-sum`, `array-sum-twice`, `byte-loads`, `store-forward`, `nested-loop`) —
- * plus the operand-invisibility test, which reddens only through the `array-sum.s` coda at its end
- * and is not a seventh program. Five of the six are the `la` pseudo-expansion's `lui`/`addi` pair;
- * the sixth is `nested-loop.s`'s `li t1` / `addi t1` reset.
+ * That WAW row was **6 matrix cells** — the six programs carrying `'waw'` rows — plus the
+ * operand-invisibility test, which reddens only through its `array-sum.s` coda. Five of the six are
+ * the `la` pseudo-expansion's `lui`/`addi` pair; the sixth is `nested-loop.s`'s `li t1` / `addi t1`.
  *
- * **The asymmetry IS the finding, and step 3 only closes half the hole it was written for.** For
- * WAW this suite is a genuine corpus-scale net where INV-8 is a false one. For WAR **nothing at
- * corpus scale nets it at all** — not INV-8, not this file — because no corpus program contains the
- * hazard; its only net anywhere in the repo is `processor.test.ts`'s hand-built witness, and the
- * whole machinery of this file walks past a deleted WAR check without a flicker. That is precisely
- * the gap step 6 exists to close, and per the plan **both mutations must be re-run there**, where a
- * corpus program finally contains a real WAR pair and INV-8 itself is expected to redden.
+ * The asymmetry was the finding, and step 3 closed only half the hole it was written for: for WAW
+ * this suite was a genuine corpus-scale net where INV-8 was a false one, while for WAR **nothing at
+ * corpus scale netted it at all** — no corpus program contained the hazard, so the whole machinery
+ * of this file walked past a deleted WAR check without a flicker.
  *
- * ⚠ Note what the WAW row does NOT say. Under that stub `differential.test.ts` stays green because
- * every corpus WAW pair's younger writer also READS the older one's destination, so it waits on the
- * producer regardless and the architecture survives — timing moves, state does not. Step 6's
- * promoted program must contain a WAW pair whose younger writer does **not** read that register, or
- * INV-8 will not redden there either and the re-run will measure the same thing twice.
+ * **STEP 6, with `register-reuse.s` promoted** (2026-08-10) — same two stubs, whole repo:
+ *
+ * | Stub    | `processor.test.ts` | `differential.test.ts` | **this suite**   | `recorder.test.ts` | repo-wide             |
+ * | ------- | ------------------- | ---------------------- | ---------------- | ------------------ | --------------------- |
+ * | **WAW** | 3 of 46 red         | **1 of 15 RED**        | **8 of 21 red**  | 20/20 green        | 12 red of 11770, 3 files |
+ * | **WAR** | 3 of 46 red         | **1 of 15 RED**        | **2 of 21 red**  | **2 of 20 red**    | 8 red of 11770, 4 files  |
+ *
+ * ⚠ **Both `differential.test.ts` cells INVERTED, and that is the whole point of step 6.** INV-8 is
+ * now a REAL net for both hazards on this model, not a false one — the opposite direction from M7's
+ * and M11's logs, where it is false throughout. The single red cell in each is `register-reuse.s`.
+ *
+ * ⚠ **The step-6 prediction table was written with THREE columns because this one has three — and
+ * `recorder.test.ts` did not exist when step 3 wrote it.** Every predicted number held; the gap was
+ * SCOPE. Copying a mutation table's shape silently drops any suite added since. The dropped column
+ * turned out to carry a real result: the WAR stub reddens the recorder suite and the WAW stub does
+ * not, because only WAR changes a walk shape that file pins.
+ *
+ * ⚠ Note what the step-3 WAW row did NOT say, since it is the reason the promoted program is shaped
+ * the way it is. `differential.test.ts` stayed green there because every corpus WAW pair's younger
+ * writer also READS the older one's destination, so it waits on the producer regardless — timing
+ * moves, architecture does not. `register-reuse.s` carries a younger writer of each kind that does
+ * NOT read what it overwrites, which is exactly what makes the two cells above red.
  */
 
 const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));

@@ -18,7 +18,11 @@ view draws from disagree on a flush cycle, and an Issue stall repeats `IF` while
 clamp** — the function is PROTECTION again, since this model refuses a width and its control vanishes
 with it — and paid out the `pipeline-map.ts` UNCHANGED criterion on the shipped bundle, 36/36. It
 also turned up a **STOP for step 7: the `RO` fallback hue is byte-identical to `IF`'s**, a collision
-no test in this repo can see. Next is step 6 (promote the WAW/WAR program into the corpus). The `/code-review ultra` gate is
+no test in this repo can see. Step 6 promoted `register-reuse.s` and **flipped INV-8 from a false
+net into a real one on BOTH hazards** — the milestone's own prediction, paid out by re-running step
+3's two mutations. It also found the second acceptance line VACUOUS as written: the out-of-order core
+emits no `stall` event of any kind, so "shows no WAW stall" there is true of any machine at all.
+Next is step 7 (the three status tables). The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -256,7 +260,7 @@ lint` red on the two denied directions and green on the allowed one, verified by
 preview` bundle rather than the dev server, which is strictly stronger evidence (only preview
       excludes a stale/absent `dist`), 36/36 checks green.**
 
-- [ ] **6. Promote the WAW/WAR program into `content/programs/`.** One corpus, three jobs (INV-7),
+- [x] **6. Promote the WAW/WAR program into `content/programs/` — ✅ DONE 2026-08-10.** One corpus, three jobs (INV-7),
       so the demonstration must be a real corpus program and not a test fixture — but it is priced
       here, after the machine exists. **Land the `.s` and run the FULL suite first: the failure
       list IS the scope.** The branch-prediction log measured **six** pinned sites moving where the
@@ -267,6 +271,9 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       `M:\claud_projects\temp\` **before** hand-deriving any table row. Acceptance: full suite
       green with every moved table re-derived by hand, and the program's WAW/WAR stalls visible on
       `scoreboard` while it stays architecturally identical on all six other models (INV-7/INV-8).
+      **Result: met — see "Step 6, as built" below. ⚠ With one scope caveat stated rather than
+      implied: the four out-of-order `dynamic-predict` cells are MEASURED, not derived, on that
+      file's own documented method.**
 
 - [ ] **7. The bespoke view — the three status tables.** Unlike every previous model, this one's
       canonical picture is **not** a wire-and-box datapath: it is the scoreboard's three tables
@@ -923,6 +930,145 @@ IS present on the superscalar before §3 asserts it is gone on the scoreboard, a
 superscalar recording is confirmed at **59 cycles** (a clamped 1-wide would read 72) so the crash
 path is entered from a genuinely 4-wide position rather than a nominal one.
 
+## Step 6, as built (2026-08-10)
+
+`content/programs/register-reuse.s` + **eleven files of moved tables** + a cross-model test in
+`models.test.ts`. Repo **11303 → 11772 passing** (11304 → 11773 including the one skipped file),
+97 test files unchanged. Five gates green. The program is confirmed **in the shipped `dist` bundle**,
+source text and all — `programs.ts` globs the corpus with `import.meta.glob(..., eager)`, so INV-7's
+free-play job is discharged by construction rather than by a picker edit, and the grep says so.
+
+### The four-run screening gate, and the candidate it killed
+
+The plan says screen with a dump script before deriving any row. That gate was run as **FOUR** runs,
+not one, because a stall event reddening is not a VALUE reddening (step 1's lesson): clean histogram,
+golden-reference oracle, **WAW-stubbed ≠ reference**, **WAR-stubbed ≠ reference**. The plan spells
+the corrupting requirement out for WAW only; **it applies equally to WAR**, and without it the step-6
+re-run would have measured the same thing twice — verbatim step 3's own headline failure.
+
+⚠ **The first candidate passed on WAR and FAILED on WAW, and the reason generalizes.** It put both
+hazards on one load (`lw t3` / `add a0,t3,t2` / `addi t2` / `addi t1`). The WAR stall fired; the WAW
+never did. **A WAR pair occupies BOTH integer units for the entire window in which its load's
+register claim is live** — the victim is parked at `RO` in one unit and the younger writer is
+WAR-held at `WB` in the other — so a WAW writer aimed at that same load cannot reach Issue until
+three cycles after the claim is released. It reported `structural-int` where the whole point was
+`waw`. **The two hazards need two SEPARATE slow producers**, which is why the shipped program has two
+loads. This is the THIRD sighting of the same structural collapse (the step-0 scan's `a1` WAW
+candidate under one FU; step 1-PRE's FU count; now this) — at three it is a rule rather than an
+anecdote: **on this machine, hand-build the hazard and check a unit is actually FREE for the younger
+instruction.**
+
+The shipped program keeps the load's value LIVE (a consumer sits between the load and the
+overwrite), so the WAW pair is a register-pressure story rather than a dead load — and it carries
+**both flavours of WAW** for contrast: the benign `la` at 8, whose younger writer reads what it
+overwrites, and the corrupting pair at 32, whose younger writer does not.
+
+### The ripple: 12 failing tests in 11 files, and 4 of them are shape claims
+
+The plan priced "the failure list IS the scope", and the branch-prediction log's warning that the
+sites nobody predicts are shape claims invisible to a grep. Both held. Four of the twelve were:
+
+| Site                               | The claim that moved                                      |
+| ---------------------------------- | --------------------------------------------------------- |
+| `deep-pipeline/timing.test.ts:813` | "9 of the 12 corpus programs stall with forwarding ON"    |
+| `superscalar/processor.test.ts` ×2 | the width-4 surjectivity set, and `11 programs vs 4`      |
+| `web/pairing-readout.test.ts:555`  | the IPC flat-set COMPLEMENT (3 → 4 pay for a fourth slot) |
+
+⚠ **Two historical cohorts had to be maintained rather than recomputed.** Both 5-stage-family
+`dynamic-predict` suites pin "the ELEVEN programs that predate `nested-loop.s`" — a cohort defined by
+a SENTENCE, not by arithmetic. The right edit excludes the new program from it by meaning (and names
+it in the list, because a cohort maintained by silence stops being a cohort), then updates the
+full-corpus totals. Reading the eleven-totals as "whatever eleven files there are" would have
+silently changed what the finding says.
+
+### Every timing row hand-derived, and the four that are not
+
+**Thirteen rows across four models, each derived from that model's own recurrence before the suite
+was run, and every one balanced on the FIRST run** — the 5-stage's `N+4+S+P`, the deep pipeline's
+`N+6+S+P` with its two coefficients, the superscalar's greedy partition at widths 1–4, and the
+scoreboard's twin identities. The derived/measured split is stated rather than implied, because step
+4's own lesson is that a table without a scope sentence implies the whole thing was exercised:
+
+- **DERIVED**: `pipeline`, `deep-pipeline`, `superscalar` (incl. `w2`, `wide[3]`, `wide[4]`),
+  `scoreboard`, all three in-order `dynamic-predict` rows, `pairing.test.ts`'s `EXPECTED`, and the
+  web IPC complement.
+- **MEASURED**: the four out-of-order `dynamic-predict` cells (17 / 13 / 12). That file documents
+  `W2_INORDER`/`W2_OOO` as MEASURED in as many words ("No derivation reaches these") and derives
+  `W1` from a measured baseline, so measuring is that table's own method. What IS derived there is
+  the claim that all four scheme columns are EQUAL (no transfer ⇒ P = 0) — and that equality was
+  measured per-scheme rather than written once and copied across.
+
+⚠ **The strongest derivation in the batch is the width-4 group of four**, because three independent
+consequences fell out of it and all three held: the issue-size histogram in `superscalar/timing`, the
+location-set surjectivity in `superscalar/processor.test.ts`, and the web IPC flat-set complement.
+This program's tail is four independent instructions precisely because the WAW pair it exists for
+needs no dependence between them — so the hazard the program was written to show is also what makes
+it one of five corpus programs that ever fills the fourth slot.
+
+⚠ **A scoreboard finding anyone deriving a stall histogram will get wrong once**: `issueBlocker` asks
+about UNITS before DESTINATIONS, so a WAW pair under structural pressure reports `structural-int`
+first and `waw` only for the cycles a unit was actually free. This program's `la` shows **2 + 1**
+where every other `la` in the corpus shows a bare **3**.
+
+### ⚠ THE FLIP — INV-8 is now a REAL net for both hazards
+
+The plan's step-3 acceptance owed a re-run of both mutations here, with predictions written first.
+Done, over the whole repo (never a package-scoped run — step 4's rule):
+
+| Stub    | `processor.test` | **`differential.test` (INV-8)** | `timing.test` | `recorder.test` | repo-wide                |
+| ------- | ---------------- | ------------------------------- | ------------- | --------------- | ------------------------ |
+| **WAW** | 3 of 46 red      | **1 of 15 RED** (was 14/14)     | 8 of 21 red   | 20/20 green     | 12 red of 11770, 3 files |
+| **WAR** | 3 of 46 red      | **1 of 15 RED** (was 14/14)     | 2 of 21 red   | **2 of 20 red** | 8 red of 11770, 4 files  |
+
+Both differential cells INVERTED. That is the milestone's own prediction paying out, and it is the
+opposite direction from M7's and M11's logs, where INV-8 is a false net throughout.
+
+⚠ **One prediction was INCOMPLETE, and the failure mode is the transferable part.** The step-6
+prediction table was written with THREE columns because step 3's has three — but `recorder.test.ts`
+landed at step 4. Every number predicted held; the gap was **scope**. **Copying a mutation table's
+shape silently drops any suite added since it was written**, and the dropped column carried a real
+result: the WAR stub reddens the recorder suite and the WAW stub does not, because only WAR changes a
+walk shape that file pins.
+
+### ⚠ The second acceptance line was VACUOUS as written
+
+"The same program on `Out-of-order` shows **no** WAW or WAR stall, and on `Scoreboard` shows both."
+Measured across all seven models: **the out-of-order core emits NO `stall` event of any kind** —
+there is no `type: 'stall'` anywhere in its `processor.ts`. So the first half is equally true of a
+machine with renaming, one without it, and one that does not run. `single-cycle` and `multi-cycle`
+are silent too.
+
+Split into the parts that ARE falsifiable, in `models.test.ts` — **the web layer because it is the
+only one allowed to hold it**, since ESLint denies model→model imports and the picker is the one
+place all seven exist side by side:
+
+1. all seven models compute the same answers (a0 = 24 is the WAR answer, t1 = 7 the WAW one);
+2. exactly one model's trace can NAME either hazard, `waw` 5 and `war` 4;
+3. **a vacuity guard publishing each model's TOTAL stall count** (0 / 0 / 8 / 12 / 8 / **0** / 33),
+   so a reader can tell which absences are evidence and which are silence. Every non-zero total is a
+   number hand-derived in that model's own timing table, not a snapshot.
+
+The guard is written to be falsified **by the fix**: if the out-of-order core ever emits stalls it
+goes red and claim 2 becomes a real cross-model claim for the first time. All three were verified
+**RED against a stubbed WAR check** before being kept.
+
+### Smaller things worth carrying
+
+- **`W2_OOO` 12 against `W2_INORDER` 13** — this is one of the few corpus programs where the
+  ISSUE-ORDER toggle moves a program with **no branch in it at all**. Its two load-use chains are
+  what reordering has to work with. A lesson author looking for a renaming/reordering A/B that does
+  not depend on prediction should start here.
+- **`WAR_IS_ABSENT` was flipped, not deleted.** The emptiness of the other twelve is still asserted
+  beside the one exception, because "WAR is rare" and "WAR is broken" produce the same all-empty
+  table and only a NAMED exception tells them apart. Its `war` cycles are asserted by STAGE rather
+  than by count, so a WAR firing in the wrong place could not keep the total.
+- **Screening happened from a temp path**, never from `content/programs/`. Once the file is in the
+  corpus `readdirSync` picks it up and every failure is ambiguous between "my program is wrong" and
+  "a pinned table moved". Rig at `M:/claud_projects/temp/m15-step6/`.
+- The corpus README's editorial bar ("name what the existing corpus makes UNREACHABLE, not what a
+  new program would make nicer") is met in the file's own header, with the measurement: zero `'war'`
+  stalls across twelve programs, and every existing `'waw'` a `la` expansion that cannot corrupt.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -962,16 +1108,21 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [~] Load the WAW/WAR program on `Scoreboard`, step to completion, step **backward** to the
-  start, and scrub to any cycle; the state shown always matches the recorded trace.
-  ⚠ **Mechanically met at step 4, but NOT tickable** — the navigation is proved (run to halt,
-  walk back to the pre-run cursor, scrub to every cycle with `currentState()` identical to
-  that cycle's own recorded snapshot), on step 1's **in-file** WAW and WAR witnesses. The
-  criterion names "the WAW/WAR program", which is **step 6's corpus program**; it closes there.
-- [ ] The same program on `Out-of-order` shows **no** WAW or WAR stall, and on `Scoreboard` shows
-      both — the same program, two machines, the renaming lesson visible without a word of prose.
-- [ ] For **every** corpus program, final register + memory state equals the golden reference
-      (INV-8), at every config this model honors.
+- [x] **Load the WAW/WAR program on `Scoreboard`, step to completion, step backward to the start,
+      and scrub to any cycle ✅ (step 4 + step 6).** Step 4 proved the navigation (run to halt, walk back
+      to the pre-run cursor, scrub to every cycle with `currentState()` identical to that cycle's own
+      recorded snapshot) on step 1's **in-file** witnesses; the criterion named "the WAW/WAR program",
+      which step 6 promoted as `register-reuse.s` and which the same model-agnostic recorder drives.
+- [~] **The same program on `Out-of-order` shows no WAW or WAR stall, and on `Scoreboard` shows
+  both.** ⚠ **The first half is VACUOUS as written and cannot be ticked** — measured at step 6,
+  the out-of-order core emits **no `stall` event of any kind**, so that sentence is equally true
+  of a machine with renaming and one without. What replaced it in `models.test.ts` is the pair of
+  claims that ARE falsifiable, plus a guard publishing every model's total stall count so the
+  silence is visible as silence. The scoreboard half is met outright: `waw` 5 and `war` 4.
+- [x] **For every corpus program, final register + memory state equals the golden reference (INV-8),
+      at every config this model honors ✅ (step 2, re-run at step 6).** Thirteen programs now, and
+      since step 6 it is a **REAL** net rather than a weak one: stubbing either hazard check reddens
+      it on `register-reuse.s`.
 - [x] **Two instructions provably write back out of program order, and `follow()` tracks each
       across the other ✅ (step 1 + step 4).** Step 1 asserted the write-back by cycle (margins of 4
       and 2 on `lw` / `addi` / `addi`) with the ids proved stable and contiguous across it. Step 4
@@ -981,7 +1132,8 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 - [x] **Forwarding on vs. off produces a byte-identical trace ✅ (step 1)** — and so does every
       branch-prediction scheme and the whole out-of-order cluster. This machine has no bypass network
       at all, so the inertness contract is asserted as whole-trace equality, not a comment.
-- [ ] All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check`.
+- [~] All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check`. **Green at every
+  step so far (11772 passing / 1 skipped at step 6); stays open until step 8.**
 - [ ] Both falsifiable UNCHANGED criteria paid out, or the STOP was brought back to review.
 
 ## Decisions to pin (seeded with recommendations — review is a diff, not a brainstorm)

@@ -5,13 +5,13 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 now selectable** (M15's scoreboard joined the picker at its step 5); six have a lesson track, the
 scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
-play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **twelve** programs, the
-library is **26 lessons**, the repo runs **11303 passing tests** (11304 counting the one skipped
+play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
+library is **26 lessons**, the repo runs **11772 passing tests** (11773 counting the one skipped
 file), five gates green.
 
-**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0–5 of 8 DONE
-2026-08-10 (it is drivable in the browser now), next is step 6 (promote the WAW/WAR program into
-the corpus); the `/code-review ultra` gate is discharged**; URL permalinks; session persistence. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8,
+**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0–6 of 8 DONE
+2026-08-10 — the corpus now carries `register-reuse.s` and INV-8 has FLIPPED into a real net on both
+hazards; next is step 7 (the three status tables); the `/code-review ultra` gate is discharged**; URL permalinks; session persistence. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8,
 2026-08-09).**
 
 Each entry below links a topic file that holds the detail — read the relevant one before touching
@@ -108,9 +108,13 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   writing any closed-form timing table (run the
   accounting identity over the whole corpus BEFORE deriving rows — it found a missing term twelve
   hand-derived rows would have inherited; and never let the drain term be a residual), before quoting
-  a mutation result as coverage (**a real net for WAW, and nothing at corpus scale nets WAR**), before
+  a mutation result as coverage (**step 6 flipped this: INV-8 now nets BOTH**), before
   assuming a hazard is a model's dominant cost (**a 0.5-IPC turnaround ceiling dwarfs both hazards
-  here**), before keying a stall histogram by pc alone, before pinning an FU inventory, before any
+  here**), **before any mutation RE-run (copying a table's SHAPE drops every suite added since)**,
+  **before asserting the ABSENCE of a stall reason on any model (the OoO emits none at all — a
+  vacuous acceptance line)**, **before hand-building a hazard here (a WAR pair eats BOTH integer
+  units, so two hazards need two SEPARATE slow producers)**, before maintaining a HISTORICAL test
+  cohort, before keying a stall histogram by pc alone, before pinning an FU inventory, before any
   model needing a latency source (**`slowOpLatency` is cluster-gated and has no UI control**), before
   defining `pc` on any out-of-order-completion model, before sizing a differential matrix for a model
   that honors no knob, and before reading a red INV-8 cell as a state mismatch.
