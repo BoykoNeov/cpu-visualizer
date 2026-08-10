@@ -5,11 +5,12 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T07:18:00.560Z
+  modified: 2026-08-10T07:18:52.531Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0 AND 1 DONE — the machine exists and
-runs, ALL ELEVEN DECISIONS PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0, 1 AND 2 DONE — the machine exists,
+runs, and is pinned against the golden reference; ALL ELEVEN DECISIONS PINNED (decision 6 amended at
+step 1).** The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
