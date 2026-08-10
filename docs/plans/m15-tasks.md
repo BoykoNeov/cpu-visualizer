@@ -131,6 +131,34 @@ lint` red on the two denied directions and green on the allowed one, verified by
       `tsc -b` green as its own check beside vitest (they resolve imports by different routes).
       **Result: done — see "Step 0, as built" below.**
 
+- [ ] **⛔ 1-PRE. STOP — decision 4's FU inventory makes WAR unreachable. Bring it back before
+      writing any engine code.** Derived on paper 2026-08-10, after step 0, by trying to hand-build
+      the WAR program step 1 is supposed to open with — and failing. **Two FUs are not enough**, and
+      the reason is the same structural one the plan already pins as milestone-killing for a shared
+      `RO`; it just arrives through FU _count_ instead of `RO` placement.
+
+      The argument: a WAR stall needs an older instruction parked at `RO` with one source still
+      unread, while a younger one reaches Write-Result on that register. **The only multi-cycle
+      latency in this machine is the memory FU** — RV32I has no mul/div, and decision 4 pins integer
+      at 1 cycle — so anything parked at `RO` is waiting on a load. That load owns the single memory
+      port (decision 7), and the waiting instruction owns the only integer FU, so **no FU is left for
+      any younger writer**: it stalls at Issue on `structural`, and in-order blocking Issue stalls
+      everything behind it. The load then completes, the waiting instruction reads its operand at
+      `RO`, and the window closes untouched. Worked example — `lw x1, 0(x5)` / `add x3, x1, x2` /
+      `lw x2, 0(x6)`: the third instruction never issues in time. Note this is the same collapse the
+      corpus scan already measured on `branch-flavors.s`'s `a1` WAW candidate ("two integer-ALU
+      writers sharing one FU under in-order issue"), so it is a second sighting, not a hypothesis.
+
+      **The fix that follows: a SECOND integer FU** (2 int + 1 mem). `lw x1, 0(x5)` on mem /
+      `add x3, x1, x2` on int A, parked at `RO` with `x2` unread / `addi x2, x0, 5` on int B,
+      operands ready, one cycle, reaches Write-Result → **WAR on `x2`**. This is also the
+      historically honest direction: the CDC 6600 had ten functional units precisely so instructions
+      could get past each other. It costs decision 4 one row and step 3's coefficients one term.
+
+      Why this is a STOP and not a patch: decision 4 is a ⛔ gating row the user pinned, and its
+      stated basis was "two FUs to start". Changing the count changes the machine's whole timing
+      shape, which every hand-derived number from step 3 onward is built on.
+
 - [ ] **1. The model MVP.** `Processor` implementation, the stages above, the three status tables
       in `micro`, INV-4 stable ids across an out-of-order lifetime, the intrinsic FU latencies, and
       the four stall reasons. Its proof is a **hand-built WAW/WAR program inside the test file**,
@@ -245,13 +273,24 @@ omitted. Row 3 is checked by its **message TEXT, not its exit code** — the gen
 `packages/engine/**` rule denies only `curriculum`/`web`, so without the new self-exclusion block
 that import lints CLEAN, and an exit code alone cannot tell you which rule fired.
 
-⚠ **What step 0 does NOT prove: the `vitest.config.ts` alias for `@cpu-viz/engine-scoreboard`.** The
-package's smoke test imports `./index` relatively (the `single-cycle` house pattern), so it
-exercises vitest's `include` glob and the model id — not the alias. Nothing imports this model **by
-workspace name** yet, and nothing will until **step 5** wires the shell: steps 1–4 live inside the
-package and reach outward only for `assembler`/`conformance`, whose aliases already exist. `tsc -b`
-resolves it by project references, which is a real check by a different route. So that one line
-stays an unexercised claim for five steps — do not read a green step 0 as "the alias works".
+⚠ **What step 0 does NOT prove: any of the four declared import edges — all four are declared and
+ZERO are exercised.** The package imports nothing yet, and the two GREEN eslint probes are pattern
+matches, not resolution checks, so they say nothing about resolvability either. `tsc -b` builds the
+referenced projects but never resolves an import across those edges.
+
+| Edge                                        | First exercised by |
+| ------------------------------------------- | ------------------ |
+| `../common` (`toProgramImage`)              | step 1             |
+| `../../assembler` (drives the unit tests)   | step 1             |
+| `../conformance` (the INV-8 harness)        | step 2             |
+| `vitest` alias `@cpu-viz/engine-scoreboard` | step 5             |
+
+The alias is the one that stays cold longest, and it cannot be closed earlier: the only importer
+that would not violate the DAG is `web`, which is step 5. **Don't chase it with a self-import by
+package name** — that resolves through `exports` to `dist` under tsc while vitest resolves to
+source, so it buys a route mismatch and a non-house idiom to close a gap this note already carries.
+The package's smoke test imports `./index` relatively (the `single-cycle` house pattern), so what it
+proves is vitest's `include` glob and the model id. Do not read a green step 0 as "the wiring works".
 
 Gates: `npm test` **11193 passed / 1 skipped = 11194 total** (11193 → 11194, 92 → 93 files — the one
 new smoke test), `tsc -b` green, `npm run lint` clean, `npm run build` green, `format:check` clean.
@@ -308,8 +347,12 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 
 ## Ordering — the ultra review ran first ✅ DISCHARGED
 
-**✅ DISCHARGED 2026-08-10 — the user marked the review done, with no findings carried into this
-plan. Step 0 is unblocked and the gate below is history, not a live constraint.**
+**✅ DISCHARGED 2026-08-10 — the user marked the gate done. Step 0 is unblocked.**
+
+⚠ **That is all this session knows.** Whether the review ran clean, ran with findings the user
+resolved, or was waived was not stated here — so do NOT read this line as "the shell seam came back
+clean". **Step 5 still owes the shell seam its own scrutiny**, since buying that risk down is the
+entire reason the gate existed.
 
 The gate as originally pinned: **step 0 does not start until `/code-review ultra` over
 `89bb26e..HEAD` has run and its findings are resolved** (user pinned 2026-08-10). That range was

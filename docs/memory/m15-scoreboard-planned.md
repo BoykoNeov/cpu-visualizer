@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T03:44:18.849Z
+  modified: 2026-08-10T03:55:05.142Z
 ---
 
 **Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEP 0 DONE, no machine built, ALL ELEVEN
@@ -13,11 +13,38 @@ DECISIONS PINNED.** The user picked "scoreboarding" from a list of candidate arc
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
 lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEFORE step 0** — a gate
-**DISCHARGED 2026-08-10 by the user marking it done**, with no findings carried into the plan. The
+**DISCHARGED 2026-08-10 by the user marking it done** — and that is ALL that is known, so do not
+read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 1, the model MVP** (hand-built WAW/WAR program inside the test file, not a
-corpus program — the corpus one is priced at step 6, after the coefficients are known).
+unreviewed. **Next: NOT step 1 — a ⛔ STOP is open first (two FUs make WAR unreachable, below).**
+Step 1 itself is the model MVP, proved by a hand-built WAW/WAR program inside the test file, not a
+corpus program — the corpus one is priced at step 6, after the coefficients are known.
+
+## ⛔ STOP before step 1 — two FUs make WAR UNREACHABLE (derived 2026-08-10)
+
+**The pinned decision-4 inventory (integer 1-cycle + one blocking memory FU) cannot produce a single
+WAR stall**, which would delete half the milestone's subject. Derived on paper by trying to
+hand-build step 1's opening WAR program and failing. A WAR stall needs an older instruction parked
+at `RO` with a source still unread while a younger one reaches Write-Result on that register. **The
+only multi-cycle latency here is the memory FU** — RV32I has no mul/div and integer is pinned at 1
+cycle — so anything parked at `RO` waits on a load; that load owns the single memory port and the
+waiter owns the only integer FU, so **no FU is left for a younger writer**. It stalls at Issue on
+`structural`, in-order blocking Issue stalls everything behind it, the load finishes, the waiter
+reads at `RO`, window closed. Witness: `lw x1, 0(x5)` / `add x3, x1, x2` / `lw x2, 0(x6)`.
+
+**Fix: a SECOND integer FU** (2 int + 1 mem) — `lw x1` on mem / `add x3, x1, x2` on int A parked at
+`RO` / `addi x2, x0, 5` on int B, one cycle, reaches WB → WAR on `x2`. Historically honest too (the
+6600 had ten FUs, precisely so instructions could get past each other). **It is a STOP, not a patch:
+decision 4 is a ⛔ gating row the user pinned at "two FUs to start", and the count changes every
+hand-derived coefficient from step 3 on.**
+
+⚠ **The transferable shape: this is the SAME collapse the corpus scan already measured** on
+`branch-flavors.s`'s `a1` WAW candidate — "two integer-ALU writers sharing one FU under in-order
+issue". A second sighting, not a hypothesis. **Before pinning any FU inventory, hand-build the
+hazard the model exists to show and check an FU is actually FREE for the younger instruction.** The
+plan already knew this failure mode for `RO` placement and pinned against it; it did not notice the
+same mechanism arrives through FU COUNT.
 
 ## Step 0 — the scaffold, and its two findings (2026-08-10)
 
