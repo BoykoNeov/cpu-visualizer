@@ -1,21 +1,33 @@
 ---
 name: browser-is-the-only-net
-description: 'In CPU Visualizer no headless test can see a click (no jsdom, renderToStaticMarkup only) — 9 of 10 view steps shipped a defect only the browser caught. It cannot see a HEIGHT or a COLOR either: a token collision (two CSS vars holding the same literal) is invisible because the layers hand out the var() STRINGS and only CSS resolves them. The hub for browser verification: the claim and the proof, then pointers to the CDP recipe, Chrome cleanup, vacuity traps, and screenshot limits.'
+description: 'In CPU Visualizer no headless test can see a click (no jsdom, renderToStaticMarkup only) — 11 of the last 12 view steps shipped a defect only the browser caught, the newest being a guard that was GREEN BECAUSE IT ASSERTED THE BROKEN THING (nowrap on a caption whose box could not hold the sentence). It cannot see a HEIGHT or a COLOR either: a token collision (two CSS vars holding the same literal) is invisible because the layers hand out the var() STRINGS and only CSS resolves them. The hub for browser verification: the claim and the proof, then pointers to the CDP recipe, Chrome cleanup, vacuity traps, and screenshot limits.'
 metadata:
   node_type: memory
   type: project
   originSessionId: bef9e8cf-545a-4753-ae64-b5170311505a
-  modified: 2026-08-09T17:30:43.360Z
+  modified: 2026-08-10T19:29:20.826Z
 ---
 
 **Any view change in CPU Visualizer must be looked at in a real browser before it is called done.**
 The headless suite structurally cannot see it: `vitest.config.ts` sets `environment: 'node'`, there
 is **no jsdom and no driver installed**, and every web test is `renderToStaticMarkup`. It renders;
-it does not click. `App.test.tsx`'s own docblock names this gap, and the record is now **10 of the
-last 11 view steps shipped a defect no green suite could see** — the ISA panel made it 9/10 with
-**four defects while 80 tests passed**, and the branch-predictor panel made it 10/11 on 2026-08-09
+it does not click. `App.test.tsx`'s own docblock names this gap, and the record is now **11 of the
+last 12 view steps shipped a defect no green suite could see** — the ISA panel made it 9/10 with
+**four defects while 80 tests passed**, the branch-predictor panel made it 10/11 on 2026-08-09
 (33px of cursor-driven height jitter, [[panel-jitter-and-height-reserves]], with the whole 9493-test
-suite green through it).
+suite green through it), and the scoreboard's status tables made it **11/12 on 2026-08-10 with two,
+against 11 872 passing tests** ([[m15-scoreboard-planned]] step 8).
+
+⚠ **And the newest one is the sharpest form of the claim yet: the guard was green BECAUSE it
+asserted the thing that was broken.** The panel's stall caption was pinned to a single unwrappable
+line so the panel's height could not move with the cursor — right about the height, and it threw the
+WORDS away. The caption's box tops out at 1120px (the page has a max width) against a sentence
+needing 1868, so the two explanations that matter most were **never readable in full at any
+viewport**. `layout-stability.test.tsx` asserted `white-space:nowrap` on that element — _the very
+property doing the damage_ — so it passed at every cursor while the content was being discarded.
+**Pinning a moving string to one line does not stop it being cursor-dependent; it makes it HIDE.**
+The shape to reach for instead is a fixed multi-line reserve with the overflow clamped: constant by
+construction, and the words survive.
 
 ⚠ **The browser is also the only place some gates can be tested AT ALL, and that is worth a number
 rather than a shrug.** Nothing in this repo renders `<App/>`, so its slot gates (`showPredictor`,
@@ -78,6 +90,18 @@ end). Not a nicety: end-of-pass teardown is precisely what fails when a rig dies
 2026-07-30 a `finally`-only teardown was found to have leaked 13 preview servers, 91 Chrome
 processes and ~7 GB of profiles across sessions. The script prints four counts and refuses to
 report clean without them.
+
+⚠ **A rig trap worth naming here rather than only in the vacuity sibling, because it fires at the
+END of a pass: a metric can stop measuring anything the moment you FIX the defect.** The check that
+caught the truncated caption compared `scrollWidth` to `clientWidth`. The fix made the box a clamped
+`display:-webkit-box` — inside which `scrollWidth` **equals** `clientWidth` by construction — so the
+re-run reported "needs 705px, box 705px → 100% visible" for every case, which is also precisely what
+a fully hidden sentence would report. A clamped box hides text **vertically**. Two traps sit behind
+it: `scrollHeight` is never LESS than `clientHeight`, so it cannot tell you how tall the text WANTS
+to be inside a roomy box (measure an **unclamped clone** at the same width instead — a first draft
+recorded "wants 3 lines" for a one-line sentence); and a whole column of green is worth nothing
+without a **non-vacuity probe**, so squeeze the live element back to the broken geometry and confirm
+the metric sees it. **Re-run your measurement against the FIX, not only against the defect.**
 
 - [[browser-rig-vacuity-traps]] — how a green check measures nothing. Assert the negative state
   first, use the ARIA the component exposes, scope every read to its own `<section>`, read every

@@ -1,6 +1,6 @@
 ---
 name: m15-scoreboard-planned
-description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-7 DONE 2026-08-10, only the browser pass left. Step 7 shipped the three status tables as this model's canonical picture (not a datapath — decision 9), and its two findings transfer far past this milestone. FIRST: the instruction table ACCUMULATES over the recording rather than drawing micro straight through, because the live window is nearly blind to out-of-order completion — 4 rows peak, and the cycles showing a younger write beside an older blank number ZERO on 7 of 13 programs and ONE on the very program promoted to demonstrate it; the engine's O(n) bound on micro is about the RECORDER, not the picture, and a view folding the already-recorded trace pays it once per cursor. SECOND, and the transferable one: the mutation check found TWO tests green under the very stubs they exist to catch, both the same species — an assertion necessary but not sufficient, which passes on broken code while reading like a guard. One was the single trap step 4 wrote down specifically for step 7 (a stall's stage used as a position) and it scored ZERO red in 11872; the other's mutation table MATCHED ITS PREDICTION EXACTLY and still hid a false net, because a per-item loop over a derived collection is vacuous exactly when the collection is what broke. Read before writing any layout guard (unit NAMES cannot count unit ROWS; a text slice at a fixed offset from a marker class reads only CSS), before asserting no row is a bare mnemonic (ecall), before adding a panel whose canonical picture replaces a datapath (App suppresses the slot via a PURE predicate, because the shell seam is unreachable without jsdom), and before trusting a mutation table that agrees with its forecast. Step 5 found and FIXED a collision that had shipped since M9: the pipeline map's no-hue fallback was BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), invisible to every test here because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. It was worst on the OUT-OF-ORDER model, 82% of whose map is the fallback and where IF vs ROB# is the whole distinction. Fixed by re-pointing at the existing NEUTRAL token --ink-3 (no new color token, so the pinned criterion held), and its regression test FAILED TO FAIL on the first draft because it asserted about a token rather than reading the value the view EMITS. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (at step 2 both arrived on the step cap). Step 6 promoted register-reuse.s and FLIPPED INV-8 from a false net into a REAL one on both hazards (14/14 green under each stub at step 3, 1 of 15 red under each now) - read it before any future mutation re-run (copying a mutation table SHAPE silently drops any suite added since it was written: the three-column table missed recorder.test.ts, which WAR reddens and WAW does not), before hand-building a hazard on this machine (a WAR pair occupies BOTH integer units for the whole window its load claim is live, so the two hazards need two SEPARATE slow producers - third sighting, now a rule), before asserting the ABSENCE of a stall reason on any model (the out-of-order core emits NO stall event of any kind, so that acceptance line was vacuous; the web layer is the only one allowed to hold a cross-model claim), before maintaining a HISTORICAL cohort like the-eleven-programs-that-predate-X, and before quoting "every table re-derived by hand" without its derived/measured split."
+description: "M15 — the scoreboard (CDC 6600), the seventh model: ✅ COMPLETE, ALL NINE STEPS 0-8 DONE 2026-08-10. Read step 8 first: both of its defects were invisible to 11872 green tests and both generalize. ONE — pin a moving string to one line and it does not stop being cursor-dependent, it starts HIDING: the stall caption's box tops out at 1120px against a sentence needing 1868, so structural-int (the sentence step 3 REQUIRED the view to state, cut before its 0.5-IPC ceiling) and war (one of the two hazards the milestone exists to show) were never readable in full at ANY viewport, while the layout guard stayed green because it asserted the very nowrap that was discarding the text; fixed with a fixed three-line clamp, three MEASURED not chosen. TWO — 'keep the placeholder reachable for a future model' was buying nothing, and that is measurable: swept live, the coming-soon placeholder was reachable on exactly ONE model in exactly ONE state (scoreboard, empty-but-valid program), which is the sentence step 7 removed, one cleared editor away; the user chose to let the model DECLARE datapath 'panel' rather than key the shell on a model name. THREE, the rig lesson — a metric can stop measuring anything the moment you fix the defect: inside a clamped -webkit-box scrollWidth EQUALS clientWidth so the truncation check read 100% either way, and scrollHeight is never LESS than clientHeight so it cannot say how tall text WANTS to be (measure an unclamped clone); a column of 100%s needs a non-vacuity probe. Also from step 8: the width work is 2-D (six widths x five cursors, and read the PANEL's clientWidth, not the viewport); a height that moves with the VIEWPORT is a layout, one that moves with the CURSOR is jitter; 'pre-existing' is a measurement (the 800px horizontal overflow is reported only because the same probe ran on single-cycle); and the follow click had ZERO headless coverage. Step 7 shipped the three status tables as this model's canonical picture (not a datapath — decision 9), and its two findings transfer far past this milestone. FIRST: the instruction table ACCUMULATES over the recording rather than drawing micro straight through, because the live window is nearly blind to out-of-order completion — 4 rows peak, and the cycles showing a younger write beside an older blank number ZERO on 7 of 13 programs and ONE on the very program promoted to demonstrate it; the engine's O(n) bound on micro is about the RECORDER, not the picture, and a view folding the already-recorded trace pays it once per cursor. SECOND, and the transferable one: the mutation check found TWO tests green under the very stubs they exist to catch, both the same species — an assertion necessary but not sufficient, which passes on broken code while reading like a guard. One was the single trap step 4 wrote down specifically for step 7 (a stall's stage used as a position) and it scored ZERO red in 11872; the other's mutation table MATCHED ITS PREDICTION EXACTLY and still hid a false net, because a per-item loop over a derived collection is vacuous exactly when the collection is what broke. Read before writing any layout guard (unit NAMES cannot count unit ROWS; a text slice at a fixed offset from a marker class reads only CSS), before asserting no row is a bare mnemonic (ecall), before adding a panel whose canonical picture replaces a datapath (App suppresses the slot via a PURE predicate, because the shell seam is unreachable without jsdom), and before trusting a mutation table that agrees with its forecast. Step 5 found and FIXED a collision that had shipped since M9: the pipeline map's no-hue fallback was BYTE-IDENTICAL to IF's (--accent and --phase-if hold the same literal in every theme), invisible to every test here because both layers hand out the string var(--accent) and only CSS resolves it — so no test here can see a click, a HEIGHT, or a COLOR. It was worst on the OUT-OF-ORDER model, 82% of whose map is the fallback and where IF vs ROB# is the whole distinction. Fixed by re-pointing at the existing NEUTRAL token --ink-3 (no new color token, so the pinned criterion held), and its regression test FAILED TO FAIL on the first draft because it asserted about a token rather than reading the value the view EMITS. Read before touching engineConfigFor (it is PROTECTION again after four milestones as normalization; the predicate is the capability FLAG not the model id, and that extension's warrant is a GREP not a green suite, since the timing suites never cross the seam), before writing a blanket knob skip in engine-config.test.ts (make it conditional on the flag or it permits the M13 half-dead toggle), before choosing a picker position (a step ALONG the road is inserted, a PREDECESSOR met after its successor is appended), and before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (at step 2 both arrived on the step cap). Step 6 promoted register-reuse.s and FLIPPED INV-8 from a false net into a REAL one on both hazards (14/14 green under each stub at step 3, 1 of 15 red under each now) - read it before any future mutation re-run (copying a mutation table SHAPE silently drops any suite added since it was written: the three-column table missed recorder.test.ts, which WAR reddens and WAW does not), before hand-building a hazard on this machine (a WAR pair occupies BOTH integer units for the whole window its load claim is live, so the two hazards need two SEPARATE slow producers - third sighting, now a rule), before asserting the ABSENCE of a stall reason on any model (the out-of-order core emits NO stall event of any kind, so that acceptance line was vacuous; the web layer is the only one allowed to hold a cross-model claim), before maintaining a HISTORICAL cohort like the-eleven-programs-that-predate-X, and before quoting "every table re-derived by hand" without its derived/measured split."
 metadata:
   node_type: memory
   type: project
@@ -8,12 +8,13 @@ metadata:
   modified: 2026-08-10T14:05:03.509Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–7 DONE — the machine exists,
-runs, is pinned against the golden reference, its SCHEDULE is pinned too, it is drivable
-through the recorder, it is SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR
-program that makes INV-8 a REAL net on it, and IT HAS ITS CANONICAL PICTURE (the three status
-tables); ALL ELEVEN DECISIONS PINNED (decision 6 amended
-at step 1). ONLY STEP 8 — THE BROWSER PASS — IS LEFT.** The user picked "scoreboarding"
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: ✅ COMPLETE — ALL NINE STEPS (0–8) DONE.**
+The machine exists, runs, is pinned against the golden reference, its SCHEDULE is pinned too, it is
+drivable through the recorder, it is SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR
+program that makes INV-8 a REAL net on it, IT HAS ITS CANONICAL PICTURE (the three status tables),
+and **that picture has been looked at in a real browser — 103 checks, all green after TWO defects
+only the browser could see.** ALL ELEVEN DECISIONS PINNED (decision 6 amended at step 1; decision
+9's follow-up condition answered NO at step 8). Lesson track is M16. The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
@@ -22,7 +23,92 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed — **that seam scrutiny is now DONE (see step 5)**. **Next: step 8, the browser pass.**
+unreviewed — **that seam scrutiny is now DONE (see step 5)**. **The milestone is CLOSED.**
+
+## Step 8 — the browser pass, and the two defects a green suite was hiding (2026-08-10)
+
+Rig at `M:/claud_projects/temp/m15-step8/` (`probe.config.ts` + `dump.probe.test.ts` = the
+PRE-BROWSER dump; `eyeball.mjs` = **103 checks** over the shipped `vite preview` bundle). **All 103
+green after two fixes.** Repo **11872 passing / 1 skipped, 99 files**, five gates green — **the count
+did not move**, because both fixes rewrote a guard IN PLACE rather than adding one. Record now
+**11 of 12 view steps shipped a defect only the browser caught.**
+
+⚠ **FINDING 1, and the transferable sentence is short: "pin it to one line" does not stop a string
+being cursor-dependent — it makes it HIDE.** Step 7 pinned both moving strings to `nowrap`+ellipsis
+so the panel's height could not move. Correct about the height; it threw the words away. Measured
+per reason at four widths: `structural-int` needs **1868px** and the caption's box **tops out at
+1120px** (page max-width — so 1600 and 1920 read identically), giving **38 / 58 / 60 / 60%** visible;
+`war` **52 / 80 / 82 / 82%**. **Neither was ever complete at ANY viewport**, and they are the two
+that matter — `structural-int` is the sentence step 3 REQUIRED the view to state (cut at "…with two
+of them that is a cei", losing the 0.5-IPC ceiling itself) and `war` is one of the two hazards the
+milestone exists to show. Fixed with a **fixed three-line reserve, clamped**; three is MEASURED (the
+longest fits down to a 623px box; two lines still clips below 934px, which is the 800px viewport).
+`height`, never `min-height`, so height stays constant across five cursors at every width 800–1600.
+Cost +40px. ⚠ **The guard was green the whole time because it asserted `nowrap` — the very property
+doing the damage.** An assertion can name the defect and pass.
+
+⚠ **FINDING 2 — "keep it reachable" was buying nothing, and that is measurable rather than
+arguable.** Step 7 suppressed the datapath slot on a TRACE fact so the "coming soon" placeholder
+would stay reachable for a future model with neither picture. Swept live over all seven models:
+**loaded recording → no placeholder anywhere; assembly error → an error box, no placeholder;
+scoreboard with an EMPTY-but-valid program → "Scoreboard datapath — coming soon".** That was the
+ONLY route to it in the whole product, because the other six all draw a real diagram — so the line
+was keeping reachable exactly the sentence step 7 removed, one cleared editor away. **The user chose
+option 3 again**: not "key on the model by name", but **let the model DECLARE it** — `DatapathKind`
+gains `'panel'` ("my canonical picture is deliberately not a wire diagram"), `'none'` keeps meaning
+"a diagram belongs here and is not built yet". Names no model; true with or without a recording.
+⚠ **The reachability test now CONSTRUCTS a model at `'none'`** (no shipped model sits there any
+more) and **asserts that premise** rather than stating it in prose; the suppression test asserts
+BOTH values of the trace flag, and the `false` half is the finding.
+
+⚠ **THE RIG LESSON, and it is the one to carry: a metric can stop measuring anything the moment you
+fix the defect.** The truncation check compared `scrollWidth` to `clientWidth`. Inside a clamped
+`display:-webkit-box` those are EQUAL by construction, so after the fix every row read "needs 705px,
+box 705px → 100%" — which is also exactly what a fully hidden sentence reports. A clamped box hides
+text **vertically**. Two traps behind it: **`scrollHeight` is never LESS than `clientHeight`**, so it
+cannot say how tall text WANTS to be in a roomy box (first draft recorded "wants 3 lines" for a
+one-line sentence — measure an unclamped CLONE at the same width); and a column of 100%s is worth
+nothing without a **non-vacuity probe**, so the rig squeezes the live caption to one line, confirms
+it reads as clipped, and restores it.
+
+**The cursors were MEASURED before Chrome started.** The fold is pure, so the dump runs it over all
+13 programs × every cursor and reports the crowded state, the longest string per line box, the
+reorder cursor and the hazard cursors. It also corrected the plan's own guess: accumulated rows top
+out at **157**, but the longest window note is `the last 10 of 105 fetched` — **length is what
+matters, and 105 and 157 are the same width.** Cursors used: `register-reuse@25` (write column
+`4 5 9 15 18 17 22 25`), `@19` (caption must prefer `waw` over the earlier `operand`), `@13` (`war`,
+3 stalls, 3 claims), `array-sum-twice@226` (10 rows, 3-digit hidden, a flushed row), `add@3` (the
+corpus's longest caption — on the SMALLEST program).
+
+**The width work is 2-D, and the plan's "a STATED narrow viewport" under-specifies the class** (the
+predictor jitter lived BETWEEN 900 and 1180 and moved with the CURSOR at fixed width): six widths ×
+five cursors, and read the **panel's own `clientWidth`** (1166 of 1600), not the viewport. All three
+surfaces step 7 flagged held, and each failed differently from the guess because **the SOURCE
+predicts the failure mode**: the register grid CANNOT become five rows (`repeat(8, minmax(0,1fr))`
+is fixed) — its real risk was `.sb-reg-cell`'s `nowrap` with no `overflow:hidden`, measured 0
+overflows and 0 overlaps; the 11-column table fits at every width (705px at the narrowest). The
+panel is 17px taller at 800 than at ≥900 because the FU heading's STATIC sentence wraps — **a height
+that moves with the VIEWPORT is a layout; a height that moves with the CURSOR is jitter.**
+
+**Only-in-the-browser checks:** the **follow click** (row → the same instruction lights in the unit
+table AND in the register cell that unit claimed, `INT0`→`t2`; exactly one row; clears on re-click)
+had **zero headless coverage**. **Three theme states**, driven through the real toggle: the hazard
+amber is distinct from the non-hazard ink in all three and clears the text floor (**7.74:1 auto and
+dark, 4.74:1 light**). Six legend chips on one visual row at every width; `RO` still ≠ `IF`.
+
+⚠ **A pre-existing defect, and "pre-existing" is a MEASUREMENT not an excuse.** At 800px the
+document scrolls horizontally **on every model, single-cycle included** (widest element there: a
+936px table) — nothing inside the scoreboard panel ever contributes, asserted separately at every
+width. The cross-model probe on a model that predates the work is what licenses the sentence.
+
+**Two more rig bugs, both the rig** (step 5's rule, third milestone running): `__cycles()` reads
+`max + 1`, which IS the cycle count — adding a pre-run frame reported a defect against a correct
+app; and the legend was asserted as a hard-coded SEQUENCE when it is in **first-seen order**, a
+property of the recording (assert the SET plus "IF is first").
+
+**Decision 9's follow-up answered NO:** looked at at 1600 and 800, the tables read as the textbook's
+three tables, with the pipeline map above supplying the cycle-by-cycle picture they deliberately do
+not try to be. No wire diagram is owed.
 
 ## Step 7 — the three status tables, and the window that could not show a reorder (2026-08-10)
 
