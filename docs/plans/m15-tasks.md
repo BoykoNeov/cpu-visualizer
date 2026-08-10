@@ -2,9 +2,10 @@
 
 **Status: NOT STARTED, 2026-08-10. Nothing is proven; nothing is built.** Every decision below is
 a SEED with a recommendation, not a pin — the decisions table is the review surface, and steps 0+
-are blocked on the three decisions marked ⛔ gating. Scope pinned by the user this session: the
-**scoreboard model alone**. Its lesson track is a separate later milestone (the M9→M10, M11→M12,
-M13→M14 shape).
+are blocked on the five decisions marked ⛔ gating. **What the user actually chose (2026-08-10) is
+"scoreboarding", picked from a list of candidate architectures — the scope below (this model
+alone, lesson track deferred to M16) is this plan's recommendation, not a pin**, and it is
+decision 10.
 
 Source of truth for scope: `cpu-visualizer-spec.md` §12 (roadmap) — with the honest caveat that
 **this milestone is past the end of that roadmap**, as M11 and M13 were. Tiers 1–5 are complete
@@ -77,22 +78,35 @@ concentrates.
 
 ### The machine, precisely ⛔ gating
 
-Five stages, chosen so the stage names are honest **and** land on hue families the validated
-palette already has (see "no new color token" below):
+Stage names chosen so they are honest **and** land on hue families the validated palette already
+has (`PHASE_COLORS` keys are exactly `IF ID EX MEM WB` — read at `theme.ts:44-50`, not inferred):
 
-| Stage | Name              | What happens                                                                  |
-| ----- | ----------------- | ----------------------------------------------------------------------------- |
-| `IF`  | Fetch             | As every model. One per cycle, in order.                                      |
-| `ID`  | **Issue**         | Decode + the two in-order checks: **FU busy** (structural) and **WAW**.       |
-| `RO`  | **Read Operands** | Wait until both sources are ready, then read the **architectural regfile**.   |
-| `EX`  | Execute           | `1` cycle, or `slowOpLatency` for the designated slow op. Out of order.       |
-| `WB`  | **Write Result**  | The **WAR** check: hold until every older instruction has read this register. |
+| Stage      | Name              | What happens                                                                                                    |
+| ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| `IF`       | Fetch             | As every model. One per cycle, in order.                                                                        |
+| `ID`       | **Issue**         | Decode + the two in-order checks: **FU busy** (structural) and **WAW**.                                         |
+| `RO`       | **Read Operands** | **Inside the FU, not a shared stage** — see below. Reads the architectural regfile once both sources are ready. |
+| `EX`/`MEM` | Execute           | In the integer FU (`EX`) or the memory FU (`MEM`). Out of order.                                                |
+| `WB`       | **Write Result**  | The **WAR** check: hold until every older instruction has read this register.                                   |
 
 Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
 
+- **⚠ `RO` is PER-FU and non-blocking; only Issue is shared and blocking.** An instruction leaves
+  Issue _into its functional unit_ and waits there for its operands. This is not a detail: **if
+  `RO` were a shared in-order stage, WAR would be unreachable** — a younger instruction could never
+  reach Write-Result while an older one still had unread operands, and the milestone's second
+  hazard would not exist. Step 1's acceptance line depends on this row.
 - **Issue is in order and blocking.** An instruction that cannot issue blocks every younger one
   behind it — this is why a scoreboard's window is so much smaller than Tomasulo's, and it is the
   contrast M16's lesson will want.
+- **FU latencies are MODEL-INTRINSIC, not a config knob** — the CDC 6600 was a heterogeneous-FU
+  machine (add 2, multiply 10, divide 40), and the multi-cycle model's precedent is that its
+  per-instruction cycle counts are "this model's definition, not a setting"
+  (`multi-cycle/src/processor.ts:82`). This is what makes the whole milestone reachable in free
+  play: `slowOpLatency` has **no UI control anywhere** (`useSimulator.ts:356-361` — "A REF ONLY,
+  no React state, no interface field, no control"), its only writers are `startLesson` and the
+  free-play loads which reset it to 1, so a model whose only latency source was that knob would be
+  a machine that never reorders until M16 authors a lesson for it.
 - **There is no forwarding and no bypass.** Results reach consumers through the register file
   only. `configurableForwarding: false` — this model _ignores_ the knob (the M4 inertness
   contract), and its trace is byte-identical with forwarding on or off. **That invariance is a
@@ -112,16 +126,16 @@ Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
       (must lint CLEAN — it is the allowed edge that transitively pulls in the golden reference).
       The web trio (web `package.json` dep, web `tsconfig` `paths`, Vite alias) is **not** here; it
       lands with whichever step first has acceptance inside `packages/web`. Acceptance: `npm run
-  lint` red on the two denied directions and green on the allowed one, verified by RUNNING it;
+lint` red on the two denied directions and green on the allowed one, verified by RUNNING it;
       `tsc -b` green as its own check beside vitest (they resolve imports by different routes).
 
-- [ ] **1. The model MVP.** `Processor` implementation, the five stages, the three status tables in
-      `micro`, INV-4 stable ids across an out-of-order lifetime, and the four stall reasons. Its
-      proof is a **hand-built WAW/WAR program inside the test file**, not a corpus program — M11's
-      `+6`-constant precedent. Deriving corpus tables before the machine's coefficients are known
-      means deriving twice (see step 6). Acceptance: hand-derived unit tests pin a WAW stall at
-      Issue and a WAR stall at Write-Result by cycle and by `stall.reason`, and a program whose
-      write-backs are provably out of program order.
+- [ ] **1. The model MVP.** `Processor` implementation, the stages above, the three status tables
+      in `micro`, INV-4 stable ids across an out-of-order lifetime, the intrinsic FU latencies, and
+      the four stall reasons. Its proof is a **hand-built WAW/WAR program inside the test file**,
+      not a corpus program — M11's `+6`-constant precedent. Deriving corpus tables before the
+      machine's coefficients are known means deriving twice (see step 6). Acceptance: hand-derived
+      unit tests pin a WAW stall at Issue and a WAR stall at Write-Result by cycle and by
+      `stall.reason`, and a program whose write-backs are provably out of program order.
 
 - [ ] **2. INV-8 differential.** `runConformance('scoreboard', () => new ScoreboardProcessor())`
       over the full corpus × the config matrix this model actually honors. Acceptance: green.
@@ -132,16 +146,29 @@ Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
       and the plan leads with it for the reason M11 did: a machine that typechecks, passes INV-8,
       and renders on the map can still be **a 5-stage wearing scoreboard labels**, because
       out-of-order completion reaching the same final architectural state is exactly what INV-8
-      checks. So: - a closed-form cycle count over corpus × config, every coefficient **hand-derived from the
-      recurrence before it is compared to the engine**; - a **stall-reason histogram** asserted as an event multiset, not as a cycle count —
-      `docs/memory/cycles-cannot-see-a-lost-forward.md` is the precedent (a cycles-only identity
-      held in every cell while two events silently vanished); - the mutation check run as **two separate mutations, both actually executed** and reverted
-      via `git checkout` (commit first — a break harness has destroyed an uncommitted tree here
-      before): **stub the WAR check** and **stub the WAW check**. INV-8 must stay GREEN under
-      both while the timing matrix and the histogram redden. If INV-8 is the only thing that
-      reddens, the net is in the wrong place.
-      Acceptance: both mutations produce the predicted pattern; the numbers are recorded in the
-      plan, not just in the test.
+      checks. So: a closed-form cycle count over corpus × config with every coefficient
+      **hand-derived from the recurrence before it is compared to the engine**; a **stall-reason
+      histogram** asserted as an event multiset rather than a cycle count
+      (`docs/memory/cycles-cannot-see-a-lost-forward.md` is the precedent — a cycles-only identity
+      held in every cell while two events silently vanished); and the mutation check run as **two
+      separate mutations, both actually executed** and reverted via `git checkout` (commit first —
+      a break harness has destroyed an uncommitted tree here before): **stub the WAR check** and
+      **stub the WAW check**.
+
+      ⚠ **The prediction that INV-8 stays GREEN under both stubs is scoped to TODAY'S corpus, and
+      step 6 flips it.** Stubbing either check corrupts architectural state _given a program that
+      contains such a pair_ — so this claim is only true while the corpus has none. Measured
+      2026-08-10 (`M:\claud_projects\temp\m15-corpus-scan\scan.mjs`): **zero reachable WAW or WAR
+      hazards across all twelve programs.** The two static WAW candidates are both in
+      `branch-flavors.s`, where the `a0` pair sits on mutually exclusive branch paths (dead) and
+      the `a1` pair is two integer-ALU writers that share one FU under in-order issue (no
+      reorder); the three WAR candidates (`array-sum`, `array-sum-twice`, `strided-sum`) are all
+      `lw` reads `t0` / `addi` writes `t0`, unreachable because the load's `t0` is ready at Read
+      Operands so it reads before the `addi` can write. **After step 6 lands a program with a real
+      pair, INV-8 becomes a genuine net on this model** — unusual here, where M7's and M11's logs
+      both call it a false net — so **re-run both mutations at step 6**, where INV-8 reddening is
+      the strongest available evidence. Acceptance: both mutations produce the predicted pattern at
+      step 3 AND at step 6; the numbers are recorded in the plan, not just in the test.
 
 - [ ] **4. Recorder / time-travel.** Step, scrub, and `follow()` an id through a lifetime whose
       Write-Result is out of program order — the first model where "follow this instruction"
@@ -150,14 +177,17 @@ Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
 
 - [ ] **5. Web enablement — `models.ts`.** One `ModelChoice` row (`datapath: 'none'` until step 7),
       `MODEL_DESCRIPTION`, picker position, and the capability flags. Two things M11 learned the
-      hard way, both of which apply verbatim: - **The churn is FOUR exhaustive `toEqual` lists, not three** — the id list, both `honoring()`
-      lists, and the datapath table in `models.test.ts`. Inserting a model mid-array shifts more
-      expectations than the id list. - **This model REFUSES knobs, so `engineConfigFor(model, config)` must narrow them.** The
-      shell holds forwarding / prediction / cache / width / the OoO cluster at session level and
-      hands the whole config to whichever engine drives; `deep-pipeline` was the first engine to
-      refuse one and it made a live crash reachable from a click handler. - Ask M11's closing question of this model: **what user-visible prose is gated on a flag it
-      turns on?** A tooltip stating another machine's coefficients is an INV-5 violation and only
-      a browser can see it.
+      hard way, both of which apply verbatim. **The churn is FOUR exhaustive `toEqual` lists, not
+      three** — the id list, both `honoring()` lists, and the datapath table in `models.test.ts`;
+      inserting a model mid-array shifts more expectations than the id list. And **this model
+      REFUSES knobs, so `engineConfigFor(model, config)` must narrow them**: the shell holds
+      forwarding / prediction / cache / width / the OoO cluster at session level and hands the
+      whole config to whichever engine drives, and `deep-pipeline` was the first engine to refuse
+      one — which made a live crash reachable from a click handler. Note `engineConfigFor` clamps
+      **`cache` only** today, so a second refusing knob is a real extension with its own argument
+      to write out. Ask M11's closing question of this model: **what user-visible prose is gated on
+      a flag it turns on?** A tooltip stating another machine's coefficients is an INV-5 violation
+      and only a browser can see it.
       Acceptance: the model is drivable end-to-end in `npm run dev`; every refused knob is
       clamped rather than thrown; the pipeline map draws it with no edit to `pipeline-map.ts`.
 
@@ -198,10 +228,12 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
       `'war'` need no schema change. `location` is a plain string, so `'RO'` needs none either.
 - [ ] **`pipeline-map.ts` needs no edit.** It derives the stage set from the recording and hues by
       stage FAMILY. `stageFamily()` strips a lane suffix and trailing digits, so this model's
-      families are `IF`, `ID`, `RO`, `EX`, `WB` — **four of five already carry a validated phase
-      hue**, and `RO` renders in the neutral accent by the documented fallback, staying legible by
-      its cell text. That is the whole reason the stage names are `ID`/`WB` rather than `IS`/`WR`:
-      honest names that also avoid three new families.
+      families are `IF`, `ID`, `RO`, `EX`, `MEM`, `WB` — and `PHASE_COLORS` holds exactly
+      `IF ID EX MEM WB` (read at `theme.ts:44-50`), so **five of six already carry a validated
+      phase hue**. Only `RO` renders in the neutral accent, by the documented fallback, staying
+      legible by its cell text. That is the whole reason the stage names are `ID`/`WB` rather than
+      `IS`/`WR`, and why the memory FU reports `MEM`: honest names that also avoid four new
+      families.
 - [ ] **No new color token.** A genuinely new categorical color means a new token pair in both
       theme blocks and a re-run of the dataviz palette validator — out of scope here.
 
@@ -222,18 +254,19 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 
 ## Decisions to pin (seeded with recommendations — review is a diff, not a brainstorm)
 
-| #   | Decision                                         | Recommendation (seed)                                                                                                                                                                                                                                                                                             | Pinned answer |
-| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 1   | ⛔ New package vs. `renaming: false` knob on OoO | **New package** — the knob draws a machine that never existed (INV-5); see headline                                                                                                                                                                                                                               | _(open)_      |
-| 2   | ⛔ Stage set and names                           | `IF ID RO EX WB`, where ID **is** Issue and WB **is** Write-Result — honest, and only one new hue family                                                                                                                                                                                                          | _(open)_      |
-| 3   | ⛔ Does the machine speculate?                   | **No predictor: `branchPrediction` is IGNORED** and a taken branch simply flushes the front end. The CDC 6600 had no dynamic prediction, and adding one puts speculative recovery on a machine with no ROB — the hardest thing in the milestone, for a lesson that is not this milestone's                        | _(open)_      |
-| 4   | Functional-unit set                              | **Two FUs: one integer (1 cycle), one "slow" (`slowOpLatency`, default 1)** — the minimum that makes structural + WAW + WAR all reachable. RV32I has no `mul`/`div`, so `slowOpLatency` is the only latency source; it is already in the shared `ProcessorConfig` and `slow-op-loop.s` is already built around it | _(open)_      |
-| 5   | Which knobs are REFUSED vs. IGNORED              | **Refuse** `cache` and `issueWidth > 1` (throw at `reset()`, clamp in `engineConfigFor` — the `deep-pipeline` precedent). **Ignore** `forwarding`, `branchPrediction`, `outOfOrderIssue`, `robSize` (the M4/M7 inertness contract, asserted by a byte-identical-trace test)                                       | _(open)_      |
-| 6   | Stall reason vocabulary                          | `'waw'`, `'war'`, `'structural'`, `'operand'`. **Not `'raw'`** — that string is pinned repo-wide to mean "forwarding is off" (`pairing-readout.ts`, `lessons.test.ts`), and this machine has no forwarding knob at all                                                                                            | _(open)_      |
-| 7   | Load/store handling                              | **A third FU, blocking, single memory port** (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package)                                                                                                                                                                       | _(open)_      |
-| 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                             | _(open)_      |
-| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet                                                                                                                                                                                 | _(open)_      |
-| 10  | Lesson track                                     | **Separate milestone (M16)**, the M9→M10 / M11→M12 / M13→M14 shape                                                                                                                                                                                                                                                | _(open)_      |
+| #   | Decision                                         | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Pinned answer |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| 1   | ⛔ New package vs. `renaming: false` knob on OoO | **New package** — the knob draws a machine that never existed (INV-5); see headline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | _(open)_      |
+| 2   | ⛔ Stage set and names                           | `IF ID RO EX/MEM WB`, where ID **is** Issue and WB **is** Write-Result — honest, and only `RO` is a new hue family                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | _(open)_      |
+| 2b  | ⛔ Is `RO` shared or per-FU?                     | **Per-FU and non-blocking**; only Issue is shared and in-order. A shared blocking `RO` makes **WAR unreachable** and deletes half the milestone's subject                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | _(open)_      |
+| 3   | ⛔ Does the machine speculate?                   | **No predictor: `branchPrediction` is IGNORED** and a taken branch simply flushes the front end. The CDC 6600 had no dynamic prediction, and adding one puts speculative recovery on a machine with no ROB — the hardest thing in the milestone, for a lesson that is not this milestone's                                                                                                                                                                                                                                                                                                                                                                                                                               | _(open)_      |
+| 4   | ⛔ Where latency comes from                      | **Model-intrinsic heterogeneous FU latencies, NOT `slowOpLatency`.** Two FUs to start: integer (1 cycle, reports `EX`) and memory (multi-cycle, reports `MEM`). ⚠ `slowOpLatency` is gated by `configurableOutOfOrder`, which also gates the issue-order toggle and the ROB-size control (`App.tsx:387-392`) — so honoring it means either offering a ROB size on a machine with no ROB, or splitting a capability flag across seven models. And it has **no UI control at all** (`useSimulator.ts:356-361`), reset to 1 on every free-play load, so a model depending on it shows nothing until M16 authors a lesson. Intrinsic latency dodges all of it, follows multi-cycle's precedent, and needs no capability flag | _(open)_      |
+| 5   | Which knobs are REFUSED vs. IGNORED              | **Refuse** `cache` and `issueWidth > 1` (throw at `reset()`, clamp in `engineConfigFor` — the `deep-pipeline` precedent; note it clamps `cache` only today). **Ignore** `forwarding`, `branchPrediction`, `outOfOrderIssue`, `robSize`, `slowOpLatency` (the M4/M7 inertness contract, asserted by a byte-identical-trace test). Capability flags: `configurableOutOfOrder: false` is then honest, since none of the cluster is honored                                                                                                                                                                                                                                                                                  | _(open)_      |
+| 6   | Stall reason vocabulary                          | `'waw'`, `'war'`, `'structural'`, `'operand'`. **Not `'raw'`** — that string is pinned repo-wide to mean "forwarding is off" (`pairing-readout.ts`, `lessons.test.ts`), and this machine has no forwarding knob at all                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _(open)_      |
+| 7   | Load/store handling                              | **The memory FU of decision 4 — blocking, single memory port**, reporting `location: 'MEM'` for every cycle it occupies (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package). Its multi-cycle latency is what makes WAW/WAR reachable on ordinary programs                                                                                                                                                                                                                                                                                                                                                                                                                     | _(open)_      |
+| 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | _(open)_      |
+| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | _(open)_      |
+| 10  | Scope: this model alone? Lesson track?           | **This model alone; lesson track is a separate milestone (M16)** — the M9→M10 / M11→M12 / M13→M14 shape. The user picked the architecture, not the scope, so this row is genuinely open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | _(open)_      |
 
 ## Ordering note (not part of this milestone)
 
