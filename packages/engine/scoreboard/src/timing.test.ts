@@ -868,8 +868,9 @@ describe('what the corpus cannot show', () => {
     for (const file of FILES) {
       expect(
         eventsOf(run(file), 'stall').filter((e) => e.reason === 'war'),
-        `${file} — a WAR stall would need a younger writer reaching WB while an older reader
-         still holds an unread copy, and no corpus program schedules one`,
+        // One line deliberately: a template literal wrapped in the source carries its own
+        // indentation into the failure output, exactly when it is hardest to read.
+        `${file} — WAR needs a younger writer at WB while an older reader holds an unread copy`,
       ).toEqual([]);
     }
     // The other half of the same sentence: WAW is everywhere, so this suite IS a net for it (the

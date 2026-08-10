@@ -585,6 +585,16 @@ regardless — timing moves, architecture does not. **Step 6's promoted program 
 whose younger writer does not read that register**, or INV-8 will not redden at the re-run either
 and the two measurements will say the same thing twice.
 
+### ⚠ What step 4 must not break
+
+**Both identities read `micro.instructions`** — `s_last` from the `issue` column, the last writer
+from `writeResult` — and they are computable only because `inFlightThisCycle` keeps a row visible in
+the cycle it completes (`doneCycle === this.cycle`). Step 4 is the recorder, and its acceptance is
+"a scrub to any cycle reproduces the recorded state exactly": **if it ever narrows what a cycle
+retains, this suite goes red for a reason that has nothing to do with the schedule.** That is the
+confusing debugging session to avoid, and the reason the folds read the table rather than counting
+events (no event states an issue cycle, so there is no cheaper route that stays inside INV-3).
+
 ### Smaller things worth carrying
 
 - **The histogram is keyed by (pc, reason), not by pc.** Six reasons here against `deep-pipeline`'s
