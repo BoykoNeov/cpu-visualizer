@@ -5,10 +5,11 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 each with a lesson track. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **twelve** programs, the
-library is **26 lessons**, the repo runs **11273 tests**, five gates green.
+library is **26 lessons**, the repo runs **11293 passing tests** (11294 counting the one skipped
+file), five gates green.
 
-**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0+1+2+3 of 8 DONE
-2026-08-10, next is step 4 (recorder / time-travel); the `/code-review ultra` gate is discharged**;
+**Open work:** **M15 — the scoreboard (CDC 6600), a seventh model: STEPS 0–4 of 8 DONE
+2026-08-10, next is step 5 (web enablement); the `/code-review ultra` gate is discharged**;
 URL permalinks; session persistence. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8,
 2026-08-09).**
 
@@ -89,8 +90,13 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   width lesson**, and before choosing between a striking event and a safe anchor: **anchor on the one
   whose existence conditions match the prose.** Its `CONFIG_AXES` staleness finding recurred on the
   PREDICTION axis — read before trusting any axis-shaped sweep to enumerate the shell's product.
-- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0+1+2+3 of
-  8 done**, with a per-step section. **Read before writing any closed-form timing table** (run the
+- [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0–4 of
+  8 done**, with a per-step section. **Read before touching the step-7 view** (on a flush cycle the
+  two tables a view draws from DISAGREE by design; an Issue stall repeats `IF` while its event says
+  `stage: 'ID'`; a WAR stall repeats the LAST cell), before predicting what a recorder mutation
+  reddens (**dropping the casualty push truncates a walk, it does not delete the casualty**), before
+  trusting a recorded test-count delta (**measure the baseline when a delta misses by one**), before
+  writing any closed-form timing table (run the
   accounting identity over the whole corpus BEFORE deriving rows — it found a missing term twelve
   hand-derived rows would have inherited; and never let the drain term be a residual), before quoting
   a mutation result as coverage (**a real net for WAW, and nothing at corpus scale nets WAR**), before

@@ -1,15 +1,19 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEPS 1–3 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
-the golden reference, and its SCHEDULE is now pinned too.** `ScoreboardProcessor`
+**Status: STEPS 1–4 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
+the golden reference, its SCHEDULE is pinned too, and it is now drivable through the recorder.**
+`ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
 stubbed code. Step 1 also found **three things this plan did not price** — see "Step 1, as built".
 Step 2 added the INV-8 differential at a deliberately **one-config** matrix and re-measured the
 control mutation against it. Step 3 added the timing matrix — two identities, a `(pc, reason)`
 histogram, four isolated coefficient programs, and the two-part mutation check, whose **asymmetry
-is the headline: the matrix is a real net for WAW and NOTHING at corpus scale nets WAR**. Next is
-step 4 (recorder / time-travel). The `/code-review ultra` gate is
+is the headline: the matrix is a real net for WAW and NOTHING at corpus scale nets WAR**. Step 4
+added the recorder suite — a proof, not a build — closing acceptance criterion 4 with `follow()`
+over **strictly nested** lifetimes, and turning up the finding step 7 most needs: **the two tables a
+view draws from disagree on a flush cycle, and an Issue stall repeats `IF` while its event says
+`stage: 'ID'`**. Next is step 5 (web enablement). The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -222,10 +226,11 @@ lint` red on the two denied directions and green on the allowed one, verified by
       **Result: met — see "Step 3, as built" below. The step-3 half of that prediction HELD for both
       stubs; the step-6 re-run is still owed.**
 
-- [ ] **4. Recorder / time-travel.** Step, scrub, and `follow()` an id through a lifetime whose
-      Write-Result is out of program order — the first model where "follow this instruction"
-      crosses another instruction that started later and finished earlier. Acceptance: recorder
-      tests green; a scrub to any cycle reproduces the recorded state exactly.
+- [x] **4. Recorder / time-travel — ✅ DONE 2026-08-10.** Step, scrub, and `follow()` an id through a
+      lifetime whose Write-Result is out of program order — the first model where "follow this
+      instruction" crosses another instruction that started later and finished earlier. Acceptance:
+      recorder tests green; a scrub to any cycle reproduces the recorded state exactly.
+      **Result: met — see "Step 4, as built" below.**
 
 - [ ] **5. Web enablement — `models.ts`.** One `ModelChoice` row (`datapath: 'none'` until step 7),
       `MODEL_DESCRIPTION`, picker position, and the capability flags. Two things M11 learned the
@@ -623,6 +628,101 @@ events (no event states an issue cycle, so there is no cheaper route that stays 
   identities, `E`, and every per-iteration coefficient are genuinely new. **Print only what the
   question needs; a probe that over-reports contaminates the step it was meant to unblock.**
 
+## Step 4, as built (2026-08-10)
+
+`packages/engine/scoreboard/src/recorder.test.ts`. **+20 tests**, repo **11273 → 11293 passing**,
+96 → 97 test files. All five gates green. A **PROOF, not a build**: `packages/trace/src/recorder.ts`
+is untouched and so is `processor.ts` — which is also how step 3's "what step 4 must not break" note
+is discharged, with the retention itself pinned as one assertion rather than a section.
+
+⚠ **The repo test count in this plan and in `docs/memory` was off by one in its own terms.** Step 2
+pins that both totals "INCLUDE the one skipped file", but the recorded **11273** is the PASSED
+count; including the skip it was **11274**. Measured directly — the new file was moved out of the
+tree and the suite re-run — rather than inferred from arithmetic, because the +20 did not land where
+it should have. **When a delta misses by one, measure the baseline; do not reconcile it on paper.**
+
+### What the file deliberately does not re-prove
+
+`processor.test.ts` already pins the `pc` prefix timeline and its monotonicity, per-cycle `micro`
+independence, and id contiguity — all against stubbed code; `timing.test.ts` owns every cycle count.
+Reading any of them back through a cursor adds nothing. Aliasing needed no block either:
+`snapshotMicro` value-copies everything it emits (fresh row literals, `[...this.result]`), so this
+model has no in-place-mutated view object of the kind M9's ROB entries are.
+
+### ⚠ The two tables a view draws from DISAGREE, and it is deliberate
+
+A flush cycle sights **two ids at `location: 'IF'`** — `executeSlot` moves the casualty into
+`ctx.flushed` and `stageFetch`, walked after Execute, fills the emptied slot from the target in the
+**same cycle**. But `snapshotMicro` rows only `this.ifSlot`, never `ctx.flushed`. So
+`trace.instructions` reports two and `micro.instructions` reports one, for the same cycle. The
+casualty is a casualty, not an occupant of the machine — **pinned here so step 7 does not quietly
+"fix" one table to match the other.**
+
+### ⚠ Two walk shapes step 7 must render, and neither has a sibling in the product
+
+- **An Issue stall repeats the `IF` cell while the stall EVENT says `stage: 'ID'`.** Every latch
+  machine here puts a stalled instruction _in_ the stage that stalled it. Issue is a **transition**
+  on this machine, not a latch: the instruction never leaves `ifSlot`, so `location` and
+  `stall.stage` legitimately disagree. **A view that highlights `stall.stage` will light a cell the
+  instruction is not in.**
+- **A WAR stall repeats `WB` — the LAST cell.** Every other stall in the whole product repeats an
+  early cell, because every other stall fires at the beginning of an instruction's life. The WAR
+  witness's younger writer reads `IF ID RO EX WB WB WB WB`: a walk that ENDS in its stall.
+
+The WAR witness draws all three of this model's stall shapes at once (`structural-int` at Issue
+repeating `IF`, `operand` repeating `RO`, `war` repeating `WB`), which is why the block uses it
+rather than three toys. Both witnesses are **re-used verbatim from `processor.test.ts`** rather than
+re-derived — reproducing a pinned table would give it two owners.
+
+### The mutation check — the stubs that test THIS file, not step 3's
+
+Step 3 already spent the WAW and WAR stubs. The mutations that actually net a recorder suite are the
+two that change what a cycle REPORTS. Predictions were written down first; both applied to
+`processor.ts` on a committed tree and reverted with `git checkout --` on that one named file.
+
+| Stub                                               | `processor.test.ts` | `differential.test.ts` | `timing.test.ts` | `recorder.test.ts` |
+| -------------------------------------------------- | ------------------- | ---------------------- | ---------------- | ------------------ |
+| narrow `inFlightThisCycle`'s `doneCycle` retention | 2 of 46 red         | **14/14 GREEN**        | **12 of 20 red** | **9 of 20 red**    |
+| drop the `ctx.flushed` push                        | 1 of 46 red         | **14/14 GREEN**        | **20/20 GREEN**  | **2 of 20 red**    |
+
+Two things the table says that the counts alone do not:
+
+- **INV-8 is blind to BOTH.** Retention and the casualty are reporting concerns; the architectural
+  state is identical either way. So the conformance differential is a false net here for a third
+  reason, on top of the two step 2 recorded.
+- **The casualty push has exactly TWO nets in the entire repo** — `processor.test.ts`'s one
+  hand-derived cycle and this file. Not INV-8, not the timing matrix.
+
+⚠ **A prediction that was WRONG, and it is the transferable part.** Mutation B was predicted to
+redden **three** recorder tests, the third being the corpus claim "flushed instructions exist and
+never retire". It stayed **GREEN** — because dropping the casualty push does **not** remove the
+casualty from the recording, it **truncates its walk by one cycle**: the instruction was already
+sighted at `IF` in the cycles it sat there _before_ the flush. So a test shaped "a casualty exists
+and never retires" is a **false net for the casualty push**; only a test that names the exact
+sighting CYCLES catches it, which is why the `follow()` assertion is a `toEqual` over three
+`{cycle, location}` pairs and not a set membership. **Same family as step 2's finding that the ten
+green control cells were a WINDOW measurement rather than an absence.**
+
+### Smaller things worth carrying
+
+- ⚠ **The loop stall belongs to the loop's ENTRY, not its body.** Predicted that "most" of
+  `sum-loop`'s ten dynamic `add a0, a0, t0` walks would exceed five cells; **exactly one does** —
+  iteration 1's, held two cycles at Issue on `structural-int` while both `li`s still occupy the
+  integer units. Every later iteration's `add` is fetched only after a taken `bnez`, which — Issue
+  having been held since that branch issued — hands it a nearly drained machine with both operands
+  long since written. **The steady state is a clean five.** Asserted as `toHaveLength(1)` plus the
+  identity of which one, so the claim is the mechanism rather than a threshold.
+- **ONE config, and it is `defaultConfig()` itself.** `cache: null` is deliberately NOT written
+  explicitly the way `deep-pipeline`'s recorder suite writes it: there it guards a knob that model
+  HONORS, here the default is already the only value `reset()` accepts and every other knob is
+  inert (step 2's one-column finding, at the recorder layer).
+- **The pre-run cursor (-1) over `emptyMicro()`** — three idle unit rows, no instruction rows, 32
+  unclaimed registers — is reachable only through `load()`, so no earlier test could have covered
+  it. It matters for step 7: the three tables exist from the first frame, so the view can draw a
+  stable layout instead of materializing when the first instruction issues.
+- **`instr-retire` follows write-back exactly**, asserted as a list. On M9 those two orders
+  disagree; here they cannot, and that impossibility IS the distinction from a reorder buffer.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -650,16 +750,22 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 
 ## Acceptance criteria (mirror the spec §11 shape)
 
-- [ ] Load the WAW/WAR program on `Scoreboard`, step to completion, step **backward** to the
-      start, and scrub to any cycle; the state shown always matches the recorded trace.
+- [~] Load the WAW/WAR program on `Scoreboard`, step to completion, step **backward** to the
+  start, and scrub to any cycle; the state shown always matches the recorded trace.
+  ⚠ **Mechanically met at step 4, but NOT tickable** — the navigation is proved (run to halt,
+  walk back to the pre-run cursor, scrub to every cycle with `currentState()` identical to
+  that cycle's own recorded snapshot), on step 1's **in-file** WAW and WAR witnesses. The
+  criterion names "the WAW/WAR program", which is **step 6's corpus program**; it closes there.
 - [ ] The same program on `Out-of-order` shows **no** WAW or WAR stall, and on `Scoreboard` shows
       both — the same program, two machines, the renaming lesson visible without a word of prose.
 - [ ] For **every** corpus program, final register + memory state equals the golden reference
       (INV-8), at every config this model honors.
-- [ ] Two instructions provably write back **out of program order**, and `follow()` tracks each
-      across the other. ⚠ Half met at step 1: the out-of-order write-back is asserted by cycle
-      (margins of 4 and 2 on `lw` / `addi` / `addi`), and the ids are proved stable and contiguous
-      across it. `follow()` is the recorder's, so it waits for step 4.
+- [x] **Two instructions provably write back out of program order, and `follow()` tracks each
+      across the other ✅ (step 1 + step 4).** Step 1 asserted the write-back by cycle (margins of 4
+      and 2 on `lw` / `addi` / `addi`) with the ids proved stable and contiguous across it. Step 4
+      closed the `follow()` half, and in the strong form: both younger instructions' walks are
+      **strictly contained** inside the older load's — started later, finished earlier — with the
+      containment asserted at both ends.
 - [x] **Forwarding on vs. off produces a byte-identical trace ✅ (step 1)** — and so does every
       branch-prediction scheme and the whole out-of-order cluster. This machine has no bypass network
       at all, so the inertness contract is asserted as whole-trace equality, not a comment.

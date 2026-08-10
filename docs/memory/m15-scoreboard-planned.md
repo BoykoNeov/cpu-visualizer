@@ -1,16 +1,16 @@
 ---
 name: m15-scoreboard-planned
-description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0, 1, 2 AND 3 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and its schedule is now pinned by a timing matrix. Read before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
+description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0-4 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, its schedule is pinned by a timing matrix, and it is drivable through the recorder. Read before touching the step-7 view (on a flush cycle trace.instructions and micro.instructions DISAGREE by design; an Issue stall repeats the IF cell while its event says stage ID, so highlighting stall.stage lights a cell the instruction is not in; a WAR stall repeats the LAST cell), before predicting what a recorder mutation reddens (dropping the flush-casualty push TRUNCATES a walk by one cycle rather than removing the casualty, so an exists-and-never-retires test is a false net), before trusting a recorded test-count delta (the logged 11273 was the PASSED count where the doc claimed it included the skip - measure the baseline when a delta misses by one), before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T08:14:31.811Z
+  modified: 2026-08-10T09:14:30.770Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0, 1, 2 AND 3 DONE — the machine exists,
-runs, is pinned against the golden reference, and its SCHEDULE is pinned too; ALL ELEVEN DECISIONS
-PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–4 DONE — the machine exists,
+runs, is pinned against the golden reference, its SCHEDULE is pinned too, and it is drivable
+through the recorder; ALL ELEVEN DECISIONS PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
@@ -19,7 +19,68 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 4 (recorder / time-travel).**
+unreviewed. **Next: step 5 (web enablement).**
+
+## Step 4 — the recorder, and the two tables that DISAGREE (2026-08-10)
+
+`recorder.test.ts`. **+20 tests**, repo **11273 → 11293 passing**, 96 → 97 files, five gates green.
+A **PROOF, not a build** — `packages/trace/src/recorder.ts` and `processor.ts` both untouched, which
+is how step 3's "what step 4 must not break" note is discharged.
+
+⚠ **The repo test count recorded here and in the plan was off by one IN ITS OWN TERMS**: step 2
+pins that both totals "INCLUDE the one skipped file", but **11273 was the PASSED count** and the
+including-skip total was **11274**. Caught because a +20 did not land where it should have, and
+resolved by moving the new file out of the tree and re-running. **When a delta misses by one,
+MEASURE the baseline; do not reconcile it on paper.**
+
+⚠ **The two tables a view draws from disagree on a flush cycle, deliberately.** `executeSlot` moves
+the casualty to `ctx.flushed` and `stageFetch` — walked after Execute — refills the emptied slot
+from the target in the SAME cycle, so `trace.instructions` sights **two ids at `location: 'IF'`**;
+`snapshotMicro` rows only `this.ifSlot`, so `micro.instructions` reports **one**. The casualty is a
+casualty, not an occupant. **Pinned so step 7 does not "fix" one table to match the other.**
+
+⚠ **Two walk shapes with no sibling in the product, both of which step 7 can render wrong.** An
+**Issue stall repeats the `IF` cell while its stall EVENT says `stage: 'ID'`** — Issue is a
+transition here, not a latch, so the instruction never leaves `ifSlot` and `location` /
+`stall.stage` legitimately disagree; **a view highlighting `stall.stage` lights a cell the
+instruction is not in.** And a **WAR stall repeats `WB`, the LAST cell** — every other stall in the
+product repeats an early cell because every other stall fires at the start of an instruction's life.
+The WAR witness draws all three stall shapes at once (`structural-int`→`IF`, `operand`→`RO`,
+`war`→`WB`), so one program covers the block. Both witnesses **re-used verbatim from
+`processor.test.ts`**, never re-derived — a pinned table must not get two owners.
+
+**The mutation check — the stubs that test a RECORDER suite are the ones that change what a cycle
+REPORTS** (step 3 already spent WAW/WAR):
+
+| Stub                                 | `processor.test` | INV-8 differential | `timing.test`    | `recorder.test` |
+| ------------------------------------ | ---------------- | ------------------ | ---------------- | --------------- |
+| narrow `inFlightThisCycle` retention | 2/46 red         | **14/14 GREEN**    | **12 of 20 red** | **9 of 20 red** |
+| drop the `ctx.flushed` push          | 1/46 red         | **14/14 GREEN**    | **20/20 GREEN**  | **2 of 20 red** |
+
+**INV-8 is blind to BOTH** (reporting concerns, identical architectural state) — a third reason it
+is a false net here, on top of step 2's two. And **the casualty push has exactly TWO nets in the
+whole repo**: `processor.test.ts`'s one hand-derived cycle, and this file.
+
+⚠ **A prediction that was WRONG, and it is the transferable part.** Mutation B was predicted to
+redden three recorder tests; the third — the corpus claim "flushed instructions exist and never
+retire" — stayed **GREEN**. Dropping the casualty push does **not** remove the casualty from the
+recording, it **truncates its walk by ONE cycle**: the instruction was already sighted at `IF` in
+the cycles it sat there before the flush. So "a casualty exists and never retires" is a **false net
+for that push**; only naming the exact sighting CYCLES catches it (hence a `toEqual` over three
+`{cycle, location}` pairs, not set membership). **Same family as step 2's "the green control cells
+were a WINDOW measurement, not an absence".**
+
+Smaller: ⚠ **a loop's stall can belong to its ENTRY, not its body** — predicted "most" of
+`sum-loop`'s ten dynamic `add` walks would exceed five cells; **exactly one does** (iteration 1,
+held at Issue while both `li`s hold the integer units), because every later iteration is fetched
+after a taken `bnez` into a nearly drained machine. Assert the mechanism, not a threshold. **ONE
+config, and it is `defaultConfig()` itself** — unlike `deep-pipeline`'s recorder suite, `cache: null`
+is deliberately NOT written explicitly: there it guards a knob that model HONORS, here it is already
+the only value `reset()` accepts. The **pre-run cursor (-1) over `emptyMicro()`** is reachable only
+through `load()`, so nothing earlier covered it — and it matters for step 7, since the three tables
+exist from the first frame rather than materializing at first issue. **`instr-retire` follows
+write-back exactly**, asserted as a list: on M9 those orders disagree, here they cannot, and that
+impossibility IS the distinction from a reorder buffer.
 
 ## Step 3 — THE NET (the timing matrix), and the bubble no event records (2026-08-10)
 
