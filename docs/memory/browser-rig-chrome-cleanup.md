@@ -1,6 +1,6 @@
 ---
 name: browser-rig-chrome-cleanup
-description: "Killing a CPU Visualizer browser rig safely, and the sweep script that does it: `taskkill //IM chrome.exe` closed the USER'S own Chrome twice, `chrome.kill()` does not kill the browser (21 then 66 leftovers), and a teardown that lives only in a `finally` leaked 13 previews + 91 Chromes + 7GB of profiles. Match by COMMAND LINE, kill each PID, then RE-RUN THE SAME PREDICATE AND COUNT - a cleanup you did not re-count is a claim, not a result. Sweep at the START of a pass. Run M:\\claud_projects\\temp\\rig-sweep.ps1."
+description: "Killing a CPU Visualizer browser rig safely, and the sweep script that does it. The temp root is SHARED with other concurrent sessions, so the sweep can match another session's LIVE rig and never report clean - print the survivors' command lines and close out on YOUR OWN profile prefix, never widen the kill. `taskkill //IM chrome.exe` closed the USER'S own Chrome twice, `chrome.kill()` does not kill the browser (21 then 66 leftovers), and a teardown that lives only in a `finally` leaked 13 previews + 91 Chromes + 7GB of profiles. Match by COMMAND LINE, kill each PID, then RE-RUN THE SAME PREDICATE AND COUNT - a cleanup you did not re-count is a claim, not a result. Sweep at the START of a pass. Run M:\\claud_projects\\temp\\rig-sweep.ps1."
 metadata:
   node_type: memory
   type: project
@@ -60,6 +60,23 @@ verdict is an instruction to run it again, not a failure to debug: re-run until 
 and quote the run that did.** This is the same rule as the file's headline one level up — a cleanup you did not
 re-count is a claim, and a re-count you did not act on is worse, because you have the number and
 filed it anyway.
+
+⚠ **THE TEMP ROOT IS SHARED WITH OTHER CONCURRENT SESSIONS, so "under the temp root" can match a
+rig that is not yours — and the INCOMPLETE verdict then never clears** (2026-08-10, M15 step 5).
+Three passes stuck at "1 rig chrome remaining"; the survivor was
+`--user-data-dir=M:/claud_projects/temp/chrome3 --remote-debugging-port=9331`, another session's
+LIVE headless rig. Mine were all under `temp/rig-chrome/m15*` on random 9400-9899 ports. **Killing it
+would have been the same class of damage as `taskkill //IM chrome.exe`**, one directory narrower —
+and the same session also had two `git commit` processes belonging to an unrelated project, so
+concurrent sessions sharing this machine is normal, not exotic.
+
+The rule this file was missing: **the sweep's broad predicate is for FINDING, never for KILLING.**
+Before acting on an INCOMPLETE verdict, print the survivors' command lines and confirm each one's
+`--user-data-dir` matches **your own run's prefix**; leave anything else alone and say so. Close out
+on a re-count of YOUR OWN predicate (profiles under your prefix, chromes matching it, your preview
+PIDs) rather than on the script's global one — otherwise the honest end state reads as a failure and
+the tempting fix is to widen the kill. Corollary for the launcher: keep using a
+`rig-chrome/<rig>-<pid>` prefix, because it is what makes "mine" decidable at teardown.
 
 **Use `M:\claud_projects\temp\rig-sweep.ps1`** (self-tested by seeding a deliberate leak, then
 confirming 1→0 / 10→0 / ports 1→0 while the user's 40 Chromes survived; the `-DryRun` pass proves

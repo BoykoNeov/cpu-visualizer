@@ -29,7 +29,9 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
 
 - [CDP recipe](browser-rig-cdp-recipe.md) — launch & attach; target by served `<title>`, no fallback.
 - [Chrome cleanup](browser-rig-chrome-cleanup.md) — never `taskkill //IM`; match by command line then
-  **RE-COUNT**. Run `M:\claud_projects\temp\rig-sweep.ps1` at the START of every pass.
+  **RE-COUNT**. Run `M:\claud_projects\temp\rig-sweep.ps1` at the START of every pass. ⚠ **The temp
+  root is shared with other sessions, so the sweep can match a rig that is not yours and never
+  report clean — the broad predicate is for FINDING, never for KILLING.**
 - [Vacuity traps](browser-rig-vacuity-traps.md) — how a green check measures nothing.
 - [Screenshot limits](browser-rig-screenshot-limits.md) — what the image can't settle.
 - [Never kill dev servers by port](never-kill-dev-servers-by-port.md) — **a port never tells you whose
