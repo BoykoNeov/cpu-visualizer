@@ -1,28 +1,57 @@
 ---
 name: m15-scoreboard-planned
-description: 'M15 — the scoreboard (CDC 6600), the seventh model: PLANNED ONLY as of 2026-08-10, nothing built, ALL decisions pinned, and step 0 is BLOCKED on the user-triggered /code-review ultra pass over 89bb26e..HEAD. Read before starting it, and read it before ANY model that wants a latency source: slowOpLatency is cluster-gated by configurableOutOfOrder AND has no UI control at all, so a model depending on it shows nothing until a lesson exists. Also holds the measured finding that the corpus has ZERO reachable WAW/WAR hazards, which is what makes INV-8 a false net here before step 6 and a real one after.'
+description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEP 0 DONE 2026-08-10 (package scaffolded, DAG guardrails verified in five directions), no machine built, all decisions pinned, and the /code-review ultra gate DISCHARGED. Read before ANY model that wants a latency source: slowOpLatency is cluster-gated by configurableOutOfOrder AND has no UI control at all, so a model depending on it shows nothing until a lesson exists. Holds the measured finding that the corpus has ZERO reachable WAW/WAR hazards (INV-8 a false net here before step 6, real after), and step 0s finding that a new model package needs FIVE lint probe cells, not three — plus the vitest alias nobody exercises until step 5.'
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T02:46:25.623Z
+  modified: 2026-08-10T03:44:18.849Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: NOT STARTED, nothing built, but ALL ELEVEN
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEP 0 DONE, no machine built, ALL ELEVEN
 DECISIONS PINNED.** The user picked "scoreboarding" from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
-lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEFORE step 0** — so
-**step 0 is BLOCKED on a review only the user can trigger.** The reason that ordering was chosen
-is specific: step 5 edits the shared shell seam (`models.ts`, `engineConfigFor`, `useSimulator`),
-which a seventh model would otherwise be sitting on top of unreviewed.
+lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEFORE step 0** — a gate
+**DISCHARGED 2026-08-10 by the user marking it done**, with no findings carried into the plan. The
+reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
+`engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
+unreviewed. **Next: step 1, the model MVP** (hand-built WAW/WAR program inside the test file, not a
+corpus program — the corpus one is priced at step 6, after the coefficients are known).
+
+## Step 0 — the scaffold, and its two findings (2026-08-10)
+
+`packages/engine/scoreboard` = `@cpu-viz/engine-scoreboard`, cloned from M11's step-0 commit
+(`bfbdfc2`) shape: `index.ts` exports the model id and the thesis docblock only —
+`ScoreboardProcessor` is step 1's and `MODEL_DESCRIPTION` step 5's. Ripple = workspaces, root
+`tsconfig` references, `vitest.config.ts` alias, `eslint.config.js`, `npm install`. The web trio
+(web dep, web `tsconfig` paths, Vite alias) is deliberately step 5's. Repo 11193 → **11194** tests
+(one smoke test), 92 → 93 files.
+
+⚠ **A new model package needs FIVE lint probe cells, not the three the plan priced**, and the two
+extra ones are where the real failure modes live. Each cell is a temporary file, then `npx eslint`
+on it, then delete it (**never a `git checkout` harness** — [[m13-width-planned]]'s destroyed tree).
+RED: `trace → new` carrying the **INV-3** message (this is the cell that proves the `...MODELS`
+spread edit took — a model missing from that constant lints clean in FOUR lower layers at once,
+which is exactly how M9's `engine-out-of-order` was omitted); `sibling → new`; and `new → sibling`
+— where **the message TEXT is the whole check**, because the generic `packages/engine/**` rule
+denies only `curriculum`/`web`, so without the new self-exclusion block that import lints CLEAN and
+an exit code alone cannot tell you which rule fired. GREEN: `new → engine-conformance` (the allowed
+edge) and `new → itself` (the `MODELS.filter` self-subtraction, which has its own way to be wrong).
+
+⚠ **The `vitest.config.ts` alias for a new model is UNEXERCISED for five steps.** The package's
+smoke test imports `./index` relatively (the `single-cycle` house pattern), so it proves the
+`include` glob and the id, not the alias. Steps 1–4 live inside the package and reach outward only
+for `assembler`/`conformance`, whose aliases already exist; nothing imports the model **by workspace
+name** until step 5 wires the shell. `tsc -b` resolves it by project references — a real check, but
+a different route. Don't read a green step 0 as "the alias works".
 
 **Why this model:** M9 built Tomasulo with renaming already in it, so the product shows what
 renaming _does_ without ever showing the machine that lacks it. WAW and WAR exist nowhere in the
 shipped six models. It is the spec's flagship "same program, different behavior" realized **across
 models** rather than across a knob.
 
-**Headline (seeded, open): a new package, NOT a `renaming: false` knob on the OoO model.** The knob
+**Headline (PINNED): a new package, NOT a `renaming: false` knob on the OoO model.** The knob
 is cheaper and lights up an existing datapath, but Tomasulo-minus-renaming still commits in order
 through its ROB — a machine that never existed, so INV-5 decides it. See also
 [[future-microarchitectures]] for the two axes already discharged, and
@@ -54,7 +83,7 @@ so it reads before the `addi` can write. **Consequence: INV-8 is a FALSE net on 
 step 6 and a REAL one after it** — the opposite direction from M7 and M11, where it is false
 throughout. The step-3 mutation check must therefore be **re-run at step 6**.
 
-## Other decisions seeded in the plan (all open)
+## The other pinned decisions
 
 Stages `IF ID RO EX/MEM WB` — `ID` **is** Issue and `WB` **is** Write-Result, chosen so five of six
 stage families carry a validated hue (`PHASE_COLORS` is exactly `IF ID EX MEM WB`, `theme.ts:44-50`);

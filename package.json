@@ -22,6 +22,7 @@
     "packages/engine/deep-pipeline",
     "packages/engine/superscalar",
     "packages/engine/out-of-order",
+    "packages/engine/scoreboard",
     "packages/web"
   ],
   "scripts": {

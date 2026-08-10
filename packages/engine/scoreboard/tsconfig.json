@@ -1,0 +1,23 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../isa" },
+    { "path": "../../trace" },
+    // Production edge: `toProgramImage` only. This model reaches for LESS of engine-common than any
+    // other — `predict.ts` is unused because decision 3 pins no predictor (the CDC 6600 had none,
+    // and speculative recovery on a machine with no ROB is not this milestone's lesson), and
+    // `cache.ts` is unused because decision 5 REFUSES a non-null `cache` config outright.
+    { "path": "../common" },
+    // Test-only edges, exactly as every other model declares them. `assembler` drives the unit
+    // tests; `conformance` is the shared INV-8 differential harness (it pulls in the golden
+    // reference). Production code never imports the reference (INV-8: copy the idioms, don't
+    // import them) — the ISA semantics are mirrored from it and PROVEN faithful, not borrowed.
+    { "path": "../../assembler" },
+    { "path": "../conformance" }
+  ]
+}

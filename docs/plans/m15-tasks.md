@@ -1,7 +1,8 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: NOT STARTED, 2026-08-10. Nothing is proven; nothing is built — but ALL DECISIONS ARE
-PINNED**, so steps 0+ are unblocked. The user chose the architecture ("scoreboarding", from a list
+**Status: STEP 0 DONE, 2026-08-10 — the package exists and the DAG guardrails are verified in five
+directions, but no machine is built yet.** The `/code-review ultra` gate is discharged (see
+Ordering). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
 knob on the out-of-order model), **engine + tables view, steps 0–8** (lesson track stays M16), and
 **the `/code-review ultra` pass over `89bb26e..HEAD` runs BEFORE step 0**. The other eight rows
@@ -116,7 +117,7 @@ Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
 
 ## Build order (each step testable before the next)
 
-- [ ] **0. Package scaffold + the DAG ripple.** `packages/engine/scoreboard` as
+- [x] **0. Package scaffold + the DAG ripple — ✅ DONE 2026-08-10.** `packages/engine/scoreboard` as
       `@cpu-viz/engine-scoreboard`, wired into all four mechanical places (`eslint.config.js`
       boundary rules **including its own self-exclusion block**, root `tsconfig.json` references,
       `vitest.config.ts` `workspaceAliases`, and `npm install` for the workspace symlink). Per
@@ -128,6 +129,7 @@ Pinned consequences that make it a scoreboard rather than a relabelled pipeline:
       lands with whichever step first has acceptance inside `packages/web`. Acceptance: `npm run
 lint` red on the two denied directions and green on the allowed one, verified by RUNNING it;
       `tsc -b` green as its own check beside vitest (they resolve imports by different routes).
+      **Result: done — see "Step 0, as built" below.**
 
 - [ ] **1. The model MVP.** `Processor` implementation, the stages above, the three status tables
       in `micro`, INV-4 stable ids across an out-of-order lifetime, the intrinsic FU latencies, and
@@ -218,6 +220,42 @@ lint` red on the two denied directions and green on the allowed one, verified by
       pass. Acceptance: a written check list, every check passing, with the panel measured at a
       STATED narrow viewport in the app's most crowded state (`panel-jitter-and-height-reserves.md`).
 
+## Step 0, as built (2026-08-10)
+
+`packages/engine/scoreboard` = `@cpu-viz/engine-scoreboard`, on M11's step-0 shape (`bfbdfc2`):
+`src/index.ts` exports the model id and the thesis docblock and nothing else — `ScoreboardProcessor`
+is step 1's and `MODEL_DESCRIPTION` step 5's. The ripple landed in all four mechanical places plus
+`npm install`; the web trio is deliberately absent until step 5.
+
+**Five probe cells, not the three this plan priced** — each written as a temporary file, run through
+`npx eslint`, then deleted (no `git checkout` harness, per M13's destroyed-tree finding). The two
+extra ones are where the real failure modes live:
+
+| Probe                             | Expected | Observed                                              |
+| --------------------------------- | -------- | ----------------------------------------------------- |
+| `trace → scoreboard`              | RED      | RED, with the **INV-3** message                       |
+| `out-of-order → scoreboard`       | RED      | RED, with **out-of-order's** message                  |
+| `scoreboard → out-of-order`       | RED      | RED, with **the scoreboard's own** message            |
+| `scoreboard → engine-conformance` | CLEAN    | CLEAN (exit 0)                                        |
+| `scoreboard → scoreboard`         | CLEAN    | CLEAN (exit 0) — the `MODELS.filter` self-subtraction |
+
+Row 1 is the cell that proves the `...MODELS` spread edit took: a model missing from that constant
+lints clean in **four lower layers at once**, which is exactly how M9's `engine-out-of-order` was
+omitted. Row 3 is checked by its **message TEXT, not its exit code** — the generic
+`packages/engine/**` rule denies only `curriculum`/`web`, so without the new self-exclusion block
+that import lints CLEAN, and an exit code alone cannot tell you which rule fired.
+
+⚠ **What step 0 does NOT prove: the `vitest.config.ts` alias for `@cpu-viz/engine-scoreboard`.** The
+package's smoke test imports `./index` relatively (the `single-cycle` house pattern), so it
+exercises vitest's `include` glob and the model id — not the alias. Nothing imports this model **by
+workspace name** yet, and nothing will until **step 5** wires the shell: steps 1–4 live inside the
+package and reach outward only for `assembler`/`conformance`, whose aliases already exist. `tsc -b`
+resolves it by project references, which is a real check by a different route. So that one line
+stays an unexercised claim for five steps — do not read a green step 0 as "the alias works".
+
+Gates: `npm test` **11193 passed / 1 skipped = 11194 total** (11193 → 11194, 92 → 93 files — the one
+new smoke test), `tsc -b` green, `npm run lint` clean, `npm run build` green, `format:check` clean.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -268,12 +306,17 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 | 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **PINNED 2026-08-10: no wire diagram** in this milestone.                                 |
 | 10  | Scope: this model alone? Lesson track?           | **This model alone; lesson track is a separate milestone (M16)** — the M9→M10 / M11→M12 / M13→M14 shape. The user picked the architecture, not the scope, so this row is genuinely open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | **PINNED 2026-08-10 by the user: engine + tables view (steps 0-8); lesson track is M16.** |
 
-## Ordering — PINNED: the ultra review runs first
+## Ordering — the ultra review ran first ✅ DISCHARGED
 
-**Step 0 does not start until `/code-review ultra` over `89bb26e..HEAD` has run and its findings
-are resolved** (user pinned 2026-08-10). That range is the entire post-M14 body of work — keyboard
+**✅ DISCHARGED 2026-08-10 — the user marked the review done, with no findings carried into this
+plan. Step 0 is unblocked and the gate below is history, not a live constraint.**
+
+The gate as originally pinned: **step 0 does not start until `/code-review ultra` over
+`89bb26e..HEAD` has run and its findings are resolved** (user pinned 2026-08-10). That range was
+176 commits across 138 files — the entire post-M14 body of work: keyboard
 control, continuous play, the transport-bar jitter fix, and dynamic branch prediction steps 0–8 —
-and it has never had a deep pass. The specific risk this ordering buys down: this milestone's
+and it had never had a deep pass. The specific risk this ordering bought down: this milestone's
 step 5 edits the shared shell seam (`models.ts`, `engineConfigFor`, `useSimulator`), so a finding
 there is one a seventh model would already be sitting on top of. The review is **user-triggered
-and billed** — it cannot be launched from inside a session.
+and billed** — it cannot be launched from inside a session, which is why it was a gate rather than
+a step.

@@ -45,6 +45,7 @@ const MODELS = [
   'engine-deep-pipeline',
   'engine-superscalar',
   'engine-out-of-order',
+  'engine-scoreboard',
 ];
 
 export default tseslint.config(
@@ -239,6 +240,22 @@ export default tseslint.config(
         ...MODELS.filter((m) => m !== 'engine-out-of-order'),
       ],
       'A concrete model never imports another model’s production code, and out-of-order copies the ISA idioms rather than importing the reference (INV-8).',
+    ),
+  },
+  {
+    // The scoreboard (M15) is the case where the sideways import would be a REGRESSION dressed as
+    // reuse. It is the textbook step immediately BEFORE Tomasulo, and `engine-out-of-order` sits
+    // right there with a working out-of-order scheduler — but that scheduler's central move is
+    // register renaming, which is precisely the thing this model exists to lack. Importing its
+    // reservation stations or its rename map would mean parameterizing the mechanism whose absence
+    // IS the lesson (WAW stalls at Issue, WAR stalls at Write-Result), and a Tomasulo-minus-renaming
+    // that still commits in order through a ROB is a machine that never existed — INV-5's
+    // "a lower tier may simplify but must never CONTRADICT a higher one". Shared, model-independent
+    // parts go DOWN into `engine-common` — never sideways.
+    files: ['packages/engine/scoreboard/**/*.ts'],
+    rules: deny(
+      ['curriculum', 'web', 'engine-reference', ...MODELS.filter((m) => m !== 'engine-scoreboard')],
+      'A concrete model never imports another model’s production code, and the scoreboard copies the ISA idioms rather than importing the reference (INV-8).',
     ),
   },
   {

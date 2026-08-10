@@ -23,6 +23,7 @@ export const workspaceAliases = {
   '@cpu-viz/engine-deep-pipeline': pkg('./packages/engine/deep-pipeline/src/index.ts'),
   '@cpu-viz/engine-superscalar': pkg('./packages/engine/superscalar/src/index.ts'),
   '@cpu-viz/engine-out-of-order': pkg('./packages/engine/out-of-order/src/index.ts'),
+  '@cpu-viz/engine-scoreboard': pkg('./packages/engine/scoreboard/src/index.ts'),
 };
 
 export default defineConfig({
