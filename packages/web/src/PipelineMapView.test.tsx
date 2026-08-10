@@ -16,6 +16,7 @@
 import { DeepPipelineProcessor } from '@cpu-viz/engine-deep-pipeline';
 import { CACHE_LARGE, CACHE_SMALL } from '@cpu-viz/engine-common';
 import { PipelineProcessor } from '@cpu-viz/engine-pipeline';
+import { ScoreboardProcessor } from '@cpu-viz/engine-scoreboard';
 import {
   defaultConfig,
   type CycleTrace,
@@ -31,6 +32,7 @@ import { buildPipelineMap } from './pipeline-map';
 import { PipelineMap } from './PipelineMapView';
 import { EXAMPLE_PROGRAMS } from './programs';
 import { loadSource } from './simulator';
+import { PHASE_COLORS, T } from './theme';
 
 const noop = (): void => {};
 
@@ -392,5 +394,81 @@ describe('follow — one id, three surfaces', () => {
   it('shows nothing rather than inventing something when the pipe is empty', () => {
     expect(shownInstruction([], null)).toBeNull();
     expect(shownInstruction([], 'anything')).toBeNull();
+  });
+});
+
+/**
+ * **M15 step 5 — the seventh model renders on the SHARED map, and this is where the milestone's
+ * falsifiable UNCHANGED criterion ("`pipeline-map.ts` needs no edit") is paid out or not.**
+ *
+ * The criterion could not close before this step for a reason worth keeping: step 1 proved the
+ * ENGINE emits only `IF ID RO EX MEM WB` as a `location` (its own suite enumerates the set), which
+ * bought half of it — no functional-unit name can leak into {@link stageFamily} and mint an `INT`
+ * family. But **nothing rendered this model until the picker row landed**, so the other half — that
+ * the shared fold and the shared view actually draw it — was untestable by position, exactly the
+ * shape `docs/memory/m13-review-resolved.md` names.
+ *
+ * What makes it non-trivial is the hue. `PHASE_COLORS` holds exactly the five validated phases, and
+ * this machine has six stages, so `RO` has no hue of its own. That is the whole reason decision 2
+ * named the stages `ID`/`WB` rather than the textbook `IS`/`WR` and had the memory unit report
+ * `MEM`: honest names that also leave five of six families carrying a validated hue instead of
+ * minting four new ones. The sixth takes the documented neutral fallback and stays readable by its
+ * cell TEXT (the relief rule) — a view that falls back rather than crashing, per the fold's docs.
+ */
+describe('the scoreboard on the shared map (M15 step 5)', () => {
+  function scoreboard(name: string) {
+    const program = EXAMPLE_PROGRAMS.find((p) => p.name === name)!;
+    const result = loadSource(program.source, () => new ScoreboardProcessor(), defaultConfig());
+    if (!result.ok) throw new Error(`assembly failed: ${result.errors[0]?.message}`);
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded;
+  }
+
+  it('derives the stage set from the RECORDING — two programs, one model, different sets', () => {
+    // First-seen order, which is what the legend renders in. `MEM` arrives last on `array-sum`
+    // because the first load issues after the address arithmetic ahead of it has already walked.
+    expect(buildPipelineMap(scoreboard('array-sum')).families).toEqual([
+      'IF',
+      'ID',
+      'RO',
+      'EX',
+      'WB',
+      'MEM',
+    ]);
+    // ⚠ The non-vacuity, and it is the claim that a hard-coded six-element list would fail:
+    // `sum-loop` touches no memory, so the SAME model yields five stages rather than six. A fold
+    // that named the set instead of deriving it would draw this machine an empty MEM column.
+    expect(buildPipelineMap(scoreboard('sum-loop')).families).toEqual([
+      'IF',
+      'ID',
+      'RO',
+      'EX',
+      'WB',
+    ]);
+  });
+
+  it('leaves exactly ONE family without a validated phase hue, and it is RO', () => {
+    // Asserted as a set difference rather than as "RO is missing", because the claim decision 2
+    // rests on is the COUNT: five of six carry a validated hue. A stage rename that quietly cost a
+    // second family its hue would satisfy the weaker form.
+    const families = buildPipelineMap(scoreboard('array-sum')).families;
+    expect(families.filter((f) => PHASE_COLORS[f] === undefined)).toEqual(['RO']);
+  });
+
+  it('renders every family, with RO alone taking the documented neutral fallback', () => {
+    const html = renderMap(scoreboard('array-sum'), { cursor: 20 });
+    // Every validated hue reaches the DOM — the map is drawing this model, not falling through to
+    // an empty grid. `--cell-hue` is the custom property the cell's background reads.
+    for (const family of ['IF', 'ID', 'EX', 'MEM', 'WB']) {
+      expect(html, `${family} cells should carry their phase hue`).toContain(
+        `--cell-hue:${PHASE_COLORS[family]}`,
+      );
+    }
+    // And the sixth takes the accent, which is the fallback the fold's docblock promises rather
+    // than a guessed-at sixth hue (no new color token — the milestone's third UNCHANGED criterion).
+    expect(html).toContain(`--cell-hue:${T.accent}`);
+    // Non-vacuity: the accent could arrive from anywhere in the markup, so the RO cells must
+    // actually be there to have produced it, and their TEXT is what keeps them legible without one.
+    expect(html).toContain('>RO<');
   });
 });

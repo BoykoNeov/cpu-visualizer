@@ -14,13 +14,20 @@ import { loadSource } from './simulator';
  * that make the table's claims checkable rather than merely asserted.
  */
 describe('the model table', () => {
-  it('lists the six microarchitectures built so far, in teaching order, with unique ids', () => {
+  it('lists the seven microarchitectures built so far, in teaching order, with unique ids', () => {
     // ORDER is the claim, not just membership — this array is the picker's order, which is
     // user-visible forever. `deep-pipeline` sits directly after `pipeline` (M11 step 5) because
     // depth is the next thing after the 5-stage: it is the same machine with two stages added, and
     // reading it before the superscalar/out-of-order tiers is what makes "forwarding stops being
     // enough" land. Appending at the end would have dodged this test's churn (and the two capability
     // lists below) at the price of putting a 7-stage in-order pipe after out-of-order.
+    //
+    // `scoreboard` IS appended (M15 decision 8), and the two cases are not in tension. The deep
+    // pipeline had to be inserted because it is a step ALONG the road the reader is walking; the
+    // scoreboard is the road's own predecessor, met after its successor. Its whole framing — the
+    // description says "the out-of-order machine before register renaming" — depends on the reader
+    // having already met the machine directly above it, so last is where it reads as a predecessor
+    // rather than as a seventh unrelated model. See `models.ts` for the argument in full.
     expect(MODELS.map((m) => m.id)).toEqual([
       'single-cycle',
       'multi-cycle',
@@ -28,6 +35,7 @@ describe('the model table', () => {
       'deep-pipeline',
       'superscalar',
       'out-of-order',
+      'scoreboard',
     ]);
   });
 
@@ -121,6 +129,25 @@ describe('the model table', () => {
     // flag (M9 step 0). Only the OoO model honors it; every other engine's constant sets it false, so
     // the issue-order toggle and the ROB-size control appear on exactly this model and nowhere else.
     expect(honoring((c) => c.configurableOutOfOrder)).toEqual(['out-of-order']);
+    // ⚠ **The seventh model joins NONE of the five lists above, and that absence is a claim rather
+    // than an oversight** (M15 step 5). Stated positively here because the sets above cannot say it:
+    // each of them reddens on a model that gains a flag, and none of them reddens on a model that
+    // was simply never considered — which is indistinguishable from one that considered every knob
+    // and honors nothing. The scoreboard is the second kind. It REFUSES `cache` and any
+    // `issueWidth` other than 1 (its `reset()` throws by name, which is what `engineConfigFor`'s
+    // second clamp exists to keep unreachable) and IGNORES the rest: it has no bypass network at
+    // all, so `forwarding` is inert; it has no predictor (decision 3), so `branchPrediction` is;
+    // and `configurableOutOfOrder` gates a cluster (`outOfOrderIssue`, `robSize`, `slowOpLatency`)
+    // that means nothing on a machine with neither a reorder buffer nor reservation stations. Each
+    // of those inertness claims is asserted as a byte-identical trace in the engine's own suite.
+    const scoreboard = modelById('scoreboard').capabilities;
+    expect([
+      scoreboard.configurableForwarding,
+      scoreboard.configurableBranchPrediction,
+      scoreboard.configurableCache,
+      scoreboard.configurableIssueWidth,
+      scoreboard.configurableOutOfOrder,
+    ]).toEqual([false, false, false, false, false]);
   });
 
   /**
@@ -303,6 +330,16 @@ describe('the model table', () => {
       // would be the failure this test hunts — none of them draw a ROB, an RS or a CDB, so an
       // out-of-order trace would light a picture the machine contradicts (INV-5).
       ['out-of-order', 'out-of-order'],
+      // `'none'` at M15 step 5 — App falls through to the "coming soon" placeholder, which is the
+      // honest picture while nothing bespoke exists. Two reasons it may STAY `'none'` rather than
+      // flip like the three rows above. This model's canonical picture is not a wire-and-box
+      // datapath at all: it is the scoreboard's three status tables evolving cycle by cycle, which
+      // is step 7 and lands as a panel, not as a `DatapathKind`. And decision 9 pinned that no wire
+      // diagram ships this milestone. Reusing any neighbour's geometry here would be the failure
+      // this test hunts — none of them draw a functional-unit status table or a register-result
+      // table, and every one of them draws a machine that reads its operands in program order, so a
+      // scoreboard trace would light a picture the machine contradicts (INV-5).
+      ['scoreboard', 'none'],
     ]);
   });
 
@@ -349,10 +386,24 @@ describe('the config a model is handed', () => {
   // rather than the next one about to change.
   const clamped = modelById('single-cycle');
   const pipeline = modelById('pipeline');
+  // The exemplar of a model that honors BOTH clamped knobs — see the identity test below for why
+  // the pipeline stopped being able to play that role at M15 step 5.
+  const superscalar = modelById('superscalar');
+  // The model that REFUSES a width (M15). Unlike `clamped`, which merely ignores one, this engine's
+  // `reset()` throws by name — so for this row the clamp is protection, not normalization.
+  const scoreboard = modelById('scoreboard');
 
-  it('hands a cache-honoring model the session config untouched', () => {
-    // Identity, not equality: nothing is rebuilt for a model that takes the knob as given.
-    expect(engineConfigFor(pipeline, withCache)).toBe(withCache);
+  it('hands a model that honors BOTH clamped knobs the session config untouched', () => {
+    // Identity, not equality: nothing is rebuilt for a model that takes both knobs as given.
+    //
+    // ⚠ The subject moved at M15 step 5 and the reason is the point. This asked the PIPELINE until
+    // the width clamp landed, and a pipeline honors the cache but not `issueWidth` — so it is now
+    // rebuilt, and asking it for identity would have pinned the OLD scope of the function under a
+    // title that still read true. The models that honor both are exactly the two width-parametric
+    // ones; `superscalar` is the stable choice (`out-of-order` is the one whose flags have moved).
+    expect(superscalar.capabilities.configurableCache).toBe(true);
+    expect(superscalar.capabilities.configurableIssueWidth).toBe(true);
+    expect(engineConfigFor(superscalar, withCache)).toBe(withCache);
   });
 
   it('clamps the cache to null for a model that declares it does not honor one', () => {
@@ -360,11 +411,15 @@ describe('the config a model is handed', () => {
     expect(engineConfigFor(clamped, withCache).cache).toBeNull();
   });
 
-  it('clamps ONLY the cache — every other knob reaches the engine as the session set it', () => {
-    // The scope of the narrowing, pinned: forwarding, prediction, width and the out-of-order
-    // cluster are IGNORED by engines that do not honor them (each pinned as whole-trace inertness
-    // in that engine's own suite), so clamping them would be four more judgement calls able to
-    // move a recording — and every model's cycle counts are pinned in a timing suite.
+  it('clamps ONLY the cache and the width — every other knob reaches the engine as set', () => {
+    // The scope of the narrowing, pinned: forwarding, prediction and the out-of-order cluster are
+    // IGNORED by engines that do not honor them (each pinned as whole-trace inertness in that
+    // engine's own suite), so clamping them would be three more judgement calls able to move a
+    // recording — and every model's cycle counts are pinned in a timing suite.
+    //
+    // `issueWidth` JOINED the clamp at M15 step 5, and the model asked here is why the change is
+    // visible at all: single-cycle merely IGNORES a width, so on this row the new clamp is pure
+    // normalization — it is the scoreboard, below, that would throw without it.
     const busy = {
       ...withCache,
       forwarding: true,
@@ -375,7 +430,48 @@ describe('the config a model is handed', () => {
       slowOpLatency: 8,
       numMshrs: 4,
     };
-    expect(engineConfigFor(clamped, busy)).toEqual({ ...busy, cache: null });
+    expect(engineConfigFor(clamped, busy)).toEqual({ ...busy, cache: null, issueWidth: 1 });
+  });
+
+  /**
+   * **The M15 crash, as a test — this is the row that makes the second clamp protection rather than
+   * decoration.** `deep-pipeline` played this part at M11 step 5 and stopped when step 6 gave it a
+   * cache; from then until M15 no shipped engine refused anything, and `models.ts` recorded the
+   * function as normalization only. The scoreboard refuses a width by name.
+   *
+   * The reachable path is a click sequence, not a contrived config: the width toggle is rendered
+   * only where `configurableIssueWidth` is true, so a reader can set the superscalar to 4-wide, pick
+   * Scoreboard, and arrive at a model whose control for that knob is **not on screen to unset**.
+   * That is the exact strand the clamp exists to prevent, and an error message instead of a clamp
+   * would leave them with a dead app and no way back.
+   *
+   * Asserted as a real LOAD, not just the config shape: the shape assertion would keep passing
+   * against an engine that had quietly moved its guard, and the throw is what the reader would meet.
+   */
+  it('a model that REFUSES a width loads at every width the control offers', () => {
+    expect(scoreboard.capabilities.configurableIssueWidth).toBe(false);
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    for (const issueWidth of [1, 2, 3, 4]) {
+      const session = { ...defaultConfig(), issueWidth };
+      expect(engineConfigFor(scoreboard, session).issueWidth, `width ${issueWidth}`).toBe(1);
+      const result = loadSource(sumLoop.source, scoreboard.make, engineConfigFor(scoreboard, session)); // prettier-ignore
+      expect(result.ok, `scoreboard should load at session width ${issueWidth}`).toBe(true);
+      if (!result.ok) continue;
+      result.loaded.recorder.runToEnd();
+      expect(result.loaded.recorder.currentState().registers[10]).toBe(55);
+    }
+  });
+
+  it('...and really would throw unclamped — the clamp is protection here, not normalization', () => {
+    // The negative case, which is the load-bearing one (the same argument the cache's own negative
+    // case carried until M11 step 6 removed the throw). Without it, the clamp assertion above would
+    // keep passing against an engine that had gone back to ignoring the knob, and this row would
+    // read as ceremony. `loadSource` has an error CHANNEL for a program that fails to assemble, but
+    // an engine's `reset()` throw propagates straight through it — which is exactly why the shell
+    // path meets this as a throw out of a click handler rather than as a rendered message.
+    const sumLoop = EXAMPLE_PROGRAMS.find((p) => p.name === 'sum-loop')!;
+    const unclamped = { ...defaultConfig(), issueWidth: 4 };
+    expect(() => loadSource(sumLoop.source, scoreboard.make, unclamped)).toThrow(/issueWidth 4/);
   });
 
   it('does not clamp the SESSION value — leaving the model restores the geometry', () => {

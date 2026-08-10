@@ -35,6 +35,12 @@ export default defineConfig({
       '@cpu-viz/engine-deep-pipeline': pkg('../engine/deep-pipeline/src/index.ts'),
       '@cpu-viz/engine-superscalar': pkg('../engine/superscalar/src/index.ts'),
       '@cpu-viz/engine-out-of-order': pkg('../engine/out-of-order/src/index.ts'),
+      // M15 step 5, landed with the tsconfig `paths` entry and the package.json dependency in the
+      // same edit, per the note above. This is ALSO the first thing that resolves the scoreboard by
+      // WORKSPACE NAME: step 0's smoke test imports `./index` relatively and steps 1-4 live inside
+      // the package, so its `vitest.config.ts` alias sat unexercised for five steps (`tsc -b`
+      // reached it by project references, which is a different route).
+      '@cpu-viz/engine-scoreboard': pkg('../engine/scoreboard/src/index.ts'),
     },
   },
 });

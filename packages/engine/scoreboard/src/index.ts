@@ -30,12 +30,44 @@
  *
  * {@link ScoreboardProcessor} — the stage walk, the three classic status tables in `micro`, and the
  * stall vocabulary — is step 1. The timing matrix plus the two-part mutation check that prove the
- * machine is real (rather than a 5-stage wearing scoreboard labels) are step 3, and `MODEL_DESCRIPTION`
- * plus the model-picker wiring are step 5.
+ * machine is real (rather than a 5-stage wearing scoreboard labels) are step 3. Step 5 made it
+ * drivable in the browser ({@link SCOREBOARD_MODEL_DESCRIPTION} and the picker row); the three
+ * status tables as a view are step 7.
  */
 
 /** Stable id of this model within the model family (handoff §2). */
 export const SCOREBOARD_MODEL_ID = 'scoreboard';
+
+/**
+ * The picker's one-liner, exported from the ENGINE rather than typed into the web shell (the
+ * superscalar / out-of-order / deep-pipeline precedent) — a description re-typed in the shell is a
+ * second place for the same claim to go stale.
+ *
+ * **It names the model ABOVE it in the picker**, which decision 8 asks for: this row sits last, and
+ * the reader arriving at it has already met Tomasulo. Saying "before register renaming" is what
+ * makes the last row legible as a PREDECESSOR rather than as a seventh unrelated machine — the
+ * milestone's whole thesis is that the shipped family showed what renaming does without ever
+ * showing the machine that lacks it.
+ *
+ * ⚠ **Two things it deliberately does not say, and both would contradict the engine.**
+ *
+ * It does **not** say "out-of-order issue". Issue here is in order and BLOCKING — one instruction
+ * per cycle, and it stops dead at an unresolved transfer because a machine with no reorder buffer
+ * can undo nothing (step 1's `'control'` finding, forced by INV-8). Only COMPLETION reorders. The
+ * out-of-order row directly above honors an `outOfOrderIssue` toggle, so the two rows would read as
+ * the same claim if this one blurred that line.
+ *
+ * And it does not promise dramatic reordering. Step 3 measured the dominant term on this machine
+ * and it is not a hazard: a unit is held from issue to write, so an integer unit turns around in 4
+ * cycles and the memory unit in 7 — a hard 0.5-IPC ceiling on integer code with no hazard present.
+ * Most corpus cycles are `structural-int`. The superscalar's "up to" hedge exists for exactly this
+ * failure, and a picker that promised a reordering festival would be describing a different machine
+ * than the one the reader is about to run.
+ */
+export const SCOREBOARD_MODEL_DESCRIPTION =
+  'Scoreboard (CDC 6600) — the out-of-order machine before register renaming: issue is in order ' +
+  'into three functional units, completion is not, and the WAW and WAR hazards renaming deletes ' +
+  'stall it here.';
 
 export {
   ScoreboardProcessor,

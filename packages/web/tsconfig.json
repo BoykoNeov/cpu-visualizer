@@ -21,7 +21,8 @@
       "@cpu-viz/engine-pipeline": ["../engine/pipeline/src/index.ts"],
       "@cpu-viz/engine-deep-pipeline": ["../engine/deep-pipeline/src/index.ts"],
       "@cpu-viz/engine-superscalar": ["../engine/superscalar/src/index.ts"],
-      "@cpu-viz/engine-out-of-order": ["../engine/out-of-order/src/index.ts"]
+      "@cpu-viz/engine-out-of-order": ["../engine/out-of-order/src/index.ts"],
+      "@cpu-viz/engine-scoreboard": ["../engine/scoreboard/src/index.ts"]
     }
   },
   "include": ["src"]

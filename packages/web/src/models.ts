@@ -30,6 +30,12 @@ import {
   PIPELINE_MODEL_ID,
 } from '@cpu-viz/engine-pipeline';
 import {
+  ScoreboardProcessor,
+  SCOREBOARD_CAPABILITIES,
+  SCOREBOARD_MODEL_DESCRIPTION,
+  SCOREBOARD_MODEL_ID,
+} from '@cpu-viz/engine-scoreboard';
+import {
   SingleCycleProcessor,
   SINGLE_CYCLE_CAPABILITIES,
   SINGLE_CYCLE_MODEL_ID,
@@ -177,6 +183,32 @@ export const MODELS: readonly ModelChoice[] = [
     datapath: 'out-of-order',
     capabilities: OUT_OF_ORDER_CAPABILITIES,
   },
+  {
+    id: SCOREBOARD_MODEL_ID,
+    label: 'Scoreboard',
+    // The engine's OWN one-liner, like the three rows above. See its docblock for the two things it
+    // deliberately refuses to say — chiefly that issue here is IN ORDER and blocking, so this row
+    // and the out-of-order row directly above it do not read as the same claim.
+    description: SCOREBOARD_MODEL_DESCRIPTION,
+    make: () => new ScoreboardProcessor(),
+    // LAST in the picker (M15 decision 8), and the position is an argument rather than an append.
+    // Historically and pedagogically the scoreboard comes BEFORE Tomasulo, which would put it above
+    // `out-of-order` — the deep pipeline took exactly that insertion at M11 rather than dodging the
+    // churn. It goes last anyway because the shipped family is what a reader has already met: the
+    // milestone's thesis is that M9 built Tomasulo with renaming already in it, so the product shows
+    // what renaming DOES without ever showing the machine that lacks it. This row is that machine,
+    // and it only reads as "the predecessor, minus renaming" if the successor is already behind you.
+    // The description carries that framing, which is why decision 8 pinned the two together.
+    //
+    // `'none'` through step 6, on the superscalar / out-of-order / deep-pipeline precedent: a
+    // `DatapathKind` means "a diagram of this kind EXISTS", so declaring one early makes the table
+    // in `models.test.ts` assert a diagram nothing draws while App silently falls through to the
+    // placeholder. Step 7 ships this model's canonical picture, and it is NOT a wire-and-box
+    // datapath at all (decision 9) — it is the scoreboard's three status tables evolving cycle by
+    // cycle. Whether a wire diagram ever joins it is a follow-up, so this value may well stay.
+    datapath: 'none',
+    capabilities: SCOREBOARD_CAPABILITIES,
+  },
 ];
 
 /** The model selected on first load. Single-cycle is the simplest first teaching model. */
@@ -188,66 +220,75 @@ export function modelById(id: string): ModelChoice {
 }
 
 /**
- * The shell's session config, narrowed to the knobs `model` actually claims (M11 step 5). Today it
- * clamps exactly one field: **`cache`, for a model whose `configurableCache` is false.**
+ * The shell's session config, narrowed to the knobs `model` actually claims (M11 step 5). It clamps
+ * two fields: **`cache`, for a model whose `configurableCache` is false, and `issueWidth`, for a
+ * model whose `configurableIssueWidth` is false.**
  *
  * The shell holds forwarding, prediction, the cache geometry, issue width and the out-of-order
  * cluster at SESSION level and hands the whole config to whichever engine is driving — which is
  * safe because a knob an engine does not honor is simply a knob it IGNORES (`simulator.test.ts`
  * pins that inertness per model).
  *
- * **Read the history, because it changes what this function is FOR.** It was added at M11 step 5
- * because `deep-pipeline` was then the one shipped engine that **REFUSED** a cache — `reset()` threw
- * rather than run silently cache-less, while step 6 held the miss-freeze seam open — so "hand every
- * model everything" had stopped being safe: pipeline with the cache on, switch to Deep pipeline,
- * and the load threw out of an event handler. **M11 step 6 implemented that cache, so no shipped
- * engine refuses anything today** and this is no longer protection; it is NORMALIZATION, keeping a
- * model's recording free of a geometry it never consulted.
+ * **Read the history, because it changes what this function is FOR — twice.** It was added at M11
+ * step 5 because `deep-pipeline` was then the one shipped engine that **REFUSED** a cache —
+ * `reset()` threw rather than run silently cache-less, while step 6 held the miss-freeze seam open —
+ * so "hand every model everything" had stopped being safe: pipeline with the cache on, switch to
+ * Deep pipeline, and the load threw out of an event handler. M11 step 6 implemented that cache, so
+ * from then until M15 no shipped engine refused anything and the cache clamp was NORMALIZATION
+ * rather than protection: it kept a model's recording free of a geometry it never consulted.
  *
- * It is kept rather than deleted because the invariant it states — *send a model only the knobs it
- * claims* — is the one that made the step-5 crash impossible rather than merely unlikely, and the
- * next engine to refuse a knob will want it already here. **If it ever protects again, the argument
- * that forced CLAMPING over an error message is still the right one:** a knob's CONTROL is gated on
- * the same capability flag (`App.tsx`), so a refused knob is one the user has no control to unset,
- * and an error would strand them.
+ * **M15 made it protection again**, which is why it was kept rather than deleted. The scoreboard
+ * refuses `issueWidth` other than 1 (its Issue stage is one instruction per cycle, in order, by
+ * definition of the machine) and throws by name from `reset()`. So the M11 crash is live on a new
+ * knob: set the superscalar to 4-wide, pick Scoreboard, and without the clamp below the load throws
+ * out of a click handler. **The argument that forced CLAMPING over an error message is unchanged
+ * and is what makes this the right shape:** a knob's CONTROL is gated on the same capability flag
+ * (`App.tsx` renders the width toggle only where `configurableIssueWidth` is true), so a refused
+ * knob is precisely one the reader has no control left to unset, and an error would strand them
+ * with a dead app and no way back.
  *
- * **Only `cache`, deliberately.** Extending this to the other four knobs would be four more
- * judgement calls, each able to change an existing model's recording — and every model's cycle
- * counts are pinned in a timing suite. The other knobs are ignored, and the tests that pin that
- * inertness are what make ignoring safe. A knob some future model REFUSES belongs here, beside this
- * one, with the same argument written out.
+ * ## Why the predicate is the CAPABILITY FLAG and not the model id
  *
- * ## Why `issueWidth` is NOT clamped here, re-examined at M13 step 6 rather than inherited
+ * `ProcessorCapabilities` has no "refuses" bit as distinct from an "ignores" bit, and this function
+ * cannot invent one: the whole family gates on flags (a control's visibility, a panel's appearance,
+ * this narrowing), and a shell that special-cased `model.id === 'scoreboard'` would be the one place
+ * that knows a model by name. So the rule is uniform with the cache above it — **a model that does
+ * not claim a knob is handed that knob's neutral value** — and it therefore also applies to the four
+ * width-BLIND models, which merely ignore the field.
  *
- * Step 6 gave `issueWidth` something no other knob on this list has: **two engines that ENFORCE a
- * bound on it** (`MAX_ISSUE_WIDTH`, in `@cpu-viz/engine-common`, thrown from both the superscalar's
- * and the out-of-order core's `reset`). That is exactly the shape of thing this function exists to
- * absorb, so the omission is a decision and is recorded as one.
+ * ⚠ **That extension is safe only because those four cannot see the value, and it was re-measured
+ * at M15 step 5 rather than inherited from M13.** `pipeline`, `deep-pipeline`, `single-cycle` and
+ * `multi-cycle` do not mention `issueWidth` **anywhere in their `processor.ts`** — they do not read
+ * it, do not default it, and cannot throw on it (M7 step 1 pinned that inertness as whole-trace
+ * identity rather than assuming it). **A green suite is not the warrant here**: the timing suites
+ * drive engines directly and never cross this seam, so they would stay green either way. The grep is
+ * the warrant, and it expires the moment a fifth model reads the field.
  *
- * It is not clamped because **nothing refuses it.** Measured at step 6: of the six shipped models,
- * the two that read `issueWidth` accept the whole range the shared control can produce (that is what
- * capping both engines at one bound bought — the alternative, per-model control positions, was
- * rejected precisely because this function does not clamp width and so could not have contained it),
- * and the other four — `pipeline`, `deep-pipeline`, `single-cycle`, `multi-cycle` — do not mention
- * `issueWidth` **anywhere in their `processor.ts`**. They do not read it, do not default it, and
- * cannot throw on it. So the value the shell hands a width-blind model is inert in the strongest
- * sense available, and M7 step 1 pinned that inertness as whole-trace identity rather than assuming
- * it.
+ * The clamp is to **`1`, not `undefined`** — the shell holds a POSITION rather than an opinion-free
+ * absence (`session.ts` opens at 1, `useSimulator` always passes a number), and 1 is the value the
+ * engines' own `?? 1` already agrees with. Handing back `undefined` would make the by-name knob
+ * sweep in `engine-config.test.ts` assert the absence of a field the shell never omits.
  *
- * **What would change the answer, named so it is checked rather than rediscovered:** a model that
- * declares `configurableIssueWidth: false` *and* guards the field. Since its CONTROL would be hidden
- * (App gates the toggle on that same capability flag), a reader arriving at width 4 could not unset
- * the width that broke it — the exact strand the cache clamp exists to prevent, and the M11 step 5
- * crash (a throw out of an event handler) reproduced on a new knob. **Such a model belongs here, in
- * the clamp, on the day it lands** — not after the browser pass finds it.
+ * **Still only these two, deliberately.** The remaining knobs — `forwarding`, `branchPrediction`,
+ * `outOfOrderIssue`, `robSize`, `slowOpLatency`, `numMshrs` — are IGNORED by the models that do not
+ * claim them, and the tests pinning that inertness are what make ignoring safe. Clamping one anyway
+ * would be a judgement call able to move an existing model's recording, and every model's cycle
+ * counts are pinned in a timing suite. **The next knob some model REFUSES belongs here, beside these
+ * two, with its own argument written out** — and, as M15 showed, with its inertness for the models
+ * that merely ignore it re-measured rather than assumed.
  *
- * Note what is NOT clamped: the session's own value. The caller keeps its cache geometry while
- * visiting a model that cannot take one, so switching back restores it — the clamp is on the value
- * PASSED to the engine, not on the shell's state.
+ * Note what is NOT clamped: the session's own value. The caller keeps its cache geometry and its
+ * width while visiting a model that can take neither, so switching back restores both — the clamp is
+ * on the value PASSED to the engine, not on the shell's state.
  */
 export function engineConfigFor(model: ModelChoice, config: ProcessorConfig): ProcessorConfig {
-  if (model.capabilities.configurableCache) return config;
-  return { ...config, cache: null };
+  const caps = model.capabilities;
+  if (caps.configurableCache && caps.configurableIssueWidth) return config;
+  return {
+    ...config,
+    ...(caps.configurableCache ? {} : { cache: null }),
+    ...(caps.configurableIssueWidth ? {} : { issueWidth: 1 }),
+  };
 }
 
 /**

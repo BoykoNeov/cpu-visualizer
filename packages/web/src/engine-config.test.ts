@@ -134,15 +134,57 @@ describe('the model narrowing, which is the one thing the seam is allowed to cha
     expect(accepting.length, 'no model accepts a cache — the pass-through is untested').toBeGreaterThan(0); // prettier-ignore
   });
 
-  it('narrowing NEVER touches a knob other than the cache', () => {
+  /**
+   * **The width clamp — M15 step 5, and the model that forced it is the scoreboard.** Its `reset()`
+   * throws on any `issueWidth` other than 1, so this is the M11 crash reproduced on a second knob:
+   * the width toggle renders only where `configurableIssueWidth` is true, so a reader can set the
+   * superscalar to 4-wide, pick Scoreboard, and land on a model whose control for that knob is no
+   * longer on screen to unset.
+   *
+   * The predicate is the capability FLAG rather than the model id, which means the clamp also
+   * reaches the four models that merely IGNORE a width. That is safe only because they cannot see
+   * the value — re-measured at M15 rather than inherited from M13: `pipeline`, `deep-pipeline`,
+   * `single-cycle` and `multi-cycle` do not mention `issueWidth` anywhere in their `processor.ts`.
+   * ⚠ **A green suite is not that warrant** — the timing suites drive engines directly and never
+   * cross this seam, so they stay green either way.
+   */
+  it('a model that does not honor a width is handed 1, whatever the session holds', () => {
+    for (const model of MODELS) {
+      const cfg = engineConfigOf(model, MOVED);
+      if (model.capabilities.configurableIssueWidth) {
+        expect(cfg.issueWidth, `${model.id} should keep the session width`).toBe(MOVED.issueWidth);
+      } else {
+        expect(cfg.issueWidth, `${model.id} does not honor a width and must be handed 1`).toBe(1);
+      }
+    }
+  });
+
+  it('non-vacuously — the corpus of models really does contain both kinds of width model', () => {
+    // The same both-halves guard the cache sweep above carries, for the same reason: without it the
+    // sweep passes on a MODELS list that is all one kind.
+    const blind = MODELS.filter((m) => !m.capabilities.configurableIssueWidth);
+    const honoring = MODELS.filter((m) => m.capabilities.configurableIssueWidth);
+    expect(blind.length, 'no model refuses a width — the clamp is untested').toBeGreaterThan(0);
+    expect(honoring.length, 'no model honors a width — the pass-through is untested').toBeGreaterThan(0); // prettier-ignore
+  });
+
+  it('narrowing NEVER touches a knob other than the cache and the width', () => {
     // The clamp's scope, pinned. `engineConfigFor` is the one place the shell is allowed to overrule
-    // the user, and it is allowed to do it to exactly one field — `models.ts` says so in prose and
-    // this is that sentence as arithmetic. A future clamp added there (its docblock invites one, for
-    // a model that REFUSES a width) has to come here and say which knob it moved.
+    // the user, and it is allowed to do it to exactly two fields — `models.ts` says so in prose and
+    // this is that sentence as arithmetic. A future clamp added there has to come here and say which
+    // knob it moved.
+    //
+    // ⚠ **The `issueWidth` skip is CONDITIONAL on the flag, and a blanket `continue` would delete a
+    // net.** Skipping the field outright would permit a width clamp on the superscalar and the
+    // out-of-order core — which is verbatim the M13 step 6 defect (`min(width, 2)`: correct at 1 and
+    // 2, silently collapsing 3 and 4) one layer above where that milestone fixed it. The positive
+    // half of that claim lives in the test directly above, and the sweep over every width the
+    // control offers lives at the bottom of this file.
     for (const model of MODELS) {
       const cfg = engineConfigOf(model, MOVED);
       for (const knob of KNOBS) {
         if (knob === 'cache') continue;
+        if (knob === 'issueWidth' && !model.capabilities.configurableIssueWidth) continue;
         expect(cfg[knob], `${model.id} altered ${knob}`).toEqual(MOVED[knob]);
       }
     }

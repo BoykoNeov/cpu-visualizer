@@ -1373,11 +1373,18 @@ function CacheToggle(props: {
  * instead of writing a `4`.
  *
  * **One bound for both models, and the alternative was considered and rejected.** Gating the
- * positions per model would not have contained anything: {@link useSimulator} hands
- * `issueWidthRef.current` to whichever engine is driving and `engineConfigFor` clamps only `cache`,
- * so a reader at superscalar width 4 who switched to the out-of-order model would have handed it an
+ * positions per model would not have contained anything: {@link useSimulator} hands the session's
+ * width to whichever engine is driving, and at the time `engineConfigFor` clamped only `cache`, so a
+ * reader at superscalar width 4 who switched to the out-of-order model would have handed it an
  * unbounded width whatever this widget offered. The bound belongs at the engine; both now enforce
  * it (pinned with the user, 2026-07-28).
+ *
+ * ⚠ **`engineConfigFor` gained a width clamp at M15 step 5, and it does not reopen this decision.**
+ * That clamp narrows the width to 1 for a model that does not HONOR the knob at all — the scoreboard
+ * refuses one outright — which is a different question from what the toggle should offer to the two
+ * models that do. Both of those still receive every position this widget renders, pinned by the
+ * width sweep in `engine-config.test.ts`; a clamp that touched them would be the M13 half-dead
+ * toggle again.
  */
 export const ISSUE_POSITIONS: readonly number[] = Array.from(
   { length: MAX_ISSUE_WIDTH },
