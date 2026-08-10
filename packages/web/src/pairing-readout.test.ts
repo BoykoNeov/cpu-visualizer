@@ -548,11 +548,14 @@ describe('the IPC tile', () => {
       'strided-sum',
       'sum-loop',
     ]);
-    // The complement, said explicitly: exactly three programs pay for the fourth slot. `nested-loop`
+    // The complement, said explicitly: exactly four programs pay for the fourth slot. `nested-loop`
     // is the third, added at step 0b of the dynamic-branch-prediction plan — its prologue is the
-    // corpus's only HEAD group of four, so the fourth slot buys it a cycle where the other nine see
-    // nothing.
-    expect(EXAMPLE_PROGRAMS.length - flat.length).toBe(3);
+    // corpus's only HEAD group of four, so the fourth slot buys it a cycle where the flat ones see
+    // nothing. `register-reuse` is the fourth (M15 step 6): its tail is four independent
+    // instructions, so 12 → 11, and it is the one addition to this list that did NOT have to be
+    // measured to be predicted — `superscalar/timing.test.ts`'s `wide[4]` row derives the group of
+    // four from the pairing rules.
+    expect(EXAMPLE_PROGRAMS.length - flat.length).toBe(4);
   });
 
   it('divides by the recording LENGTH, not the last cycle number', () => {

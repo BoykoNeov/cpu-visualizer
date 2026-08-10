@@ -89,6 +89,8 @@ const W1: Record<string, { off: readonly number[]; on: readonly number[] }> = {
   'call-return.s': { off: [17, 18, 16, 16], on: [17, 18, 16, 16] },
   'nested-loop.s': { off: [182, 177, 174, 171], on: [142, 137, 134, 131] },
   'paired-branches.s': { off: [9, 13, 9, 9], on: [9, 13, 9, 9] },
+  // No transfer ⇒ every scheme is one machine: `TIMING`'s N + 4 + S at width 1.
+  'register-reuse.s': { off: [23, 23, 23, 23], on: [17, 17, 17, 17] },
   'slow-op-loop.s': { off: [70, 67, 68, 68], on: [44, 41, 42, 42] },
   'store-forward.s': { off: [15, 15, 15, 15], on: [11, 11, 11, 11] },
   'strided-sum.s': { off: [72, 70, 71, 71], on: [51, 49, 50, 50] },
@@ -110,6 +112,8 @@ const W2: Record<string, { off: readonly number[]; on: readonly number[] }> = {
   'call-return.s': { off: [14, 15, 13, 13], on: [14, 15, 13, 13] },
   'nested-loop.s': { off: [172, 175, 168, 165], on: [108, 111, 104, 101] },
   'paired-branches.s': { off: [7, 12, 7, 7], on: [7, 12, 7, 7] },
+  // `TIMING`'s width-2 G + L + 4: 7 + 8 + 4 off, 7 + 2 + 4 on. Flat, for the same reason.
+  'register-reuse.s': { off: [19, 19, 19, 19], on: [13, 13, 13, 13] },
   'slow-op-loop.s': { off: [61, 58, 59, 59], on: [35, 32, 33, 33] },
   'store-forward.s': { off: [13, 13, 13, 13], on: [9, 9, 9, 9] },
   'strided-sum.s': { off: [65, 64, 65, 65], on: [42, 41, 42, 42] },
@@ -135,6 +139,9 @@ const W2_SCHEDULE: Record<
   'call-return.s': { oneBit: [6, 3], twoBit: [6, 3] },
   'nested-loop.s': { oneBit: [62, 35], twoBit: [62, 32] },
   'paired-branches.s': { oneBit: [3, 2], twoBit: [3, 2] },
+  // G = 7, Q = 4 — `TIMING`'s width-2 partition, and it cannot move with the scheme: there is no
+  // bet to end a group, so this row is the degenerate case the finding above is measured against.
+  'register-reuse.s': { oneBit: [7, 4], twoBit: [7, 4] },
   'slow-op-loop.s': { oneBit: [21, 10], twoBit: [21, 10] },
   'store-forward.s': { oneBit: [5, 2], twoBit: [5, 2] },
   'strided-sum.s': { oneBit: [27, 8], twoBit: [27, 8] },
@@ -159,6 +166,7 @@ const STRINGS: Record<string, { actual: string; oneBit: string; twoBit: string }
     twoBit: 'NNTTTTTNNTTTTTTTNTTTTTTTNTTTTTTT',
   },
   'paired-branches.s': { actual: 'NN', oneBit: 'NN', twoBit: 'NN' },
+  'register-reuse.s': { actual: '', oneBit: '', twoBit: '' },
   'slow-op-loop.s': { actual: 'TTTTTN', oneBit: 'NTTTTT', twoBit: 'NTTTTT' },
   'store-forward.s': { actual: '', oneBit: '', twoBit: '' },
   'strided-sum.s': { actual: 'TTTTN', oneBit: 'NTTTT', twoBit: 'NTTTT' },
@@ -339,8 +347,9 @@ describe('the dynamic schemes on the superscalar', () => {
     expect(withTransfers).toHaveLength(9);
     expect(STRINGS['nested-loop.s']!.actual).toHaveLength(32);
     // ...and the never-bets list is a real subset: not empty (it carries the partition net below)
-    // and not everything (which would make that net vacuous).
-    expect(NEVER_BETS).toHaveLength(5);
+    // and not everything (which would make that net vacuous). 6 of 13 since M15 step 6 —
+    // `register-reuse.s` has no transfer at all, so it joins by the widest possible margin.
+    expect(NEVER_BETS).toHaveLength(6);
     expect(NEVER_BETS).toContain('paired-branches.s');
   });
 

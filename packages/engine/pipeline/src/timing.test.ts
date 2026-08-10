@@ -440,6 +440,35 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 11 retires, no branches (M15 step 6 — the scoreboard's WAW/WAR witness). WAW and WAR are
+   * *invisible on this machine*: it reads its operands in program order and writes back in program
+   * order, so the two hazards the program was written for cannot arise here at all. What is left is
+   * an ordinary straight-line run with two loads — and that is the INV-7 point, that one corpus
+   * program is a different story on every model.
+   *    0 addi t2,x0,3   4 lui t0        8 addi t0,t0    12 lw t3,0(t0)
+   *   16 add a0,t3,t2  20 addi t2,x0,5  24 lw t1,4(t0)  28 add a1,t1,t2  32 addi t1,x0,7
+   *   36 addi a7,x0,10 40 ecall
+   *
+   * OFF: four distance-1 RAWs, 2 apiece. The `la` addi at 8 reads t0 from the `lui` before it; the
+   *      `lw` at 12 reads t0 from that addi; the `add` at 16 reads t3 from the `lw` before it; the
+   *      `add` at 28 reads t1 from the `lw` before it. The second `lw` at 24 reads t0 from the addi
+   *      at 8, five instructions back — long retired, no stall. S = 8.
+   * ON:  only the two load-use pairs survive, 1 cycle each (16 on the `lw` at 12, 28 on the `lw` at
+   *      24). Every other RAW here has a non-load producer, which a forward covers. S = 2.
+   */
+  'register-reuse.s': {
+    retires: 11,
+    // Straight-line by construction (the program's docblock says why) ⇒ P = 0 under every scheme.
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // `ecall` is the last word of text — nothing behind it
+    stalls: { off: { 8: 2, 12: 2, 16: 2, 28: 2 }, on: { 16: 1, 28: 1 } },
+    // `first` (0x10000000) and `second` (0x10000004) share ONE 16-byte line, so the `lw` at 12
+    // compulsory-misses and installs it and the `lw` at 24 hits — a single-block program, immune to
+    // cache size exactly as `byte-loads.s` is.
+    misses: { small: 1, large: 1 },
+  },
+
+  /**
    * 7 retires, no branches (M9 step 1b — a store immediately followed by a dependent load of the
    * SAME address, added for out-of-order memory disambiguation; this pipeline is strictly in-order
    * so the store's MEM stage always precedes the load's, and it needs no special handling here).

@@ -560,6 +560,64 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * **11 retires, no transfers — the milestone's own witness, promoted at step 6, and the ONLY row
+   * in this table with a `'war'` cell.** It is also the only one carrying BOTH flavours of WAW: the
+   * benign `la` pair at 8, whose younger writer reads what it overwrites, and the corrupting pair at
+   * 32, whose younger writer does not.
+   *
+   *    0 addi t2,x0,3   4 lui t0        8 addi t0,t0    12 lw t3,0(t0)
+   *   16 add a0,t3,t2  20 addi t2,x0,5  24 lw t1,4(t0)  28 add a1,t1,t2  32 addi t1,x0,7
+   *   36 addi a7,x0,10 40 ecall
+   *
+   * `li t2`@0 and `lui`@4 issue at 1, 2 into `INT0`/`INT1` and write at 4, 5.
+   *
+   * `addi t0`@8 wants a unit at 3 and there is none until `INT0`'s edge-of-4 release ⇒ **2
+   * `'structural-int'`**; at 5 the unit is free but the `lui`'s claim on t0 lives to that clock edge
+   * ⇒ **1 `'waw'`**. It issues 6, reads 7 (t0 landed at 5), writes 9. ⚠ Note the reason ORDER —
+   * `issueBlocker` asks about units before destinations, so a WAW pair under structural pressure
+   * reports `structural-int` first and `waw` only for the cycles a unit was actually free. The other
+   * five `la` pairs in this table show 3 bare `'waw'` because nothing was competing for their unit.
+   *
+   * `lw t3`@12 takes the idle memory unit at 7 and waits for t0 ⇒ **2 `'operand'`**, reading 10 and
+   * writing **15**. `add a0`@16 takes the free `INT1` at 8 and parks at `RO` for t3 ⇒ **7
+   * `'operand'`**, reading 16 and writing 18 — and while it is parked it holds t2 READY BUT UNREAD,
+   * which is the whole WAR condition.
+   *
+   * `addi t2`@20 pays **1 `'structural-int'`** at 9 (both units busy), issues 10 and is ready to
+   * write at 13 — but the `add` above has not read its t2 yet ⇒ **4 `'war'` at WB**, cycles 13–16.
+   * The hold ends the cycle AFTER the reader actually reads (WB is walked before RO), so it writes
+   * at **17**, and the `add` gets 3 rather than 5. **The only WAR stall in the corpus.**
+   *
+   * `lw t1`@24 wants the memory port from 11 but the first load holds it to 15 ⇒ **5
+   * `'structural-mem'`**; it issues 16, reads 17, writes **22**. `add a1`@28 pays **1
+   * `'structural-int'`** at 17, issues 18, parks for t1 ⇒ **4 `'operand'`**, reads 23, writes 25.
+   *
+   * `addi t1`@32 finds `INT1` free at 19 — but the load's claim on t1 lives to the edge of 22 ⇒
+   * **4 `'waw'` at Issue**, a bare WAW with no structural component. It issues 23 and writes 26.
+   * **This is the pair INV-8 can see**: stub the check and it writes 7 first and the load drops 9 on
+   * top, so t1 ends 9 instead of 7.
+   *
+   * `li a7`@36 pays **2 `'structural-int'`** and issues 26; `ecall`@40 issues at `s_last = 27` into
+   * the unit `addi t1` released that edge. Nothing outlives it: `tail = 3 + 1 + 0 − 0 = 4`, cycles =
+   * **31**.
+   */
+  'register-reuse.s': {
+    retires: 11,
+    takenTransfers: 0,
+    stalls: {
+      8: { 'structural-int': 2, waw: 1 },
+      12: { operand: 2 },
+      16: { operand: 7 },
+      20: { 'structural-int': 1, war: 4 },
+      24: { 'structural-mem': 5 },
+      28: { 'structural-int': 1, operand: 4 },
+      32: { waw: 4 },
+      36: { 'structural-int': 2 },
+    },
+    lastWriter: { pc: 40, issueOffset: 0, latency: INT_LATENCY, ownStalls: 0 },
+  },
+
+  /**
    * 4 prologue + 4 per iteration × 6 + 2 epilogue = 30 retires; `bnez` goes 5 times.
    *
    *    0 addi t1,x0,6   4 addi a0,x0,0   8 addi t5,x0,3  12 addi t6,x0,2
@@ -857,17 +915,32 @@ describe('the pinned timing table — s_last = N + D + T + E, cycles = s_last + 
 });
 
 /**
- * ⚠ The hazard this milestone exists for is INVISIBLE on the shipped corpus. Asserted rather than
- * left as a table with no `'war'` rows, because an all-empty result that is documented as empty is
- * a different artifact from a missing one — and because this is the line step 6 flips.
+ * ⚠ **FLIPPED AT STEP 6.** Until `register-reuse.s` was promoted this read "`'war'` never fires on
+ * the shipped corpus", and it was the sentence the whole milestone was waiting to falsify: the one
+ * hazard the model exists for was invisible on every program the corpus shipped. It now fires on
+ * **exactly one** program, and the shape of the assertion is deliberately unchanged — the
+ * emptiness of the other twelve is still asserted rather than left implied, because "WAR is rare"
+ * and "WAR is broken" produce the same all-empty table and only a named exception tells them apart.
  */
-const WAR_IS_ABSENT = "'war' never fires on the shipped corpus — the hole step 6 closes";
+const WAR_SITE = 'register-reuse.s';
+const WAR_IS_ABSENT = `'war' fires on ${WAR_SITE} and NOWHERE else in the corpus`;
 
 describe('what the corpus cannot show', () => {
   it(WAR_IS_ABSENT, () => {
     for (const file of FILES) {
+      const war = eventsOf(run(file), 'stall').filter((e) => e.reason === 'war');
+      if (file === WAR_SITE) {
+        // The four cycles derived in its row: the younger `addi t2`@20 is ready to write at 13 and
+        // the older `add a0`@16 does not read its copy of t2 until 16. Asserted by CYCLE, not by
+        // count — a WAR that fired in the wrong place would keep the total.
+        expect(
+          war.map((e) => e.stage),
+          `${file} — WAR is the one stall that fires at WB`,
+        ).toEqual(['WB', 'WB', 'WB', 'WB']);
+        continue;
+      }
       expect(
-        eventsOf(run(file), 'stall').filter((e) => e.reason === 'war'),
+        war,
         // One line deliberately: a template literal wrapped in the source carries its own
         // indentation into the failure output, exactly when it is hardest to read.
         `${file} — WAR needs a younger writer at WB while an older reader holds an unread copy`,
@@ -878,19 +951,20 @@ describe('what the corpus cannot show', () => {
     const wawPrograms = FILES.filter((f) =>
       Object.values(TIMING[f]!.stalls).some((row) => (row.waw ?? 0) > 0),
     );
-    expect(wawPrograms.sort(), 'the six programs the WAW mutation reddens').toEqual(
+    expect(wawPrograms.sort(), 'the seven programs the WAW mutation reddens').toEqual(
       [
         'array-sum-twice.s',
         'array-sum.s',
         'byte-loads.s',
         'nested-loop.s',
+        'register-reuse.s',
         'store-forward.s',
         'strided-sum.s',
       ].sort(),
     );
   });
 
-  it('every WAW in the corpus comes from a `la`, except one', () => {
+  it('every WAW in the corpus comes from a `la`, except two', () => {
     // The step-0 corpus scan read source mnemonics and reported zero reachable WAW hazards; the
     // WAW half of that was wrong, because `la rd, sym` assembles to `lui rd` + `addi rd, rd` — two
     // writers to one register, one instruction apart. Pinned here so the provenance of the six
@@ -907,10 +981,20 @@ describe('what the corpus cannot show', () => {
       const perInstance = file === 'array-sum-twice.s' ? 2 : 1; // one `la` per outer pass
       expect(TIMING[file]!.stalls[pc]?.waw, `${file}@${pc}`).toBe(3 * perInstance);
     }
-    // The exception, and it is a real WAW rather than a pseudo-op artifact: `nested-loop.s` resets
-    // its inner counter with `li t1, 6` and immediately decrements it, so the decrement claims a
+    // The exceptions, both real WAWs rather than pseudo-op artifacts. `nested-loop.s` resets its
+    // inner counter with `li t1, 6` and immediately decrements it, so the decrement claims a
     // register the reset has not written yet — 2 cycles, once per pass.
     expect(TIMING['nested-loop.s']!.stalls[16]?.waw).toBe(8);
+    // And `register-reuse.s`@32 — the one this milestone was written for, and the only WAW in the
+    // corpus whose younger writer does NOT read what it overwrites. That distinction is invisible
+    // in the stall count (both flavours stall at Issue) and decisive architecturally: the `la` pairs
+    // above survive a stubbed WAW check because their younger writer waits on the producer anyway,
+    // and this one does not. ⚠ It also carries a `la` of its own at 8, which is why its count is 1
+    // rather than the 3 every other row shows — see its derivation for the reason ORDER.
+    expect(TIMING['register-reuse.s']!.stalls[32]?.waw).toBe(4);
+    expect(TIMING['register-reuse.s']!.stalls[8]?.waw, 'the benign one, under unit pressure').toBe(
+      1,
+    );
   });
 });
 

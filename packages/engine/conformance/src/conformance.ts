@@ -138,6 +138,18 @@ const RESULT_ORACLES: Record<
   // see the just-stored 99, never the stale 0 the `.data` segment starts with (M9 step 1b — memory
   // disambiguation's one architecturally-visible failure mode).
   'store-forward.s': { regs: { 10: 99 }, mem: { cell: 99 } },
+  // M15 step 6 — the scoreboard's WAW/WAR witness, and the corpus's only program whose headline is
+  // a pair of ORDERINGS rather than a computed value. a0 (x10) = 21 + 3 = 24 is the WAR answer: the
+  // older `add` must read the t2 the program gave it (3), not the 5 the younger `addi` writes while
+  // it waits — a machine that reads the future lands 26. t1 (x6) = 7 is the WAW answer: the younger
+  // `addi t1, x0, 7` is architecturally last, so the load of 9 that completes AFTER it must not land
+  // on top — a machine with no WAW check ends on 9. Both are checked against the reference, which
+  // executes one instruction at a time and cannot get either wrong. a1 (x11) = 9 + 5 = 14 pins that
+  // the second `add` reads the NEW t2, so 5 is not merely written but used.
+  'register-reuse.s': {
+    regs: { 6: 7, 7: 5, 10: 24, 11: 14, 28: 21 },
+    mem: { first: 21, second: 9 },
+  },
   // Six iterations of a shift-accumulate loop: a0 (x10) = 6 * (3 << 2) = 6 * 12 = 72; the counter
   // t1 (x6) lands on 0. Result is model-independent (the `sll` slow-op latency is a pure TIMING
   // knob — M10 step 3), so this equality holds on every model at every config, INV-8's blindness to

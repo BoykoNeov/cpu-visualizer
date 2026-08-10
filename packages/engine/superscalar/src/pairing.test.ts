@@ -495,6 +495,12 @@ describe('width 2 is a real machine', () => {
       // in-order-retiring superscalar it is an ordinary pairing/mem-port story (`timing.test.ts`'s
       // `w2` entry derives both numbers from the pinned rules).
       'store-forward.s': { w1: 11, w2: 9 },
+      // M15 step 6: the scoreboard's WAW/WAR witness. Both hazards are invisible on an in-order
+      // machine, so here it is a straight-line run whose only refusals are intra-group RAWs — and
+      // it pairs its WAW pair (`add a1@28`, `addi t1@32`) into ONE cycle, which is the sharpest
+      // possible statement of a hazard that this tier does not have. `timing.test.ts`'s `w2` entry
+      // derives both numbers from the pinned rules.
+      'register-reuse.s': { w1: 17, w2: 13 },
       // M10 step 3: the slow-op shift-accumulate loop. Single-cycle `sll` here, so an ordinary
       // pairing story — width 2 pairs the counter beside the `add` and the branch beside its mate
       // (44 → 35); `timing.test.ts`'s `w2` entry derives both from the pinned rules.

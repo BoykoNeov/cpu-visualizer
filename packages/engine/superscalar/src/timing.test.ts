@@ -831,6 +831,87 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 11 retires, no branches (M15 step 6 — the scoreboard's WAW/WAR witness). Both hazards are
+   * invisible on an in-order machine, so here it is a straight-line run with two loads and four
+   * distance-1 RAWs.
+   *    0 addi t2,x0,3   4 lui t0        8 addi t0,t0    12 lw t3,0(t0)
+   *   16 add a0,t3,t2  20 addi t2,x0,5  24 lw t1,4(t0)  28 add a1,t1,t2  32 addi t1,x0,7
+   *   36 addi a7,x0,10 40 ecall
+   *
+   * WIDTH 1 is M3's number: S = 8 off / 2 on ⇒ 23 and 17.
+   *
+   * WIDTH 2 — the partition is IDENTICAL in both forwarding positions, and every refusal is the
+   * same rule three times over: a load or an ALU op reading the register the instruction beside it
+   * writes.
+   *   1 {addi t2@0, lui@4}     — pair; `addi t0@8` reads the t0 the `lui` writes: INTRA-PAIR RAW.
+   *   2 {addi t0@8}            — `lw@12` reads that same t0:                      INTRA-PAIR RAW.
+   *   3 {lw t3@12}             — `add@16` reads the t3 it loads:                  INTRA-PAIR RAW.
+   *   4 {add a0@16, addi t2@20} — pair (the addi reads only x0).
+   *   5 {lw t1@24}             — `add@28` reads the t1 it loads:                  INTRA-PAIR RAW.
+   *   6 {add a1@28, addi t1@32} — pair. ⚠ These two are the program's WAW pair, co-issued in ONE
+   *                               cycle here: the machine that cannot tell them apart is exactly
+   *                               the machine that never has to.
+   *   7 {addi a7@36, ecall@40} — pair.
+   *   G = 7, Q = 4 ⇒ with L = 2 ON (the two load-use refusals at slot 0) cycles = 7+2+4 = **13**.
+   * OFF: the interlock blocks 2 apiece at four sites (@8, @12, @16, @28) and splits NO pair, because
+   *      every refusal above is a pairing rule and those do not consult the toggle. L = 8 ⇒ **19**.
+   * No transfers ⇒ doomed and betting are zero in both positions.
+   */
+  'register-reuse.s': {
+    retires: 11,
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
+    flushes: { branchTaken: 0, halt: 0 }, // `ecall` is the last word of text — nothing behind it
+    stalls: { off: { 8: 2, 12: 2, 16: 2, 28: 2 }, on: { 16: 1, 28: 1 } },
+    // `first` and `second` are 4 bytes apart — ONE 16-byte line. The `lw@12` compulsory-misses and
+    // installs it, the `lw@24` hits: a single-block program, size-immune like `byte-loads.s`.
+    misses: { small: 1, large: 1 },
+    w2: {
+      groups: { off: 7, on: 7 },
+      pairs: { off: 4, on: 4 },
+      blocked: { off: 8, on: 2 },
+      doomed: { off: 0, on: 0 },
+      betting: { off: { groups: 0, pairs: 0 }, on: { groups: 0, pairs: 0 } }, // no transfers
+    },
+    /**
+     * WIDTHS 3 AND 4 — the head is a CHAIN the extra slots cannot break (three intra-group RAWs in
+     * a row), so the whole gain is in the two tails, and the histogram is what shows it:
+     *   w3: `{addi t2@0, lui@4}` / `{addi t0@8}` / `{lw t3@12}` / `{add a0@16, addi t2@20, lw t1@24}`
+     *       / `{add a1@28, addi t1@32, addi a7@36}` / `{ecall@40}`
+     *       G = 6, sizes {1: 3, 2: 1, 3: 2}, slots = 11 = 11 retires + 0 doomed.
+     *       cycles = 6 + L + 4 ⇒ **12** ON, **18** OFF.
+     *   w4: the same head, and the last two groups fuse into one of four —
+     *       `{add a1@28, addi t1@32, addi a7@36, ecall@40}`. G = 5, sizes {1: 2, 2: 1, 3: 1, 4: 1}.
+     *       cycles ⇒ **11** ON, **17** OFF.
+     * ⚠ The width-4 group is a REAL four — this program is one of the few that reaches a group of 4
+     * at width 4 at all, because its tail is four independent instructions rather than the two or
+     * three most corpus programs end on. The third slot cannot join `{add a0@16, addi t2@20}` with
+     * anything until `lw t1@24`, which is why the middle group is the same 3 at both widths.
+     * L is unchanged by width (2 ON, 8 OFF): every blocked cycle is a slot-0 ordinary hazard, and a
+     * wider machine does not make a datum arrive sooner. No transfers, so `taken` is `base`.
+     */
+    wide: {
+      3: {
+        base: { groups: 6, sizes: { 1: 3, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 8, on: 2 } },
+        taken: { groups: 6, sizes: { 1: 3, 2: 1, 3: 2 }, doomed: 0, blocked: { off: 8, on: 2 } },
+      },
+      4: {
+        base: {
+          groups: 5,
+          sizes: { 1: 2, 2: 1, 3: 1, 4: 1 },
+          doomed: 0,
+          blocked: { off: 8, on: 2 },
+        },
+        taken: {
+          groups: 5,
+          sizes: { 1: 2, 2: 1, 3: 1, 4: 1 },
+          doomed: 0,
+          blocked: { off: 8, on: 2 },
+        },
+      },
+    },
+  },
+
+  /**
    * 7 retires, no branches (M9 step 1b — a store immediately followed by a dependent load of the
    * SAME address, added for out-of-order memory disambiguation; this superscalar retires strictly
    * in order so the pairing/port rules below are the whole story, no disambiguation needed here).
@@ -2373,7 +2454,7 @@ describe('what the histogram says that the cycle counts cannot', () => {
    * does fill four slots, MEASURE which programs do — and name the ones that never do. Every one of
    * their width-4 cells above is honestly a width-3 measurement, and this is where that is stated.
    */
-  it('names exactly which programs ever fill four slots — EIGHT of twelve never do', () => {
+  it('names exactly which programs ever fill four slots — EIGHT of thirteen never do', () => {
     const groupsOfFour = (file: string): number =>
       measure(run(file, configAt(4, 'on')), 4).sizes[4] ?? 0;
     const fillsFour = Object.keys(TIMING).filter((file) => groupsOfFour(file) > 0);
@@ -2381,17 +2462,25 @@ describe('what the histogram says that the cycle counts cannot', () => {
     // Measured from the traces, then compared to the names — never read off the table, which would
     // re-bless whatever the table says.
     expect([...fillsFour].sort()).toEqual(
-      // The first three fill four in their TAIL — the drain group, where `ecall` rides along behind
+      // Three of these fill four in their TAIL — the drain group, where `ecall` rides along behind
       // whatever is left. `nested-loop.s` is the one that does it at the HEAD: its prologue is four
       // independent instructions ending in the pass guard, so the four is a real dispatch rather
       // than a program running out. It joined at step 0b and kept the complement at eight.
-      ['branch-flavors.s', 'nested-loop.s', 'paired-branches.s', 'slow-op-loop.s'].sort(),
+      // `register-reuse.s` (M15 step 6) joined the tail kind and kept it at eight AGAIN, which is a
+      // coincidence of arithmetic and not a rule — the complement below is asserted, not inferred.
+      [
+        'branch-flavors.s',
+        'nested-loop.s',
+        'paired-branches.s',
+        'register-reuse.s',
+        'slow-op-loop.s',
+      ].sort(),
     );
     // ...and the complement, stated as a count rather than a hand-picked subset. The first draft of
     // this half read `TIMING[file].wide[4].base.sizes[4]` and asserted `undefined` — a property of
     // the literal three hundred lines above it, which no engine change could ever falsify. It is
     // the same shape step 2 caught and replaced, and it survived to a passing test twice now.
-    expect(Object.keys(TIMING).length - fillsFour.length, 'eight of twelve').toBe(8);
+    expect(Object.keys(TIMING).length - fillsFour.length, 'eight of thirteen').toBe(8);
     for (const file of Object.keys(TIMING).filter((f) => !fillsFour.includes(f))) {
       expect(groupsOfFour(file), `${file} never reaches a group of 4`).toBe(0);
     }

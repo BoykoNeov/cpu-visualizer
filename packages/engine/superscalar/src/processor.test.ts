@@ -167,21 +167,24 @@ describe('the "<stage>.<slot>" location encoding at every admitted width', () =>
     // Width 3: all but `add.s`, which is five instructions long and never gets three into EX.
     expect(surjective(3)).toEqual(CORPUS.filter((f) => f !== 'add.s'));
 
-    // Width 4: FOUR programs — the same four `timing.test.ts` measures as the only ones that ever
+    // Width 4: FIVE programs — the same five `timing.test.ts` measures as the only ones that ever
     // dispatch a group of four. Two independent measurements (a location set here, an issue-size
     // histogram there) landing on the same names is the cross-check worth having. `nested-loop.s`
     // is the one that joined at step 0b, and the only one whose four is a HEAD group rather than a
     // drain: its prologue holds four independent instructions ending in the pass guard.
+    // `register-reuse.s` (M15 step 6) is the drain kind — its tail is four independent instructions
+    // because the WAW pair it was written for needs no dependence between them.
     expect(surjective(4)).toEqual([
       'branch-flavors.s',
       'nested-loop.s',
       'paired-branches.s',
+      'register-reuse.s',
       'slow-op-loop.s',
     ]);
   });
 
-  it('the LAST slot is fetched into far more often than it is issued from — 11 programs vs 4', () => {
-    // Why surjectivity fails on eight of twelve programs at width 4, stated as the asymmetry that
+  it('the LAST slot is fetched into far more often than it is issued from — 12 programs vs 5', () => {
+    // Why surjectivity fails on eight of thirteen programs at width 4, stated as the asymmetry that
     // causes it rather than left as a bare set difference. FETCH is not gated by the pairing rules:
     // `stageIf` fills every seat it can reach, so `IF.3` is ordinary. ISSUE is gated — one memory
     // port, one branch unit, no intra-group RAW — so `EX.3` requires a group of four to survive all
@@ -192,11 +195,12 @@ describe('the "<stage>.<slot>" location encoding at every admitted width', () =>
       CORPUS.filter((f) => locationsOf(f, w).has(`${stage}.${w - 1}`));
 
     expect(emits('IF')).toEqual(CORPUS.filter((f) => f !== 'add.s'));
-    expect(emits('IF')).toHaveLength(11);
+    expect(emits('IF')).toHaveLength(12);
     expect(emits('EX')).toEqual([
       'branch-flavors.s',
       'nested-loop.s',
       'paired-branches.s',
+      'register-reuse.s',
       'slow-op-loop.s',
     ]);
 

@@ -408,6 +408,30 @@ const TIMING: Readonly<Record<string, Timing>> = {
   },
 
   /**
+   * 11 retires, no branches — the scoreboard's WAW/WAR witness (M15 step 6). Both hazards are
+   * unreachable on an in-order machine that reads its operands in program order, so here it is an
+   * ordinary straight-line run with two loads. It is the corpus's cleanest reading of the depth
+   * thesis, because it has NO transfer to muddy it: every stall below is a pure operand distance.
+   *    0 addi t2,x0,3   4 lui t0        8 addi t0,t0    12 lw t3,0(t0)
+   *   16 add a0,t3,t2  20 addi t2,x0,5  24 lw t1,4(t0)  28 add a1,t1,t2  32 addi t1,x0,7
+   *   36 addi a7,x0,10 40 ecall
+   *
+   * OFF: four distance-1 RAWs at 3 apiece — `addi t0`@8 on the `lui`, `lw`@12 on that addi,
+   *   `add`@16 on the `lw`, `add`@28 on the `lw`@24. The second `lw`@24 reads t0 five instructions
+   *   back and is free. S = **12**.
+   * ON: the two ALU→ALU pairs cost the bubble forwarding cannot remove (1 apiece at 8 and 12), and
+   *   the two LOAD-use pairs cost two apiece (16 and 28) — `d_c >= d_p + 3` against the 5-stage's
+   *   `+2`. S = **6**, i.e. exactly the two coefficients this milestone exists to show, side by side
+   *   in one program.
+   */
+  'register-reuse.s': {
+    retires: 11,
+    transfers: { takenPredictable: 0, notTaken: 0, takenUnpredictable: 0 },
+    stalls: { off: { 8: 3, 12: 3, 16: 3, 28: 3 }, on: { 8: 1, 12: 1, 16: 2, 28: 2 } },
+    haltFlushes: 0,
+  },
+
+  /**
    * 4 prologue + 4 per iteration × 6 + 2 epilogue = 30 retires; `bnez` taken 5 times (i = 5…1).
    *    0 addi t1,x0,6   4 addi a0,x0,0   8 addi t5,x0,3  12 addi t6,x0,2
    *   16 sll t3,t5,t6  20 add a0,a0,t3  24 addi t1,t1,-1 28 bne t1,x0,loop
@@ -780,7 +804,7 @@ describe('the flagship — the ALU→ALU bubble forwarding cannot remove', () =>
     expect(eventsOf(ts, 'forward').map((e) => e.from)).toContain('EX2/MEM');
   });
 
-  it('is the common case, not a fixture: 9 of the 12 corpus programs stall with forwarding ON', () => {
+  it('is the common case, not a fixture: 10 of the 13 corpus programs stall with forwarding ON', () => {
     // A single hand-built witness could be a special case. This is the claim at corpus scale — and
     // the three exceptions are named, because "all of them" would be the overclaim.
     const withExLatency = Object.keys(TIMING).filter((file) =>
@@ -791,6 +815,8 @@ describe('the flagship — the ALU→ALU bubble forwarding cannot remove', () =>
       'array-sum.s',
       'array-sum-twice.s',
       'byte-loads.s',
+      // Two distance-1 ALU pairs (`addi t0`@8 on the `lui`, `lw`@12 on that addi) — see its row.
+      'register-reuse.s',
       'slow-op-loop.s',
       'store-forward.s',
       'strided-sum.s',

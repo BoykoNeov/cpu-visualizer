@@ -137,6 +137,15 @@ const TABLE: Record<string, Row> = {
     twoBit: 'NN',
   },
 
+  // No transfer, so all four schemes agree — 29 and 23 are `TIMING`'s N + 6 + S with P = 0.
+  'register-reuse.s': {
+    off: [29, 29, 29, 29],
+    on: [23, 23, 23, 23],
+    actual: '',
+    oneBit: '',
+    twoBit: '',
+  },
+
   'slow-op-loop.s': {
     off: [95, 89, 91, 91],
     on: [69, 63, 65, 65],
@@ -343,13 +352,17 @@ describe('the dynamic schemes on the deep pipeline', () => {
     const totals = (files: readonly string[], position: 'off' | 'on'): number[] =>
       SCHEMES.map((_, i) => files.reduce((sum, f) => sum + TABLE[f]![position][i]!, 0));
 
-    const original = FILES.filter((f) => f !== 'nested-loop.s');
+    // HISTORICAL cohort — "the programs that predate `nested-loop.s`" — so anything added later is
+    // excluded by the sentence's meaning. `register-reuse.s` (M15 step 6) is the inert kind of
+    // addition: no transfer, so it contributes 29/23 to all four columns and cannot move a margin.
+    const LATER = ['nested-loop.s', 'register-reuse.s'];
+    const original = FILES.filter((f) => !LATER.includes(f));
     expect(original).toHaveLength(11);
     expect(totals(original, 'off'), 'the ELEVEN, forwarding off').toEqual([892, 842, 842, 840]);
     expect(totals(original, 'on'), 'the ELEVEN, forwarding on').toEqual([704, 654, 654, 652]);
 
-    expect(totals(FILES, 'off'), 'the TWELVE, forwarding off').toEqual([1154, 1094, 1088, 1080]);
-    expect(totals(FILES, 'on'), 'the TWELVE, forwarding on').toEqual([902, 842, 836, 828]);
+    expect(totals(FILES, 'off'), 'the THIRTEEN, forwarding off').toEqual([1183, 1123, 1117, 1109]);
+    expect(totals(FILES, 'on'), 'the THIRTEEN, forwarding on').toEqual([925, 865, 859, 851]);
 
     const [, staticTaken, oneBit, twoBit] = totals(FILES, 'off');
     expect(staticTaken! - twoBit!, 'the 2-bit margin over static-taken, corpus-wide').toBe(14);

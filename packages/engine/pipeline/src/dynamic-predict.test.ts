@@ -204,6 +204,17 @@ const TABLE: Record<string, Row> = {
     twoBit: 'NN',
   },
 
+  // No transfer at all, so every scheme is the same machine here — 23 and 17 are `TIMING`'s
+  // N + 4 + S with P = 0 in all four columns. A predictor cannot pay for itself on straight-line
+  // code, and the flat row is the cheapest statement of that.
+  'register-reuse.s': {
+    off: [23, 23, 23, 23],
+    on: [17, 17, 17, 17],
+    actual: '',
+    oneBit: '',
+    twoBit: '',
+  },
+
   'slow-op-loop.s': {
     off: [70, 67, 68, 68],
     on: [44, 41, 42, 42],
@@ -437,14 +448,20 @@ describe('the dynamic schemes, pinned three ways', () => {
     const totals = (files: readonly string[], position: 'off' | 'on'): number[] =>
       SCHEMES.map((_, i) => files.reduce((sum, f) => sum + TABLE[f]![position][i]!, 0));
 
-    const original = FILES.filter((f) => f !== 'nested-loop.s');
+    // The cohort is HISTORICAL — "the programs that predate step 0b" — so a program added later is
+    // excluded by what the sentence means, not by what it would do to the arithmetic.
+    // `register-reuse.s` (M15 step 6) is the second such exclusion and it is the inert kind: with no
+    // transfer it contributes the same 23 to all four columns, so it could not move a margin either
+    // way. Naming it here anyway, because a cohort maintained by silence stops being a cohort.
+    const LATER = ['nested-loop.s', 'register-reuse.s'];
+    const original = FILES.filter((f) => !LATER.includes(f));
     expect(original).toHaveLength(11);
     expect(totals(original, 'off'), 'the ELEVEN, forwarding off').toEqual([662, 637, 637, 636]);
     expect(totals(original, 'on'), 'the ELEVEN, forwarding on').toEqual([479, 454, 454, 453]);
 
     // ...and with step 0b's program, which is where the margin actually comes from: +6 on one
-    // program takes the whole corpus from 1 cycle to 7.
-    expect(totals(FILES, 'off'), 'the TWELVE, forwarding off').toEqual([844, 814, 811, 807]);
+    // program takes the whole corpus from 1 cycle to 7. Step 6's program adds 23 flat and leaves it.
+    expect(totals(FILES, 'off'), 'the THIRTEEN, forwarding off').toEqual([867, 837, 834, 830]);
     const [, staticTaken, , twoBit] = totals(FILES, 'off');
     expect(staticTaken! - twoBit!, 'the 2-bit margin over static-taken, corpus-wide').toBe(7);
   });

@@ -91,6 +91,9 @@ const W1: Record<string, readonly [number, number, number, number]> = {
   'call-return.s': [17, 18, 16, 16],
   'nested-loop.s': [142, 137, 134, 131],
   'paired-branches.s': [9, 13, 9, 9],
+  // No transfer at all, so the price rule contributes 0 to every column and the four are EQUAL by
+  // derivation — measured that way rather than written down once and copied across.
+  'register-reuse.s': [17, 17, 17, 17],
   'slow-op-loop.s': [44, 41, 42, 42],
   'store-forward.s': [11, 11, 11, 11],
   'strided-sum.s': [51, 49, 50, 50],
@@ -111,6 +114,7 @@ const W2_INORDER: Record<string, readonly [number, number, number, number]> = {
   'call-return.s': [14, 15, 13, 13],
   'nested-loop.s': [108, 111, 108, 105],
   'paired-branches.s': [7, 12, 8, 8],
+  'register-reuse.s': [13, 13, 13, 13],
   'slow-op-loop.s': [35, 32, 33, 33],
   'store-forward.s': [9, 9, 9, 9],
   'strided-sum.s': [42, 41, 42, 42],
@@ -126,6 +130,10 @@ const W2_OOO: Record<string, readonly [number, number, number, number]> = {
   'call-return.s': [14, 15, 13, 13],
   'nested-loop.s': [108, 111, 108, 105],
   'paired-branches.s': [7, 12, 8, 8],
+  // ⚠ 12 against in-order's 13 — one of the few corpus rows where the ISSUE-ORDER toggle moves a
+  // program with no branch in it. Its two load-use chains are what reordering has to work with:
+  // the second `lw` and the `addi` behind each `add` are independent of the load being waited on.
+  'register-reuse.s': [12, 12, 12, 12],
   'slow-op-loop.s': [35, 32, 33, 33],
   'store-forward.s': [9, 9, 9, 9],
   'strided-sum.s': [33, 31, 32, 32],
@@ -150,6 +158,7 @@ const STRINGS: Record<string, { actual: string; oneBit: string; twoBit: string }
     twoBit: 'NNTTTTTNNTTTTTTTNTTTTTTTNTTTTTTT',
   },
   'paired-branches.s': { actual: 'NN', oneBit: 'NN', twoBit: 'NN' },
+  'register-reuse.s': { actual: '', oneBit: '', twoBit: '' },
   'slow-op-loop.s': { actual: 'TTTTTN', oneBit: 'NTTTTT', twoBit: 'NTTTTT' },
   'store-forward.s': { actual: '', oneBit: '', twoBit: '' },
   'strided-sum.s': { actual: 'TTTTN', oneBit: 'NTTTT', twoBit: 'NTTTT' },
@@ -473,14 +482,16 @@ describe('the dynamic schemes on the out-of-order core', () => {
 
   /**
    * The remaining programs where a declining scheme is free — the other half of the finding, and
-   * what keeps the test above from reading as "dynamic schemes are slower here in general". Four of
-   * the five never-bets programs pay nothing, at every width and in both issue modes.
+   * what keeps the test above from reading as "dynamic schemes are slower here in general". Five of
+   * the six never-bets programs pay nothing, at every width and in both issue modes.
    */
   it('...and every OTHER never-bets program is free', () => {
     const NEVER_BETS = FILES.filter(
       (f) => !STRINGS[f]!.oneBit.includes('T') && !STRINGS[f]!.twoBit.includes('T'),
     );
-    expect(NEVER_BETS).toHaveLength(5);
+    // 6 of 13 since M15 step 6: `register-reuse.s` has no transfer at all, so it joins by the
+    // widest margin available and lands on the free side below.
+    expect(NEVER_BETS).toHaveLength(6);
     for (const file of NEVER_BETS.filter((f) => f !== 'paired-branches.s')) {
       for (const width of WIDTHS) {
         for (const outOfOrder of ORDERS) {
