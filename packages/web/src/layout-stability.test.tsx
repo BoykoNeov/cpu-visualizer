@@ -536,17 +536,36 @@ describe('scoreboard tables: three tables that cannot change height as the curso
     expect(headingRow(htmls[0]!)).toContain('completion is not');
   });
 
-  it('both cursor-dependent strings exist, and each is pinned to an unwrappable line box', () => {
-    // The predictor panel's lesson, applied to both. `nowrap` is what makes "constant height by
-    // construction" true of the PANEL and not only of its rows: a string that cannot wrap cannot
-    // add a line, whatever the viewport does to its width.
+  it('both cursor-dependent strings exist, and each is pinned to a FIXED-HEIGHT box', () => {
+    // The predictor panel's lesson, applied to both — but the two boxes are different SHAPES, and
+    // the difference is the step-8 finding. What matters for the panel's height is that each box
+    // has a fixed `height` (never a `min-height`) with its overflow hidden: a box that cannot grow
+    // cannot move the panel, whatever the viewport does to its width.
+    //
+    // ⚠ The window count is one unwrappable line, because its longest corpus form fits. The
+    // CAPTION is three lines, because pinning it to one made two of the six reasons — including
+    // `structural-int`, the sentence this view is required to state — unreadable at EVERY
+    // viewport, the caption's box topping out at 1120px against a sentence needing 1868px.
+    // Asserting `nowrap` on the caption is what this test used to do, and it was green while the
+    // words were being thrown away.
     for (const html of htmls) {
-      for (const marker of ['sb-window-note', 'sb-stall-caption']) {
+      const styleOf = (marker: string): string => {
         const style = new RegExp(`class="${marker}"[^>]*style="([^"]*)"`).exec(html);
         expect([marker, style === null]).toEqual([marker, false]);
-        expect([marker, style![1]!.includes('white-space:nowrap')]).toEqual([marker, true]);
-        expect([marker, style![1]!.includes('height:20px')]).toEqual([marker, true]);
-      }
+        return style![1]!;
+      };
+
+      const note = styleOf('sb-window-note');
+      expect(['note nowrap', note.includes('white-space:nowrap')]).toEqual(['note nowrap', true]);
+      expect(['note height', note.includes('height:20px')]).toEqual(['note height', true]);
+
+      const caption = styleOf('sb-stall-caption');
+      // Three lines of the same 20px row, hidden past that — a constant, not a scan.
+      expect(['caption height', caption.includes('height:60px')]).toEqual(['caption height', true]);
+      expect(['caption clamp', caption.includes('-webkit-line-clamp:3')]).toEqual(['caption clamp', true]); // prettier-ignore
+      expect(['caption hidden', caption.includes('overflow:hidden')]).toEqual(['caption hidden', true]); // prettier-ignore
+      // `min-height` would satisfy every check above and still let a fourth line grow the panel.
+      expect(['caption not min-height', /min-height/.test(caption)]).toEqual(['caption not min-height', false]); // prettier-ignore
     }
   });
 

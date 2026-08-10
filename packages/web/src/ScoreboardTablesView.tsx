@@ -23,9 +23,16 @@
  * ⚠ **That is a claim about the ROWS, and a panel is not only its rows.** The predictor table
  * shipped "its height is constant by construction" and a later browser pass measured it false OF
  * THE PANEL — the one cursor-dependent string lived in the header and WRAPPED at some widths, 33px
- * of jitter between 900px and 1180px. The two cursor-dependent strings here are therefore each
- * pinned to a single line box that cannot wrap ({@link NOWRAP}): the caption below the instruction
- * table, and the window's `showing the last N of M` count. `layout-stability.test.tsx` guards both.
+ * of jitter between 900px and 1180px. So neither cursor-dependent string here may change the
+ * panel's height: the window's `showing the last N of M` count is pinned to one unwrappable line
+ * ({@link NOWRAP}), and the caption below the instruction table to a fixed three-line reserve
+ * ({@link CLAMP}). `layout-stability.test.tsx` guards both.
+ *
+ * ⚠ **The caption was a one-liner too until the step-8 browser pass MEASURED it**, and the reason
+ * it changed is the general trap in "pin it to one line": a box that cannot grow does not stop
+ * being cursor-dependent, it starts hiding the content instead. Two of the six reasons — including
+ * the one this view is required to state — were unreadable at EVERY viewport. See {@link
+ * CAPTION_LINES} for the table.
  */
 
 import { useMemo } from 'react';
@@ -49,15 +56,64 @@ const ROW_H = 20;
 const HEAD_H = 18;
 
 /**
- * The one-line box both cursor-dependent strings live in. `nowrap` is the load-bearing part: a
- * string that cannot wrap cannot change the panel's height, whatever the viewport does to its
- * width. The ellipsis is what makes that honest at a narrow viewport instead of clipping mid-word.
+ * The one-line box the window count lives in. `nowrap` is the load-bearing part: a string that
+ * cannot wrap cannot change the panel's height, whatever the viewport does to its width. The
+ * ellipsis is what makes that honest at a narrow viewport instead of clipping mid-word.
+ *
+ * The count is short enough for this to cost nothing — its longest form in the corpus is
+ * `the last 10 of 157 fetched`, measured complete at every width down to 800px.
  */
 const NOWRAP: React.CSSProperties = {
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   height: ROW_H,
+  lineHeight: `${ROW_H}px`,
+};
+
+/**
+ * How many lines the stall caption reserves.
+ *
+ * ⚠ **Three is MEASURED, and the measurement is why this box is not the one-liner above.** Step 7
+ * pinned both cursor-dependent strings to `nowrap` so the panel's height could not move with the
+ * cursor — correct about the height, and it made the content unreachable. The step-8 browser pass
+ * read every reason back at four viewports:
+ *
+ *  | reason           | sentence needs | 800px | 1180px | 1600px | 1920px |
+ *  | ---------------- | -------------- | ----- | ------ | ------ | ------ |
+ *  | `structural-int` | 1868px         | 38%   | 58%    | 60%    | 60%    |
+ *  | `war`            | 1362px         | 52%   | 80%    | 82%    | 82%    |
+ *  | `waw`            | 982px          | 72%   | 100%   | 100%   | 100%   |
+ *  | `operand`        | 874px          | 81%   | 100%   | 100%   | 100%   |
+ *
+ * The caption's box tops out at **1120px** because the page has a max width, so a wider monitor
+ * does not help: `structural-int` — the sentence step 3 REQUIRED this view to say out loud, and
+ * the largest term in every corpus row — was cut at "…with two of them that is a cei", losing the
+ * 0.5-IPC ceiling itself, and `war`, one of the two hazards the milestone exists to show, was cut
+ * at "…fires at the END of an instructio". Neither was ever complete at any viewport.
+ *
+ * Three lines holds the longest sentence down to a 623px box (1868 ÷ 3), i.e. past the narrowest
+ * viewport this shell is measured at. The height is still constant **by construction** — it is a
+ * fixed `height`, not a `min-height`, and the clamp hides any overflow — so the property step 7
+ * was protecting is kept while the words become readable. Re-measured after the change, every
+ * reason is complete at every width from 800px up; `structural-int` is the only one that ever
+ * reaches the third line, and it does so at 800px exactly. **Two lines would be arithmetic rather
+ * than a measurement** — it clips `structural-int` in any box under 934px, which is the 800px
+ * viewport.
+ */
+const CAPTION_LINES = 3;
+
+/**
+ * The stall caption's box: a fixed three-line reserve with the overflow clamped. `height` (not
+ * `min-height`) is what makes it immune to the cursor; the clamp is what makes it honest when a
+ * viewport is narrower than the measurement above.
+ */
+const CLAMP: React.CSSProperties = {
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: CAPTION_LINES,
+  overflow: 'hidden',
+  height: ROW_H * CAPTION_LINES,
   lineHeight: `${ROW_H}px`,
 };
 
@@ -252,7 +308,7 @@ function InstructionRow(props: {
 function StallCaption(props: { view: ScoreboardTablesView }): React.JSX.Element {
   const stall = primaryStall(props.view);
   return (
-    <p className="sb-stall-caption" style={{ ...captionStyle, ...NOWRAP, marginTop: '0.3rem' }}>
+    <p className="sb-stall-caption" style={{ ...captionStyle, ...CLAMP, marginTop: '0.3rem' }}>
       {stall === null ? (
         'no stall this cycle — everything that could advance did.'
       ) : (
