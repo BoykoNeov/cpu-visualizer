@@ -23,6 +23,7 @@ import {
   type Processor,
   type ProcessorConfig,
 } from '@cpu-viz/trace';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { shownInstruction } from './App';
@@ -464,11 +465,72 @@ describe('the scoreboard on the shared map (M15 step 5)', () => {
         `--cell-hue:${PHASE_COLORS[family]}`,
       );
     }
-    // And the sixth takes the accent, which is the fallback the fold's docblock promises rather
-    // than a guessed-at sixth hue (no new color token — the milestone's third UNCHANGED criterion).
-    expect(html).toContain(`--cell-hue:${T.accent}`);
-    // Non-vacuity: the accent could arrive from anywhere in the markup, so the RO cells must
+    // And the sixth takes the neutral gray, which is the fallback the fold's docblock promises
+    // rather than a guessed-at sixth hue (no new color token — the third UNCHANGED criterion).
+    expect(html).toContain(`--cell-hue:${T.ink3}`);
+    // Non-vacuity: the gray could arrive from anywhere in the markup, so the RO cells must
     // actually be there to have produced it, and their TEXT is what keeps them legible without one.
     expect(html).toContain('>RO<');
+  });
+
+  /**
+   * ⚠ **The no-hue fallback must not RESOLVE to a validated phase hue — the M15 step-5 regression,
+   * and the first check in this repo that reads a color VALUE rather than a token name.**
+   *
+   * Until step 5 the fallback was `T.accent`, and `--accent` holds the same literal as `--phase-if`
+   * in every theme (`#3987e5` dark and system, `#2a78d6` light). So a hueless family rendered in
+   * exactly the fetch hue — on the out-of-order model that is **82% of the map**, `IF` and `ROB#`
+   * in one blue, shipped since M9 and eyeballed past by every browser pass since.
+   *
+   * ⚠ **Comparing the TOKEN NAMES cannot catch this, and that is the whole reason it survived.**
+   * Everything in the TS layer is a `var()` string: `var(--accent)` is `!==` `var(--phase-if)` no
+   * matter what the two resolve to, so `PHASE_COLORS` and `T` can never disagree in a way a normal
+   * assertion sees. The values live in `styles.css` and only CSS resolves them.
+   *
+   * So this test does two things a token comparison cannot. It reads the fallback **off the
+   * rendered markup** rather than naming a token, so it binds to whatever the view actually uses;
+   * and it then resolves that token against `styles.css` and compares LITERALS, swept over all
+   * three theme blocks (`:root`, the `prefers-color-scheme: dark` media block, and the explicit
+   * `[data-theme='dark']` stamp).
+   *
+   * ⚠ That combination is what makes it a real net for **both** regressions, and the first draft
+   * had only the second half — it asserted about `--ink-3` directly, so re-pointing the view back
+   * at `T.accent` left it GREEN. Measured, not reasoned: the draft was run against the restored
+   * collision and did not redden. Read the value the view emits, never the value you expect it to.
+   */
+  it('the no-hue fallback resolves to a value NO phase hue uses, in every theme block', () => {
+    // The fallback AS RENDERED: the RO cells are the only ones without a validated hue, so
+    // whatever `--cell-hue` they carry IS the view's fallback, whatever the source calls it.
+    const html = renderMap(scoreboard('array-sum'), { cursor: 20 });
+    const roCell = /<[^>]*--cell-hue:([^;"]+)[^>]*>RO</.exec(html);
+    expect(roCell, 'no RO cell found — this test cannot see the fallback').not.toBeNull();
+    const fallbackVar = roCell![1]!.trim(); // e.g. `var(--ink-3)`
+    const token = /^var\((--[a-z0-9-]+)\)$/.exec(fallbackVar)?.[1];
+    expect(token, `the fallback is not a token reference: ${fallbackVar}`).toBeDefined();
+
+    const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
+    /** Every literal this custom property is assigned anywhere in the sheet. */
+    const valuesOf = (name: string): string[] =>
+      [...css.matchAll(new RegExp(`${name}\\s*:\\s*([^;]+);`, 'g'))].map((m) => m[1]!.trim());
+
+    // Non-vacuity FIRST: a typo'd name would make every set empty and the disjointness below
+    // trivially true — the exact shape of vacuity this repo has shipped before.
+    const phaseValues = Object.keys(PHASE_COLORS).flatMap((f) => valuesOf(`--phase-${f.toLowerCase()}`)); // prettier-ignore
+    expect(phaseValues.length, 'no phase values found — the token names are wrong').toBe(15); // 5 hues × 3 blocks
+    const fallbackValues = valuesOf(token!);
+    expect(fallbackValues.length, `no values found for ${token}`).toBeGreaterThan(0);
+
+    // The claim, and the one that reddens on BOTH failure modes: re-point the view at a colliding
+    // token, or edit a theme block until this token equals a phase hue, and this list is non-empty.
+    expect(
+      fallbackValues.filter((v) => phaseValues.includes(v)),
+      `${token} collides with a validated phase hue`,
+    ).toEqual([]);
+
+    // The counter-example, so the test states what it protects against rather than merely passing:
+    // `--accent` — the fallback until M15 step 5 — is NOT disjoint. It equals `--phase-if` in every
+    // block, which is the collision that shipped for two milestones.
+    const accentValues = valuesOf('--accent');
+    expect(accentValues.filter((v) => phaseValues.includes(v)).length).toBe(accentValues.length);
   });
 });

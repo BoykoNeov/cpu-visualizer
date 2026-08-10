@@ -43,7 +43,15 @@ take the same fallback** — `IF` and `ROB#` in one identical blue, on the surfa
 telling fetch from in-flight. It survived M9 step 7, the M9+M10 review, and every browser pass since.
 **A wall of one color does not look like a bug; it looks like a theme.** That is why nobody caught it
 by eye, and why the check to write is a computed-value COMPARISON between two families, not a
-screenshot. See [[m15-scoreboard-planned]].
+screenshot.
+
+✅ **Fixed 2026-08-10** by re-pointing the fallback at `--ink-3` (an existing neutral, so no new
+color token). ⚠ **The regression test FAILED TO FAIL on its first draft**, and that is the durable
+part: comparing the stylesheet's `--ink-3` values against the phase values is a real check but
+asserts about a TOKEN, so pointing the view back at the colliding one left it green. The shape that
+works reads the value **off the rendered markup**, resolves that token against the sheet, then
+compares literals. **Read the value the view EMITS, never the value you expect it to** — and always
+run the new test against the broken code, which is what caught this. See [[m15-scoreboard-planned]].
 
 **Why:** measured repeatedly, not assumed — e.g. hardcoding `predictTaken: false` in `App` leaves
 **all 775 tests green**; deleting `branchPrediction` from `loadInto` fails nothing. A control can be

@@ -93,9 +93,9 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   whose existence conditions match the prose.** Its `CONFIG_AXES` staleness finding recurred on the
   PREDICTION axis — read before trusting any axis-shaped sweep to enumerate the shell's product.
 - [M15 scoreboard — IN PROGRESS](m15-scoreboard-planned.md) — the seventh model, **steps 0–5 of
-  8 done**, with a per-step section. ⚠ **AN OPEN STOP needs a user decision: the pipeline map's
-  no-hue fallback is BYTE-IDENTICAL to `IF`'s — no test here can see a COLOR, and it has SHIPPED on
-  the out-of-order model since M9 (82% of that map).** Read before touching
+  8 done**, with a per-step section. ⚠ **The map's no-hue fallback was BYTE-IDENTICAL to `IF`'s and
+  had shipped on the out-of-order model since M9 (82% of that map) — FIXED at step 5 by re-pointing
+  at `--ink-3`; its regression test failed to fail on the first draft.** Read before touching
   `engineConfigFor` (protection again; gate on the FLAG, and a green suite is not the warrant),
   before a blanket knob skip in `engine-config.test.ts`, before choosing a picker position, **and
   before touching the step-7 view** (on a flush cycle the

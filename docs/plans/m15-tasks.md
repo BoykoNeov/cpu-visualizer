@@ -861,26 +861,47 @@ fetch-versus-in-flight distinction, i.e. the whole point of the surface — and 
 M9 step 7, the M9+M10 review, and every browser pass since. Nobody looked at the fallback because no
 model before this one made you ask.
 
-**Left as a STOP rather than fixed here, and the option set is THREE, not two:**
+**RESOLVED 2026-08-10 — the user chose option 3.** The option set was three, not two, and the
+third is the one this plan did not have when the finding was written:
 
 1. **A sixth validated phase hue.** Trips the "no new color token" criterion above and needs the
    dataviz palette validator re-run. The expensive one.
 2. **Leave it.** Defensible on the relief rule alone (every cell carries its own text), and it is
    what has shipped for two milestones. But it leaves the map's own docblock false where it says a
    hueless family "renders in the neutral accent rather than being guessed at".
-3. **Re-point the fallback at a genuinely neutral EXISTING token** — `T.ink3` (`--ink-3`), a warm
-   gray that is `#898781` in _all three_ theme blocks and already the color of the control captions.
-   This introduces **no new categorical color**, so it plausibly does not touch the pinned criterion
-   at all; it makes the docblock's word "neutral" true (`--accent` is the _interactive / brand_
-   accent, which is why it equals `--phase-if` — that is by design and will keep tracking it as the
-   theme evolves); and it says "this family has no hue" deliberately instead of by collision.
-   ⚠ **Its cost is that it repaints 82% of the out-of-order map gray**, a visible change to a shipped
-   model that needs its own browser eyeball — `.pmap-cell` uses `--cell-hue` for the border, a 16%
-   `color-mix` background and the inset underline, so a mid-gray must be checked for contrast against
-   `--surface` in both themes.
+3. ✅ **CHOSEN — re-point the fallback at a genuinely neutral EXISTING token**, `T.ink3`
+   (`--ink-3`), a warm gray that is `#898781` in _all three_ theme blocks and already the color of
+   the control captions. It introduces **no new categorical color**, so it does not touch the pinned
+   criterion and needs no palette re-validation — gray is the ABSENCE of a categorical assignment
+   rather than another category. It makes the docblock's word "neutral" true (`--accent` is the
+   _interactive / brand_ accent, which is why it equals `--phase-if`; that is by design and would
+   keep tracking it as the theme evolves), and it says "this family has no hue" deliberately instead
+   of by collision.
 
-Option 3 is the one this plan did not have when the finding was written, and it is why the STOP is
-worth bringing back to the user rather than deferring silently to step 7.
+**As built.** `PipelineMapView`'s new `NO_HUE` constant (one definition, used by both the cells and
+the legend — a swatch that disagreed with its cells would be worse than no legend), plus the
+`.pmap-cell` CSS default and the two docblocks that claimed "neutral". **This fixes the out-of-order
+model as a side effect**, which is the point: that map now draws blue `IF` against gray `ROB#nn` and
+its fetch-versus-in-flight distinction is visible for the first time since M9.
+
+⚠ **The regression test had to be rewritten after it failed to fail.** The first draft compared
+`--ink-3`'s values against the phase values straight out of `styles.css` — a real check, but it
+asserts about a TOKEN, so re-pointing the view back at `T.accent` left it **green** (measured, not
+reasoned). The fix: read the fallback **off the rendered markup** (`--cell-hue` on an `RO` cell),
+resolve THAT token against the stylesheet, then compare literals. It now reddens on both failure
+modes — a re-point, and a future theme edit that makes the fallback collide. **Read the value the
+view emits, never the value you expect it to.**
+
+**Verified in the browser, 26/26, because the chosen option's cost is a repaint of a shipped model**
+(`M:/claud_projects/temp/m15-step5/hue-verify.mjs`, both themes × both affected models): `IF` and the
+hueless family now resolve differently everywhere; the five validated hues are untouched; and the
+gray is legible as a cell, measured as contrast rather than eyeballed — **border 3.50:1 (light) and
+4.85:1 (dark)** against the panel, clearing the 3:1 non-text floor, with cell TEXT at 14.38:1 and
+12.44:1. ⚠ Two more rig bugs on the way, both the same lesson a third time: `color-mix()` resolves to
+Chrome's `color(srgb 0.91 ...)` form with 0..1 components, so a naive `\d+` parse yields NaN (and,
+worse, treating those floats as 0..255 would have produced a plausible WRONG ratio); and an OoO
+cell's text is `ROB#38` while its FAMILY is `ROB#`, so an equality match reports a missing cell
+against a map that is drawing fine.
 
 ### Smaller things worth carrying
 
@@ -930,8 +951,14 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
       legible by its cell text. That is the whole reason the stage names are `ID`/`WB` rather than
       `IS`/`WR`, and why the memory FU reports `MEM`: honest names that also avoid four new
       families.
-- [ ] **No new color token.** A genuinely new categorical color means a new token pair in both
-      theme blocks and a re-run of the dataviz palette validator — out of scope here.
+- [~] **No new color token.** A genuinely new categorical color means a new token pair in both
+  theme blocks and a re-run of the dataviz palette validator — out of scope here. **Holding as
+  of step 5, and it was TESTED rather than merely respected**: the hue finding above is exactly
+  the pressure this criterion exists to resist, and the fix took an EXISTING token (`--ink-3`)
+  instead of minting a sixth hue. No token was added, no value changed, and the palette
+  validator did not need re-running, because gray is the absence of a categorical assignment
+  rather than another category. Stays open (`~`) until step 7, which is the step that actually
+  draws something new.
 
 ## Acceptance criteria (mirror the spec §11 shape)
 

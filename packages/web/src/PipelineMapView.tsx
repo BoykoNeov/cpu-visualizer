@@ -20,8 +20,9 @@
  *
  * Like the fold, this carries NO model knowledge: hues come from each cell's stage FAMILY, so a
  * deeper pipeline or a superscalar lands with no change here (`IF1`/`IF2` both wear the fetch hue
- * and stay legible by their cell text). A family this palette has no hue for renders in the neutral
- * accent rather than being guessed at.
+ * and stay legible by their cell text). A family this palette has no hue for renders in a NEUTRAL
+ * GRAY rather than being guessed at — see {@link NO_HUE} for why that is `--ink-3` and not the
+ * accent it used to be.
  */
 
 import type { CycleTrace } from '@cpu-viz/trace';
@@ -64,6 +65,38 @@ const MARGIN = 90;
  * run" while showing a fraction of it, so the header states the window and the total.
  */
 const MAX_MAP_CYCLES = 400;
+
+/**
+ * The hue for a stage family {@link PHASE_COLORS} has no validated color for — a deliberate
+ * "this family has no hue", not a guess at one.
+ *
+ * ⚠ **This was `T.accent` until M15 step 5, and that was a COLLISION rather than a choice.**
+ * `--accent` is the interactive/brand accent, and `--phase-if` is the fetch hue; both hold the same
+ * literal in every theme (`#3987e5` dark and system, `#2a78d6` light). They are two independently
+ * declared tokens in `styles.css` that happen to agree — by design, since the brand color IS that
+ * blue — so nothing linked them and nothing would have caught a future divergence either. The
+ * consequence was that a hueless family rendered in **exactly the fetch hue**, and the docblock
+ * above claimed that was "neutral".
+ *
+ * **The cost had already shipped, on the out-of-order model, since M9.** An OoO `location` is
+ * uniformly `"ROB#tag"`, so {@link stageFamily} yields exactly two families and **82% of that map**
+ * (241 of 295 cells on `array-sum`) took the fallback: `IF` and `ROB#` in one identical blue, on the
+ * surface whose whole job is telling fetch from in-flight. It survived M9 step 7, the M9+M10 review
+ * and every browser pass since — a wall of one color does not look like a bug, it looks like a
+ * theme. The scoreboard's `RO` (M15) is what finally made someone ask.
+ *
+ * ⚠ **No test in this repo can see the collision**, which is why it is worth this much prose. Both
+ * this file and the fold hand out the STRING `var(--accent)`, which is `!==` the string
+ * `var(--phase-if)`; the two are equal only after CSS resolves them. Checking it means reading
+ * `getComputedStyle` in a real browser, in all THREE theme states (system / light / dark).
+ *
+ * `--ink-3` rather than a sixth categorical hue, chosen by the user 2026-08-10: it introduces **no
+ * new color token** (the milestone's pinned criterion) and needs no palette re-validation, because
+ * gray is the absence of a categorical assignment rather than another category. It is the same token
+ * the control captions use, and it is `#898781` in all three theme blocks — one value that reads on
+ * both surfaces.
+ */
+const NO_HUE = T.ink3;
 
 export function PipelineMap(props: {
   /** The WHOLE recording — the map is the first surface that folds the entire timeline rather than
@@ -276,7 +309,7 @@ export function PipelineMap(props: {
                     as well as the track count. */}
                 {row.cells.map((cell) => {
                   if (cell.cycle < view.lo || cell.cycle >= view.hi) return null;
-                  const hue = PHASE_COLORS[cell.family] ?? T.accent;
+                  const hue = PHASE_COLORS[cell.family] ?? NO_HUE;
                   const cls = [
                     'pmap-cell',
                     row.killedBy ? 'pmap-cell--killed' : '',
@@ -386,7 +419,10 @@ export function PipelineMap(props: {
                 borderRadius: 2,
                 verticalAlign: 'middle',
                 marginRight: 5,
-                background: PHASE_COLORS[f] ?? T.accent,
+                // Same fallback as the cells above, and it must STAY the same expression: the
+                // legend is the key to the grid, so a swatch that disagreed with its cells would be
+                // worse than no legend at all.
+                background: PHASE_COLORS[f] ?? NO_HUE,
               }}
             />
             {f}

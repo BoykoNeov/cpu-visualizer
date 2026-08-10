@@ -135,6 +135,14 @@ export interface PipelineMap {
  *
  * A family with no hue of its own (an OoO `"ROB#3"`, say) is not this plan's problem and is left to
  * render neutral rather than guessed at — the view falls back, it does not crash.
+ *
+ * ⚠ **"Renders neutral" was FALSE for two milestones, and the sentence above is what hid it.** The
+ * view's fallback was `T.accent`, which holds the same literal as `--phase-if` in every theme, so a
+ * hueless family rendered in exactly the fetch hue — on the out-of-order model that is 82% of the
+ * map, `IF` and `ROB#` in one blue. Fixed at M15 step 5 (`PipelineMapView`'s `NO_HUE`, now
+ * `--ink-3`). The lesson for THIS file: a fold that hands out a family name and trusts a
+ * downstream palette is describing a contract it cannot check, so **say which token, not which
+ * adjective** — "neutral" is a claim about a value that lives two layers away and only CSS resolves.
  */
 export function stageFamily(location: string): string {
   const withoutLane = location.split('.')[0] ?? location;

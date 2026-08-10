@@ -662,7 +662,11 @@ input[type='range'] {
 }
 
 .pmap-cell {
-  --cell-hue: var(--accent);
+  /* The declared default, only ever seen if the inline `--cell-hue` is missing. Kept in step with
+     `PipelineMapView`'s NO_HUE: it was `var(--accent)` until M15 step 5, when that turned out to
+     be byte-identical to `--phase-if` in every theme, so a hueless cell rendered in exactly the
+     fetch hue. Gray says "this family has no hue" instead of naming the wrong one. */
+  --cell-hue: var(--ink-3);
   /* Anchors the speculation marks to the cell's corner (see `.pmap-mark`). */
   position: relative;
   margin: 1px;
