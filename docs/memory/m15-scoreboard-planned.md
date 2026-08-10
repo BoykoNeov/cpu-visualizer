@@ -1,16 +1,16 @@
 ---
 name: m15-scoreboard-planned
-description: 'M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0, 1 AND 2 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and is proved against four stubs. Read before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion, so the ZERO-reachable-WAW claim was half wrong), before sizing a differential matrix for a model that honors no knob (ONE config, and the inert and refused reasons must be given SEPARATELY), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap).'
+description: "M15 — the scoreboard (CDC 6600), the seventh model: STEPS 0, 1, 2 AND 3 DONE 2026-08-10. The machine exists (IF/Issue/RO/EX|MEM/WB over 2 INT + 1 MEM), runs the whole corpus architecturally equal to the reference, and its schedule is now pinned by a timing matrix. Read before writing ANY closed-form timing table (run the accounting identity over the whole corpus BEFORE deriving rows — it found a missing term, E, the starved front end, that twelve hand-derived rows would have inherited; and never let the drain term be a residual — name the last writer, which on 4 of 12 programs is not the last instruction issued). Also read before quoting a mutation result as coverage (step 3 is a real net for WAW and NOTHING at corpus scale nets WAR), before assuming a hazard is a model's dominant cost (the 0.5-IPC turnaround ceiling dwarfs both hazards here), before keying a stall histogram by pc alone (two sites swap reason on consecutive cycles), before ANY model that wants a latency source (slowOpLatency is cluster-gated AND has no UI control), before assuming a plan-pinned stall vocabulary survives contact (step 1 forced a fifth reason, control, by INV-8), before defining pc on any out-of-order-completion model (the house rule moves pc BACKWARD here), before trusting a source-level corpus scan (it missed the la pseudo-expansion), before sizing a differential matrix for a model that honors no knob (ONE config), and before reading a red INV-8 cell as a state mismatch (here both arrive on the step cap)."
 metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T07:18:52.531Z
+  modified: 2026-08-10T08:14:31.811Z
 ---
 
-**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0, 1 AND 2 DONE — the machine exists,
-runs, and is pinned against the golden reference; ALL ELEVEN DECISIONS PINNED (decision 6 amended at
-step 1).** The user picked "scoreboarding"
+**Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0, 1, 2 AND 3 DONE — the machine exists,
+runs, is pinned against the golden reference, and its SCHEDULE is pinned too; ALL ELEVEN DECISIONS
+PINNED (decision 6 amended at step 1).** The user picked "scoreboarding"
 from a list of candidate architectures, then
 pinned the three that were genuinely theirs (the other eight follow from facts measured in the
 code): **a new engine package** not a knob on the OoO model; **engine + tables view, steps 0–8**,
@@ -19,8 +19,64 @@ lesson track stays M16; and **`/code-review ultra` over `89bb26e..HEAD` runs BEF
 read it as "the shell seam came back clean"; **step 5 still owes that seam its own scrutiny**. The
 reason that ordering was chosen is specific: step 5 edits the shared shell seam (`models.ts`,
 `engineConfigFor`, `useSimulator`), which a seventh model would otherwise be sitting on top of
-unreviewed. **Next: step 3, THE NET (the timing matrix)** — and step 1 already measured what step 3
-predicts about the WAW/WAR stubs (table below).
+unreviewed. **Next: step 4 (recorder / time-travel).**
+
+## Step 3 — THE NET (the timing matrix), and the bubble no event records (2026-08-10)
+
+`timing.test.ts`. **+20 tests**, repo **11253 → 11273**, 95 → 96 files, five gates green. Every
+hand-derived number balanced on the FIRST run.
+
+**The closed form is TWO identities, and the second one's shape is the reusable part.**
+`s_last = N + D + T + E` (issue accounting: retires + ID-stall cycles + taken transfers + starved
+cycles) and `cycles = s_last + tail`. ⚠ **`tail` must NOT be a residual** — `1 + max(w) − s_last` is
+definitionally whatever balances the equation and constrains nothing. Deriving it structurally means
+naming **which instruction writes last**, and that is itself a finding: **on 4 of 12 programs it is
+not the last instruction issued** (a load/store still in the memory unit while the `ecall` behind it
+has already written). Out-of-order completion showing up in the drain.
+
+⚠ **Run the accounting identity across the whole corpus BEFORE deriving any table.** It cost one
+probe and found a missing term — which twelve hand-derived rows would otherwise have inherited.
+The term is **`E`, the starved front end**: `B = 1 + T` assumes every taken transfer has a victim
+sitting in `IF` to charge its `'control'` stalls to, and **a transfer at the LAST WORD of `.text`
+has none** — fetch stopped when it issued, so those cycles pass with `IF` empty and emit **no event
+at all**. `call-return.s`'s `ret` is the corpus's only one (`E = 1`), and it is the same instruction
+that makes that program show **2 taken transfers against 1 `flush`**. **An identity that closes on
+11 of 12 programs has found a mechanism, not a rounding error.**
+
+⚠ **The dominant term is not a hazard.** A unit is held `s`…`w` and frees only at that clock edge,
+so **an integer unit turns around in 4 cycles and the memory unit in 7** — two integer units ⇒ a
+hard **0.5 IPC ceiling on integer code with no hazard present** (six independent `addi`s issue at
+1,2,5,6,9,10). It is the largest term in every corpus row and **dwarfs the two hazards the milestone
+exists to show**. Not a reason to reopen decision 4, but **step 7's view and M16's lesson must say
+it out loud** or the wall of `structural-int` reads as a verdict on the student's program.
+
+**The mutation check — predictions written first, both held. The ASYMMETRY is the headline:**
+
+| Stub | `processor.test.ts` | `differential.test.ts` | `timing.test.ts`                 |
+| ---- | ------------------- | ---------------------- | -------------------------------- |
+| WAW  | 3/46 red            | **14/14 GREEN**        | **7 of 20 red** (6 matrix cells) |
+| WAR  | 3/46 red            | **14/14 GREEN**        | **20/20 GREEN**                  |
+
+**Step 3 closes only HALF the hole it was written for.** The matrix is a genuine corpus-scale net
+for WAW where INV-8 is false — but **nothing at corpus scale nets WAR at all**; the whole file walks
+past a deleted WAR check without a flicker, and its only net in the repo stays `processor.test.ts`'s
+hand-built witness. ⚠ And the green WAW differential does **not** mean the corpus contains no WAW
+corruption risk: it stays green because every corpus WAW pair's younger writer also READS the older
+one's destination. **Step 6's program needs a WAW pair whose younger writer does not read that
+register**, or the re-run measures the same thing twice.
+
+Smaller: **key the stall histogram by `(pc, reason)`, never by pc** — six reasons here, and two
+sites swap reason on consecutive cycles (`branch-flavors`@28 control→structural-int,
+`array-sum`@40 structural-int→waw). **`'operand'` costs ZERO issue slots** (`RO` is non-blocking):
+it is in neither identity, reaching the count only via the last writer's own stalls — isolated on
+two programs differing in ONE register (same issue schedule, 5 operand stalls vs 0, tails 9 vs 6),
+and `array-sum` balances both identities while carrying 26 the closed form cannot see. **Loops
+converge fast but not always at iteration 1** — `array-sum`/`array-sum-twice` go 14 then 13 forever,
+and iteration 1's accumulate pays a different `operand` count (3 vs 5) because a WAW delayed its
+issue; derive iterations 1–3 and check before multiplying. ⚠ **Print only what the question needs**:
+the probe that ran the accounting identity also printed the by-pc histograms, contaminating the very
+step it was meant to unblock — so the docblock states provenance honestly (the warrant is the
+derivation beside each number, not the order of operations) rather than claiming a clean one.
 
 ## Step 2 — the differential, and why its matrix is ONE config (2026-08-10)
 

@@ -1,13 +1,15 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEPS 1–2 DONE, 2026-08-10 — the machine exists, runs the whole corpus, and is pinned
-against the golden reference.** `ScoreboardProcessor`
+**Status: STEPS 1–3 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
+the golden reference, and its SCHEDULE is now pinned too.** `ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
 stubbed code. Step 1 also found **three things this plan did not price** — see "Step 1, as built".
 Step 2 added the INV-8 differential at a deliberately **one-config** matrix and re-measured the
-control mutation against it. Next is step 3 (THE NET — the timing matrix), and note step 1 already
-measured what step 3 predicts about the WAW/WAR stubs. The `/code-review ultra` gate is
+control mutation against it. Step 3 added the timing matrix — two identities, a `(pc, reason)`
+histogram, four isolated coefficient programs, and the two-part mutation check, whose **asymmetry
+is the headline: the matrix is a real net for WAW and NOTHING at corpus scale nets WAR**. Next is
+step 4 (recorder / time-travel). The `/code-review ultra` gate is
 discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
@@ -190,7 +192,7 @@ lint` red on the two denied directions and green on the allowed one, verified by
       mutation check at step 3 — so a future reader does not mistake it for coverage of the
       mechanism. **Result: met — see "Step 2, as built" below.**
 
-- [ ] **3. THE NET — the timing matrix + a two-part mutation check.** This is the discriminator,
+- [x] **3. THE NET — the timing matrix + a two-part mutation check. ✅ DONE 2026-08-10.** This is the discriminator,
       and the plan leads with it for the reason M11 did: a machine that typechecks, passes INV-8,
       and renders on the map can still be **a 5-stage wearing scoreboard labels**, because
       out-of-order completion reaching the same final architectural state is exactly what INV-8
@@ -217,6 +219,8 @@ lint` red on the two denied directions and green on the allowed one, verified by
       both call it a false net — so **re-run both mutations at step 6**, where INV-8 reddening is
       the strongest available evidence. Acceptance: both mutations produce the predicted pattern at
       step 3 AND at step 6; the numbers are recorded in the plan, not just in the test.
+      **Result: met — see "Step 3, as built" below. The step-3 half of that prediction HELD for both
+      stubs; the step-6 re-run is still owed.**
 
 - [ ] **4. Recorder / time-travel.** Step, scrub, and `follow()` an id through a lifetime whose
       Write-Result is out of program order — the first model where "follow this instruction"
@@ -502,6 +506,112 @@ copy — the claim `deep-pipeline` and `out-of-order` both make without a mutati
 prefix rule (at halt the retire queue is drained by construction, so "completed prefix" and "whoever
 wrote last" **coincide on the final `pc`** — which is why step 1's `pc` mutation reddened through the
 drain guard instead).
+
+## Step 3, as built (2026-08-10)
+
+`packages/engine/scoreboard/src/timing.test.ts`. **+20 tests** (12 matrix cells + the corpus
+guard + the twin identity + 2 corpus-absence claims + 4 isolated-coefficient programs), repo
+**11253 → 11273**, 95 → 96 test files. `test`, `typecheck`, `lint`, `build`, `format:check` all
+green. Every hand-derived number balanced on the FIRST run of the suite.
+
+### The closed form is TWO identities, and `tail` is not a residual
+
+> **1. `s_last = N + D + T + E`** — the issue accounting.
+> **2. `cycles = s_last + tail`, `tail = 3 + L + ownStalls − issueOffset`** — the drain, charged to
+> a **named** last writer.
+
+The first draft made `tail := 1 + max(w) − s_last`, which is definitionally whatever balances the
+equation and constrains nothing. Fixing it meant hand-deriving **which instruction writes last**,
+and that turned out to be a finding rather than bookkeeping: **on 4 of 12 programs the last writer
+is NOT the last instruction issued** (`array-sum`/`strided-sum`'s `sw`, `byte-loads`'s `lbu`,
+`store-forward`'s `lw` — each still in the memory unit while the `ecall` behind it has already
+written). That is out-of-order completion showing up in the drain, and pinning the writer's
+identity is what makes the tail an assertion instead of arithmetic.
+
+### ⚠ The term the plan did not have: `E`, the STARVED front end
+
+Found by running identity 1 across all twelve programs **before deriving any table** — which is the
+transferable part of the method, since a missing accounting term would have been inherited by every
+one of twelve hand-derived rows. `B = 1 + T` (one IF-empty redirect cycle per taken transfer, plus
+the cycle-0 fill) is wrong on exactly one program: **`call-return.s`, off by 1.**
+
+**A taken transfer at the LAST WORD of `.text` has no victim to charge its `'control'` stalls to.**
+Fetch stopped the moment it issued (`pc + 4` is out of text), so the cycles Issue spends blocked
+pass with `IF` empty and emit **no event at all** — the same cycles, moved out of the stall
+histogram and into a term nothing records. `ret` is the corpus's only such instruction, `E = 1`,
+and it is also why that program shows **2 taken transfers against 1 `flush`**. Isolated on a
+three-instruction witness (`jal` / `ecall` / `jalr`) so the term is structural rather than a
+`call-return` quirk. **Generalizes: an accounting identity that closes on 11 of 12 programs has
+found a mechanism, not a rounding error.**
+
+### ⚠ The dominant term is not a hazard — the TURNAROUND CEILING
+
+A unit is held from `s` to `w` inclusive and frees only at that cycle's clock edge, so the next
+occupant issues at `w + 1`: **an integer unit turns around in 4 cycles, the memory unit in 7.** Two
+integer units ⇒ **a hard ceiling of 0.5 IPC on integer-only code with no hazard of any kind
+present** (isolated: six independent `addi`s issue at 1, 2, 5, 6, 9, 10 — 6 instructions, 14
+cycles). It is the largest term in every corpus row — `structural-int` runs 32 / 151 / 59 / 29 / 23
+on the biggest programs — and **it dwarfs the two hazards this milestone exists to show**. Not a
+bug and explicitly **not** a reason to reopen decision 4, but **step 7's view and M16's lesson must
+both say it out loud**, or a student reads the wall of `structural-int` as the scoreboard's verdict
+on their program rather than as the size of the machine.
+
+### The mutation check — predictions written down first, both held
+
+Two separate mutations, each applied to `processor.ts`, all **three** suites run under each, and
+reverted with `git checkout -- packages/engine/scoreboard/src/processor.ts` (one named file, on a
+committed tree — the reconciliation of this plan's "revert via `git checkout`" with
+`m13-width-planned`'s destroyed tree: the destroyed tree was a BROAD checkout over uncommitted work).
+
+| Stub                                           | `processor.test.ts` | `differential.test.ts` | `timing.test.ts` |
+| ---------------------------------------------- | ------------------- | ---------------------- | ---------------- |
+| **WAW** — `issueBlocker` never returns `'waw'` | 3 of 46 red         | **14/14 GREEN**        | **7 of 20 red**  |
+| **WAR** — `warBlocked` always returns `false`  | 3 of 46 red         | **14/14 GREEN**        | **20/20 GREEN**  |
+
+The WAW row is **6 matrix cells** — exactly the six programs carrying `'waw'` rows (`array-sum`,
+`strided-sum`, `array-sum-twice`, `byte-loads`, `store-forward`, `nested-loop`) — plus the
+operand-invisibility test, which reddens only through its `array-sum.s` coda and is not a seventh
+program.
+
+⚠ **The asymmetry IS the finding, and step 3 closes only HALF the hole it was written for.** For
+WAW this suite is a genuine corpus-scale net where INV-8 is a false one. For WAR **nothing at
+corpus scale nets it at all** — not INV-8, not this file — because no corpus program contains the
+hazard: the whole timing matrix walks past a deleted WAR check without a flicker, and its only net
+anywhere in the repo is `processor.test.ts`'s hand-built witness. Step 6 is what changes that.
+
+⚠ **And note what the green WAW differential does NOT say.** It stays green because every corpus
+WAW pair's younger writer also READS the older one's destination, so it waits on the producer
+regardless — timing moves, architecture does not. **Step 6's promoted program needs a WAW pair
+whose younger writer does not read that register**, or INV-8 will not redden at the re-run either
+and the two measurements will say the same thing twice.
+
+### Smaller things worth carrying
+
+- **The histogram is keyed by (pc, reason), not by pc.** Six reasons here against `deep-pipeline`'s
+  two, and **two sites genuinely swap reason on consecutive cycles**: `branch-flavors.s`@28
+  (`control` then `structural-int`) and `array-sum.s`@40 (`structural-int` then `waw`). A pc-keyed
+  histogram would hide a mechanism swap behind a matching total. Each reason's **stage** is asserted
+  with it, which is the corpus-scale form of "WAW stalls at Issue, WAR stalls at Write-Result".
+- **`'operand'` costs ZERO issue slots** — `RO` is non-blocking, so it appears in neither identity's
+  `D`; it reaches the cycle count only through the `ownStalls` term of whichever instruction writes
+  last. Isolated on two programs differing in ONE register: same issue schedule `[1,2,5,6,7]`, same
+  `N`/`D`/`T`, 5 operand stalls against 0, tails of 9 and 6. `array-sum.s` balances both identities
+  exactly while carrying **26** operand stalls the closed form cannot see.
+- **Loops converge fast, but not always at iteration 1** — derived at iterations 1, 2 and 3 and
+  checked before multiplying. `sum-loop` (period 7) and `slow-op-loop` (period 10) and
+  `nested-loop`'s inner loop (period 7) converge from iteration 1; **`array-sum` and
+  `array-sum-twice` do not** — iteration 1 → 2 is 14 and every later step is 13, and iteration 1
+  also pays a different `operand` count at the accumulate (3 vs 5) because a WAW stall delayed its
+  issue. Assuming uniformity would have been wrong by 4 stall cycles on two programs.
+- ⚠ **`array-sum.s` and `strided-sum.s` are ONE data point**, asserted as its own test (identical
+  cycle count and identical histogram). The second cross-check comes from the four isolated
+  coefficient programs, not from another corpus row.
+- **Provenance is stated honestly in the docblock rather than claimed.** The plan's step-1 baseline
+  table (totals) was already read, and the by-pc histograms were visible too, because the probe that
+  ran identity 1 printed more than identity 1 needed. So the table's warrant is the **derivation
+  printed beside each number**, not the order of operations — and `tail`, the last-writer
+  identities, `E`, and every per-iteration coefficient are genuinely new. **Print only what the
+  question needs; a probe that over-reports contaminates the step it was meant to unblock.**
 
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 

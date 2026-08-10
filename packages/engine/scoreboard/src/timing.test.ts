@@ -138,20 +138,30 @@ import {
  * suites were run under each stub rather than assumed from prose. **The predictions were written
  * down before the stubs were applied**, and both held:
  *
- * | Stub                                     | `processor.test.ts` | `differential.test.ts` | **this suite**    |
- * | ---------------------------------------- | ------------------- | ---------------------- | ----------------- |
- * | **WAW** — `issueBlocker` never returns `'waw'` | 3 red          | **12/12 GREEN**        | **6 of 12 RED**   |
- * | **WAR** — `warBlocked` always returns `false`  | 3 red          | **12/12 GREEN**        | **12/12 GREEN**   |
+ * | Stub                                           | `processor.test.ts` | `differential.test.ts` | **this suite**            |
+ * | ---------------------------------------------- | ------------------- | ---------------------- | ------------------------- |
+ * | **WAW** — `issueBlocker` never returns `'waw'` | 3 of 46 red         | **14/14 GREEN**        | **7 of 20 red**           |
+ * | **WAR** — `warBlocked` always returns `false`  | 3 of 46 red         | **14/14 GREEN**        | **20/20 GREEN**           |
+ *
+ * The WAW row is **6 matrix cells** — exactly the six programs carrying `'waw'` rows
+ * (`array-sum`, `strided-sum`, `array-sum-twice`, `byte-loads`, `store-forward`, `nested-loop`) —
+ * plus the operand-invisibility test, which reddens only through the `array-sum.s` coda at its end
+ * and is not a seventh program. Five of the six are the `la` pseudo-expansion's `lui`/`addi` pair;
+ * the sixth is `nested-loop.s`'s `li t1` / `addi t1` reset.
  *
  * **The asymmetry IS the finding, and step 3 only closes half the hole it was written for.** For
- * WAW this suite is a genuine corpus-scale net where INV-8 is a false one: the six reddened
- * programs are exactly the six carrying `'waw'` rows (`array-sum`, `strided-sum`,
- * `array-sum-twice`, `byte-loads`, `store-forward`, `nested-loop`), every one of them through the
- * `la` pseudo-expansion's `lui`/`addi` pair. For WAR **nothing at corpus scale nets it at all** —
- * not INV-8, not this file — because no corpus program contains the hazard; its only net anywhere
- * in the repo is `processor.test.ts`'s hand-built witness. That is precisely the gap step 6 exists
- * to close, and per the plan **both mutations must be re-run there**, where a corpus program
- * finally contains a real WAR pair and INV-8 itself is expected to redden.
+ * WAW this suite is a genuine corpus-scale net where INV-8 is a false one. For WAR **nothing at
+ * corpus scale nets it at all** — not INV-8, not this file — because no corpus program contains the
+ * hazard; its only net anywhere in the repo is `processor.test.ts`'s hand-built witness, and the
+ * whole machinery of this file walks past a deleted WAR check without a flicker. That is precisely
+ * the gap step 6 exists to close, and per the plan **both mutations must be re-run there**, where a
+ * corpus program finally contains a real WAR pair and INV-8 itself is expected to redden.
+ *
+ * ⚠ Note what the WAW row does NOT say. Under that stub `differential.test.ts` stays green because
+ * every corpus WAW pair's younger writer also READS the older one's destination, so it waits on the
+ * producer regardless and the architecture survives — timing moves, state does not. Step 6's
+ * promoted program must contain a WAW pair whose younger writer does **not** read that register, or
+ * INV-8 will not redden there either and the re-run will measure the same thing twice.
  */
 
 const PROGRAMS_DIR = fileURLToPath(new URL('../../../../content/programs/', import.meta.url));
