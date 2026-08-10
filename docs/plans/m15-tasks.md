@@ -691,7 +691,19 @@ Two things the table says that the counts alone do not:
   state is identical either way. So the conformance differential is a false net here for a third
   reason, on top of the two step 2 recorded.
 - **The casualty push has exactly TWO nets in the entire repo** — `processor.test.ts`'s one
-  hand-derived cycle and this file. Not INV-8, not the timing matrix.
+  hand-derived cycle and this file. Not INV-8, not the timing matrix. ⚠ **Repo scope here is
+  MEASURED, not inferred**: the first run of this mutation covered `packages/engine/scoreboard/src`
+  only, which is five files and cannot support a repo claim. Re-run over the FULL suite —
+  **3 red out of 11294, in exactly those 2 files.** A package-scoped run never licenses a
+  repo-scoped sentence.
+
+⚠ **What the mutation table does NOT cover: the navigation block itself.** Both stubs live in
+`processor.ts`, and neither perturbs the seven `load → run → back → scrub` tests — which are the
+step-4 acceptance criterion verbatim. They passed on the first run and have no broken-code check
+behind them, because the only mutation that would redden them lives in
+`packages/trace/src/recorder.ts`, the file this step's whole claim is that it does not touch. Stated
+rather than left for the table to imply: **the navigation spine is proof by construction (the
+recorder is model-agnostic and already netted by six sibling suites), not by mutation.**
 
 ⚠ **A prediction that was WRONG, and it is the transferable part.** Mutation B was predicted to
 redden **three** recorder tests, the third being the corpus claim "flushed instructions exist and

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 7489daaf-c3b1-4f89-b900-ae6b7dae256a
-  modified: 2026-08-10T09:14:30.770Z
+  modified: 2026-08-10T09:18:58.940Z
 ---
 
 **Plan: `docs/plans/m15-tasks.md`. Status 2026-08-10: STEPS 0–4 DONE — the machine exists,
@@ -59,7 +59,18 @@ REPORTS** (step 3 already spent WAW/WAR):
 
 **INV-8 is blind to BOTH** (reporting concerns, identical architectural state) — a third reason it
 is a false net here, on top of step 2's two. And **the casualty push has exactly TWO nets in the
-whole repo**: `processor.test.ts`'s one hand-derived cycle, and this file.
+whole repo**: `processor.test.ts`'s one hand-derived cycle, and this file. ⚠ **That repo scope is
+MEASURED** — the first run covered the five files of `packages/engine/scoreboard/src` and could not
+license a repo claim; re-run over the FULL suite it is **3 red of 11294, in exactly those 2 files**.
+**A package-scoped run never licenses a repo-scoped sentence.**
+
+⚠ **What the mutation table does NOT cover: the navigation block.** Both stubs are in
+`processor.ts`; neither perturbs the seven `load → run → back → scrub` tests, which ARE the step-4
+acceptance criterion. The only mutation that would redden them lives in
+`packages/trace/src/recorder.ts` — the file this step's whole claim is that it does not touch. So
+the navigation spine is **proof by construction** (a model-agnostic recorder already netted by six
+sibling suites), not by mutation. **Say which parts of a suite a mutation table covers, or the table
+implies the whole file was exercised.**
 
 ⚠ **A prediction that was WRONG, and it is the transferable part.** Mutation B was predicted to
 redden three recorder tests; the third — the corpus claim "flushed instructions exist and never
