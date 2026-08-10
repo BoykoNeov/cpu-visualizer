@@ -1,9 +1,13 @@
 # Milestone 15 — the scoreboard (CDC 6600)
 
-**Status: STEPS 0–7 DONE, 2026-08-10 — the machine exists, runs the whole corpus, is pinned against
-the golden reference, its SCHEDULE is pinned too, it is drivable through the recorder, it is
-SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR program that makes INV-8 a real net on it,
-and IT HAS ITS CANONICAL PICTURE — the three status tables. Only step 8, the browser pass, is left.**
+**Status: ✅ COMPLETE — ALL NINE STEPS (0–8) DONE, 2026-08-10.** The machine exists, runs the whole
+corpus, is pinned against the golden reference, its SCHEDULE is pinned too, it is drivable through
+the recorder, it is SELECTABLE IN THE BROWSER, the corpus carries the WAW/WAR program that makes
+INV-8 a real net on it, IT HAS ITS CANONICAL PICTURE — the three status tables — and **that picture
+has been looked at in a real browser: 103 checks, all green after two defects only the browser could
+see** (the stall caption was cut at every viewport, and the "coming soon" placeholder came back on
+an empty editor). Every acceptance criterion is ticked except the one measured VACUOUS at step 6 and
+replaced. The lesson track is M16.
 `ScoreboardProcessor`
 walks `IF ID RO EX|MEM WB` over two integer units and one blocking memory unit, with the three
 classic status tables in `micro`; 46 hand-derived tests, all four of its mechanisms proved against
@@ -27,8 +31,11 @@ Step 7 shipped the three status tables, and its one departure from the seeded sh
 a measurement: the instruction table **accumulates**, because the live `micro` window shows this
 model's out-of-order completion on **one cycle of thirteen programs**. Its mutation check found two
 tests that were green under the very stubs they exist to catch — including the one trap step 4 wrote
-down specifically for step 7. Next is step 8 (the browser pass). The `/code-review ultra` gate is
-discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
+down specifically for step 7. **Step 8 looked at all of it in a real browser and found two defects
+no green suite could see: the stall caption was TRUNCATED at every viewport — including the sentence
+step 3 required the view to state — and the "coming soon" placeholder came back on an empty editor,
+the one route to it left anywhere in the product.** Both fixed and re-measured live. The
+`/code-review ultra` gate is discharged (see Ordering), and the one STOP step 0 raised — two FUs cannot produce a WAR stall — was
 resolved the same day by the user amending decision 4 to **2 integer + 1 memory** (step 1-PRE). The user chose the architecture ("scoreboarding", from a list
 of candidates), then pinned the three that were genuinely theirs: **a new engine package** (not a
 knob on the out-of-order model), **engine + tables view, steps 0–8** (lesson track stays M16), and
@@ -292,7 +299,7 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       drawing `micro` straight through, because the live window is nearly blind to this model's
       whole distinguishing feature.**
 
-- [ ] **8. Browser pass over the SHIPPED bundle.** `vite preview`, not the dev server. Read every
+- [x] **8. Browser pass over the SHIPPED bundle — DONE 2026-08-10.** `vite preview`, not the dev server. Read every
       hand-derived number live. Per `docs/memory/browser-is-the-only-net.md`, this is where the
       milestone's real defects are — 10 of 11 view steps in this repo shipped a defect only the
       browser caught. Sweep Chrome with `M:\claud_projects\temp\rig-sweep.ps1` at the START of the
@@ -325,6 +332,17 @@ preview` bundle rather than the dev server, which is strictly stronger evidence 
       for a future model with neither picture. Decide at step 8 whether an empty editor showing it
       is acceptable, or whether the predicate should key on the MODEL rather than the recording —
       which would be the shell learning a model by name, so it is a real trade rather than a fix.
+
+      **Result: met — see "Step 8, as built" below. 103 checks, all green after TWO real defects
+      were found and fixed, and neither was on this list's own list of worries.** The three
+      width-sensitive surfaces all held (the grid cannot reflow — it is fixed at eight columns; the
+      eleven-column table fits at 800px; no register cell overflows). What broke was the third
+      bullet's own premise, harder than it guessed: the caption is not merely cut at a narrow
+      viewport, it is cut at **every** viewport, because its box tops out at 1120px against a
+      sentence needing 1868 — so `structural-int` and `war` were never readable in full anywhere.
+      And the empty-recording question resolved to a THIRD option the row did not have: not "key on
+      the model by name", but **let the model DECLARE that its picture is a panel** (`datapath:
+      'panel'`), which names nothing and is true in every state.
 
 ## Step 0, as built (2026-08-10)
 
@@ -1244,6 +1262,147 @@ vacuous exactly when the collection is what broke.**
 - **The panel gate is `micro.registerResult`**, unique to this model across all seven (verified by
   grep, and swept as a test against the other six recordings) — so the shell never names the model.
 
+## Step 8, as built (2026-08-10) — THE MILESTONE CLOSES
+
+The browser pass over the shipped `vite preview` bundle. Rig at `M:/claud_projects/temp/m15-step8/`
+(`probe.config.ts` + `dump.probe.test.ts`, the pre-browser dump; `eyeball.mjs`, **103 checks**).
+**All 103 green, after two real defects were found and fixed** — the record holds: **11 of 12 view
+steps in this repo have now shipped a defect only the browser could see.** Repo **11872 passing /
+1 skipped**, 99 test files, five gates green. No test count moved: both fixes rewrote guards in
+place rather than adding them.
+
+**The cursors were MEASURED before the browser started, not guessed.** The fold is pure, so
+`dump.probe.test.ts` runs it over all thirteen programs at every cursor and reports the crowded
+state, the longest string in each moving line box, the reorder cursor and the hazard cursors. That
+is what makes `register-reuse@25`, `array-sum-twice@226` and `add@3` evidence rather than
+convenience. It also corrected a guess this plan carried: the accumulated total tops out at **157**,
+but the longest window note is `the last 10 of 105 fetched`, because the note's LENGTH is what
+matters and 105 and 157 are the same width.
+
+### ⚠ FINDING 1 — the stall caption was CUT at every viewport, and the two worst were the two that matter
+
+Step 7 pinned both cursor-dependent strings to an unwrappable line box so the panel's height could
+not move with the cursor. That was right about the height **and it threw the words away.** Measured
+per reason at four widths, before the fix:
+
+| reason           | sentence needs | 800px | 1180px | 1600px | 1920px |
+| ---------------- | -------------- | ----- | ------ | ------ | ------ |
+| `structural-int` | 1868px         | 38%   | 58%    | 60%    | 60%    |
+| `war`            | 1362px         | 52%   | 80%    | 82%    | 82%    |
+| `waw`            | 982px          | 72%   | 100%   | 100%   | 100%   |
+| `operand`        | 874px          | 81%   | 100%   | 100%   | 100%   |
+
+**A wider monitor does not help** — the caption's box tops out at **1120px** because the page has a
+max width, which is why 1600 and 1920 read the same. The two that are never complete at ANY viewport
+are `structural-int`, the sentence **step 3 required this view to state**, cut at
+"…with two of them that is a cei" — losing the 0.5-IPC ceiling itself — and `war`, one of the two
+hazards the milestone exists to show, cut at "…fires at the END of an instructio".
+
+**Fixed with a fixed THREE-line reserve, clamped.** Three is measured: the longest sentence fits
+down to a **623px** box, and two lines would still clip `structural-int` in any box under 934px —
+which is the 800px viewport. `height`, never `min-height`, so the property step 7 was protecting
+survives: re-measured after the change the panel's height is **identical across five cursors at
+every width from 800 to 1600**, and every reason is complete at all of them (`structural-int`
+reaches the third line only at 800px). Cost: **+40px** of panel height.
+
+⚠ **The transferable shape: "pin it to one line" does not stop a string being cursor-dependent, it
+makes it HIDE.** The guard was green throughout, because it asserted `nowrap` — _the very property
+that was discarding the text._ Rewritten to pin the fixed height, the clamp, and the ABSENCE of
+`min-height`, and confirmed red against the old one-line box first.
+
+### ⚠ FINDING 2 — the placeholder's last false promise, and what "keep it reachable" was actually buying
+
+The plan flagged the empty-recording state as a **decision**, and the measurement is what decided
+it. Swept live over all seven models:
+
+| state                                        | what shows                                                         |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| any model, program loaded                    | its own diagram, or the three tables — **no placeholder anywhere** |
+| any model, assembly error                    | an error box replaces the area — no placeholder                    |
+| **scoreboard only, empty-but-valid program** | **"Scoreboard datapath — coming soon"**                            |
+
+So the trace-fact gate was keeping reachable **exactly the sentence step 7 removed, on the one model
+it was removed from**, one cleared editor away — and nothing else, because the other six models all
+draw a real diagram. **The user chose to let the model declare it:** `DatapathKind` gains `'panel'`
+("my canonical picture is deliberately not a wire diagram"), `'none'` keeps its old meaning (a
+diagram belongs here and is not built yet), and the placeholder stays reachable for that case.
+Neither condition names a model, which is the property worth preserving.
+
+⚠ **The reachability test now constructs a model at `'none'`**, because no shipped model sits there
+any more — pointing it at the scoreboard would have made it a claim about the scoreboard again,
+which is precisely what changed — and it **asserts that premise** (`MODELS.filter(datapath ===
+'none')` is empty) instead of stating it in prose. The suppression test asserts BOTH values of the
+trace flag; the `false` half is the whole finding.
+
+### The width work was two-dimensional, and the source predicted different failures than the plan
+
+The plan asked for "a STATED narrow viewport". That under-specifies the class: the predictor panel's
+jitter lived **between** 900 and 1180px and moved with the CURSOR at a fixed width. So the sweep is
+six widths × five cursors, reading `getBoundingClientRect().height` at each — and the **panel's own
+`clientWidth`**, not the viewport, since the tables sit in a column narrower than the window (1166px
+of 1600).
+
+Each of the three surfaces step 7 flagged failed differently from the guess, and the SOURCE said so:
+
+- **The register grid cannot become five rows** — it is `repeat(8, minmax(0,1fr))`, fixed. Its real
+  risk was `.sb-reg-cell` carrying `nowrap` with no `overflow:hidden`. Measured: **0 overflowing
+  cells and 0 overlapping pairs at every width.**
+- **The eleven-column unit table** is `width:100%` with no `table-layout:fixed`, so it would push
+  its container rather than scroll inside it. Measured: **fits at every width**, 705px at the
+  narrowest.
+- **The two moving strings** fail by truncation, not by wrapping — which is Finding 1.
+
+**The six-chip legend was re-measured, not inherited**: one visual row at every width from 800 up,
+six distinct swatches, and `RO` **no longer identical to `IF`** (step 5's fix, re-confirmed live).
+
+The panel is 17px taller at 800px than at 900 and above, because the FU heading's STATIC sentence
+wraps there. Constant across cursors at every width, which is the claim — a height that moves with
+the viewport is a layout, a height that moves with the cursor is jitter.
+
+### What only the browser could check at all
+
+- **The follow click has no headless net.** Clicking an instruction row lights the SAME instruction
+  in the unit table AND in the register cell that unit has claimed (`INT0` → `t2`), exactly one row
+  at a time, and clicking again clears all three. Zero headless coverage before this.
+- **Three theme states, not two.** Driven through the real toggle: auto / light / dark. The one
+  semantic hue step 7 chose is distinct from the non-hazard ink in all three, and the hazard word
+  clears the 4.5:1 text floor — **7.74:1 auto and dark, 4.74:1 light**.
+- **No console errors or exceptions** across the whole pass.
+
+### ⚠ A pre-existing defect this pass MEASURED rather than inherited or blamed
+
+At an 800px viewport **the document scrolls horizontally — on every model, including single-cycle**,
+where no scoreboard code runs (widest element there: a 936px table). Nothing inside the scoreboard
+panel is ever a culprit, asserted separately at every width. **Not M15's, and the cross-model probe
+is what licenses saying so** — a rig that reports "pre-existing" without measuring a model that
+predates the work is making an excuse, not a finding.
+
+### Three rig bugs, and the third is the one worth carrying
+
+**Fix the rig and re-run — never explain a failure away** (step 5's rule, third milestone running).
+
+1. `__cycles()` reads `max + 1`, which IS the cycle count; the first draft added a pre-run frame on
+   top and reported a defect against a correct app.
+2. The legend was asserted as a hard-coded SEQUENCE. It is in **first-seen order**, a property of
+   the recording — so the check is set equality plus "IF is first".
+3. ⚠ **The truncation metric went VACUOUS the moment the fix landed, and it reported 100%.** Inside
+   `display:-webkit-box`, `scrollWidth` EQUALS `clientWidth` by construction, so "sentence needs
+   705px, box 705px" is exactly what a fully hidden sentence reports too. A clamped box hides text
+   **vertically**. Two further traps sit behind it: `scrollHeight` is never LESS than `clientHeight`,
+   so it cannot say how tall the text WANTS to be inside a box with room to spare (the first draft
+   recorded "wants 3 lines" for a one-line sentence — the honest measure is an unclamped clone at
+   the same width); and a whole column of 100%s is worth nothing without a **non-vacuity probe**, so
+   the rig now squeezes the live caption back to one line and confirms it reads as clipped, then
+   restores it. **A metric that measured the defect can stop measuring anything the moment you fix
+   it.**
+
+### Decision 9's follow-up condition, answered
+
+Decision 9 pinned "no wire diagram this milestone; it is a follow-up **if the tables read as a
+spreadsheet**". Looked at, at 1600 and at 800: they read as the textbook's three tables, with the
+pipeline map directly above supplying the cycle-by-cycle picture the tables deliberately do not try
+to be. **The condition is not triggered** — no wire diagram is owed.
+
 ## The falsifiable UNCHANGED criteria (the INV-3 back door)
 
 Reaching for either of these is a **STOP** and a decision to bring back to review, not a change to
@@ -1309,8 +1468,11 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 - [x] **Forwarding on vs. off produces a byte-identical trace ✅ (step 1)** — and so does every
       branch-prediction scheme and the whole out-of-order cluster. This machine has no bypass network
       at all, so the inertness contract is asserted as whole-trace equality, not a comment.
-- [~] All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check`. **Green at every
-  step so far (11872 passing / 1 skipped at step 7); stays open until step 8.**
+- [x] **All suites green: `npm test`, `typecheck`, `lint`, `build`, `format:check` ✅ (step 8).**
+      Green at every step, and green again after step 8's two fixes: **11872 passing / 1 skipped
+      across 99 files**. Neither fix moved the count — both rewrote a guard in place rather than
+      adding one, and both were confirmed RED against the code they replaced before being confirmed
+      green against the fix.
 - [x] **Both falsifiable UNCHANGED criteria paid out ✅, and the third (no new color token) with
       them.** The trace schema needed no edit (step 1) and `pipeline-map.ts` needed none (step 5,
       in the strong form — both the fold and the renderer untouched). ⚠ **One STOP was raised and
@@ -1321,19 +1483,19 @@ make quietly. Both are predictions this plan is willing to be wrong about in pub
 
 ## Decisions to pin (seeded with recommendations — review is a diff, not a brainstorm)
 
-| #   | Decision                                         | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Pinned answer                                                                                                                                                               |
-| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | ⛔ New package vs. `renaming: false` knob on OoO | **New package** — the knob draws a machine that never existed (INV-5); see headline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **PINNED 2026-08-10: new package.**                                                                                                                                         |
-| 2   | ⛔ Stage set and names                           | `IF ID RO EX/MEM WB`, where ID **is** Issue and WB **is** Write-Result — honest, and only `RO` is a new hue family                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **PINNED 2026-08-10** (follows from the plan; user pinned the build shape).                                                                                                 |
-| 2b  | ⛔ Is `RO` shared or per-FU?                     | **Per-FU and non-blocking**; only Issue is shared and in-order. A shared blocking `RO` makes **WAR unreachable** and deletes half the milestone's subject                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | **PINNED 2026-08-10** — forced by correctness, not taste.                                                                                                                   |
-| 3   | ⛔ Does the machine speculate?                   | **No predictor: `branchPrediction` is IGNORED** and a taken branch simply flushes the front end. The CDC 6600 had no dynamic prediction, and adding one puts speculative recovery on a machine with no ROB — the hardest thing in the milestone, for a lesson that is not this milestone's                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **PINNED 2026-08-10: no predictor.**                                                                                                                                        |
-| 4   | ⛔ Where latency comes from                      | **Model-intrinsic heterogeneous FU latencies, NOT `slowOpLatency`.** **THREE FUs: TWO integer (1 cycle each, both report `EX`) and one memory (multi-cycle, reports `MEM`).** ⚠ Amended 2026-08-10 after step 0 — the original "two FUs to start" makes WAR **unreachable**, since the only multi-cycle latency is the memory FU, so anything parked at `RO` waits on a load that owns the single memory port while the waiter owns the only integer FU, leaving no FU for a younger writer (see step 1-PRE for the derivation and the witness program). ⚠ `slowOpLatency` is gated by `configurableOutOfOrder`, which also gates the issue-order toggle and the ROB-size control (`App.tsx:387-392`) — so honoring it means either offering a ROB size on a machine with no ROB, or splitting a capability flag across seven models. And it has **no UI control at all** (`useSimulator.ts:356-361`), reset to 1 on every free-play load, so a model depending on it shows nothing until M16 authors a lesson. Intrinsic latency dodges all of it, follows multi-cycle's precedent, and needs no capability flag | **PINNED 2026-08-10: intrinsic latencies** — forced by the shell finding. **FU count AMENDED 2026-08-10 by the user to 2 integer + 1 memory** — forced by WAR reachability. |
-| 5   | Which knobs are REFUSED vs. IGNORED              | **Refuse** `cache` and `issueWidth > 1` (throw at `reset()`, clamp in `engineConfigFor` — the `deep-pipeline` precedent; note it clamps `cache` only today). **Ignore** `forwarding`, `branchPrediction`, `outOfOrderIssue`, `robSize`, `slowOpLatency` (the M4/M7 inertness contract, asserted by a byte-identical-trace test). Capability flags: `configurableOutOfOrder: false` is then honest, since none of the cluster is honored                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10.**                                                                                                                                                      |
+| #   | Decision                                         | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Pinned answer                                                                                                                                                                       |
+| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | ⛔ New package vs. `renaming: false` knob on OoO | **New package** — the knob draws a machine that never existed (INV-5); see headline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **PINNED 2026-08-10: new package.**                                                                                                                                                 |
+| 2   | ⛔ Stage set and names                           | `IF ID RO EX/MEM WB`, where ID **is** Issue and WB **is** Write-Result — honest, and only `RO` is a new hue family                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | **PINNED 2026-08-10** (follows from the plan; user pinned the build shape).                                                                                                         |
+| 2b  | ⛔ Is `RO` shared or per-FU?                     | **Per-FU and non-blocking**; only Issue is shared and in-order. A shared blocking `RO` makes **WAR unreachable** and deletes half the milestone's subject                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | **PINNED 2026-08-10** — forced by correctness, not taste.                                                                                                                           |
+| 3   | ⛔ Does the machine speculate?                   | **No predictor: `branchPrediction` is IGNORED** and a taken branch simply flushes the front end. The CDC 6600 had no dynamic prediction, and adding one puts speculative recovery on a machine with no ROB — the hardest thing in the milestone, for a lesson that is not this milestone's                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | **PINNED 2026-08-10: no predictor.**                                                                                                                                                |
+| 4   | ⛔ Where latency comes from                      | **Model-intrinsic heterogeneous FU latencies, NOT `slowOpLatency`.** **THREE FUs: TWO integer (1 cycle each, both report `EX`) and one memory (multi-cycle, reports `MEM`).** ⚠ Amended 2026-08-10 after step 0 — the original "two FUs to start" makes WAR **unreachable**, since the only multi-cycle latency is the memory FU, so anything parked at `RO` waits on a load that owns the single memory port while the waiter owns the only integer FU, leaving no FU for a younger writer (see step 1-PRE for the derivation and the witness program). ⚠ `slowOpLatency` is gated by `configurableOutOfOrder`, which also gates the issue-order toggle and the ROB-size control (`App.tsx:387-392`) — so honoring it means either offering a ROB size on a machine with no ROB, or splitting a capability flag across seven models. And it has **no UI control at all** (`useSimulator.ts:356-361`), reset to 1 on every free-play load, so a model depending on it shows nothing until M16 authors a lesson. Intrinsic latency dodges all of it, follows multi-cycle's precedent, and needs no capability flag | **PINNED 2026-08-10: intrinsic latencies** — forced by the shell finding. **FU count AMENDED 2026-08-10 by the user to 2 integer + 1 memory** — forced by WAR reachability.         |
+| 5   | Which knobs are REFUSED vs. IGNORED              | **Refuse** `cache` and `issueWidth > 1` (throw at `reset()`, clamp in `engineConfigFor` — the `deep-pipeline` precedent; note it clamps `cache` only today). **Ignore** `forwarding`, `branchPrediction`, `outOfOrderIssue`, `robSize`, `slowOpLatency` (the M4/M7 inertness contract, asserted by a byte-identical-trace test). Capability flags: `configurableOutOfOrder: false` is then honest, since none of the cluster is honored                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10.**                                                                                                                                                              |
 | 6   | Stall reason vocabulary                          | **PINNED 2026-08-10; AMENDED at step 1 to SIX reasons** — `'waw'`, `'war'`, `'operand'`, **`'structural-int'`**, **`'structural-mem'`**, **`'control'`**. The structural split is decision 4's own amendment note cashed in: unsplit, it reads false beside a table that visibly shows a free unit. `'control'` is FORCED by INV-8, not chosen — Issue cannot pass an unresolved transfer on a machine with no ROB, and stubbing the block reddens INV-8 on two corpus programs. `'raw'` still untouchable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 7   | Load/store handling                              | **The memory FU of decision 4 — blocking, single memory port**, reporting `location: 'MEM'` for every cycle it occupies (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package). Its multi-cycle latency is what makes WAW/WAR reachable on ordinary programs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **PINNED 2026-08-10.**                                                                                                                                                      |
-| 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | **PINNED 2026-08-10: last.**                                                                                                                                                |
-| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet. ⚠ **Step 7 cashed this in and it cost one thing the row did not price:** with no diagram coming, App's "coming soon" placeholder was left promising one, beside the panel that IS the picture — so step 7 also suppresses the datapath SLOT for a model whose canonical picture is a panel (`showsDatapathSlot`). The follow-up condition is now genuinely testable at step 8, since the tables exist to be read                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | **PINNED 2026-08-10: no wire diagram** in this milestone. **Realized at step 7**, placeholder included.                                                                     |
-| 10  | Scope: this model alone? Lesson track?           | **This model alone; lesson track is a separate milestone (M16)** — the M9→M10 / M11→M12 / M13→M14 shape. The user picked the architecture, not the scope, so this row is genuinely open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10 by the user: engine + tables view (steps 0-8); lesson track is M16.**                                                                                   |
+| 7   | Load/store handling                              | **The memory FU of decision 4 — blocking, single memory port**, reporting `location: 'MEM'` for every cycle it occupies (no MSHRs, no non-blocking LSU — that is M9's machinery and pulling it in doubles the package). Its multi-cycle latency is what makes WAW/WAR reachable on ordinary programs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | **PINNED 2026-08-10.**                                                                                                                                                              |
+| 8   | Picker position                                  | Between `out-of-order` and any future model, i.e. **last**, with a description that names it as the predecessor of the model above it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | **PINNED 2026-08-10: last.**                                                                                                                                                        |
+| 9   | Does a wire-level datapath ship too?             | **No** — step 7 ships the three tables; the wire diagram is a follow-up if the browser pass says the tables read as a spreadsheet. ⚠ **Step 7 cashed this in and it cost one thing the row did not price:** with no diagram coming, App's "coming soon" placeholder was left promising one, beside the panel that IS the picture — so step 7 also suppresses the datapath SLOT for a model whose canonical picture is a panel (`showsDatapathSlot`). ⚠ **Step 8 answered the follow-up condition and closed the slot properly.** Looked at in the browser at 1600 and at 800, the tables read as the textbook's three tables rather than as a spreadsheet, so **no wire diagram is owed**. And the step-7 suppression was measured INCOMPLETE: it rested on a trace fact, so an empty editor put the placeholder straight back — the only route to it left anywhere in the product. The model now DECLARES `datapath: 'panel'`, true with or without a recording, and still naming no model                                                                                                                       | **PINNED 2026-08-10: no wire diagram** in this milestone. **Realized at step 7**; **follow-up condition answered NO at step 8**, and the slot closed via a declared `'panel'` kind. |
+| 10  | Scope: this model alone? Lesson track?           | **This model alone; lesson track is a separate milestone (M16)** — the M9→M10 / M11→M12 / M13→M14 shape. The user picked the architecture, not the scope, so this row is genuinely open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | **PINNED 2026-08-10 by the user: engine + tables view (steps 0-8); lesson track is M16.**                                                                                           |
 
 ## Ordering — the ultra review ran first ✅ DISCHARGED
 
