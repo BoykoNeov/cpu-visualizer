@@ -1175,6 +1175,8 @@ heading row and wrapped. So both cursor-dependent strings here — the stall cap
 count — are pinned to line boxes that **cannot wrap**, and both are guarded in
 `layout-stability.test.tsx` along with a byte-identical heading row.
 
+⚠ **SUPERSEDED IN PART AT STEP 8.** The claim about the ROWS holds, and so does the window count's one-line box. **The CAPTION does not**: pinned to one line it was cut at EVERY viewport — its box tops out at 1120px against a sentence needing 1868 — so it now carries a fixed **three-line** reserve with the overflow clamped. Still constant by construction (a fixed `height`, never a `min-height`), just no longer one line.
+
 **Register-result draws all thirty-two rather than the claimed subset** (the rename map's shape one
 model over), for two reasons pointing the same way: it is the textbook's own geometry, and the
 claimed count moves with the cursor at a peak of **three**, so a claimed-only table would need a
@@ -1197,6 +1199,8 @@ suppresses the slot for exactly that case and **keeps the placeholder REACHABLE*
 was written for (neither a diagram nor a bespoke panel). ⚠ It is a pure function because the
 decision is otherwise **unreachable from any headless test** — `App` cannot be rendered without
 jsdom, the same hole `engineConfigOf` was extracted to close at the M13 review.
+
+⚠ **SUPERSEDED AT STEP 8, and it is the REACHABILITY half that broke.** Gating on the trace fact alone meant an empty editor put the placeholder straight back — measured live as the only route to it anywhere in the product, so the sentence was keeping reachable exactly the promise step 7 removed. The model now DECLARES `datapath: 'panel'`, which is true with or without a recording, and `showsDatapathSlot` checks that first; the placeholder stays reachable for a model at `'none'`, which is what this paragraph was always trying to say.
 
 ### The mutation check — seven stubs of the DECISIONS, predictions written first
 
@@ -1395,6 +1399,8 @@ predates the work is making an excuse, not a finding.
    the rig now squeezes the live caption back to one line and confirms it reads as clipped, then
    restores it. **A metric that measured the defect can stop measuring anything the moment you fix
    it.**
+
+⚠ **A fourth rig bug, and it is the same lesson one section further down the file: TWO of the 103 checks could not fail.** §7 reported the empty-recording state through `ok(…, true, …)` because it was written while that was still an open DECISION. Once the decision was made and the fix landed, those two reports were the only browser-side witness to it — `models.test.ts` nets the PREDICATE, but `showsDatapathSlot` is a pure function precisely because `App` cannot render headlessly, so whether the SHELL wires it is browser-only. Reverting `datapath: 'panel'` would have printed **103/103 green with the false promise back on screen**. Turned into real assertions in place (the count stays 103) and **confirmed at 2 red against the reverted build**, then green again. **A report is not a check, and the moment a decision closes, last pass's report is this pass's hole.**
 
 ### Decision 9's follow-up condition, answered
 

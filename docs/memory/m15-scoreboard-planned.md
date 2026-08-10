@@ -106,6 +106,8 @@ width. The cross-model probe on a model that predates the work is what licenses 
 app; and the legend was asserted as a hard-coded SEQUENCE when it is in **first-seen order**, a
 property of the recording (assert the SET plus "IF is first").
 
+⚠ **A fourth rig bug, and it is the same lesson one section further down the file: TWO of the 103 checks could not fail.** §7 reported the empty-recording state through `ok(…, true, …)` because it was written while that was still an open DECISION. Once the decision was made and the fix landed, those two reports were the only browser-side witness to it — `models.test.ts` nets the PREDICATE, but `showsDatapathSlot` is a pure function precisely because `App` cannot render headlessly, so whether the SHELL wires it is browser-only. Reverting `datapath: 'panel'` would have printed **103/103 green with the false promise back on screen**. Turned into real assertions in place (the count stays 103) and **confirmed at 2 red against the reverted build**, then green again. **A report is not a check, and the moment a decision closes, last pass's report is this pass's hole.**
+
 **Decision 9's follow-up answered NO:** looked at at 1600 and 800, the tables read as the textbook's
 three tables, with the pipeline map above supplying the cycle-by-cycle picture they deliberately do
 not try to be. No wire diagram is owed.
@@ -171,14 +173,13 @@ subset would need a reserve, and the whole file is what shows a reader a claim i
 
 **The turnaround ceiling is stated and DERIVED** (`3 + INT_LATENCY` / `3 + MEM_LATENCY`), tied to the
 `structural-int` explanation rather than shipped as free prose, so a re-derived timing table cannot
-leave it behind. ⚠ **Both cursor-dependent strings are pinned to unwrappable line boxes** — the
+leave it behind. ⚠ **SUPERSEDED IN PART AT STEP 8 — the CAPTION is a fixed three-line CLAMPED reserve now, because pinned to one line it was cut at every viewport; the window count's one-line box stands.** As written at step 7: **both cursor-dependent strings are pinned to unwrappable line boxes** — the
 predictor panel shipped "constant by construction" correctly ABOUT ITS ROWS and a browser pass
 measured it false OF THE PANEL, because its one moving string sat in the heading and wrapped.
 
 **App no longer gives this model a datapath slot.** Beside the tables the "coming soon" placeholder
 promises a diagram decision 9 declined and points the reader away from the picture above it.
-`showsDatapathSlot(model, bespokePicture)` suppresses it for exactly that case and **keeps the
-placeholder reachable** for a model with neither. ⚠ It is a PURE FUNCTION because the decision is
+`showsDatapathSlot(model, bespokePicture)` suppresses it for exactly that case and **keeps the placeholder reachable** for a model with neither — ⚠ **SUPERSEDED AT STEP 8: that reachability half BROKE (an empty editor put the placeholder back, the only route to it in the product), so the model now DECLARES `datapath: 'panel'` and the predicate checks that first.** ⚠ It is a PURE FUNCTION because the decision is
 otherwise unreachable headlessly — `App` cannot render without jsdom, the same hole `engineConfigOf`
 was extracted to close at the M13 review.
 
