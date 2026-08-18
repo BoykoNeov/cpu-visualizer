@@ -1,0 +1,76 @@
+{
+  "id": "one-name-two-writers",
+  "title": "One name, two writers",
+  "program": "register-reuse",
+  "model": "scoreboard",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "A short straight-line program — no branch, no loop — with two loads in it, and two later instructions that write over a register an earlier one is still using. Watch what the machine does about that.",
+        "detailed": "`register-reuse` is eleven instructions and not a single branch. Two loads fetch 21 and 9 out of memory, two adds combine them into 24 and 14, and two `addi`s reuse register names that older instructions have not finished with yet. It runs in 31 cycles. This lesson is about one of those reused names — `t1` — and the four cycles the machine spends refusing to let a young instruction have it. The instruction to watch for is the last one before the exit: `addi t1, x0, 7`.",
+        "expert": "Thirty-one cycles for eleven instructions, 0.355 retired per cycle, and thirty-three stall cycles: 13 `operand`, 6 `structural-int`, 5 `structural-mem`, 5 `waw`, 4 `war`. The five `waw` cycles are this lesson's subject and they are not all the same thing. One of them is a pair that could never have gone wrong. The other four are the machine stopping a wrong answer from being written. Telling those two apart is worth more than the count is."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 1,
+        "where": {
+          "reason": "waw"
+        }
+      },
+      "narration": {
+        "essentials": "The first held write, and it is a harmless one. `la t0, first` is really two instructions, and the second writes `t0` while the first still owns it.",
+        "detailed": "Cycle 5. The `la t0, first` near the top of the program is not one instruction — the assembler turns it into two, a `lui` that puts the top of the address into `t0` and an `addi` that adds the bottom half. The second one writes `t0` while the first one's claim on `t0` is still outstanding, so the machine will not let it start, and the reason it gives is `waw` — write after write. But read the second instruction again: `addi t0, t0, ...`. It reads `t0` as well as writing it. It was always going to have to wait for the first one's value, whatever the machine did about the name.",
+        "expert": "This pair moves timing and can never corrupt the architectural result, and the two are worth keeping apart. The younger writer of an address expansion has the older one as a true source: the name it reuses is a name it also reads, so it needs the older value before it can compute at all. That is not a quirk of address expansions. Six of the other twelve programs in this library stall `waw` as well — on accumulators that add into themselves and counters that decrement themselves — and in every one of them the younger writer reads the name it overwrites. Thirty-five of the thirty-nine `waw` stall cycles in the whole library are that shape. The four still to come in this run are the only ones that are not. Take the check out of the machine entirely and this pair still lands the right address in `t0`, because the operand check would hold the younger one at Read Operands regardless."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 2,
+        "where": {
+          "reason": "waw"
+        }
+      },
+      "narration": {
+        "essentials": "The second held write, and this one is doing real work. `addi t1, x0, 7` cannot start — and not because the machine is busy. An integer unit is sitting empty in front of it.",
+        "detailed": "Cycle 19. The `addi t1, x0, 7` at the end of the program wants to put 7 into `t1` and it cannot start. Look at the functional-unit table first: INT1 is not busy. There is a free integer unit and this instruction is not being allowed to have it. Now look at the register-result table, the short one that lists which unit owes which register: `t1` is down against MEM. The `lw t1, 4(t0)` four instructions back is still in the memory unit and has not written its 9 yet, and the machine will not start a second writer of `t1` while the first one's claim on the name is live. Its row stays blank in all four columns for four cycles, and in those four cycles nothing new is fetched either — this machine holds one instruction at a time, and it is holding this one.",
+        "expert": "The reason code is itself the proof that a unit was free. This machine's issue check asks about units before it asks about destinations, so an instruction with nowhere to execute reports `structural-int` and never gets as far as the name. This one reported `waw`, which it can only reach by having already passed the unit test — and the occupancy agrees: INT1 is idle from cycle 18 through cycle 22 with the `addi` unable to move into it. Nothing else about this instruction is waiting on anything. It reads `x0` and an immediate; its answer, 7, was known before the program started. The only thing tying it to the load is the name `t1`, and no value travels along that tie. That is what makes it a false dependence."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 6,
+          "value": 9
+        }
+      },
+      "narration": {
+        "essentials": "The load writes 9 into `t1` and lets go of the name. The `addi` starts the very next cycle.",
+        "detailed": "Cycle 22. `lw t1, 4(t0)` writes 9 into `t1` and retires, and `t1` disappears from the register-result table — nobody owes it any more. The `addi` that has been waiting since cycle 19 issues at cycle 23, the first cycle it is allowed to. Four cycles of waiting, and they end the moment the older writer is finished, not a moment later. Notice how little the machine had to understand to do this. It never compared what the two instructions compute. It only had to know that both were aiming at the same name, and which of them was older.",
+        "expert": "The release and the reason for the hold are the same event: clearing `t1`'s entry is what the load's write does, and the `addi` sees a free name on its next issue attempt. This is the cheapest correct rule available, and it is also the bluntest one, because the machine has no third option. There are thirty-two register names and no others, and an instruction's result has to go into the one its encoding names — so a second value for `t1` has nowhere to live until the first one has left. That shortage, rather than the check that enforces it, is what the four cycles are actually paying for."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 6,
+          "value": 7
+        }
+      },
+      "narration": {
+        "essentials": "7 lands in `t1` and it stays there, which is the right answer. Written in the other order, the load's 9 would have landed on top of it and stayed instead.",
+        "detailed": "Cycle 26. The `addi` writes 7 into `t1`, after the load's 9, and 7 is what this program is meant to leave there. That ordering is what the four cycles bought. Let the young `addi` write first and the load drops 9 on top of it afterwards, and `t1` ends on 9 — a wrong answer produced by two instructions that never shared a value, only a name. What the four cycles did not buy is speed. Point that `addi` at a register nobody else is using and this program runs in 30 cycles instead of 31, and the two adds still produce the same 24 and 14 they do now.",
+        "expert": "Rename the false dependence away by hand and the accounting is small and honest. The run goes from 31 cycles to 30. The `waw` count drops from 5 to 1 — the address expansion from the second step is the one that stays, because renaming does not touch a name an instruction genuinely reads. And `structural-int` rises from 6 to 9: take the false dependence away and the machine simply re-bottlenecks on units, which is the ceiling the previous lesson measured. So the hold is worth one cycle out of thirty-one in speed, and the entire correctness of `t1`. A machine with register renaming would give the `addi` a private place to put its 7 and never stall it at all, which is worth building — but not for the cycle. It is worth building because the alternative is a machine whose instructions can be held up by a name."
+      }
+    }
+  ]
+}

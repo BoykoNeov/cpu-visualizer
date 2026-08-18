@@ -5,11 +5,15 @@
 #
 #   WAR — measured over all twelve programs, `'war'` stalls fire ZERO times. Not merely untaught:
 #         the one hazard the milestone exists for is invisible on the whole corpus.
-#   WAW — `'waw'` stalls do fire, on 6 of 12 programs, but every one of them is a `la rd, label`
-#         expansion (`lui rd` / `addi rd, rd`). Its younger writer READS rd, so it waits on the
-#         producer regardless: those pairs move TIMING and can never corrupt ARCHITECTURE. Stub the
-#         scoreboard's WAW check and all twelve INV-8 cells stay green — the differential is a
-#         false net for the mechanism.
+#   WAW — `'waw'` stalls do fire, on 6 of 12 programs, but in every one of them the younger writer
+#         READS the register it overwrites. ⚠ THREE shapes, not one — the first draft of this
+#         header said "every one is a `la rd, label` expansion" and M16 step 2's oracle caught it
+#         as false: `array-sum.s` stalls on an accumulator (`add a0, a0, t2`) behind a load, and
+#         `nested-loop.s` on a counter (`addi t1, t1, -1`). What they share is the property that
+#         actually decides corruption, and it is the self-read, not the spelling. The younger
+#         writer waits on the producer regardless, so those pairs move TIMING and can never
+#         corrupt ARCHITECTURE. Stub the scoreboard's WAW check and all twelve INV-8 cells stay
+#         green — the differential is a false net for the mechanism.
 #
 # So this program carries a younger writer of each kind that does NOT read the register it
 # overwrites, which is what makes both hazards architecturally visible:
