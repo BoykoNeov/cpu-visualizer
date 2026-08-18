@@ -215,10 +215,10 @@ with renaming and one without. Three non-vacuous pins are available and each is 
   Eight named oracle claims, three mutation stubs. ⚠ FOUR sentences were false before any stub ran,
   including one that INVERTED the hazard into a read-after-write picture and one that quoted the
   wrong table's register spelling. See "Step 3 as built" below.
-- **Step 4 — the track and its order pins. ✅ DONE 2026-08-18** (`8f10fe1`; repo 11920 → 11922).
-  Five mentions, all five pinned; three needed ADJACENCY rather than precedence and one is a COUNT.
-  Three of the four artefacts the plan listed were already correct from steps 1–3 — see "Step 4 as
-  built" below.
+- **Step 4 — the track and its order pins. ✅ DONE 2026-08-18** (`8f10fe1` + the correction
+  commit; repo 11920 → 11923). Seven mentions found, five pinned across three tests; three needed
+  ADJACENCY rather than precedence. ⚠ Two of the seven were invisible to the first enumeration,
+  and one "pin" turned out to fire when nothing lies — see "Step 4 as built" below.
 - **Step 5 — the browser pass.** Every lesson reached ONLY through `startLesson`, each started from
   a different model so every assertion is about what the lesson dragged. Read the RENDERED panel,
   not the DOM. [[browser-is-the-only-net]] — 11 of the last 12 view steps shipped a defect only the
@@ -604,8 +604,15 @@ which touches three files: the new lesson JSON, `index.json`, and `lessons.test.
 
 ## Step 4 as built — the track's order pins (2026-08-18)
 
-Two new tests, two membership sets added to existing ones, no prose touched. `lessons.test.ts`
-3669 → 3671; repo 11920 → 11922. Five gates green.
+Three new tests, two membership sets added to existing ones, no prose touched. `lessons.test.ts`
+3669 → 3672; repo 11920 → 11923. Five gates green.
+
+⚠ **Two of this step's own conclusions were WRONG when first written, and are corrected below
+rather than quietly rewritten.** The count "pin" fires when no sentence lies, and the mention
+enumeration that called itself exhaustive was a keyword regex that could not see two of the seven
+mentions. Both survived a green suite AND a seven-run perturbation harness, and neither was found
+by either: what found them was reading the sentence against the perturbation, rather than reading
+the failure output.
 
 **Three of the four artefacts this step's build-order line named were ALREADY correct**, because
 steps 1–3 each carried their own entry as they shipped: `index.json` lists the track with its three
@@ -622,13 +629,23 @@ its eleven mentions as invitations rather than lies; **this track's rule rejects
 a property of how it had to be authored — it is the first with NO TOGGLE TO FLIP, so each lesson
 leans on its neighbours for the contrast a config flip supplies elsewhere.
 
-| #   | Where                              | Tier       | The claim                                     | Pin shape                                  |
-| --- | ---------------------------------- | ---------- | --------------------------------------------- | ------------------------------------------ |
-| 1   | `finished-and-told-to-wait` step 5 | `expert`   | "which is what the first lesson measured"     | POSITION: `two-units-one-queue` is index 0 |
-| 2   | `one-name-two-writers` step 5      | `expert`   | "the ceiling the previous lesson measured"    | ADJACENCY: queue → writers                 |
-| 3   | `finished-and-told-to-wait` step 1 | `detailed` | "You met `register-reuse` in the last lesson" | ADJACENCY: writers → wait                  |
-| 4   | `two-units-one-queue` step 4       | `detailed` | "in the next two lessons"                     | COUNT: exactly two follow                  |
-| 5   | `finished-and-told-to-wait` step 2 | `detailed` | "In \"The reservation station holds\" …"      | CROSS-TRACK: OoO before scoreboard         |
+| #   | Where                              | Tier       | The claim                                               | Pin shape                                  |
+| --- | ---------------------------------- | ---------- | ------------------------------------------------------- | ------------------------------------------ |
+| 1   | `finished-and-told-to-wait` step 5 | `expert`   | "which is what the first lesson measured"               | POSITION: `two-units-one-queue` is index 0 |
+| 2   | `one-name-two-writers` step 5      | `expert`   | "the ceiling the previous lesson measured"              | ADJACENCY: queue → writers                 |
+| 3   | `finished-and-told-to-wait` step 1 | `detailed` | "You met `register-reuse` in the last lesson"           | ADJACENCY: writers → wait                  |
+| 4   | `two-units-one-queue` step 4       | `detailed` | "in the next two lessons"                               | guarded BY #2 and #3 — see below           |
+| 5   | `finished-and-told-to-wait` step 2 | `detailed` | "In \"The reservation station holds\" …"                | CROSS-TRACK: OoO before scoreboard         |
+| 6   | `two-units-one-queue` step 1       | `detailed` | "This is `sum-loop` again"                              | CROSS-TRACK: the language track first      |
+| 7   | `two-units-one-queue` step 4       | `expert`   | "the single-cycle machine this loop was first shown on" | CROSS-TRACK **plus a MACHINE claim**       |
+
+Two further mentions are considered and REJECTED, which is what keeps "the rule rejects none"
+from meaning "the rule was never applied": `finished-and-told-to-wait` step 1's ESSENTIALS tier
+("The same program again") needs only that SOME earlier lesson ran `register-reuse`, so #3's
+stronger adjacency already implies it — a restatement, exactly the shape the wide track's rule
+drops; and step 5's "Compare the other hazard, whose rename is worth a single cycle out of
+thirty-one" is a fact about this MACHINE that happens to be another lesson's subject, equally
+true unread.
 
 **Three needed ADJACENCY, not precedence, and the weaker form would have left them false.** The
 sharpest is #3: `register-reuse` is the program of BOTH the second and third lessons, so "You met
@@ -657,33 +674,94 @@ appended after it makes no sentence false. Unexplained is not a lie.
 this track. Steps 1–3 each checked their own lesson's OUTBOUND references; the inbound direction is
 the same defect class and one `grep -l` over all 29 lesson files rules it out.
 
-### #4 is a COUNT, and it is the only pin the others do not imply
+### ⚠ #4 was pinned as a COUNT, and that was WRONG — the correction is the step's sharpest finding
 
-"When you meet this machine's held writes in **the next two lessons**" claims a direction _and_ a
-number. With #1–#3 green the sequence is already fully determined, so the count looks redundant —
-and the perturbation harness is what shows it is not. It is the pin that reddens the day a FOURTH
-scoreboard lesson is appended, which is precisely the M14 shape: **a track that GREW after its
-lessons had already cross-referenced each other**, leaving a forward-looking sentence quietly stale.
+The first draft asserted `length − at(queue) − 1 === 2` beside the sentence "when you meet this
+machine's held writes in **the next two lessons**", reasoning that the sentence claims a direction
+_and_ a number, and that the count is therefore the one claim the order pins do not imply. The
+arithmetic is right; the justification is not.
 
-### The perturbation harness — five reorderings, each with its red set predicted first
+**Read the sentence against the perturbation that was supposed to vindicate it.** Append a fourth
+scoreboard lesson AFTER the third: held writes are still taught in the next two lessons, so **the
+sentence stays true** — while the length assertion reddens anyway. That is a pin firing when nothing
+lies, which inverts this step's governing rule. What actually falsifies the sentence is a lesson
+INSERTED between the three, pushing the held writes out of the next two slots, and #2 and #3 both
+fire on exactly that. The prose is fully guarded by the adjacencies; the length assertion was a
+separate proposition wearing the sentence's justification.
+
+Fixed by moving the sentence assertion into the adjacency block where the chain it depends on lives,
+and keeping the length check **relabelled as a canary** — the framing the `depthDefault` uniformity
+check already uses in this file ("a canary for that, not a rule against it"). It now carries the
+message _"a fourth scoreboard lesson: re-read the cross-references above, then update this number"_,
+which is what a reader should actually do about it. The growth signal is worth keeping; calling it a
+pin was not.
+
+**The general trap, and it is not confined to lesson tracks:** an assertion can be arithmetically
+independent of everything else in the test and still not be the guard of the sentence it is filed
+under. Independence is not evidence that a sentence needs it. The only check that distinguishes the
+two is reading the prose against the perturbation — which no green suite, and none of the seven
+perturbation runs, can do for you.
+
+### The enumeration that called itself exhaustive was a keyword regex
+
+"The three lessons name each other five times" came out of one regex over `last lesson | previous
+lesson | first lesson | next two lessons | …`. **A reference that names no lesson is invisible to
+it**, and `two-units-one-queue` holds two: it opens "This is `sum-loop` again" and closes with "the
+single-cycle machine this loop was first shown on finishes it in 34 cycles at 1.0". Both are past
+tense about the reader's history — the same species as #5 — and both go FALSE, not unexplained, if
+the scoreboard track is taught before the language track.
+
+The re-run that found them read for **the 29 lesson TITLES, the seven model names, and history
+verbs** (`met|saw|shown|showed|watched|remember|already|earlier`) instead of for stock phrases. That
+sweep also surfaced the two rejections above, which the first one had not seen either.
+
+⚠ **#7 claims more than an order, so more than an order is pinned.** "The machine this loop was
+FIRST shown on" is single-cycle — a claim about which lesson gets there first, not merely that some
+earlier one did. Three lessons between the two also run `sum-loop` (`deep-bet-pays-double`,
+`two-at-once`, `where-widening-stops`) and **none is single-cycle**, so promoting any of them past
+`sum-loop-tour` makes the sentence name the wrong machine while every ordering comparison stays
+true. So the pin asserts the FIRST `sum-loop` lesson by id AND its model, and P7 below is what shows
+that half is not decoration.
+
+### The perturbation harness — seven reorderings, each with its red set predicted first
 
 Predictions written before any perturbation, against a committed tree
 (`M:\claud_projects\temp\m16-step4\predictions.md`). A single scramble that reddens everything
 proves nothing about per-mention coverage, so each perturbation was applied ALONE to `index.json`
 and reverted with `git checkout --`, with `git status --porcelain` empty after each. Baseline 3671.
 
-| Run | Perturbation                                  | Predicted                                                                                           | Observed                                                                   | ✓   |
-| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --- |
-| P1  | swap track positions 2↔3                      | intra-track red at #2 (#3 masked); cross-track green                                                | 1 failed: `expected 2 to be 1`                                             | ✓   |
-| P2  | `two-units-one-queue` moved last              | intra-track red at #1; cross-track green                                                            | 1 failed: `expected 2 to be +0`                                            | ✓   |
-| P3  | whole track moved above the OoO one           | cross-track red ALONE of the two new tests; the two exhaustive track-name lists red BY CONSTRUCTION | 3 failed: the cross-track pin (`expected 6 to be less than 5`) + those two | ✓   |
-| P4  | a fourth id appended to the track             | **#4 alone** among the four; the membership sets red                                                | 2 failed: `expected 3 to be 2` + the membership set                        | ✓   |
-| P5  | a fourth id inserted BETWEEN writers and wait | #3 fires (first that can)                                                                           | 2 failed: `expected 2 to be 1` + the membership set                        | ✓   |
+| Run | Perturbation                                  | Predicted                                                                                           | Observed                                                                   | ✓                            |
+| --- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------- |
+| P1  | swap track positions 2↔3                      | intra-track red at #2 (#3 masked); cross-track green                                                | 1 failed: `expected 2 to be 1`                                             | ✓                            |
+| P2  | `two-units-one-queue` moved last              | intra-track red at #1; cross-track green                                                            | 1 failed: `expected 2 to be +0`                                            | ✓                            |
+| P3  | whole track moved above the OoO one           | cross-track red ALONE of the two new tests; the two exhaustive track-name lists red BY CONSTRUCTION | 3 failed: the cross-track pin (`expected 6 to be less than 5`) + those two | ✓                            |
+| P4  | a fourth id appended to the track             | the count assertion alone among the four; membership red                                            | 2 failed: `expected 3 to be 2` + the membership set                        | ✓ (but see below)            |
+| P5  | a fourth id inserted BETWEEN writers and wait | #3 fires (first that can)                                                                           | 2 failed: `expected 2 to be 1` + the membership set                        | ✓                            |
+| P4′ | P4 re-run after the correction                | #1–#3 GREEN, the run stops at the CANARY with its message                                           | 2 failed: the labelled canary + membership                                 | ✓                            |
+| P6  | the language track moved LAST                 | #6/#7's pin red; the two exhaustive lists red                                                       | 4 failed — incl. TWO not predicted                                         | ✗ on the set                 |
+| P7  | the deeper-machine track moved FIRST          | #7's pin red **on `first.id`, not on an ordering comparison**; the two lists red                    | 5 failed — incl. TWO not predicted                                         | ✗ on the set, ✓ on the claim |
 
-**P4 is the load-bearing run.** #1, #2 and #3 all passed under it and the COUNT was the only one of
-the four to fire, which is what makes it a pin rather than a comment. Had it come back green, the
-three order pins would already have implied everything the prose claims and the count would have
-been decoration.
+⚠ **P4 was written up as "the load-bearing run" and it is not.** #1–#3 did all pass under it, and
+the count assertion did fire alone — but firing alone measures INDEPENDENCE, not guardianship, and
+the sentence P4 was supposed to vindicate is TRUE under P4. **A perturbation harness can only tell
+you which assertion fires; it cannot tell you whether a sentence lies.** That has to be read. It is
+the same failure mode this track has now hit three times in three costumes — step 2's green sweep
+over a lesson whose every sentence was false, step 3's red one by accident of anchor order, and now
+a red perturbation over a sentence that is true.
+
+**P7 is the load-bearing run instead**, for a reason P4 never had: it reddens on a claim NO ordering
+comparison can express. With the deeper-machine track promoted, `sum-loop-tour` still precedes
+`two-units-one-queue` — every order assertion in the test is still true — and "the single-cycle
+machine this loop was FIRST shown on" is false anyway, because `deep-bet-pays-double` got there
+first, on a different machine.
+
+⚠ **P6 and P7 each reddened TWO tests this step did not predict**, and the miss is worth recording:
+moving a track to an EXTREME position (first or last) trips rules that key off the library's ends
+rather than off relative order — `opens on the natural first lesson` (`LESSONS[0]`) in both, and
+`teaches the MACHINE before the DEEPER MACHINE` in P7. Neither is a defect; both are pre-existing
+rules doing their job. The lesson is about the harness, not the file: **a predicted red set for an
+extreme-position move has to include the position-sensitive rules that already exist**, or the
+prediction misses on collateral every time and the misses train you to ignore them.
 
 **P5 exists because of a real limit, and the limit is the step's finding.** ⚠ **In a THREE-lesson
 track the four intra-track pins are not independent — any three imply the fourth**, so no
@@ -703,7 +781,8 @@ coverage if the pins were ever counted from the failure output alone.
 
 ### The falsifiable UNCHANGED criteria, checked
 
-Against `git show --stat` for `8f10fe1`, which touches ONE file — `packages/web/src/lessons.test.ts`.
+Against `git show --stat` for `8f10fe1` and the correction commit, which between them touch ONE
+source file — `packages/web/src/lessons.test.ts`.
 
 1. **No trace-schema change** — nothing under `packages/trace`. ✓
 2. **No engine change** — nothing under `packages/engine`. ✓

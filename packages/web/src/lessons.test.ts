@@ -955,6 +955,18 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // elsewhere. The mentions were recorded in the milestone plan as each lesson was written, so
     // this test transcribes a list rather than rediscovering one by reordering.
     //
+    // Two further mentions ARE rejected, which is what keeps "rejects none" from being a claim that
+    // the rule was never applied:
+    //
+    //   • `finished-and-told-to-wait` step 1's ESSENTIALS tier — "The same program again". It needs
+    //     only that SOME earlier lesson ran `register-reuse`, so pin 3 above (which needs the
+    //     stronger adjacency) already implies it. A restatement of a link already pinned, exactly
+    //     like the four the wide track's rule drops.
+    //   • `finished-and-told-to-wait` step 5's "Compare the other hazard, whose rename is worth a
+    //     single cycle out of thirty-one". A fact about this MACHINE that happens to be another
+    //     lesson's subject; it is equally true whether or not that lesson has been read. Its number
+    //     is pinned by that lesson's own oracle, not by an order rule.
+    //
     // THREE of the four need ADJACENCY rather than precedence, and the weaker form leaves them
     // false. `register-reuse` is the program of BOTH the second and third lessons, so a
     // precedence-only check cannot see the one move that matters most (see 3 below).
@@ -999,20 +1011,35 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     expect(at('finished-and-told-to-wait') - at('one-name-two-writers')).toBe(1);
     says('finished-and-told-to-wait', 0, 'detailed', 'You met `register-reuse` in the last lesson');
 
-    // 4. The COUNT — the one claim none of the three pins above implies. The first lesson closes by
-    //    telling the reader they will meet the held writes "in the next two lessons", so it claims
-    //    both a direction (they come after) and a number (exactly two). With 1–3 green the sequence
-    //    is already fully determined, which is precisely why this looks redundant and is not: it is
-    //    the pin that reddens when a FOURTH scoreboard lesson is appended. That is the M14 shape,
-    //    where a track grew after its lessons had already cross-referenced each other and a
-    //    forward-looking sentence went quietly stale.
-    expect(track.lessons.length - at('two-units-one-queue') - 1).toBe(2);
+    // 4. The first lesson's FORWARD-looking sentence, which the two adjacencies above are what
+    //    actually guard: "when you meet this machine's held writes in the next two lessons" is
+    //    false exactly when something is INSERTED between the three — pushing the held writes out
+    //    of the next two slots — and 2 and 3 both fire on that. It is asserted here, at the end of
+    //    the chain it depends on, rather than beside a length check.
+    //
+    //    ⚠ It is deliberately NOT paired with a "the track is exactly three long" assertion, and
+    //    that correction is worth stating because the first draft of this test made it. APPEND a
+    //    fourth lesson after the third and this sentence stays TRUE — the held writes are still
+    //    taught in the next two lessons — while a length assertion reddens anyway. That is a pin
+    //    firing when no sentence lies, which is the exact shape this file's discriminator exists to
+    //    refuse. The length canary below is kept, but it is labelled as what it is.
     says(
       'two-units-one-queue',
       3,
       'detailed',
       "When you meet this machine's held writes in the next two lessons",
     );
+
+    // A canary, NOT a pin: nothing in the prose claims the track is three long, so this reddens on
+    // a lawful append. It is here for the M14 shape — a track that GREW after its lessons had
+    // already cross-referenced each other, leaving a forward-looking sentence quietly stale — and
+    // the right response to it is to re-read the four mentions above and then update the number,
+    // not to treat it as a rule against a fourth lesson. Same framing as the `depthDefault`
+    // uniformity check further down: a canary for that, not a rule against it.
+    expect(
+      track.lessons.length,
+      'a fourth scoreboard lesson: re-read the cross-references above, then update this number',
+    ).toBe(3);
   });
 
   it('teaches the OUT-OF-ORDER machine before the SCOREBOARD — the prose compares them', () => {
@@ -1046,6 +1073,38 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     expect(
       resolveNarration(byId('reservation-station-holds').steps[0]!.narration, 'detailed'),
     ).toContain('sits in its reservation station and waits');
+  });
+
+  it('shows `sum-loop` on the single-cycle machine before the scoreboard calls it back', () => {
+    // The second cross-TRACK pin the scoreboard track earns, and it was MISSED by this step's first
+    // enumeration — which is the finding worth keeping. That sweep was a keyword regex over "last
+    // lesson | previous lesson | first lesson | …", and it cannot see a reference that names no
+    // lesson at all. `two-units-one-queue` opens "This is `sum-loop` again" and closes with "the
+    // single-cycle machine this loop was first shown on finishes it in 34 cycles at 1.0" — two
+    // claims about the reader's history, neither containing a word the regex was looking for. The
+    // re-run that found them read for TITLES, model names and history verbs instead.
+    //
+    // Both sentences lie, rather than going unexplained, if the scoreboard track is taught before
+    // the language track: "again" is false to someone meeting the program for the first time, and
+    // "first shown on" names a machine they were never shown it on.
+    //
+    // The second sentence claims more than an order, so more than an order is asserted: it says the
+    // FIRST lesson to show this loop is a SINGLE-CYCLE one. Slide any of the three intervening
+    // lessons that also run `sum-loop` (`deep-bet-pays-double`, `two-at-once`, `where-widening-
+    // stops` — none of them single-cycle) in front of `sum-loop-tour` and the sentence names the
+    // wrong machine while every ordering comparison here stays green.
+    const first = LESSONS.find((l) => l.program === 'sum-loop');
+    expect(first?.id, 'the first lesson to show this loop').toBe('sum-loop-tour');
+    expect(first?.model, 'and it shows it on the machine the callback names').toBe('single-cycle');
+    expect(LESSON_ORDER.indexOf('sum-loop-tour')).toBeLessThan(
+      LESSON_ORDER.indexOf('two-units-one-queue'),
+    );
+    expect(resolveNarration(byId('two-units-one-queue').steps[0]!.narration, 'detailed')).toContain(
+      'This is `sum-loop` again',
+    );
+    expect(resolveNarration(byId('two-units-one-queue').steps[3]!.narration, 'expert')).toContain(
+      'The single-cycle machine this loop was first shown on',
+    );
   });
 
   it('files each lesson under the track its SUBJECT belongs to — asserted by name', () => {

@@ -5,7 +5,7 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 selectable**; six have a lesson track, the scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
-library is **29 lessons**, the repo runs **11922 passing tests** (11923 counting the one skipped
+library is **29 lessons**, the repo runs **11923 passing tests** (11924 counting the one skipped
 file), five gates green.
 
 **Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (steps 0–4 DONE
@@ -145,11 +145,14 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   `register-reuse.s`'s own header (**a claim about SHAPE is a claim about spelling; assert the
   property the shapes SHARE**), one false ON SCREEN because fetch is one-deep, one a source-line
   position. Its check-order stub left **the sweep GREEN while every sentence in the lesson was
-  false** — the clearest exhibit yet that anchoring is not truth. **Step 4 pinned all five cross-references
-  and none were rejected** — three needed ADJACENCY rather than precedence because two lessons SHARE A
-  PROGRAM, the nearest precedent's guard was the INVERSE of the claim, and two pins are un-isolatable at
-  the track's current length yet are the only ones that redden when it GROWS (**perturb the SIZE, not
-  only the order**).
+  false** — the clearest exhibit yet that anchoring is not truth. **Step 4's order pins caught TWO of their own
+  conclusions being false** — a COUNT pin that fires when NO SENTENCE LIES (demoted to a canary; an
+  assertion can be arithmetically independent of every other and still not guard its sentence), and a
+  mention sweep that called itself exhaustive while being a KEYWORD REGEX blind to two of seven mentions
+  (a reference naming no lesson — "This is `sum-loop` again" — has none of the stock phrases). Both
+  survived a green suite AND a seven-run perturbation harness; **only reading the prose against the
+  perturbation found them**. Three pins needed ADJACENCY rather than precedence because two lessons
+  SHARE A PROGRAM, and the nearest precedent's guard was the INVERSE of the claim.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
 - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
