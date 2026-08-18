@@ -6174,6 +6174,47 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
     ]);
   });
 
+  it('STEP 3 — thirty-four is the count of rows that ISSUE, and the counter counts more (M16 step 5)', () => {
+    // ⚠ The step-5 browser pass caught this sentence being false on screen, and the assertion above
+    // is WHY it survived: `filter(r => r.issue !== null)` throws away the very rows that make it
+    // wrong and then counts what is left. Green because it asserted the filtered thing — the M15
+    // step-8 shape, one milestone later. The sentence used to read "every one of the thirty-four
+    // ROWS in this run"; the panel's own window note reads "the last 10 of 41 fetched" at this
+    // lesson's closing cursor and "43 fetched" at the end of the run. A count pin that can only see
+    // the filtered set is arithmetically independent of the sentence it is supposed to guard.
+    //
+    // ⚠ And the FIRST DRAFT OF THE FIX was false too — it wrote "the table ends up holding
+    // forty-one", which is the count at step 4's cursor, not at the end of the run. This pin caught
+    // it. The durable form of that: **the row count is CURSOR-DEPENDENT** (5 at this step's own
+    // cycle 8, 41 at cycle 71, 43 at cycle 79), so no single total can be true in the prose. The
+    // corrected sentence quotes only the number that does not move — the issued count — and says
+    // the counter reads higher, which is true at every cursor from the first squash onward.
+    const all = rows(board());
+    const issuedRows = all.filter((r) => r.issue !== null);
+    expect(issuedRows.length, 'the only number in the sentence, and the only fixed one').toBe(34);
+    expect(all.length, 'every fetch is rowed, squashed or not — what the counter counts').toBe(43);
+    expect(all.length, 'so the counter MUST read higher than the sentence').toBeGreaterThan(
+      issuedRows.length,
+    );
+    expect(all.length - issuedRows.length, 'the squashed remainder').toBe(9);
+    const detailed = resolveNarration(lesson().steps[2]!.narration, 'detailed');
+    expect(detailed, 'the count is scoped to the rows that issue').toContain(
+      'every other row in this run that ever issues — thirty-four of them',
+    );
+    expect(
+      detailed,
+      'and the discrepancy is named rather than left for the reader to trip on',
+    ).toContain(
+      // prettier-ignore
+      'The counter above the table reads higher than that, because it counts every fetch',
+    );
+    // The view's own marker for the squashed rows, so the word the prose uses is the word on screen.
+    expect(detailed).toContain('marked `flushed`');
+    expect(detailed, 'and no total is quoted, because the total moves with the cursor').not.toMatch(
+      /forty-(one|three)/,
+    );
+  });
+
   it('STEP 2 — the UNIT is what binds, not the operand, and the run proves which', () => {
     const trace = board();
     const anchored = anchorLesson(lesson(), trace);
