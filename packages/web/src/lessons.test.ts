@@ -944,6 +944,110 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     );
   });
 
+  it('teaches the scoreboard track in the order its own cross-references require (M16 step 4)', () => {
+    // The ninth track's within-track order, pinned mention by mention with the same discriminator
+    // the wide track uses above: **a link earns a pin only if a sentence goes FALSE when the
+    // lessons move — not merely unexplained.** The three lessons name each other five times; four
+    // are pinned here and the fifth (a cross-TRACK mention) in the test below, and applying the
+    // rule rejects none of them. That is unusual — the wide track's rule rejected three of eleven —
+    // and it is a property of how this track had to be authored: it is the first with NO TOGGLE TO
+    // FLIP, so every lesson leans on its neighbours for the contrast a config flip supplies
+    // elsewhere. The mentions were recorded in the milestone plan as each lesson was written, so
+    // this test transcribes a list rather than rediscovering one by reordering.
+    //
+    // THREE of the four need ADJACENCY rather than precedence, and the weaker form leaves them
+    // false. `register-reuse` is the program of BOTH the second and third lessons, so a
+    // precedence-only check cannot see the one move that matters most (see 3 below).
+    const track = LESSON_TRACKS.find((t) => t.track === 'The scoreboard')!;
+    const at = (id: string): number => {
+      const i = track.lessons.indexOf(id);
+      // The rename guard the cache pin above still lacks: `indexOf` returns -1 for an id that no
+      // longer exists, and -1 compares less than everything, so a rename would leave a `toBeLessThan`
+      // green while the sentences pointed at nothing.
+      expect(i, `${id} is in the scoreboard track`).toBeGreaterThanOrEqual(0);
+      return i;
+    };
+    const says = (id: string, step: number, tier: 'detailed' | 'expert', quote: string): void => {
+      expect(
+        resolveNarration(byId(id).steps[step]!.narration, tier),
+        `${id} step ${step} (${tier}) is what forces its position`,
+      ).toContain(quote);
+    };
+
+    // 1. `two-units-one-queue` is FIRST — asserted as a position, because the sentence that needs it
+    //    refers to it BY position rather than by title. The third lesson's closing expert tier
+    //    attributes the structural ceiling to "the first lesson"; promote any other lesson and that
+    //    sentence credits the wrong one. `toBe(0)` needs no rename guard of its own (a missing id
+    //    gives -1, which is not 0) — and note the OoO track's `toBeGreaterThan(0)` guard is the
+    //    WRONG shape to copy here: it asserts "not first", which is this pin's inverse.
+    expect(at('two-units-one-queue')).toBe(0);
+    says('finished-and-told-to-wait', 4, 'expert', 'which is what the first lesson measured');
+
+    // 2. `two-units-one-queue` IMMEDIATELY before `one-name-two-writers`. "The previous lesson"
+    //    names a specific measurement — the structural ceiling this machine runs into once the
+    //    false dependence is renamed away — so precedence alone is not enough: anything sliding
+    //    between them leaves the sentence crediting a measurement that lesson never made.
+    expect(at('one-name-two-writers') - at('two-units-one-queue')).toBe(1);
+    says('one-name-two-writers', 4, 'expert', 'the ceiling the previous lesson measured');
+
+    // 3. `one-name-two-writers` IMMEDIATELY before `finished-and-told-to-wait`, and this is the
+    //    adjacency a precedence check would have missed: BOTH lessons run `register-reuse`, so
+    //    "You met `register-reuse` in the last lesson" survives every reorder EXCEPT the one that
+    //    puts `two-units-one-queue` (whose program is `sum-loop`) between them — where it names the
+    //    wrong program AND the wrong hazard, since the clause goes on to describe a young write
+    //    "stopped before it could start", which is the WAW lesson's subject and not the ceiling's.
+    expect(at('finished-and-told-to-wait') - at('one-name-two-writers')).toBe(1);
+    says('finished-and-told-to-wait', 0, 'detailed', 'You met `register-reuse` in the last lesson');
+
+    // 4. The COUNT — the one claim none of the three pins above implies. The first lesson closes by
+    //    telling the reader they will meet the held writes "in the next two lessons", so it claims
+    //    both a direction (they come after) and a number (exactly two). With 1–3 green the sequence
+    //    is already fully determined, which is precisely why this looks redundant and is not: it is
+    //    the pin that reddens when a FOURTH scoreboard lesson is appended. That is the M14 shape,
+    //    where a track grew after its lessons had already cross-referenced each other and a
+    //    forward-looking sentence went quietly stale.
+    expect(track.lessons.length - at('two-units-one-queue') - 1).toBe(2);
+    says(
+      'two-units-one-queue',
+      3,
+      'detailed',
+      "When you meet this machine's held writes in the next two lessons",
+    );
+  });
+
+  it('teaches the OUT-OF-ORDER machine before the SCOREBOARD — the prose compares them', () => {
+    // The file's second cross-TRACK order pin, and it is here for the same reason as
+    // machine-before-deeper-machine above: a sentence in one track is PAST TENSE about another.
+    // `finished-and-told-to-wait` step 2 tells the reader that in "The reservation station holds" a
+    // waiting instruction had somewhere to sit and blocked no one behind it, and that this machine
+    // "has no such place, so it waits in the unit". Reorder the two tracks and that is a comparison
+    // against a machine the reader has not met — a lie about their history, not merely a term left
+    // unexplained.
+    //
+    // The pin reads at `detailed` DELIBERATELY. `resolveNarration` falls back DOWNWARD, so a pin
+    // asserting at `detailed` cannot see an expert-only sentence, and the premise therefore has to
+    // hold at that tier. It does: `reservation-station-holds`'s own `detailed` prose is where the
+    // station is distinguished from the unit — the dependent add "sits in its reservation station
+    // and waits" while the shift "holds its functional unit" — which is exactly the distinction the
+    // scoreboard lesson spends. Both halves are asserted, so deleting either sentence reddens this
+    // test rather than leaving an ordering rule standing on nothing (the deeper-machine precedent).
+    //
+    // What is NOT pinned: that the scoreboard is the LAST track. Nothing claims it, and a tenth
+    // track appended after it makes no sentence false. Unexplained is not a lie.
+    const names = LESSON_TRACKS.map((t) => t.track);
+    const ooo = names.indexOf('The out-of-order machine');
+    const board = names.indexOf('The scoreboard');
+    expect(ooo, 'the out-of-order track exists').toBeGreaterThanOrEqual(0);
+    expect(board, 'the scoreboard track exists').toBeGreaterThanOrEqual(0);
+    expect(ooo).toBeLessThan(board);
+    expect(
+      resolveNarration(byId('finished-and-told-to-wait').steps[1]!.narration, 'detailed'),
+    ).toContain('"The reservation station holds" a waiting instruction had a station to sit in');
+    expect(
+      resolveNarration(byId('reservation-station-holds').steps[0]!.narration, 'detailed'),
+    ).toContain('sits in its reservation station and waits');
+  });
+
   it('files each lesson under the track its SUBJECT belongs to — asserted by name', () => {
     // What the grouped index buys in structure it must pay for here, and the payment is the same
     // coin the project keeps spending: **track membership is pedagogy, so it is not derivable.**
@@ -1024,6 +1128,21 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'deep-bet-pays-double',
       'deep-bubble-survives',
       'deep-drain',
+    ]);
+
+    // The scoreboard's membership (M16), by name for the same reason — and here the derived rule
+    // would be at its most tempting AND at its most wrong at the same time. All three run on
+    // `scoreboard` and nothing else does, exactly like the deeper machine above; but this model
+    // honors NO config knob, so a lesson authored on it about, say, the ISA would have nothing to
+    // distinguish it either. The track claims the structural ceiling that is not a hazard at all,
+    // and one lesson per hazard the machine is named for — the young write stopped before it starts
+    // (`waw`) and the finished write held at the end (`war`). Their ORDER is a separate claim with
+    // its own test above; this is only the set.
+    const board = LESSON_TRACKS.find((t) => t.track === 'The scoreboard');
+    expect([...(board?.lessons ?? [])].sort()).toEqual([
+      'finished-and-told-to-wait',
+      'one-name-two-writers',
+      'two-units-one-queue',
     ]);
   });
 
@@ -1173,6 +1292,18 @@ describe('authored lessons (INV-6)', () => {
         .map((l) => l.id)
         .sort(),
     ).toEqual(['deep-bet-pays-double', 'deep-bubble-survives', 'deep-drain']);
+    // And the scoreboard's own set (M16), for the reason the deep-pipeline one is here rather than
+    // one reason weaker: these three lessons narrate a machine that holds a functional unit from
+    // Issue to Write Result and reports `waw` and `war` by name, and NO other model in the product
+    // emits either reason. A lesson drifting off `scoreboard` here would not merely be describing
+    // the wrong timing — it would be pointing at stalls the model it landed on never reports, and
+    // the generic sweep cannot see that, because a lesson's anchors are checked against whatever
+    // model it declares.
+    expect(
+      LESSONS.filter((l) => l.model === 'scoreboard')
+        .map((l) => l.id)
+        .sort(),
+    ).toEqual(['finished-and-told-to-wait', 'one-name-two-writers', 'two-units-one-queue']);
   });
 
   /**
