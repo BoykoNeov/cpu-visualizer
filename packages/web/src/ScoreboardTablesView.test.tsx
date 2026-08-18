@@ -242,3 +242,36 @@ describe('a flush casualty is marked in the table', () => {
     expect(html).toBeDefined();
   });
 });
+
+describe('the three tables spell a register two different ways, and the lessons say so', () => {
+  /**
+   * Two lessons on this model now tell the reader that the instruction and functional-unit tables
+   * number their registers while the register grid names them (`x6` against `t1`). That is a claim
+   * about the MARKUP — `regCell` lives in this file's component and is not exported, so the fold
+   * oracles in `lessons.test.ts` can only reach the numeric FIELD behind it, never the cell it
+   * draws. This is the render half, and it is the half that would go silently false if anyone
+   * "tidied" one of the three surfaces into the other's vocabulary.
+   *
+   * Cycle 23 of `register-reuse.s`: the held `addi` has just taken a unit, so all three tables are
+   * showing the same register at once — which is exactly the moment the lessons describe.
+   */
+  const html = draw(record('register-reuse'), 23);
+
+  it('rows the instruction by number, never by ABI name', () => {
+    expect(html, 'the instruction status table prints the assembled form').toContain(
+      'addi x6, x0, 7',
+    );
+    expect(html, 'and never the source spelling the prose quotes').not.toContain('addi t1, x0, 7');
+  });
+
+  it('prints the unit table operand cells by number', () => {
+    expect(html, "`regCell`'s x-name reaches an Fi/Fj/Fk cell").toContain('>x6<');
+  });
+
+  it('names the register in the register grid, and only there', () => {
+    expect(html, 'the grid cell carries the ABI name').toContain('>t1<');
+    // The discriminator: `t1` must not be reachable from the OTHER two tables' spelling of it, or
+    // the lessons' "only the register-result grid names them" is false in the markup.
+    expect(count(html, '>t1<'), 'exactly one cell spells it that way').toBe(1);
+  });
+});

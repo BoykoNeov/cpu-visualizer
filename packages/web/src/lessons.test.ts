@@ -6408,9 +6408,16 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
     for (const row of ['add x10, x10, x5', 'bne x5, x0, -8', 'addi x5, x0, 10']) {
       expect(texts, `a row reads ${row}`).toContain(row);
     }
-    // ...and the source spellings the rest of the lesson uses, which are on no row at all. This is
-    // the half that states WHY the note exists; without it the pin would pass on a machine that
-    // printed both.
+    // ...and the source spellings the rest of the lesson uses, which are on no row at all — the
+    // premise the note rests on.
+    //
+    // ⚠ **Measured, not assumed: this loop cannot fire alone under a re-spelling.** Stubbing
+    // `formatInstruction` to print ABI names reddens the loop ABOVE, because a row carries exactly
+    // one text and gaining the prose spelling means losing the numeric one. So this is a premise
+    // statement, not an independent net: it fires only if the product ever rows BOTH spellings, at
+    // which point the note has become unnecessary rather than false. Recorded because M16 step 4's
+    // finding cuts the other way too — an assertion's independence and the sentence it guards are
+    // different questions, and a clause that can never fire alone should say so.
     for (const quoted of ['add a0, a0, t0', 'bnez t0, loop', 'li t0, 10']) {
       expect(texts, `no row reads ${quoted}`).not.toContain(quoted);
     }
