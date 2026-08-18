@@ -31,8 +31,10 @@
 # occupies both integer units for the entire window in which its load's register claim is live, so
 # a WAW writer aimed at that same load can never reach Issue in time — measured, not assumed.
 #
-# It also keeps the benign flavour for contrast: the `la` on line 3 is itself a WAW pair, and its
-# stall is real while its corruption is impossible.
+# It also keeps the benign flavour for contrast: the `la t0, first` below is itself a WAW pair (it
+# is the SECOND instruction of `.text`, not "line 3" — the surviving twin of the false claim M16
+# step 2 fixed in this same header, found at step 3), and its stall is real while its corruption
+# is impossible.
 #
 # Straight-line on purpose — no branch, no loop. Every model's pinned timing table gains a row that
 # is hand-derived, and a recurrence multiplies that cost for nothing this program is here to show.

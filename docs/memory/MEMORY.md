@@ -133,7 +133,7 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   **all three lessons shipped**), and **the first with NO TOGGLE TO FLIP**: the sweep gets STRONGER and the
   M11+M12 finding-2 class retires outright — but it has now been measured GREEN over a lesson whose every
   sentence was false (step 2) and RED **by accident of anchor order** (step 3), so **neither colour is
-  evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **seven false ones
+  evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **eight false ones
   across two lessons, every one caught by hand** — including one that **INVERTED the hazard** and one that
   **quoted the wrong table's register spelling** (the instruction and unit tables print `x7`; only the
   register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** The renaming A/B is real but small (31 → 30,

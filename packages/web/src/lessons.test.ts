@@ -6638,13 +6638,26 @@ describe('finished-and-told-to-wait — the write held at the end (M16 step 3)',
     expect(int1.rk, 'ready, and not yet read — the whole WAR condition').toBe(true);
 
     // The occupancy the expert tier prices: ten cycles of INT1 for a one-cycle add, seven of INT0.
-    const busyCycles = (unit: string, from: number, to: number): number[] =>
+    //
+    // ⚠ Keyed on the OCCUPANT, not merely on `busy`. "INT1 was busy for ten cycles" is necessary
+    // but not sufficient for "INT1 HELD THE ADD for ten cycles" — two occupants in succession would
+    // satisfy the weaker form while the sentence it is named for went false. That is step 1's
+    // `OCCUPANCY CEILING` species, and it is the same organ (unit occupancy) a second time.
+    const heldBy = (unit: string, id: string, from: number, to: number): number[] =>
       trace
         .filter((c) => c.cycle >= from && c.cycle <= to)
-        .filter((c) => (micro(c).units ?? []).some((u) => u.name === unit && u.busy))
+        .filter((c) =>
+          (micro(c).units ?? []).some((u) => u.name === unit && u.busy && u.instr === id),
+        )
         .map((c) => c.cycle);
-    expect(busyCycles('INT1', 8, 17), 'INT1 busy every cycle from 8 through 17').toHaveLength(10);
-    expect(busyCycles('INT0', 10, 16), 'INT0 busy every cycle from 10 through 16').toHaveLength(7);
+    expect(
+      heldBy('INT1', older.instr, 8, 17),
+      'INT1 holds the add every cycle from 8 through 17',
+    ).toHaveLength(10);
+    expect(
+      heldBy('INT0', held, 10, 16),
+      'INT0 holds the addi every cycle from 10 through 16',
+    ).toHaveLength(7);
     // ...for a ONE-cycle addition, which is what makes those numbers a price rather than a latency.
     expect(older.executeComplete! - older.readOperands!, 'the add itself executes in one').toBe(1);
   });
@@ -6769,6 +6782,20 @@ describe('finished-and-told-to-wait — the write held at the end (M16 step 3)',
     expect([totalStalls(stallsByReason(trace)), totalStalls(stallsByReason(renamed))]).toEqual([
       33, 30,
     ]);
+
+    // "both of this machine's named hazards together are worth one cycle" — the track's closing
+    // sentence, and NOT derivable from the two single-hazard runs: 31 and 30 separately say nothing
+    // about whether the two savings compose. So the both-renamed variant is recorded too.
+    const bothRenamed = runSource(
+      editCode(sourceOf('register-reuse'), [
+        ['addi t2, x0, 5', 'addi t4, x0, 5'],
+        ['add  a1, t1, t2', 'add  a1, t1, t4'],
+        ['addi t1, x0, 7', 'addi t5, x0, 7'],
+      ]),
+      'scoreboard',
+    );
+    expect([trace.length, renamed.length, bothRenamed.length], '31, 31, 30').toEqual([31, 31, 30]);
+    expect(bothRenamed.at(-1)!.state.registers[10], 'and still the same answer').toBe(24);
     // The architectural results the reader cares about are untouched by the rename.
     expect([renamed.at(-1)!.state.registers[10], renamed.at(-1)!.state.registers[11]]).toEqual([
       24, 14,

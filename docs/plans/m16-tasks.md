@@ -406,7 +406,7 @@ and it is measured rather than asserted. (The config-independent backing is a gr
 exactly six `type: 'stall'` emission sites in the product and exactly one of them names a stage
 other than `'ID'`/`'RO'`.)
 
-### ⚠ FOUR sentences were false before any stub ran, and two of them are new species
+### ⚠ FIVE sentences were false before any stub ran, and three of them are new species
 
 **1. "In between them sits `addi t2, x0, 5`" — the hazard INVERTED.** The listing is `li t2, 3`,
 `la t0, first`, `lw t3`, `add a0, t3, t2`, `addi t2, x0, 5`: the young writer comes AFTER the older
@@ -440,10 +440,44 @@ change, and a shell where two panels name the same register two ways is a findin
 something a lesson should quietly paper over. Note the shape — the previous lesson's prose is
 correct only because it happened to quote the one table that uses names.
 
-### The mutation check — three stubs, each with a DECLARED purpose
+**5. "would flash for one cycle ON ONE PROGRAM" — a corpus claim composed out of a program
+claim, and found only on the closing review pass.** `scoreboard-tables.ts`'s docblock says
+out-of-order completion is "zero on seven of the thirteen programs and one on `register-reuse.s`" —
+which leaves FIVE nonzero programs it never enumerates. The dump's own section 5 lists six:
+`array-sum` 7 cycles, `array-sum-twice` 24, `byte-loads` 2, `register-reuse` 1, `store-forward` 2,
+`strided-sum` 7, for 43 in all. The draft read the SEVEN and the ONE and made "one program" out of
+them. **Two true numbers in one sentence do not license a third**, and the shipped tier is scoped to
+this program instead. Same class as the other four: a claim no oracle line touches, in the tier
+belonging to the step whose subject it is.
 
-Predictions written first, against the committed tree (`M:\claud_projects\temp\m16-step3\
-predictions.md`, commit `a25dbb0`). The repo-wide rows are enumerated FRESH; step 2's three-column
+### One test tightened, and one claim that was quoted but not pinned
+
+Neither changes a mutation cell — both land on tests already red in every column — so they are
+recorded as corrections, not presented as new coverage.
+
+⚠ **`STEP 2`'s occupancy assertion was necessary but not sufficient**, which is step 1's
+`OCCUPANCY CEILING` species recurring in this milestone's own new oracle, on the same organ. It
+filtered on `u.busy` alone, so it proved "INT1 was busy for ten cycles" under a message reading
+"INT1 holds the add for ten cycles" — two occupants in succession would satisfy the weaker form
+while the sentence went false. Now keyed on the OCCUPANT. It has never been independently
+exercised: under all four stubs `STEP 2` either reddens on the `war` cycle list before reaching
+these lines or is green throughout, so the fix is made because a test should measure what its
+message claims, not because a stub demonstrated it.
+
+⚠ **"both of this machine's named hazards together are worth one cycle" was UNPINNED**, and it is
+not derivable from the two single-hazard runs — 31 and 30 separately say nothing about whether the
+two savings compose. The both-renamed variant (30 cycles, `a0` still 24) is now recorded beside
+them, against the plan's own criterion that every number in narration be READ from a recording.
+
+⚠ **`register-reuse.s`'s header still said "the `la` on line 3"** — the surviving twin of the
+positional claim step 2 fixed in the lesson, sitting in the file BOTH hazard lessons are built on.
+It is the SECOND instruction of `.text`. Fixed here, with the correction left in place as a marker.
+
+### The mutation check — four stubs, each with a DECLARED purpose
+
+Predictions written first for M-1 to M-3, against the committed tree
+(`M:\claud_projects\temp\m16-step3\predictions.md`, commit `a25dbb0`); M-4 was added
+afterwards to close a gap the table itself exposed. The repo-wide rows are enumerated FRESH; step 2's three-column
 shape is not copied (M15 step 6: copying a table's shape silently drops every suite added since).
 
 - **M-1 — `warBlocked` returns `false`.** Breaks correctness by design, so per step 1's rule it can
@@ -462,20 +496,31 @@ shape is not copied (M15 step 6: copying a table's shape silently drops every su
   the four-cycle width of the window: `war` drops 4 → **2**, the anchors collapse to 0/13/14/15/16,
   and the inversion SURVIVES at cycle 15 instead of 17.
 
-| oracle claim                           | M-1     | M-2       | M-3   |
-| -------------------------------------- | ------- | --------- | ----- |
-| declares knob-blind model              | green   | green     | green |
-| THE FIVE STEPS (0 / 13 / 16 / 17 / 18) | RED     | RED       | RED   |
-| THE SCARCITY (4 in the product)        | RED     | RED       | RED   |
-| THE THESIS (`war` is the only `@WB`)   | RED ⚠   | green     | green |
-| STEP 2 (finished, and held)            | RED     | RED       | RED   |
-| STEP 3 (the hold ends on the READ)     | RED     | **RED**   | RED   |
-| STEP 4 (the one inversion)             | RED     | **RED**   | RED ⚠ |
-| STEP 5 (24 / 26 / 31)                  | RED     | RED       | RED   |
-| THE DISCRIMINATOR (`a0` = 24)          | **RED** | green     | green |
-| the sweep (validator)                  | RED     | **RED** ⚠ | green |
+- **M-4 — the WAR stall emitted with `stage: 'ID'` instead of `'WB'`.** Added after the first three,
+  because the table had no stub aimed at `THE THESIS`'s OWN SUBJECT: M-1 reddens it through its
+  PREMISE (with no `war` events the product simply loses a key, which says nothing about whether
+  `war` is the only late stall). A one-token coherent relabel — same machine, same schedule,
+  different report.
 
-Repo-wide: M-1 reddens 9 files / 29 tests; M-2 7 files / 31 tests; M-3 7 files / 52 tests.
+| oracle claim                           | M-1     | M-2       | M-3   | M-4     |
+| -------------------------------------- | ------- | --------- | ----- | ------- |
+| declares knob-blind model              | green   | green     | green | green   |
+| THE FIVE STEPS (0 / 13 / 16 / 17 / 18) | RED     | RED       | RED   | green   |
+| THE SCARCITY (4 in the product)        | RED     | RED       | RED   | green   |
+| THE THESIS (`war` is the only `@WB`)   | RED ⚠   | green     | green | **RED** |
+| STEP 2 (finished, and held)            | RED     | RED       | RED   | green   |
+| STEP 3 (the hold ends on the READ)     | RED     | **RED**   | RED   | **RED** |
+| STEP 4 (the one inversion)             | RED     | **RED**   | RED ⚠ | green   |
+| STEP 5 (24 / 26 / 31 / 30)             | RED     | RED       | RED   | green   |
+| THE DISCRIMINATOR (`a0` = 24)          | **RED** | green     | green | green   |
+| the sweep (validator)                  | RED     | **RED** ⚠ | green | green   |
+
+Repo-wide: M-1 reddens 9 files / 29 tests; M-2 7 / 31; M-3 7 / 52; **M-4 7 / 10** — by far the
+narrowest, which is what a pure relabel should be. It reddens exactly two cells and they are the
+two that make a claim about the reported STAGE: the thesis itself, and step 3's assertion that the
+c16 event carries `stage: 'WB'`. **That is the shape to want from a discriminating stub.** A wide
+red field proves the tests run the engine (step 1's discarded deadlock stub); a narrow one proves a
+sentence.
 
 ⚠ **THE SWEEP CELL UNDER M-2 IS THE HEADLINE, AND IT IS STEP 2's HEADLINE RUN BACKWARDS.** Step 2
 found a stub under which the validator was perfectly happy while every sentence in the lesson was
@@ -502,7 +547,10 @@ worth keeping, because a test that had asserted only "exactly one inversion" wou
 green under a stub that moved every cycle number the narration quotes.
 
 **Nine of ten cells landed as predicted in each column** (M-1 10/10, M-2 9/10 with the sweep the
-miss, M-3 9/10 with the recorded question resolved).
+miss, M-3 9/10 with the recorded question resolved). M-4 has no prediction row: it was written after
+the table had been read, precisely because reading the table showed the thesis had no stub of its
+own. **Adding a stub because a finished table exposed a gap is the check working**, and it is worth
+separating in the record from the three that were forecast.
 
 ### The three sentences step 4 must pin
 

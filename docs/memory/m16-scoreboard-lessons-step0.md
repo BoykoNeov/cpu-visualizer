@@ -1,6 +1,6 @@
 ---
 name: m16-scoreboard-lessons-step0
-description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). STEPS 0-3 DONE 2026-08-18: the dump decided the design and ALL THREE LESSONS SHIP (the ceiling, WAW, WAR); next is step 4 (track order pins) then the browser pass. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 four more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it). The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
+description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). STEPS 0-3 DONE 2026-08-18: the dump decided the design and ALL THREE LESSONS SHIP (the ceiling, WAW, WAR); next is step 4 (track order pins) then the browser pass. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 five more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it); and a CORPUS claim composed out of a PROGRAM claim (two true numbers in one sentence do not license a third). Step 3 also found the SURVIVING TWIN of step 2's positional claim still in register-reuse.s's header, and an occupancy assertion in its OWN new oracle that was necessary but not sufficient — step 1's OCCUPANCY CEILING species, same organ, and NO stub ever exercised it. The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
 metadata:
   node_type: memory
   type: project
@@ -228,7 +228,7 @@ instruction here. And the `(reason, stage)` product over the same 91 recordings 
 measured, not asserted. Config-independent backing: there are exactly SIX `type: 'stall'` emission
 sites in the product and exactly one names a stage other than `ID`/`RO`.
 
-### ⚠ FOUR sentences were false before any stub ran
+### ⚠ FIVE sentences were false before any stub ran
 
 **1. "In between them sits `addi t2, x0, 5`" INVERTED THE HAZARD.** The young writer comes AFTER
 the older reader — that is the whole hazard — and "in between" describes a read-after-write. It
@@ -257,6 +257,30 @@ instruction at all (it retired at c17), so the out-of-order write-result column 
 `buildScoreboardTables`'s ACCUMULATION. A test written off `micro` would have been vacuous or
 impossible. **Assert a claim about the PICTURE through the fold that draws it.**
 
+**5. "would flash for one cycle ON ONE PROGRAM" — A CORPUS CLAIM COMPOSED OUT OF A PROGRAM
+CLAIM.** `scoreboard-tables.ts`'s docblock says out-of-order completion is "zero on seven of the
+thirteen and one on `register-reuse.s`" — which leaves FIVE nonzero programs it never enumerates.
+The dump lists six, 43 cycles in all. The draft read the SEVEN and the ONE and made "one program"
+out of them. **Two true numbers in one sentence do not license a third.** Scoped to this program in
+the shipped tier. Found only on the closing review pass, after the mutation table was done.
+
+### Three corrections the mutation check could not have produced
+
+⚠ **An occupancy assertion that was NECESSARY BUT NOT SUFFICIENT** — step 1's `OCCUPANCY CEILING`
+species recurring inside this milestone's own new oracle, on the SAME organ (unit occupancy). It
+filtered on `u.busy` alone, proving "INT1 was busy ten cycles" under a message reading "INT1 HOLDS
+THE ADD ten cycles"; two occupants in succession satisfy the weaker form while the sentence goes
+false. Now keyed on the occupant. **It was never independently exercised by any stub** — the test
+reddened earlier in its own body every time — which is exactly how this species survives.
+
+⚠ **A closing sentence that was QUOTED BUT NOT PINNED**: "both hazards together are worth one
+cycle" is NOT derivable from the two single-hazard runs (31 and 30 say nothing about whether the
+savings compose). The both-renamed variant is now recorded beside them.
+
+⚠ **`register-reuse.s`'s header still said "the `la` on line 3"** — the surviving twin of the
+positional claim step 2 fixed in the LESSON, in the file both hazard lessons are built on. Fixing a
+false sentence in one place is not fixing the class.
+
 ### The mutation check — and the sweep finding is step 2's headline RUN BACKWARDS
 
 Three stubs, purposes declared. **M-1** (`warBlocked` returns false) breaks correctness and is
@@ -266,8 +290,15 @@ the coherent discriminator for step 3's thesis — the young write moves c17 →
 **the out-of-order inversion vanishes entirely**, while `a0` stays 24. **M-3** (`MEM_LATENCY`
 4 → 2) measures the window: `war` 4 → 2, anchors collapse to 0/13/14/15/16.
 
-Repo-wide: M-1 9 files / 29 tests, M-2 7 / 31, M-3 7 / 52. Nine of ten cells per column as
-predicted (M-1 10/10).
+A FOURTH stub, **M-4**, was added after the table was read, because reading it showed `THE THESIS`
+had no stub on its own subject: emit the WAR stall with `stage: 'ID'` instead of `'WB'` — same
+machine, same schedule, different report. It reddens **exactly two cells**, and they are the two
+that make a claim about the reported stage. **That narrowness is the shape to want**: a wide red
+field proves the tests run the engine (step 1's discarded deadlock stub); a narrow one proves a
+sentence. **Adding a stub because a finished table exposed a gap is the check working.**
+
+Repo-wide: M-1 9 files / 29 tests, M-2 7 / 31, M-3 7 / 52, **M-4 7 / 10**. Nine of ten cells per
+column as predicted (M-1 10/10); M-4 has no prediction row by construction.
 
 ⚠ **THE SWEEP CAUGHT M-2 — BY ACCIDENT OF ORDER, AND THAT IS THE FINDING.** Step 2 exhibited a
 green validator over a lesson whose every sentence was false. Here the validator reddens — because
