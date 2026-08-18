@@ -1,6 +1,6 @@
 ---
 name: m16-scoreboard-lessons-step0
-description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). STEPS 0-3 DONE 2026-08-18: the dump decided the design and ALL THREE LESSONS SHIP (the ceiling, WAW, WAR); next is step 4 (track order pins) then the browser pass. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 five more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it); and a CORPUS claim composed out of a PROGRAM claim (two true numbers in one sentence do not license a third). Step 3 also found the SURVIVING TWIN of step 2's positional claim still in register-reuse.s's header, and an occupancy assertion in its OWN new oracle that was necessary but not sufficient — step 1's OCCUPANCY CEILING species, same organ, and NO stub ever exercised it. The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
+description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). STEPS 0-4 DONE 2026-08-18: the dump decided the design, ALL THREE LESSONS SHIP (the ceiling, WAW, WAR) and the track's ORDER PINS are in; next is step 5, the browser pass — the last step. Step 4's carry-forward findings: three of five cross-references needed ADJACENCY rather than precedence BECAUSE TWO LESSONS SHARE A PROGRAM (a toBeLessThan is green over the one reorder that matters — ask what else could occupy the slot the sentence names); the nearest precedent's guard was the INVERSE of the claim (the OoO pin's toBeGreaterThan(0) asserts 'not first', this one asserts 'IS first'); and a pin can be UN-ISOLATABLE at the current size of the thing it guards and still be the only one that catches the defect once it grows — in a three-lesson track any three of the four pins imply the fourth, so PERTURB THE SIZE, not only the order. Also: vitest stops a test at its FIRST failed assertion, so a per-run red set is 'which fires first', not 'which are false'. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 five more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it); and a CORPUS claim composed out of a PROGRAM claim (two true numbers in one sentence do not license a third). Step 3 also found the SURVIVING TWIN of step 2's positional claim still in register-reuse.s's header, and an occupancy assertion in its OWN new oracle that was necessary but not sufficient — step 1's OCCUPANCY CEILING species, same organ, and NO stub ever exercised it. The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
 metadata:
   node_type: memory
   type: project
@@ -8,10 +8,10 @@ metadata:
   modified: 2026-08-18T09:37:22.503Z
 ---
 
-**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: steps 0–3 DONE — ALL THREE LESSONS SHIP.
-Decisions 1–4 PINNED by the user (three lessons; `sum-loop` for the ceiling; a NEW track, appended
-last), 5 applied as seeded (the rename A/B is an ORACLE, never an invitation), 6–8 open. Next is
-step 4, the track and its order pins; step 5 is the browser pass.**
+**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: steps 0–4 DONE — ALL THREE LESSONS SHIP and
+the track's order pins are in. Decisions 1–4 PINNED by the user (three lessons; `sum-loop` for the
+ceiling; a NEW track, appended last), 5 applied as seeded (the rename A/B is an ORACLE, never an
+invitation), 6–8 open. Next is step 5, the browser pass — the last step.**
 The dump lives at `M:\claud_projects\temp\m16-step0\` (`dump.txt` 639 lines + `dump2.txt`, both
 with JSON twins). It was run BEFORE the plan, which is this repo's method for a lesson track
 ([[m12-deep-pipeline-lessons]]), and it decided the design. Read it before authoring any step.
@@ -336,3 +336,59 @@ in the last lesson, where a young write was stopped before it could start." Step
 because `resolveNarration` falls back DOWNWARD and a pin asserting at that tier cannot see an
 expert-only sentence.** Step 5 `expert`: "the dominant cost here is structural … which is what the
 first lesson measured."
+
+## Step 4 — the track's order pins (DONE 2026-08-18, `8f10fe1`, 11920 → 11922)
+
+Two new tests in `lessons.test.ts` (3669 → 3671), two membership sets added to existing ones,
+**no prose touched**. Five gates green. Full write-up: the plan's "Step 4 as built".
+
+**Three of the four artefacts the plan's build-order line named were ALREADY correct** — steps 1–3
+each carried their own `index.json` entry, the exhaustive track-NAME `toEqual` (in BOTH places that
+list the seven names) and the `LESSONS.length` 29 as they shipped. Only the per-model membership set
+was missing. Recorded explicitly, because **silence cannot distinguish "done" from "forgot"**.
+
+**Five mentions, all five pinned — the rule rejected none.** The wide track's rule (M14 step 4)
+rejected three of eleven; this track rejects none, and that is a property of the missing toggle:
+with no flip to ask for, each lesson leans on its neighbours for contrast. #1 `finished-and-told-
+to-wait` step 5 expert "what the first lesson measured" (POSITION); #2 `one-name-two-writers`
+step 5 expert "the ceiling the previous lesson measured" (ADJACENCY); #3 `finished-and-told-to-wait`
+step 1 detailed "You met `register-reuse` in the last lesson" (ADJACENCY); #4 `two-units-one-queue`
+step 4 detailed "in the next two lessons" (COUNT); #5 `finished-and-told-to-wait` step 2 detailed,
+the "The reservation station holds" comparison (CROSS-TRACK, OoO before scoreboard, asserted at
+`detailed` because `resolveNarration` falls back DOWNWARD).
+
+### The findings worth carrying past this step
+
+- ⚠ **ADJACENCY, not precedence, for three of the five — and the reason is a shared PROGRAM.**
+  `register-reuse` is the program of BOTH the second and third lessons, so "You met `register-reuse`
+  in the last lesson" survives every reorder EXCEPT the one that slides the first lesson between
+  them. A `toBeLessThan` cannot see that move. **Before writing an order pin, ask what ELSE could
+  occupy the slot the sentence names** — when two lessons share a program, a title, or a hazard, the
+  weaker comparison is green over the one reorder that matters.
+- ⚠ **The nearest precedent's guard can be the INVERSE of the claim.** The OoO track's order pin
+  guards its `indexOf` with `toBeGreaterThan(0)` — which asserts "not first". Pin #1 asserts "IS
+  first". Copying the guard because it is the neighbouring shape would have inverted the claim while
+  looking careful. (`toBe(0)` needs no guard: a renamed id gives −1, which is not 0.)
+- ⚠ **A pin can be un-isolatable at the CURRENT size of the thing it guards and still be the only
+  pin that catches the defect once it grows.** In a THREE-lesson track the four intra-track pins are
+  not independent — any three imply the fourth — so no reorder can isolate #3 while #1 and #2 stay
+  green. That is arithmetic, not weakness. The count pin #4 earns its place the same way: perturbing
+  only within the existing shape declares both redundant, and BOTH are what redden when a fourth
+  lesson is appended (the M14 shape — a track that GREW after its lessons cross-referenced each
+  other). **Perturb the SIZE, not only the ORDER.**
+- ⚠ **Vitest stops a test at its FIRST failed assertion**, so a perturbation falsifying two mentions
+  in one test reports only the earlier one. A per-run red set is "which fires first", not "which are
+  false" — counting coverage from failure output alone silently overstates it.
+- **The reverse grep is one command and belongs in every track's order step.** Steps 1–3 each
+  checked their own lesson's OUTBOUND references; `grep -l` over all 29 lesson JSONs for the track's
+  ids and titles rules out the inbound direction. (Clean here — nothing forward-references M16.)
+
+### The harness (P1–P5, predictions written first)
+
+`M:\claud_projects\temp\m16-step4\` — `predictions.md`, `perturb.py`, `P*.log`. Each perturbation
+applied ALONE to `index.json` against a committed tree and reverted with `git checkout --`, with
+`git status --porcelain` empty after each. **Every prediction held.** P3 (whole track moved above the
+OoO one) reddened the cross-track pin ALONE of the two new tests, proving #5 distinct. **P4 (a fourth
+id appended) is the load-bearing run**: #1–#3 all passed and the COUNT fired alone, which is what
+makes it a pin rather than a comment. P5 (a fourth id inserted mid-track) exists only because #3
+cannot be isolated at length three.

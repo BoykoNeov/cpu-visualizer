@@ -5,12 +5,12 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 selectable**; six have a lesson track, the scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
-library is **29 lessons**, the repo runs **11920 passing tests** (11921 counting the one skipped
+library is **29 lessons**, the repo runs **11922 passing tests** (11923 counting the one skipped
 file), five gates green.
 
-**Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (steps 0–3 DONE
-2026-08-18: dump run, plan written, decisions 1–4 pinned and 5 applied, ALL THREE LESSONS SHIPPED; next is
-step 4, the track's order pins, then the browser pass)**.
+**Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (steps 0–4 DONE
+2026-08-18: dump run, plan written, decisions 1–4 pinned and 5 applied, ALL THREE LESSONS SHIPPED and the
+track's ORDER PINS in; next is step 5, the browser pass — the last step)**.
 **M15 is ✅ COMPLETE (all nine steps, 2026-08-10)** — the seventh model, its corpus program, and its
 canonical picture, closed by a browser pass that found two defects 11 872 green tests could not see. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8, 2026-08-09).**
 
@@ -129,8 +129,8 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   model needing a latency source (**`slowOpLatency` is cluster-gated and has no UI control**), before
   defining `pc` on any out-of-order-completion model, before sizing a differential matrix for a model
   that honors no knob, and before reading a red INV-8 cell as a state mismatch.
-- [M16 scoreboard lessons](m16-scoreboard-lessons-step0.md) — the seventh model's track (steps 0–3 done,
-  **all three lessons shipped**), and **the first with NO TOGGLE TO FLIP**: the sweep gets STRONGER and the
+- [M16 scoreboard lessons](m16-scoreboard-lessons-step0.md) — the seventh model's track (steps 0–4 done,
+  **all three lessons shipped and the order pins in**), and **the first with NO TOGGLE TO FLIP**: the sweep gets STRONGER and the
   M11+M12 finding-2 class retires outright — but it has now been measured GREEN over a lesson whose every
   sentence was false (step 2) and RED **by accident of anchor order** (step 3), so **neither colour is
   evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **eight false ones
@@ -145,7 +145,11 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   `register-reuse.s`'s own header (**a claim about SHAPE is a claim about spelling; assert the
   property the shapes SHARE**), one false ON SCREEN because fetch is one-deep, one a source-line
   position. Its check-order stub left **the sweep GREEN while every sentence in the lesson was
-  false** — the clearest exhibit yet that anchoring is not truth.
+  false** — the clearest exhibit yet that anchoring is not truth. **Step 4 pinned all five cross-references
+  and none were rejected** — three needed ADJACENCY rather than precedence because two lessons SHARE A
+  PROGRAM, the nearest precedent's guard was the INVERSE of the claim, and two pins are un-isolatable at
+  the track's current length yet are the only ones that redden when it GROWS (**perturb the SIZE, not
+  only the order**).
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
 - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.
