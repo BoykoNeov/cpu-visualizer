@@ -6436,7 +6436,7 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
       '`add x10, x10, x5`',
       '`bne x5, x0, -8`',
       'each `li` as an `addi`',
-      'register-result grid at the bottom still calls x10 `a0`',
+      'register-result table at the bottom still calls x10 `a0`',
     ]) {
       expect(detailed, `the note says ${said}`).toContain(said);
     }
@@ -6786,7 +6786,7 @@ describe('one-name-two-writers — a name is not a value (M16 step 2)', () => {
     const detailed = resolveNarration(lesson().steps[0]!.narration, 'detailed');
     expect(detailed, 'the note quotes the row as it prints').toContain('`addi x6, x0, 7`');
     expect(detailed, 'and names the one table that spells the name').toContain(
-      'only the register-result grid names them',
+      'only the register-result table names them',
     );
   });
 });

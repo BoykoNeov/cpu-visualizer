@@ -268,10 +268,19 @@ describe('the three tables spell a register two different ways, and the lessons 
     expect(html, "`regCell`'s x-name reaches an Fi/Fj/Fk cell").toContain('>x6<');
   });
 
-  it('names the register in the register grid, and only there', () => {
-    expect(html, 'the grid cell carries the ABI name').toContain('>t1<');
+  it('names the register in the register-result table, and only there — at EVERY cursor', () => {
+    expect(html, 'the register cell carries the ABI name').toContain('>t1<');
     // The discriminator: `t1` must not be reachable from the OTHER two tables' spelling of it, or
-    // the lessons' "only the register-result grid names them" is false in the markup.
-    expect(count(html, '>t1<'), 'exactly one cell spells it that way').toBe(1);
+    // the lessons' "only the register-result table names them" is false in the markup.
+    //
+    // ⚠ **Swept over the whole recording rather than read at c23.** The register grid prints all
+    // thirty-two names at every cursor, so the ONE side of this count is cursor-independent — but
+    // the instruction rows and the unit cells that could add a second `t1` are not, and a count of
+    // one taken at a hand-picked cycle would be green for a reason the sentence does not claim.
+    // Every cycle of the run, plus the pre-run cursor, which draws the empty tables.
+    const recording = record('register-reuse');
+    for (const cycle of [null, ...recording.map((t) => t.cycle)]) {
+      expect(count(draw(recording, cycle), '>t1<'), `exactly one cell spells it t1 at c${cycle}`).toBe(1); // prettier-ignore
+    }
   });
 });
