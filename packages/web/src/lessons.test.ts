@@ -6379,6 +6379,61 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
       expect(trace.at(-1)!.state.registers[10], `a0 on ${model.id}`).toBe(55);
     }
   });
+
+  /**
+   * STEP 1's SPELLING NOTE — the prose speaks the source, the tables print the assembly.
+   *
+   * This track is the only place in the library that sends a reader to a specific ROW, and the
+   * prose everywhere quotes the source (`bnez t0, loop`) while `formatInstruction` prints what the
+   * assembler produced (`bne x5, x0, -8`). The note is what turns that from a trap into a fact the
+   * reader is told once, so the note itself is now the sentence most worth guarding here.
+   *
+   * ⚠ **Asserted through `buildScoreboardTables`, never off `micro`.** `micro` carries register
+   * NUMBERS in every field, so an oracle reading it could not tell the three tables apart — and
+   * which surface turns a number back into a name is the entire claim. The two halves fail
+   * differently: quoting a row that exists nowhere sends the reader hunting, and naming the wrong
+   * table as the one that spells names is a claim about the VIEW that nothing else in this file
+   * would catch.
+   */
+  it("STEP 1's SPELLING NOTE — every quoted row exists, and only the grid uses names", () => {
+    const trace = board();
+    const texts = new Set<string>();
+    const ops = new Set<string>();
+    for (const c of trace) {
+      const view = buildScoreboardTables(c, trace)!;
+      for (const r of view.instructions) texts.add(r.text);
+      for (const u of view.units) if (u.op !== null) ops.add(u.op);
+    }
+    // The spellings the note promises the reader WILL find, quoted from the fold that prints them.
+    for (const row of ['add x10, x10, x5', 'bne x5, x0, -8', 'addi x5, x0, 10']) {
+      expect(texts, `a row reads ${row}`).toContain(row);
+    }
+    // ...and the source spellings the rest of the lesson uses, which are on no row at all. This is
+    // the half that states WHY the note exists; without it the pin would pass on a machine that
+    // printed both.
+    for (const quoted of ['add a0, a0, t0', 'bnez t0, loop', 'li t0, 10']) {
+      expect(texts, `no row reads ${quoted}`).not.toContain(quoted);
+    }
+    // "each `li` as an `addi`" — the unit table's op column, the second vocabulary gap in the
+    // sentence step 2 leans on ("`li a0, 0` and `li t0, 10` hold INT0 and INT1").
+    expect(ops, 'the op column spells the setup pair `addi`').toContain('addi');
+    expect(ops, "and `li` is the assembler's word, never the machine's").not.toContain('li');
+
+    // The one table that does name registers — and both names the note quotes.
+    const grid = buildScoreboardTables(trace[0]!, trace)!.registerResult;
+    expect(grid[10]!.name, 'x10 is `a0` in the register grid').toBe('a0');
+    expect(grid[5]!.name, 'and x5 is `t0`').toBe('t0');
+
+    const detailed = resolveNarration(lesson().steps[0]!.narration, 'detailed');
+    for (const said of [
+      '`add x10, x10, x5`',
+      '`bne x5, x0, -8`',
+      'each `li` as an `addi`',
+      'register-result grid at the bottom still calls x10 `a0`',
+    ]) {
+      expect(detailed, `the note says ${said}`).toContain(said);
+    }
+  });
 });
 
 /**
@@ -6682,6 +6737,50 @@ describe('one-name-two-writers — a name is not a value (M16 step 2)', () => {
     // And t1 now keeps the load's 9, because nothing writes over it any more — which is why this is
     // an ORACLE and not an invitation: the reader's own `t1` would change under their hands.
     expect(regs[6]).toBe(9);
+  });
+
+  /**
+   * STEP 1's SPELLING NOTE — the register this lesson is about is spelled two ways on one screen.
+   *
+   * Step 3 walks the reader across all three tables in a single paragraph (`INT1` in the unit
+   * table, `t1` in the register grid, "the `lw t1, 4(t0)` two lines above" in the instruction
+   * table), and two of those three surfaces do not spell `t1` that way. The note in step 1 is what
+   * makes that paragraph followable, so it is pinned to the fold that draws the tables.
+   *
+   * ⚠ **x6, not x7.** The two lessons on `register-reuse` are about DIFFERENT names — this one
+   * holds a write to `t1` (x6), the next holds one to `t2` (x7) — and a note carrying the
+   * neighbour's number would read as correct while pointing at the wrong row.
+   */
+  it("STEP 1's SPELLING NOTE — the held `addi` is rowed as x6, and only the grid says t1", () => {
+    const trace = reuse();
+    const texts = new Set<string>();
+    for (const c of trace) {
+      for (const r of buildScoreboardTables(c, trace)!.instructions) texts.add(r.text);
+    }
+    expect(texts, 'the row the reader is sent to find').toContain('addi x6, x0, 7');
+    expect(texts, 'and the prose spelling is on no row').not.toContain('addi t1, x0, 7');
+    // The other instruction step 3 quotes by name, two lines above it.
+    expect(texts, 'the older writer of the same name').toContain('lw x6, 4(x5)');
+
+    // The unit table's destination field is a NUMBER (`regCell` prints `x${reg}`), which is the
+    // second of the two surfaces the note says spells `t1` as x6.
+    const held = wawStalls(trace)[1]!.instr;
+    const holding = trace
+      .flatMap((c) => buildScoreboardTables(c, trace)!.units)
+      .filter((u) => u.instr === held);
+    expect(holding.length, 'a unit does eventually hold it').toBeGreaterThan(0);
+    for (const u of holding) expect(u.fi, 'its Fi cell reads x6').toBe(6);
+
+    // And the one surface that names it. Read at index 6 deliberately: x7 is the NEXT lesson's.
+    const grid = buildScoreboardTables(trace[0]!, trace)!.registerResult;
+    expect(grid[6]!.name, 'x6 is `t1`').toBe('t1');
+    expect(grid[7]!.name, 'x7 is `t2`, which is the lesson after this one').toBe('t2');
+
+    const detailed = resolveNarration(lesson().steps[0]!.narration, 'detailed');
+    expect(detailed, 'the note quotes the row as it prints').toContain('`addi x6, x0, 7`');
+    expect(detailed, 'and names the one table that spells the name').toContain(
+      'only the register-result grid names them',
+    );
   });
 });
 
