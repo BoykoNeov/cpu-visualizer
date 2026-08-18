@@ -53,8 +53,14 @@ anyway. `structural-int` climbs **6 → 9** when they are removed, because the m
 re-bottlenecks on units. **The hazards buy correctness, not speed** (without the WAR hold `a0`
 lands on 26 instead of 24), and a track that sold them as a performance story would be selling a
 cycle. The results the reader cares about (`a0` = 24, `a1` = 14) are identical across the edit and
-only the scratch registers differ — which is what makes it safe to hand to a reader as a
-`function-call`-shaped hand-off.
+only the scratch registers differ.
+
+⚠ **That makes the A/B a good ORACLE and a BAD INVITATION, and the first draft of the plan
+conflated them.** Handing the edit to a reader fails M5's payoff rule: one cycle out of 31, to be
+COUNTED across two runs from memory, in a sandbox where the fork has already DETACHED the lesson —
+and if they rename only the WAR (the natural single edit) the payoff is **zero**. `function-call`'s
+hand-off works because `max` returns your number, visibly, in one register. Keep the oracle; if a
+hand-off is wanted, its payoff must be the `war`/`waw` rows VANISHING from the tables.
 
 ⚠ **THAT MEASUREMENT WAS A NULL RESULT ON ITS FIRST RUN, AND THE FAILURE MODE GENERALISES.** The
 first harness edited the program with `String.replace` over the whole source — and every needle
@@ -74,10 +80,13 @@ Other measurements, each already in the plan:
   as many words that a station lets an instruction "park there … and blocks no one behind it." The
   scoreboard is the exact counter-case, visible in the FU-status table. **This is the earned order
   pin** (a premise that is false, not merely unexplained, if the reader has not met that lesson).
-- **The ceiling has a three-instruction demonstration**: `add.s` runs 3 instructions in **9 cycles**
-  with NO data hazard — the third stalls `structural-int` because both integer units are still
-  occupied. Loop-scale version: `sum-loop`, 80 cycles, **IPC 0.425 with ZERO `operand`/`waw`/`war`
-  stalls in the whole run.** M15's "say the ceiling out loud" requirement, in a number.
+- **The ceiling's demonstration is `sum-loop`** — 80 cycles, **IPC 0.425 with ZERO
+  `operand`/`waw`/`war` stalls in the whole run** — which is M15's "say the ceiling out loud"
+  requirement in a number. ⚠ **`add.s` is sharper and is the wrong choice**: 3 instructions in
+  **9 cycles** with no data hazard at all, but `deep-drain` is _"Three instructions, ten cycles"_ on
+  that same program and already asks "where do the extra cycles go?" — the same rhetorical move one
+  track later with a SMALLER number, which a reader takes as "the scoreboard beats the deep
+  pipeline." `add.s` touches no memory, so the comparison is ALMOST fair, and that is the trap.
 - ⚠ **A cross-model cycle comparison measures `MEM_LATENCY`, not the scheduling discipline.** The
   scoreboard is never faster than the 5-stage pipeline on any corpus program (31 vs 23 here), but
   its memory unit is intrinsically 4 cycles against the pipeline's 1. Prose saying "out-of-order
