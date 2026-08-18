@@ -6036,10 +6036,43 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
         r.writeResult! - 1,
       );
     }
-    // Two units and a four-cycle turnaround each is one integer instruction per two cycles — the
-    // ceiling the closing narration quotes, with 0.425 sitting under it.
-    expect(2 / 4).toBe(0.5);
-    expect(34 / trace.length).toBeLessThan(0.5);
+    // ⚠ **The TURNAROUND has to be measured, and the first draft of this test did not measure it.**
+    // The span assertions above are true by construction of the row, so they survive a change to
+    // the latency itself: setting `INT_LATENCY` to 2 left this test GREEN while reddening the other
+    // four, under a name promising "so its turnaround is 4". That is an assertion necessary but not
+    // sufficient, reading like a guard (M15 step 7's species). The original also asserted
+    // `expect(2 / 4).toBe(0.5)`, which is arithmetic and measures nothing at all.
+    //
+    // So the turnaround is read off the recording: the smallest gap between one occupant of a unit
+    // issuing and the next one issuing into it. Four is the number the narration rests on.
+    const perUnit = new Map<string, string[]>();
+    for (const c of trace) {
+      const micro = (
+        c.state as {
+          micro?: { units?: readonly { name: string; busy: boolean; instr: string | null }[] };
+        }
+      ).micro;
+      for (const u of micro?.units ?? []) {
+        if (!u.busy || u.instr === null) continue;
+        const seen = perUnit.get(u.name) ?? [];
+        if (seen.at(-1) !== u.instr) seen.push(u.instr);
+        perUnit.set(u.name, seen);
+      }
+    }
+    const issueOf = new Map<string, number>(
+      rows(trace).flatMap((r) => (r.issue === null ? [] : [[r.instr, r.issue] as const])),
+    );
+    const gaps = [...perUnit.values()].flatMap((occupants) =>
+      occupants
+        .slice(1)
+        .map((id, i) => (issueOf.get(id) ?? 0) - (issueOf.get(occupants[i]!) ?? 0))
+        .filter((g) => g > 0),
+    );
+    expect(gaps.length, 'non-vacuity: units really are reused, many times').toBeGreaterThan(20);
+    expect(Math.min(...gaps), 'the integer turnaround the closing narration quotes').toBe(4);
+    // Two units at four cycles apiece is one integer instruction per two cycles, and 0.425 sits
+    // under it — the ceiling stated as the comparison the narration actually makes.
+    expect(34 / trace.length).toBeLessThan(2 / Math.min(...gaps));
   });
 
   it('THE CROSS-MODEL SENTENCE — 34 cycles at 1.0 on single-cycle, and 55 on every model', () => {
