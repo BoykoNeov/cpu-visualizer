@@ -979,6 +979,16 @@ hold INT0 and INT1", where the unit table's `op` column says `addi` twice and it
 new prose claim plus its pin on the milestone's last step buys less than it risks, and the
 convention is the library's, not this track's.
 
+**✅ Closed 2026-08-18, after the milestone.** The note now lands in all three lessons. The scoping
+criterion is the part worth keeping: **add it where the prose tells the reader to FIND something in
+a machine table and the spelling it uses is not the one that table prints** — which is two lessons
+here, and none in the out-of-order track, where no lesson sends a reader to a row by its text. 26 of
+29 lessons quote the source, so a count could never have scoped this. `two-units-one-queue`'s note
+carries `li` → `addi` as well as the register mapping; `one-name-two-writers`'s names x6, not x7.
+Guarded in `lessons.test.ts` (through `buildScoreboardTables`) and — for the half no fold can see,
+since `regCell` is unexported — in `ScoreboardTablesView.test.tsx`, where exactly one cell in the
+markup may read `t1`. Four stubs, each red on its own assertion; see the memory file.
+
 ### Three rig failures on run 1, and all three were the RIG
 
 The house record again (M11 step 5: five of five; M11 step 7: all of them; M14 step 5: `MULTIPLE:2`

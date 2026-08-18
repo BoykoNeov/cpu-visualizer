@@ -136,7 +136,7 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **eight false ones
   across two lessons, every one caught by hand** — including one that **INVERTED the hazard** and one that
   **quoted the wrong table's register spelling** (the instruction and unit tables print `x7`; only the
-  register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** ⚠ **Step 5 (the browser pass, 260 checks green over the
+  register-result table says `t2`). **The wart is now EXPLAINED in prose, 2026-08-18** — a note in each of the two lessons that lacked one, scoped by the criterion that made "where is it needed" answerable at all (26 of 29 lessons quote the source's spelling, so only "the prose sends the reader to FIND a row" narrows it), and pinned in the MARKUP because no fold can see which surface names a register. **Read before authoring any scoreboard lesson.** ⚠ **Step 5 (the browser pass, 260 checks green over the
   shipped bundle) adds four that outlive the milestone: an oracle can be green BECAUSE IT FILTERS AWAY THE
   COUNTER-EVIDENCE (`filter(r => r.issue !== null).toBe(34)` hid a false sentence at BOTH tiers of one step,
   while the panel's own counter prints 41 then 43) — ask whether the assertion's SCOPE matches the SENTENCE's;

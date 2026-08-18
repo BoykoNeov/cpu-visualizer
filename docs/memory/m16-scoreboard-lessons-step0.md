@@ -508,6 +508,47 @@ THIRD lesson (`t2` → `x7`, step 3's known wart). Lessons 1 and 2 point at the 
 carry nothing — sharpest at lesson 1 step 2, where "`li a0, 0` and `li t0, 10` hold INT0 and INT1"
 faces a unit table whose `op` says `addi` twice and whose `Fi` says `x10`/`x5`.
 
+### ✅ CLOSED 2026-08-18 — the note now lands in all three, and the CRITERION is the finding
+
+Asked to "add the explanation where it is needed", and the audit is what made "where" answerable:
+**26 of 29 lessons quote the source's spelling**, so a count cannot scope this and a library-wide
+note would be 29 restatements of one fact. The criterion that does scope it: **add the note where
+the prose tells the reader to FIND something in a machine table and the spelling it uses is not the
+spelling that table prints.** "Watch the map" fails that test (the row is located by POSITION);
+"Find its row in the instruction status table" passes. Under it exactly two lessons needed one —
+`two-units-one-queue` (covering `li` → `addi` as well, which is the half a register-only note would
+have missed) and `one-name-two-writers` — and the out-of-order track needed none, because not one
+of its four lessons sends a reader to a row by its text (the ROB table is the sharper wart, `add
+x10, x10, x7` beside a `dest` column reading `a0` IN THE SAME ROW, and it still fails the criterion).
+`forwarding-bubble` was declined for the same reason plus redundancy: the language track already
+teaches number-vs-nickname three times before a reader reaches it.
+
+⚠ **`t1` is x6 and `t2` is x7** — the two `register-reuse` lessons are about DIFFERENT names, and
+carrying the neighbour's number into a note would read as correct while pointing at the wrong row.
+Stub B exists for exactly that.
+
+⚠ **A FOLD ORACLE CANNOT SEE THIS CLAIM.** `micro` and `ScoreboardUnitRow` carry register NUMBERS in
+every field; `regCell` — which turns `fi: 6` into the `x6` a reader sees — is unexported and lives
+in the component. So "only the register-result grid names them" is true or false only in the MARKUP,
+and it is pinned in `ScoreboardTablesView.test.tsx` at c23 of `register-reuse.s` (all three tables
+showing one register at once): the row reads `addi x6, x0, 7`, an Fi/Fj/Fk cell reads `x6`, and
+EXACTLY ONE cell in the whole markup reads `t1`. That count is the discriminator — stubbing
+`regCell` to ABI names takes it to 3.
+
+⚠ **A CLAUSE THAT CANNOT FIRE ALONE, MEASURED RATHER THAN ASSUMED.** The companion "no row reads
+`add a0, a0, t0`" loop is a PREMISE statement, not an independent net: a row carries exactly one
+text, so gaining the prose spelling means losing the numeric one and the toContain loop above it
+reddens first (measured by stub D). It fires only if the product ever rows BOTH — at which point the
+note is unnecessary rather than false. The mirror of step 4's finding: independence and guarding are
+different questions, and a clause that can never fire alone should SAY so.
+
+The four stubs, each red on its own assertion: note quotes `x7` for the add → the prose clause;
+note carries the next lesson's register → lesson 2's prose clause; `regCell` speaks ABI names →
+`>x6<` absent and the `t1` count 3; `formatInstruction` speaks ABI names → all three pins, on the
+row that vanished. **That last one is the property worth keeping:** if anyone ever FIXES the wart,
+these notes become false, and the pins catch it as false rather than letting three lessons quietly
+mislead.
+
 ⚠ **A NON-VACUITY PROBE CAN BE VACUOUS IN ITS SUBJECT even when its GEOMETRY is right.** The caption
 squeeze probe ran wherever the walk left the cursor — a 56-character "no stall this cycle" — and
 reported 3 lines wanted against 3 available at 200px, which is what a correct app AND a dead metric
