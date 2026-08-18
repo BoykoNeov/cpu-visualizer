@@ -5,11 +5,11 @@ came from the don't-foreclose flag), each code-reviewed with every finding fixed
 selectable**; six have a lesson track, the scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
-library is **26 lessons**, the repo runs **11872 passing tests** (11873 counting the one skipped
+library is **27 lessons**, the repo runs **11887 passing tests** (11873 counting the one skipped
 file), five gates green.
 
-**Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (step 0 DONE
-2026-08-18: dump run, plan written, all eight decisions OPEN)**.
+**Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (steps 0–1 DONE
+2026-08-18: dump run, plan written, decisions 1–4 pinned, the first of three lessons shipped)**.
 **M15 is ✅ COMPLETE (all nine steps, 2026-08-10)** — the seventh model, its corpus program, and its
 canonical picture, closed by a browser pass that found two defects 11 872 green tests could not see. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8, 2026-08-09).**
 
@@ -128,11 +128,13 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   model needing a latency source (**`slowOpLatency` is cluster-gated and has no UI control**), before
   defining `pc` on any out-of-order-completion model, before sizing a differential matrix for a model
   that honors no knob, and before reading a red INV-8 cell as a state mismatch.
-- [M16 scoreboard lessons — step 0](m16-scoreboard-lessons-step0.md) — the seventh model's track, and
+- [M16 scoreboard lessons](m16-scoreboard-lessons-step0.md) — the seventh model's track (steps 0–1 done), and
   **the first with NO TOGGLE TO FLIP**: the sweep gets STRONGER and the M11+M12 finding-2 class retires
   outright. **Read before authoring any scoreboard lesson.** The renaming A/B is real but small (31 → 30,
   and the WAR alone costs ZERO) — and it was a NULL RESULT on its first run because the edit harness
-  patched the program's COMMENT HEADER, which quotes every instruction verbatim.
+  patched the program's COMMENT HEADER, which quotes every instruction verbatim. Step 1's mutation
+  check found a **FALSE NET in its own oracle** — and discarded a stub that DEADLOCKED the machine,
+  because a mutation that breaks correctness cannot measure a timing claim.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
 - [Condensed log](condensed-milestone-log.md) — M8/M7/M2/M6 compressed findings.

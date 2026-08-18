@@ -8,7 +8,8 @@ metadata:
   modified: 2026-08-18T09:37:22.503Z
 ---
 
-**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: step 0 DONE, all eight decisions OPEN.**
+**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: steps 0 and 1 DONE; decisions 1–4 PINNED by
+the user (three lessons; `sum-loop` for the ceiling; a NEW track, appended last), 5–8 open.**
 The dump lives at `M:\claud_projects\temp\m16-step0\` (`dump.txt` 639 lines + `dump2.txt`, both
 with JSON twins). It was run BEFORE the plan, which is this repo's method for a lesson track
 ([[m12-deep-pipeline-lessons]]), and it decided the design. Read it before authoring any step.
@@ -104,3 +105,41 @@ Three lessons — the ceiling, WAW, WAR+reorder — in a NEW track appended last
 rename edit as a hand-off. Steps 1–3 author them, step 4 pins the track and its order, step 5 is
 the browser pass ([[browser-is-the-only-net]]). Five falsifiable UNCHANGED criteria: no schema, no
 engine, no corpus, no view, no new `Lesson` field.
+
+## Step 1 SHIPPED — `two-units-one-queue` (`69c99c4` + `daacb1f`, repo 11872 → 11887)
+
+`sum-loop` on the scoreboard, four steps at cycles 0, 3, 8, 71, under a new **"The scoreboard"**
+track appended after the out-of-order one. Five gates green.
+
+**The lesson declares NO `config`, and the oracle asserts the omission.** Lawful by
+`Lesson.config`'s own docblock ("a config-blind model ignores every knob; a lesson that omits it
+has no opinion") — and declaring one would pin knobs this engine provably ignores while silently
+moving the reader's session position on every OTHER model the moment the lesson opened. The five
+capability flags are pinned beside it, so a model that later gains a knob reddens here.
+
+**Step 2 CONCEDES the thing that would have made it false.** At cycle 3 the loop's `add` lacks a
+unit AND its operand (`t0` is not written until 5), and the machine says `structural-int` because
+the issue check asks about units first. "It is not waiting for data" would have been false with
+every anchor green. The expert tier states both and then proves which BINDS: the `add` issues at 5,
+the cycle after a unit frees, and reads `t0` at 6 without waiting.
+
+### ⚠ THE MUTATION CHECK FOUND A FALSE NET IN THIS MILESTONE'S OWN ORACLE
+
+Two stubs, predictions first. **M-1** (every unit shortage reported as `structural-mem`) reddens
+the thesis, step 2, and the SWEEP — the sweep because step 2 anchors on `reason: 'structural-int'`
+and can no longer find it. **M-2′** (`INT_LATENCY` 1 → 2, a coherent machine rather than a broken
+one) reddens 5 of 8. Repo-wide: M-1 6 files / 23 tests, M-2′ 7 files / 64 tests.
+
+**`OCCUPANCY CEILING` stayed GREEN under a change to the very latency its NAME quotes.** It asserted
+that a unit's busy span matches its instruction's row — true by CONSTRUCTION of the row, hence true
+at any latency — plus `expect(2 / 4).toBe(0.5)`, which is arithmetic and measures nothing at all.
+**An assertion necessary but not sufficient, passing on broken code while reading like a guard**:
+[[m15-scoreboard-planned]] step 7's species, found here by RUNNING the stub rather than by reading
+the test. Fixed to measure the turnaround off the recording, with a non-vacuity floor, and **re-run
+against the FIX** — 5 of 8 now, where the original scored 4.
+
+⚠ **A third stub was DISCARDED, and the reason generalises: a mutation that breaks CORRECTNESS
+cannot measure a TIMING claim.** Freeing the unit inside Write-Result instead of at the clock edge
+lets a newly issued instruction be deleted by the edge that follows, so the machine deadlocks. It
+reddened ten files and proved only that the tests run the engine — and its red is LOUDER than a
+good stub's, which is exactly what makes it tempting to report as coverage.

@@ -200,9 +200,10 @@ with renaming and one without. Three non-vacuous pins are available and each is 
 ## Build order (each step testable before the next)
 
 - **Step 0 — the dump. ✅ DONE 2026-08-18.** Findings above.
-- **Step 1 — the ceiling lesson.** The subject M15 requires be said out loud. Seeded program:
-  `add.s` (see decisions — `sum-loop` is the alternative). Its discriminator: swap `model` to
-  `pipeline` and the narration must become a lie.
+- **Step 1 — the ceiling lesson. ✅ DONE 2026-08-18** (`69c99c4`, `daacb1f`; repo 11872 → 11887).
+  `two-units-one-queue` on `sum-loop`, four steps at cycles 0, 3, 8 and 71, under a new
+  **"The scoreboard"** track appended last. Eight named oracle claims, two mutation stubs.
+  See "Step 1 as built" below.
 - **Step 2 — the WAW lesson.** `register-reuse`, `i8` held at Issue c19–c22, blocking every younger
   instruction behind it because Issue is in-order and blocking. Carries the benign/corrupting pair
   from finding 6.
@@ -219,6 +220,63 @@ with renaming and one without. Three non-vacuous pins are available and each is 
   a different model so every assertion is about what the lesson dragged. Read the RENDERED panel,
   not the DOM. [[browser-is-the-only-net]] — 11 of the last 12 view steps shipped a defect only the
   browser caught.
+
+## Step 1 as built — `two-units-one-queue` (2026-08-18)
+
+Four steps, chosen so no two share a cycle: `instr-fetch` #1 (c0), the first `structural-int`
+stall (c3), the write of the first partial total (c8), and the write of 55 (c71).
+
+**Two authoring calls worth keeping.**
+
+**The lesson declares NO `config`, and that is asserted rather than left looking like an
+omission.** `Lesson.config`'s own docblock allows it — "a config-blind model ignores every knob; a
+lesson that omits it has no opinion" — and declaring one here would pin knobs this engine provably
+ignores while silently moving the reader's session position on every OTHER model the moment the
+lesson opened. The oracle pins the five capability flags beside the omission, so a model that later
+gained a knob reddens here instead of quietly leaving this prose describing one position of a
+machine the reader can now move.
+
+**Step 2 CONCEDES the thing that would have made it false.** At cycle 3 the loop's `add` lacks a
+unit _and_ its operand — `t0` is not written until cycle 5 — and the machine reports
+`structural-int` because the issue check asks about units first. A narration claiming "it is not
+waiting for data" would have been false with every anchor green. So the expert tier states both and
+then says which constraint _binds_, proving it from the run: the `add` issues at 5, the cycle after
+a unit frees, and reads `t0` at 6 without waiting. Both halves are pinned.
+
+### The mutation check — and it found a FALSE NET in this milestone's own oracle
+
+Predictions written first. **M-1**: the issue check reports every unit shortage as
+`structural-mem`. **M-2′**: `INT_LATENCY` 1 → 2 — a coherent machine, not a broken one.
+
+| oracle claim              | M-1     | M-2′                               |
+| ------------------------- | ------- | ---------------------------------- |
+| declares knob-blind model | green   | green                              |
+| THE THESIS                | **RED** | **RED**                            |
+| THE DISCRIMINATOR         | green   | green                              |
+| STEP 3 (no gap in rows)   | green   | **RED**                            |
+| STEP 2 (the unit binds)   | **RED** | **RED**                            |
+| STEP 4 (71 / 80 / period) | green   | **RED**                            |
+| OCCUPANCY CEILING         | green   | **GREEN — and it should not have** |
+| CROSS-MODEL               | green   | green                              |
+| the sweep (validator)     | **RED** | green                              |
+
+Repo-wide: M-1 reddens 6 files / 23 tests; M-2′ reddens 7 files / 64 tests.
+
+⚠ **`OCCUPANCY CEILING` stayed green under a change to the very latency its NAME quotes.** It
+asserted that a unit's busy span matches its instruction's row — true by construction of the row,
+and therefore true at any latency — plus `expect(2 / 4).toBe(0.5)`, which is arithmetic and
+measures nothing at all. **An assertion necessary but not sufficient, passing on broken code while
+reading like a guard**: M15 step 7's species, found here by RUNNING the stub rather than by reading
+the test. It now measures the turnaround off the recording (the smallest gap between one occupant
+of a unit issuing and the next issuing into it), carries a non-vacuity floor on the number of gaps,
+and states the ceiling as the comparison the narration makes rather than as a constant over itself.
+**Re-run against the FIX, not only against the original** — 5 of 8 red now where it was 4 of 8.
+
+⚠ **A third stub was DISCARDED rather than reported, and the reason generalises.** Freeing the unit
+inside Write-Result instead of at the clock edge lets a newly issued instruction be deleted by the
+edge that follows, so the machine deadlocks. It reddened ten files and proved only that the tests
+run the engine. **A mutation that breaks CORRECTNESS cannot measure a TIMING claim** — and its red
+is louder than a good stub's, which is exactly why it is tempting to report.
 
 ## Acceptance criteria
 
