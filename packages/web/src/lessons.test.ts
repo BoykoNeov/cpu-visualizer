@@ -6174,45 +6174,75 @@ describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () 
     ]);
   });
 
-  it('STEP 3 — thirty-four is the count of rows that ISSUE, and the counter counts more (M16 step 5)', () => {
-    // ⚠ The step-5 browser pass caught this sentence being false on screen, and the assertion above
-    // is WHY it survived: `filter(r => r.issue !== null)` throws away the very rows that make it
-    // wrong and then counts what is left. Green because it asserted the filtered thing — the M15
-    // step-8 shape, one milestone later. The sentence used to read "every one of the thirty-four
-    // ROWS in this run"; the panel's own window note reads "the last 10 of 41 fetched" at this
-    // lesson's closing cursor and "43 fetched" at the end of the run. A count pin that can only see
-    // the filtered set is arithmetically independent of the sentence it is supposed to guard.
+  it('STEP 3 — thirty-four counts the rows that ISSUE, and no claim outruns the cursor (M16 step 5)', () => {
+    // ⚠ The step-5 browser pass caught this step's prose being false on screen — at BOTH tiers —
+    // and the assertion above is WHY it survived: `filter(r => r.issue !== null)` throws away the
+    // very rows that make it wrong and then counts what is left. Green because it asserted the
+    // filtered thing, the M15 step-8 shape one milestone later. `detailed` said "every one of the
+    // thirty-four ROWS in this run" while the panel's own note reads "the last 10 of 41 fetched" at
+    // this lesson's closing cursor and "43 fetched" at the end; `expert` said the four columns are
+    // consecutive "for every instruction in the recording", and nine squashed fetches are in the
+    // recording with no four columns at all. Two sentences, one filtered oracle.
     //
-    // ⚠ And the FIRST DRAFT OF THE FIX was false too — it wrote "the table ends up holding
-    // forty-one", which is the count at step 4's cursor, not at the end of the run. This pin caught
-    // it. The durable form of that: **the row count is CURSOR-DEPENDENT** (5 at this step's own
-    // cycle 8, 41 at cycle 71, 43 at cycle 79), so no single total can be true in the prose. The
-    // corrected sentence quotes only the number that does not move — the issued count — and says
-    // the counter reads higher, which is true at every cursor from the first squash onward.
-    const all = rows(board());
+    // ⚠ **AND THE FIRST TWO DRAFTS OF THE FIX WERE FALSE THE SAME WAY.** Draft one wrote "the table
+    // ends up holding forty-one", which is the count at step 4's cursor rather than at the end of
+    // the run. Draft two dropped the total and wrote "the counter above the table reads higher than
+    // that" — present tense, antecedent thirty-four — while the note at THIS STEP'S OWN CURSOR
+    // reads "5 fetched so far". Five is not higher than thirty-four. Three drafts, one defect:
+    //
+    //   **the row count GROWS with the cursor (5 at cycle 8, 41 at 71, 43 at 79), so a sentence
+    //   that compares it to a fixed number is false at every cursor but the ones past the
+    //   crossover — and a pin whose comparison is taken at the END OF THE RUN cannot see that.**
+    //
+    // So this pin is anchored where the reader is. It reads the window note off the fold that draws
+    // it, AT THIS STEP'S ANCHORED CYCLE, and requires the prose to make no comparison there.
+    const trace = board();
+    const all = rows(trace);
     const issuedRows = all.filter((r) => r.issue !== null);
-    expect(issuedRows.length, 'the only number in the sentence, and the only fixed one').toBe(34);
+    expect(issuedRows.length, 'the only number in the prose, and the only one that does not move').toBe(34); // prettier-ignore
     expect(all.length, 'every fetch is rowed, squashed or not — what the counter counts').toBe(43);
-    expect(all.length, 'so the counter MUST read higher than the sentence').toBeGreaterThan(
-      issuedRows.length,
-    );
     expect(all.length - issuedRows.length, 'the squashed remainder').toBe(9);
+
+    // The reader's own cursor. `hidden + instructions.length` is exactly what the note prints.
+    // `cycle` is nullable on an unanchored step — which is itself worth a red line here, since a
+    // step that never fires has no cursor for this claim to be true or false at.
+    const cycle = anchorLesson(lesson(), trace)[2]!.cycle;
+    expect(cycle, "this step's anchor").toBe(8);
+    const view = buildScoreboardTables(trace[cycle ?? 0]!, trace)!;
+    const countedHere = view.hidden + view.instructions.length;
+    expect(countedHere, 'what the counter says where the reader is standing').toBe(5);
+    expect(countedHere, 'and it is BELOW the sentence, which is why no comparison may be made').toBeLessThan(issuedRows.length); // prettier-ignore
+
     const detailed = resolveNarration(lesson().steps[2]!.narration, 'detailed');
     expect(detailed, 'the count is scoped to the rows that issue').toContain(
       'every other row in this run that ever issues — thirty-four of them',
     );
-    expect(
-      detailed,
-      'and the discrepancy is named rather than left for the reader to trip on',
-    ).toContain(
-      // prettier-ignore
-      'The counter above the table reads higher than that, because it counts every fetch',
+    expect(detailed, 'the squashed rows are described, not counted').toContain(
+      'a fetch the branch squashes is rowed here too, with all four columns empty',
     );
-    // The view's own marker for the squashed rows, so the word the prose uses is the word on screen.
-    expect(detailed).toContain('marked `flushed`');
-    expect(detailed, 'and no total is quoted, because the total moves with the cursor').not.toMatch(
+    // The view's own marker, so the word the prose uses is the word on screen.
+    expect(detailed).toContain('`flushed` marker');
+    expect(detailed, 'no total is quoted, because the total moves with the cursor').not.toMatch(
       /forty-(one|three)/,
     );
+    expect(
+      detailed,
+      'and no comparison either, because it is FALSE at this step’s own cursor',
+    ).not.toMatch(
+      // prettier-ignore
+      /reads higher|holds more|counts more than/,
+    );
+
+    // The expert tier carried the same scope error and needs the same guard.
+    const expert = resolveNarration(lesson().steps[2]!.narration, 'expert');
+    expect(
+      expert,
+      'scoped to the rows that issue, not to "every instruction in the recording"',
+    ).toContain(
+      // prettier-ignore
+      'for every instruction in the recording that issues at all',
+    );
+    expect(expert, 'and the row claim carries the same scope').toContain('no row that ever starts');
   });
 
   it('STEP 2 — the UNIT is what binds, not the operand, and the run proves which', () => {

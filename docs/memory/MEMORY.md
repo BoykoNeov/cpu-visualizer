@@ -10,7 +10,7 @@ file), five gates green.
 
 **Open work:** URL permalinks; session persistence. **M16 is ✅ COMPLETE (all six steps 0–5,
 2026-08-18)** — the seventh model's lesson track, closed by a browser pass that found a false count
-whose oracle was green because it filtered away the counter-evidence.
+whose oracle was green because it filtered away the counter-evidence — and whose fix took three drafts.
 **M15 is ✅ COMPLETE (all nine steps, 2026-08-10)** — the seventh model, its corpus program, and its
 canonical picture, closed by a browser pass that found two defects 11 872 green tests could not see. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8, 2026-08-09).**
 
@@ -136,14 +136,17 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **eight false ones
   across two lessons, every one caught by hand** — including one that **INVERTED the hazard** and one that
   **quoted the wrong table's register spelling** (the instruction and unit tables print `x7`; only the
-  register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** ⚠ **Step 5 (the browser pass, 227 checks green over the
-  shipped bundle) adds three that outlive the milestone: an oracle can be green BECAUSE IT FILTERS AWAY THE
-  COUNTER-EVIDENCE (`filter(r => r.issue !== null).toBe(34)` discards the nine rows that made "every one of the
-  thirty-four rows in this run" false, while the panel's own counter prints 41 then 43) — and the FIRST DRAFT
-  OF THE FIX repeated it, because **the row count is CURSOR-DEPENDENT**, so before pinning any number in prose
-  ask whether the thing it counts GROWS with the cursor; and **a non-vacuity probe can be vacuous in its
-  SUBJECT** even when its geometry is right — the caption squeeze ran on a 56-character caption and reported
-  3 lines wanted against 3 available, which is exactly what a dead metric prints.** The renaming A/B is real but small (31 → 30,
+  register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** ⚠ **Step 5 (the browser pass, 260 checks green over the
+  shipped bundle) adds four that outlive the milestone: an oracle can be green BECAUSE IT FILTERS AWAY THE
+  COUNTER-EVIDENCE (`filter(r => r.issue !== null).toBe(34)` hid a false sentence at BOTH tiers of one step,
+  while the panel's own counter prints 41 then 43) — ask whether the assertion's SCOPE matches the SENTENCE's;
+  **the first TWO drafts of the fix repeated it**, because **the row count GROWS WITH THE CURSOR** (5, 41, 43),
+  so before pinning any number in prose ask whether the thing it counts grows, and **pin the claim where the
+  READER is standing** — a comparison taken at the end of the run cannot see a sentence false at the cursor;
+  **a rig that renders only the DECLARED tier cannot see two thirds of the prose** (12 of 15 steps' other
+  tiers went unread, and that is where the second false sentence was); and **a non-vacuity probe can be
+  vacuous in its SUBJECT** even when its geometry is right — the caption squeeze ran on a 56-character
+  caption and reported 3 lines wanted against 3 available, exactly what a dead metric prints.** The renaming A/B is real but small (31 → 30,
   and the WAR alone costs ZERO) — and it was a NULL RESULT on its first run because the edit harness
   patched the program's COMMENT HEADER, which quotes every instruction verbatim. Step 1's mutation
   check found a **FALSE NET in its own oracle** — and discarded a stub that DEADLOCKED the machine,

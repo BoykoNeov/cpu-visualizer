@@ -814,10 +814,11 @@ source file — `packages/web/src/lessons.test.ts`.
 
 ## Step 5 as built — the browser pass (2026-08-18)
 
-The milestone's closing step, and the only one whose net can see a click. **227 checks, 0
-failures** on the final run (`M:\claud_projects\temp\m16-step5\run3.log`), against the SHIPPED
+The milestone's closing step, and the only one whose net can see a click. **260 checks, 0
+failures** on the final run (`M:\claud_projects\temp\m16-step5\run4.log`), against the SHIPPED
 bundle under `vite preview` — `/assets/index-*.js`, confirmed in §0, not the dev module graph.
-One prose defect found and fixed; one product wart found, measured and left alone. Repo 11923 →
+Two false sentences found and fixed — both tiers of one step, both guarded by one filtered
+oracle, and the fix took three drafts. One product wart found, measured and left alone. Repo 11923 →
 11924; five gates green.
 
 ### The rig, and why it is shaped this way
@@ -857,9 +858,13 @@ Three scoping rules the panel forces, all of them load-bearing:
   **INT1 is idle 18–22**.
 - **`depthDefault` in both rot directions**: the dial moves to `expert` and the prose changes, and
   then **starting the NEXT lesson puts it back to `detailed`** — which is what proves `setTier`
-  fires on every start rather than only the first. Plus all three tiers rendered and compared on
-  one step of each lesson: `essentials` is authored on all fifteen steps of this track and nothing
-  had ever been shown to read it on screen.
+  fires on every start rather than only the first.
+- **All three tiers rendered and compared on EVERY one of the fifteen steps.** ⚠ The first draft
+  swept the tiers once per lesson, on step 1 — which left **twelve of the fifteen steps' two
+  non-declared tiers unread**, and the `expert` string of one of them carried the same scope defect
+  its `detailed` sibling did. **A rig that only ever renders the DECLARED tier cannot see two thirds
+  of the prose it is there to read.** Widening the sweep is 45 renders and costs about thirty
+  seconds.
 - **Every backtick pair became a code span and none was left over**, per step — the only way an
   unbalanced backtick becomes visible, since `renderNarration` splits on backticks and an odd count
   silently swallows the rest of a sentence into (or out of) a code span.
@@ -870,46 +875,85 @@ Three scoping rules the panel forces, all of them load-bearing:
 - Cross-route identity on exit, all thirty-two register cells drawn at every cursor, and **no
   console error or warning in the whole pass**.
 
-### ⚠ The prose defect, and the oracle that was green BECAUSE it filtered the counter-evidence
+### ⚠ TWO false sentences, one filtered oracle — and THREE drafts of the fix
 
-Lesson 1 step 3 said: _"every one of the thirty-four rows in this run looks the same."_ On screen
-the panel's own window note reads **"the last 10 of 41 fetched"** at this lesson's closing cursor
-and **"43 fetched"** at the end of the run. The run rows 43 instructions: 34 issue, 9 are fetches
-the branch squashed, which print all dashes and a ` · flushed` marker.
+Lesson 1 step 3 was false at **both** tiers, and one assertion is why both survived.
 
-**The step-1 oracle is why it survived**, and this is the durable part:
+- `detailed`: _"every one of the thirty-four rows in this run looks the same."_ The panel's own
+  window note reads **"the last 10 of 41 fetched"** at this lesson's closing cursor and **"43
+  fetched"** at the end of the run. The run rows 43 instructions: 34 issue, 9 are fetches the branch
+  squashed, printed as all dashes with a ` · flushed` marker.
+- `expert`: _"The four columns are consecutive for **every instruction in the recording**."_ Those
+  same nine squashed fetches are in the recording and have no four columns at all.
+
+**The step-1 oracle is why both survived**, and this is the durable part:
 
 ```js
 const issued = rows(board()).filter((r) => r.issue !== null);
 expect(issued.length, 'the squashed fetches never issue and are excluded').toBe(34);
 ```
 
-It filters away the very rows that make the sentence false and then counts what is left — **green
+It filters away the very rows that make the sentences false and then counts what is left — **green
 because it asserted the filtered thing**, the M15 step-8 shape one milestone later. Every count in
-that assertion is correct; none of them is about the sentence.
+it is correct; none of them is about either sentence. The discriminator to carry forward is one
+question: **does the assertion's scope match the SENTENCE's scope?** Here the assertion is about
+"instructions that issued" and the sentences are about "every row / every instruction in the
+recording", and no amount of arithmetic care closes that gap.
 
-⚠ **And the FIRST DRAFT OF THE FIX was false too, caught by the pin written for the original.** It
-read "the table ends up holding forty-one", which is the count at step 4's cursor, not at the end of
-the run. **The row count is CURSOR-DEPENDENT — 5 at this step's own cycle 8, 41 at cycle 71, 43 at
-cycle 79 — so no single total can be true in the prose.** That is the M15 step-8 rule ("pinning a
-moving string to one line makes it HIDE") in its content form: a moving number quoted as a fixed one
-is false at every cursor but one. The shipped sentence quotes only the number that does not move:
+⚠ **THE FIRST TWO DRAFTS OF THE FIX WERE FALSE IN THE SAME WAY — the milestone's signature defect,
+run for a third and fourth time.**
 
-> "…and so does every other row in this run that ever issues — thirty-four of them. The counter
-> above the table reads higher than that, because it counts every fetch: the ones the branch
-> squashed are rowed too, marked `flushed`, and they never start at all."
+- **Draft one** wrote "the table ends up holding forty-one". Forty-one is the count at step **4**'s
+  cursor, not at the end of the run (43). Caught by the pin written for the original.
+- **Draft two** dropped the total and wrote "the counter above the table **reads higher** than
+  that" — present tense, antecedent thirty-four — while the note **at this step's own anchored
+  cycle** reads **"5 fetched so far"**. Five is not higher than thirty-four. And the pin repeated
+  the shape it was written to catch: `expect(all.length).toBeGreaterThan(issuedRows.length)`
+  compares 43 to 34, the relation **at the end of the run**, while the sentence asserts a relation
+  **at the reader's cursor**. Caught only by reading the sentence back against `oracle.json`'s own
+  `windowNote` for that step.
 
-The new pin reads BOTH numbers off the SAME recording (43 rowed, 34 issued, 9 squashed), asserts
-that the counter MUST exceed the sentence's number, quotes the two clauses, and forbids any total
-from appearing at all.
+One defect underneath all three drafts, and it is the general rule:
 
-**The mutation check — three stubs, each with a declared purpose:**
+> **The row count GROWS with the cursor — 5 at cycle 8, 41 at cycle 71, 43 at cycle 79.** A
+> sentence that compares it to a fixed number is false at every cursor before the crossover, and a
+> pin whose comparison is taken at the END OF THE RUN cannot see that. **Before pinning any number
+> in prose, ask whether the thing it counts grows with the cursor; if it does, quote only the part
+> that does not move, and pin the claim WHERE THE READER IS STANDING.**
+
+That is the M15 step-8 rule ("pinning a moving string to one line does not stop it being
+cursor-dependent, it makes it HIDE") in its content form.
+
+The shipped sentences make no comparison at all:
+
+> `detailed` — "…and so does every other row in this run that ever issues — thirty-four of them.
+> Not every row issues, though: a fetch the branch squashes is rowed here too, with all four columns
+> empty and a `flushed` marker beside it, and the counter above the table counts those as well."
+>
+> `expert` — "The four columns are consecutive for every instruction in the recording **that issues
+> at all** — **no row that ever starts**, anywhere in the eighty cycles, has a gap…"
+
+The pin now reads the window note **off the fold that draws it, at this step's own anchored cycle**
+(asserting it says 5, and that 5 is BELOW the sentence's thirty-four, which is precisely why no
+comparison may be made there), keeps the three run-wide counts (43 rowed / 34 issued / 9 squashed),
+quotes the surviving clauses at both tiers, and forbids both a total and a comparison from appearing.
+
+**The mutation check — six stubs, each with a declared purpose:**
 
 | #   | stub                                                           | predicted red                  | observed                                                                                                      |
 | --- | -------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | 1   | restore the original "thirty-four rows" sentence               | the new pin only               | 1 red, 3672 green — **the old filtered assertion stayed green**, which is the finding stated as a measurement |
-| 2   | keep the fix but quote a total ("ends up holding forty-three") | the clause pin                 | 1 red, on the "counter reads higher" clause                                                                   |
-| 3   | keep the sentence intact and APPEND a total elsewhere          | the `not.toMatch` clause alone | 1 red, on exactly that clause — so it is a guard, not a comment                                               |
+| 2   | keep the fix but quote a total ("ends up holding forty-three") | the clause pin                 | 1 red, on the clause pin                                                                                      |
+| 3   | keep the sentence intact and APPEND a total elsewhere          | the `not.toMatch` total clause | 1 red, on exactly that clause — so it is a guard, not a comment                                               |
+| 4   | restore DRAFT TWO (the present-tense comparison)               | the new clause pin             | 1 red, on "the squashed rows are described, not counted"                                                      |
+| 5   | restore the `expert` scope error                               | the expert-tier pin            | 1 red, on exactly that                                                                                        |
+| 6   | keep every earlier clause and APPEND a comparison              | the anti-comparison clause     | 1 red, on exactly that — stub 4 could not prove it, because vitest stops at the FIRST failed assertion        |
+
+⚠ **Stub 6 exists because stub 4 did not prove what it looked like it proved.** Stub 4 reddened on
+an earlier clause in the same test, so the anti-comparison guard was never reached — the same
+"vitest stops at the first failed assertion" trap step 4 recorded, aimed this time at a stub table
+rather than at a perturbation table. **A stub that reddens the right TEST has not shown that the
+right ASSERTION fires.**
 
 ### The product wart, measured and left alone
 
@@ -981,7 +1025,7 @@ and `lessons.test.ts`.
 | `depthDefault: 'detailed'`, narration differing from `expert`                                | headless for the difference; **browser only** for the shell actually opening at it — on all three lessons, and re-applying on every start                                              |
 | no `*` outside a code span                                                                   | the existing headless guard; **browser §2** per rendered step, plus the new code-span-count check                                                                                      |
 | criteria 1–5 checked and reported, with the check named                                      | the section above                                                                                                                                                                      |
-| mutation-checked, every new line RED against the broken thing                                | three stubs, table above                                                                                                                                                               |
+| mutation-checked, every new line RED against the broken thing                                | six stubs, table above                                                                                                                                                                 |
 | the browser pass drives the shipped bundle                                                   | §0: `/assets/index-*.js` present, `/src/main.tsx` absent, CSS sheets + rule count asserted, a KNOWN-PRESENT control resolved on a model that HAS one before any absence check below it |
 
 ## Acceptance criteria
