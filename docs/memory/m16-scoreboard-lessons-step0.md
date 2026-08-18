@@ -143,3 +143,59 @@ cannot measure a TIMING claim.** Freeing the unit inside Write-Result instead of
 lets a newly issued instruction be deleted by the edge that follows, so the machine deadlocks. It
 reddened ten files and proved only that the tests run the engine — and its red is LOUDER than a
 good stub's, which is exactly what makes it tempting to report as coverage.
+
+## Step 2 — `one-name-two-writers`, the WAW lesson (DONE 2026-08-18, `7c7f6f8`, 11887 → 11904)
+
+`register-reuse`, five steps at c0, c5, c19, c22, c26. Nine named oracle claims, three stubs.
+
+**The subject is a CONTRAST the event stream cannot show.** The run holds five `waw` stall cycles
+and they are two different things — one benign (`la t0, first`'s expansion holding itself up, whose
+younger writer READS `t0`) and four corrupting (`addi t1, x0, 7` held at Issue by an older `lw t1`).
+Same type, same reason, same stage. **The difference is a property of the DECODED instructions**, so
+it needed an oracle of its own and no amount of anchor-checking could have reached it.
+
+### ⚠ Three sentences that were FALSE, and the shape they share
+
+**1. "Every other `waw` in the corpus is a `la` address expansion" — FALSE, and
+`content/programs/register-reuse.s`'s own header carried the same claim** (fixed at this step).
+`array-sum` stalls on an accumulator (`add a0, a0, t2`); `nested-loop` on a counter. Three shapes,
+not one — and `packages/engine/scoreboard/src/timing.test.ts` already knew about the third, so the
+header contradicted a sibling file from its own milestone. **A claim about SHAPE is a claim about
+spelling and will rot. Find the property the shapes SHARE and assert that**: here the self-read,
+which is what actually decides corruption. The replacement is stronger and countable — **35 of the
+39 `waw` cycles in the whole library are a writer reading the name it overwrites, and the 4 in this
+lesson are the only ones that are not.**
+
+**2. "Blocking every younger instruction behind it" (the plan's own seeded framing) — false on
+screen.** Fetch is a ONE-DEEP slot, so nothing is behind the held instruction at all. What is
+visible is that **nothing is fetched for four cycles**. Narrate the picture, not the queue you
+imagined.
+
+**3. "The `la t0, first` on line 3" — it is the second instruction.** A position claim about source
+text is unguarded by every oracle in the file.
+
+### The mutation check — three stubs, each with a DECLARED purpose
+
+**Stating the purpose is the method, not a formality**, because step 1 established that a
+correctness-breaking stub cannot measure a timing claim. **M-1** (WAW check deleted) breaks
+correctness by design and is reported ONLY for the correctness claim it can measure: `t1` ends on
+**9** as step 5 promises, `t0` still lands the right address as step 2's counterfactual promises
+(the operand check holds a self-reading writer regardless), `a0`/`a1` untouched. **M-2** (check
+ORDER swapped, destination before units) is the coherent discriminator for the thesis. **M-3**
+(`MEM_LATENCY` 4 → 2) measures the four-cycle window. Repo-wide: 7/33, 5/19, 7/46 files/tests.
+Ten of eleven cells per column landed as predicted.
+
+⚠ **The M-2 sweep cell is the headline: GREEN, while every sentence in the lesson is false.** With
+the reasons relabelled, both `waw` anchors still fire on distinct cycles and the validator is
+happy — while the lesson now points the reader at the benign expansion and calls it the one that
+would have corrupted `t1`. **A green sweep proves the steps fire; it has never been able to prove
+the prose is true.** That gap is now exhibited rather than argued.
+
+⚠ **One misprediction, and its reason is worth keeping: `STEP 4` reddened under M-2 through the
+SPLIT's PREMISE, not its own subject** — the oracle identifies the held instruction as the SECOND
+`waw` stall, and under the stub that is a different instruction. The timing it asserts never moved.
+The ordinal handle is kept deliberately, because the lesson's anchor is `nth: 2`: if the second
+`waw` stall is a different instruction, the lesson is false whatever the cycles do.
+
+⚠ **A green cell is not always coverage.** `two-units-one-queue`'s whole oracle stays green under
+M-3, correctly — `sum-loop` touches no memory. Say so, rather than counting it.

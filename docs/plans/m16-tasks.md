@@ -1,8 +1,9 @@
 # Milestone 16 — The scoreboard lesson track
 
-**Status: step 0 DONE 2026-08-18 — the dump is run
-(`M:\claud_projects\temp\m16-step0\dump.txt` + `dump2.txt`), and it decided the design. Everything
-in the decisions table below is OPEN and the first three rows gate step 1.**
+**Status: steps 0–2 DONE 2026-08-18.** The dump is run and it decided the design; decisions
+1–4 are pinned by the user; two of the three lessons ship. **Next: step 3, the WAR lesson and
+the reorder at c17** — decision 5 (oracle yes, invitation no) governs its closing beat, and c17
+is reserved for it by finding 2.
 
 Source of truth for scope: `cpu-visualizer-spec.md` §13 (the curriculum system). The load-bearing
 invariants are INV-6 (lessons anchor to trace EVENTS, never cycle numbers), INV-2 (depth is a
@@ -204,9 +205,11 @@ with renaming and one without. Three non-vacuous pins are available and each is 
   `two-units-one-queue` on `sum-loop`, four steps at cycles 0, 3, 8 and 71, under a new
   **"The scoreboard"** track appended last. Eight named oracle claims, two mutation stubs.
   See "Step 1 as built" below.
-- **Step 2 — the WAW lesson.** `register-reuse`, `i8` held at Issue c19–c22, blocking every younger
-  instruction behind it because Issue is in-order and blocking. Carries the benign/corrupting pair
-  from finding 6.
+- **Step 2 — the WAW lesson. ✅ DONE 2026-08-18** (`7c7f6f8`; repo 11887 → 11904).
+  `one-name-two-writers` on `register-reuse`, five steps at cycles 0, 5, 19, 22 and 26. Nine named
+  oracle claims, three mutation stubs. ⚠ The seeded framing "blocking every younger instruction
+  behind it" was DROPPED as false on screen — fetch is a one-deep slot, so nothing is behind `i8`
+  at all; what is visible is that nothing is fetched for four cycles. See "Step 2 as built" below.
 - **Step 3 — the WAR lesson**, and the reorder at c17. The only WAR in the product; the only stall
   in the product that fires at the END of an instruction's life; costs zero cycles and buys the
   answer. Carries the `reservation-station-holds` callback from finding 3, and the track's closing beat —
@@ -277,6 +280,98 @@ inside Write-Result instead of at the clock edge lets a newly issued instruction
 edge that follows, so the machine deadlocks. It reddened ten files and proved only that the tests
 run the engine. **A mutation that breaks CORRECTNESS cannot measure a TIMING claim** — and its red
 is louder than a good stub's, which is exactly why it is tempting to report.
+
+## Step 2 as built — `one-name-two-writers` (2026-08-18)
+
+Five steps on `register-reuse`, chosen so no two share a cycle and none touches c17 (reserved for
+step 3's reorder): the opening fetch (c0), the benign `waw` (c5), the corrupting `waw` (c19), the
+release (c22) and the final write of 7 (c26).
+
+**The shape is a CONTRAST, not a mechanism walk.** The run holds five `waw` stall cycles and they
+are two different animals: one is the `la t0, first` expansion holding itself up, whose younger
+writer READS `t0` and could never have produced a wrong answer; four are the `addi t1, x0, 7` held
+at Issue by an older `lw t1` that still owns the name. **In the event stream they are
+indistinguishable** — same type, same reason, same stage. The difference is a property of the
+decoded instructions, which is why it is the lesson's spine and why it needed an oracle of its own.
+
+**The thesis inverts step 1's.** There the subject was "no unit"; here a unit is FREE and the
+instruction still cannot go. `issueBlocker` asks about units before destinations, so a `waw` report
+is itself proof the unit test passed — but the claim is pinned on the RECORDING (INT1 idle c18–c22
+beside a four-column-blank row, and four cycles in which nothing is fetched at all), never on the
+order of the checks in the source. The narration also never names the stage: a stall reported as
+`stage: 'ID'` repeats the `IF` cell on screen (M15 step 7), so "watch it move to Issue" would be
+false off the picture. It points at the blank row instead.
+
+**Two sentences the first draft got wrong, both caught before the mutation stage.**
+
+⚠ **"Every other `waw` in the corpus is a `la` address expansion" is FALSE, and
+`register-reuse.s`'s own header carried the same false claim** (fixed in this commit). `array-sum`
+stalls `waw` on an accumulator (`add a0, a0, t2`) behind a load; `nested-loop` on a counter
+(`addi t1, t1, -1`). Three shapes, not one — and `packages/engine/scoreboard/src/timing.test.ts`
+already knew about the third, so the header contradicted a sibling file written in the same
+milestone. What all of them share is the property that actually decides corruption, and it is the
+SELF-READ, not the spelling: **35 of the 39 `waw` cycles in the whole library are a writer reading
+the name it overwrites, and the 4 in this lesson are the only ones that are not.** That is now both
+the narration and the assertion, and it is a stronger claim than the one it replaced. The general
+lesson: a claim about SHAPE is a claim about spelling and will rot; find the property the shapes
+share and assert that.
+
+⚠ **The prose said "the `la t0, first` on line 3"** — it is the second instruction, and line 3 of
+nothing. Removed. A position claim about source text is unguarded by every oracle in the file.
+
+### The mutation check — three stubs, each with a DECLARED purpose
+
+Predictions written before any stub was applied (`M:\claud_projects\temp\m16-step2\predictions.md`),
+against a committed tree.
+
+- **M-1 — the WAW check deleted.** Breaks correctness by design, so per step 1's own finding it
+  **cannot measure a timing claim**. It is reported anyway because it is the only stub that can
+  measure the CORRECTNESS claim, which is a correctness claim by nature. Result: `t1` ends on **9**,
+  exactly as step 5 promises — and `t0` still lands the right address, exactly as step 2's
+  counterfactual promises, because the operand check holds the self-reading writer regardless. `a0`
+  and `a1` are untouched: the corruption is confined to the one name. (29 cycles, not the rename's
+  30 — deleting a check and renaming a register are different interventions, and the narration
+  quotes the rename.)
+- **M-2 — the check ORDER swapped**, destination before units. A coherent machine: same issue
+  decisions, different label. The discriminating stub for THE THESIS, and **not vacuous** — `i2` at
+  c3/c4 lacks a unit AND has `x5` claimed, so those two cycles flip to `waw`.
+- **M-3 — `MEM_LATENCY` 4 → 2.** A coherent machine. Measures the four-cycle window.
+
+| oracle claim                      | M-1            | M-2       | M-3       |
+| --------------------------------- | -------------- | --------- | --------- |
+| declares knob-blind model         | green          | green     | green     |
+| THE RUN (31 / inventory)          | RED            | RED       | RED       |
+| THE SPLIT (5 cycles, 1 + 4)       | RED            | RED       | RED       |
+| THE DISTINCTION (self-read)       | RED            | RED       | **green** |
+| THE THESIS (unit free, blank row) | RED            | **RED**   | RED       |
+| STEP 4 (owner MEM, issues at 23)  | RED            | RED ⚠     | RED       |
+| STEP 5 (9 then 7)                 | **RED**        | green     | RED       |
+| THE DISCRIMINATOR (`t1` = 7)      | **RED**        | green     | green     |
+| SCOPE (35 of 39)                  | RED            | RED       | RED       |
+| THE COUNTERFACTUAL (30 not 31)    | RED            | RED       | RED       |
+| the sweep (validator)             | RED (no `waw`) | **green** | green     |
+
+Repo-wide: M-1 reddens 7 files / 33 tests; M-2 5 files / 19 tests; M-3 7 files / 46 tests.
+
+**Ten of eleven cells landed as predicted in each column.** The one miss is STEP 4 under M-2
+(predicted green, actual RED) ⚠ **and it reddens through the SPLIT's premise, not its own subject**:
+the oracle identifies the held instruction as the SECOND `waw` stall, and under the stub the second
+`waw` stall is a different instruction (`i2`, which issues at 6). The timing it asserts did not move
+at all. That is the correct behaviour and the handle is deliberately kept ordinal, because the
+lesson's own anchor is `nth: 2` — if the second `waw` stall is a different instruction, the lesson
+is false, whatever the cycles do.
+
+⚠ **The M-2 sweep cell is the headline.** With the reasons relabelled, both `waw` anchors still fire
+on distinct cycles and the validator is perfectly happy — while step 3 now points the reader at the
+benign expansion and calls it the one that would have corrupted `t1`. **A green sweep proves the
+steps fire; it has never been able to prove the prose is true**, and this is that gap exhibited
+rather than argued.
+
+**Two things the table is honest about.** `two-units-one-queue`'s whole oracle stays green under
+M-3, correctly — `sum-loop` touches no memory, so a memory-latency change is invisible to it; a
+green cell there is not coverage. And the mutation table measures the FIXED `SCOPE` test, because
+that fix landed before the stubs, not after — the "re-run against the fix" rule was satisfied by
+sequencing rather than by a second pass.
 
 ## Acceptance criteria
 
