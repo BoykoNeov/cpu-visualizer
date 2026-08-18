@@ -1,0 +1,76 @@
+{
+  "id": "finished-and-told-to-wait",
+  "title": "Finished, and told to wait",
+  "program": "register-reuse",
+  "model": "scoreboard",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The same program again, and the other reused name. This time the machine stops an instruction that has already finished its work — and these are the only four cycles of their kind in the whole library.",
+        "detailed": "You met `register-reuse` in the last lesson, where a young write was stopped before it could start. This one is stopped at the other end. The name to watch now is `t2`, which the instruction and functional-unit tables spell by its number, `x7`, while the register-result table uses the name. The first instruction, `li t2, 3`, puts 3 there, and further down `add a0, t3, t2` has to read that 3 — slowly, because it also needs a value that is still coming out of memory. The very next line, `addi t2, x0, 5`, writes over `t2` while that older `add` is still standing there waiting to read it. The machine holds the young write back for four cycles, and those four are the only `war` stalls in this entire library: thirteen programs on seven machines, and every one of them happens here.",
+        "expert": "Thirty-one cycles, eleven instructions, thirty-three stall cycles, four of them `war` — and those four are reported at Write-Result rather than at Issue. Every other stall this simulator can produce fires before its instruction has done anything at all: the pipeline's `raw`, this machine's `operand`, its two structural refusals, its control stall at an unresolved branch. `war` is the only one that fires at the END of an instruction's life, with the work done, the answer computed, and nothing left but to file it. That is what earns it a lesson, even though — as the last step measures — it costs this program nothing whatsoever."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 1,
+        "where": {
+          "reason": "war"
+        }
+      },
+      "narration": {
+        "essentials": "The young `addi` has computed its 5 and is not allowed to write it down. The older `add` in front of it has not taken its copy of `t2` yet.",
+        "detailed": "Cycle 13. The `addi t2, x0, 5` is finished: its row in the instruction status table reads Issue 10, Read Operands 11, Execute complete 12 — and then nothing. The 5 exists, inside INT0, and there it stays. The row directly above it is the `add a0, t3, t2` that reads `t2`: it issued at cycle 8 and its Read Operands column is still blank, because the load of `t3` has not come back. It has not read `t2` either. Let the `addi` write now and that `add` would pick up 5 where the program says 3 — so the machine holds the write, and the reason it prints is `war`, write after read. Notice where both of these instructions are while this goes on: inside integer units, which nothing else can use. In \"The reservation station holds\" a waiting instruction had a station to sit in and blocked no one behind it. This machine has no such place, so it waits in the unit.",
+        "expert": "The check is the `Rj` and `Rk` pair in the functional-unit table, and it does exactly one job: `R` means this source is ready and has not been read yet. INT1's row shows `Fk` as `x7`, which is `t2` under its architectural number, and `Rk` is still set — the `add` has its copy waiting for it and has not taken it — and while that is true no younger instruction may write that register. The bill for it is in units. INT1 has held the `add` since cycle 8 and will hold it until cycle 17: ten cycles to perform a one-cycle addition. INT0 has held the `addi` since cycle 10 and holds it through cycle 16, seven cycles for another one-cycle addition. Neither is computing anything for most of that. Both of this machine's integer units are tied up at once by two instructions whose real arithmetic is two cycles between them."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-read",
+        "where": {
+          "reg": 7,
+          "value": 3
+        }
+      },
+      "narration": {
+        "essentials": "The load has landed, so the older `add` reads at last: 21 from memory, and the 3 that has been sitting in `t2` since cycle 4. That read is the whole condition.",
+        "detailed": "Cycle 16. `lw t3, 0(t0)` wrote 21 into `t3` last cycle, so the `add` can read at last, and it takes both sources in the same cycle: 21 from `t3`, and 3 from `t2` — the value `li t2, 3` put there back in cycle 4. That read is the entire condition. The machine was never waiting for the older `add` to finish, only for it to have read. Two things on this screen disagree right now and both are correct: the `add`'s row already shows Read Operands 16 and its unit has cleared its ready-and-unread flags, while the stall line still reports the hold. The stall is what the machine decided during this cycle; the tables are what is true once it is over. The write lands next cycle.",
+        "expert": "`Rj` and `Rk` clear together because Read Operands takes both sources in one cycle on this machine, so the window closes all at once rather than register by register. Nothing about the young `addi` changed in order to end its hold. It has been holding a finished result since cycle 12 and it is holding the same one now; what changed is a flag in a different unit's row. That is what a false dependence looks like from the inside — the instruction that is stuck contains no reason for being stuck, and you have to look somewhere else in the machine to find one."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 7,
+          "value": 5
+        }
+      },
+      "narration": {
+        "essentials": "The 5 goes into `t2` and the `addi` retires — before the older `add` above it has written anything. This is the one cycle in the run where that happens.",
+        "detailed": "Cycle 17. The `addi` writes 5 into `t2` and retires. Now look one row up: `add a0, t3, t2` still has an empty Write Result column, because it is only computing its sum this cycle. The younger instruction has finished and the older one has not, and out of thirty-one cycles this is the only one on which the table shows that. Next cycle the `add` fills its own column in — 18, sitting above the 17 — and the two stay in that order for the rest of the run. This is what out of order means on this machine. Not that instructions start in a different order, because Issue here is strictly program order and never varies from it, but that they finish in one.",
+        "expert": "Issue is in program order, Write Result is not, and that gap is the entire reason a WAR check has to exist. A machine that wrote its results in the order it started them could not produce this hazard at all: the older `add` would always have gone first, and a younger writer could never get ahead of a reader. The eleven instructions take their units in fetch order without a single exception, and the write-result column carries exactly one inversion in the whole run — the pair on screen. One cycle of thirty-one is also why this table keeps its retired rows rather than showing only what is in the machine now: drawn live, the whole of this model's out-of-orderness would flash for one cycle on one program and be gone."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 24
+        }
+      },
+      "narration": {
+        "essentials": "`a0` gets 24 — 21 plus the 3 that `t2` held when the program reached this line. That is what the four cycles bought, and they cost nothing.",
+        "detailed": "Cycle 18. The `add` writes 24 into `a0`: 21 out of memory plus the 3 that was in `t2` when the program reached this line. That is the answer the hold protected. Move `addi t2, x0, 5` above the `add` and `a0` comes out 26 instead — every machine in this simulator agrees on that, because then 5 really is the value the `add` ought to see. And the four cycles cost nothing. Give that `addi` a register nobody else is using, and the `add a1` below it the same new name to read, and this program still takes 31 cycles: the four `war` cycles disappear, one more `operand` cycle appears elsewhere, and the clock does not move.",
+        "expert": "Rename the false dependence away and the accounting is exact. Thirty-three stall cycles become thirty, and the run is 31 cycles either way. The reason none of it turns into speed is one instruction down: the next integer operation gets its unit one cycle earlier, at 17 instead of 18, and then waits for a load until cycle 23 exactly as it did before. The head start is absorbed by something the rename never touched. Compare the other hazard, whose rename is worth a single cycle out of thirty-one — so both of this machine's named hazards together are worth one cycle. That is the shape of the whole track. The dominant cost here is structural, two units held four cycles apiece, which is what the first lesson measured; the two hazards this machine is named for are not what makes it slow. They are what makes it right."
+      }
+    }
+  ]
+}

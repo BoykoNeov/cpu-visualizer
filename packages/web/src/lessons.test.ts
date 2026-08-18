@@ -31,6 +31,7 @@ import {
   lessonSections,
   orderLessons,
 } from './lessons';
+import { buildScoreboardTables } from './scoreboard-tables';
 import { PREDICTION_POSITIONS, predictionPosition, schemeForPosition } from './session';
 import { loadSource } from './simulator';
 import { counterText } from './transport-readout';
@@ -1139,8 +1140,14 @@ describe('authored lessons (INV-6)', () => {
     // Its second lesson is the first of the two hazards renaming deletes: a young `addi` held four
     // cycles at Issue with a free integer unit in front of it, because an older load still owns the
     // name it writes. `register-reuse` is the only program in the corpus on which either hazard is
-    // architecturally visible, which is why M15 step 6 added it.
-    expect(LESSONS.length).toBe(28);
+    // architecturally visible, which is why M15 step 6 added it. Its third closes the track on the
+    // other hazard and on the rarest event in the product: `war` fires four times in the whole
+    // library and all four are the same instruction on that same program — a young write held at
+    // Write-Result, the only stall this simulator reports at the END of an instruction's life
+    // rather than before it has done anything. It carries the track's payoff, which is that neither
+    // named hazard is a performance story: renaming both away is worth one cycle out of thirty-one
+    // and renaming this one alone is worth none at all. What the hold buys is the answer.
+    expect(LESSONS.length).toBe(29);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Six pipeline lessons now: the three flagships plus the cache track — all of the machine and
@@ -6400,5 +6407,405 @@ describe('one-name-two-writers — a name is not a value (M16 step 2)', () => {
     // And t1 now keeps the load's 9, because nothing writes over it any more — which is why this is
     // an ORACLE and not an invitation: the reader's own `t1` would change under their hands.
     expect(regs[6]).toBe(9);
+  });
+});
+
+/**
+ * The scoreboard track's closing lesson (M16 step 3), and the oracle for the RAREST event in the
+ * product: `war` fires four times in the whole library and all four are here.
+ *
+ * Three things in this lesson's prose no sweep can reach.
+ *
+ * **The scarcity.** "Thirteen programs on seven machines, and every one of them happens here" is a
+ * count over the entire product, not over this recording. It is the shape M15 step 6 endorsed —
+ * silence made visible as a positive total — rather than the absence assertion it warned against.
+ *
+ * **The one-cycle reorder.** The claim is about the PICTURE, and the picture accumulates: at the
+ * cursor this lesson's fourth step lands on, `micro` rows both instructions, but one cycle later it
+ * rows only the older one — the younger has retired. So the write-result column is a property of
+ * `buildScoreboardTables`, and it is asserted through that fold rather than off `micro`, which
+ * could not see it at all.
+ *
+ * **The counterfactuals.** Two runs the reader does not have: the same program with the false
+ * dependence renamed away (31 cycles, unchanged), and the same program with the two lines swapped
+ * (`a0` = 26). Both are driven through `loadSource` over edited text, the path the sandbox fork
+ * takes. ⚠ The edits touch CODE LINES ONLY and must land exactly once — `register-reuse.s`'s header
+ * quotes every one of these instructions verbatim, and M16's own first dump run patched the prose
+ * and printed "renaming changes nothing" as a finding.
+ *
+ * What none of this can see is a claim about POSITION — "the row directly above it", "the very next
+ * line". Those are unguarded by construction (M16 step 2) and were read against the listing by hand.
+ */
+describe('finished-and-told-to-wait — the write held at the end (M16 step 3)', () => {
+  const lesson = (): Lesson => byId('finished-and-told-to-wait');
+
+  const reuse = (): readonly CycleTrace[] =>
+    recordProgram(lesson().program, modelById(lesson().model).make, defaultConfig());
+
+  interface StatusRow {
+    readonly instr: string;
+    readonly mnemonic: string;
+    readonly issue: number | null;
+    readonly readOperands: number | null;
+    readonly executeComplete: number | null;
+    readonly writeResult: number | null;
+  }
+  interface UnitRow {
+    readonly name: string;
+    readonly busy: boolean;
+    readonly instr: string | null;
+    readonly fk: number | null;
+    readonly rj: boolean;
+    readonly rk: boolean;
+  }
+  interface Micro {
+    readonly instructions?: readonly StatusRow[];
+    readonly units?: readonly UnitRow[];
+  }
+  const micro = (c: CycleTrace): Micro => (c.state as { micro?: Micro }).micro ?? {};
+
+  /** Latest observed status row per instruction id, in FETCH order (Map insertion order). */
+  const rows = (trace: readonly CycleTrace[]): StatusRow[] => {
+    const latest = new Map<string, StatusRow>();
+    for (const c of trace) for (const r of micro(c).instructions ?? []) latest.set(r.instr, r);
+    return [...latest.values()];
+  };
+
+  const stallsByReason = (trace: readonly CycleTrace[]): Record<string, number> => {
+    const h: Record<string, number> = {};
+    for (const c of trace) {
+      for (const e of c.events) if (e.type === 'stall') h[e.reason] = (h[e.reason] ?? 0) + 1;
+    }
+    return h;
+  };
+  const totalStalls = (h: Record<string, number>): number =>
+    Object.values(h).reduce((a, b) => a + b, 0);
+
+  /**
+   * Apply source edits to CODE LINES ONLY, each landing exactly once.
+   *
+   * Local rather than shared with `one-name-two-writers`'s counterfactual on purpose: the two
+   * lessons must be able to disagree about the program without one silently rewriting the other's
+   * premise. The guard is the part that matters and it is repeated deliberately.
+   */
+  const editCode = (src: string, edits: readonly (readonly [string, string])[]): string => {
+    const hits = new Map(edits.map(([from]) => [from, 0]));
+    const out = src.split('\n').map((line) => {
+      if (line.trimStart().startsWith('#')) return line;
+      let next = line;
+      for (const [from, to] of edits) {
+        if (!next.includes(from)) continue;
+        next = next.replace(from, to);
+        hits.set(from, hits.get(from)! + 1);
+      }
+      return next;
+    });
+    for (const [from, n] of hits) {
+      expect(n, `edit "${from}" must land exactly once on a CODE line, not in the header`).toBe(1);
+    }
+    return out.join('\n');
+  };
+
+  const sourceOf = (name: string): string => {
+    const p = EXAMPLE_PROGRAMS.find((x) => x.name === name);
+    expect(p, `${name} is in the corpus`).toBeDefined();
+    return p!.source;
+  };
+
+  const runSource = (source: string, modelId: string): readonly CycleTrace[] => {
+    const model = modelById(modelId);
+    const result = loadSource(source, model.make, engineConfigFor(model, defaultConfig()));
+    expect(result.ok, `the edited program should assemble on ${modelId}`).toBe(true);
+    if (!result.ok) throw new Error('unreachable: assembly failed');
+    result.loaded.recorder.runToEnd();
+    return result.loaded.recorder.recorded;
+  };
+
+  it('declares the knob-blind model, and therefore declares NO config', () => {
+    expect(lesson().model).toBe('scoreboard');
+    expect(lesson().program).toBe('register-reuse');
+    expect(lesson().config).toBeUndefined();
+    expect(positionsFor('scoreboard').map((p) => p.label)).toEqual(['neutral config']);
+  });
+
+  it('THE FIVE STEPS anchor where the narration says, and on distinct cycles', () => {
+    // The cycle numbers are printed in the prose ("Cycle 13", "Cycle 16", "Cycle 17", "Cycle 18"),
+    // so they are pinned rather than left to the sweep, which only proves the steps fire somewhere.
+    expect(anchorLesson(lesson(), reuse()).map((s) => s.cycle)).toEqual([0, 13, 16, 17, 18]);
+  });
+
+  it('THE SCARCITY — four `war` stalls exist in the entire product, and all four are here', () => {
+    // Thirteen programs on seven machines. A positive total with its whole denominator, so a model
+    // or a program that later produces a `war` stall reddens this rather than quietly falsifying
+    // the opening step's boast.
+    const found: string[] = [];
+    let total = 0;
+    for (const model of MODELS) {
+      for (const p of EXAMPLE_PROGRAMS) {
+        const trace = recordProgram(p.name, model.make, engineConfigFor(model, defaultConfig()));
+        const n = trace.reduce(
+          (a, c) => a + c.events.filter((e) => e.type === 'stall' && e.reason === 'war').length,
+          0,
+        );
+        if (n > 0) {
+          total += n;
+          found.push(`${model.id}/${p.name}=${n}`);
+        }
+      }
+    }
+    expect(MODELS.length, 'seven machines').toBe(7);
+    expect(EXAMPLE_PROGRAMS.length, 'thirteen programs').toBe(13);
+    expect(found).toEqual(['scoreboard/register-reuse=4']);
+    expect(total).toBe(4);
+  });
+
+  it('THE THESIS — `war` is the only stall in the product that fires at the END of a life', () => {
+    // The opening expert tier's claim, and the one that distinguishes this hazard from every other
+    // stall the simulator can report: everything else fires before its instruction has done
+    // anything. Measured as the (reason, stage) PRODUCT rather than as a fact about this recording,
+    // because the sentence is about the whole simulator.
+    const product = new Map<string, number>();
+    for (const model of MODELS) {
+      for (const p of EXAMPLE_PROGRAMS) {
+        const trace = recordProgram(p.name, model.make, engineConfigFor(model, defaultConfig()));
+        for (const c of trace) {
+          for (const e of c.events) {
+            if (e.type !== 'stall') continue;
+            const key = `${e.reason}@${e.stage}`;
+            product.set(key, (product.get(key) ?? 0) + 1);
+          }
+        }
+      }
+    }
+    // Non-vacuity: the sweep really did see the whole stall vocabulary, not an empty product.
+    expect([...product.keys()].sort()).toEqual([
+      'control@ID',
+      'operand@RO',
+      'raw@ID',
+      'structural-int@ID',
+      'structural-mem@ID',
+      'war@WB',
+      'waw@ID',
+    ]);
+    // ...and the discriminating half: every other reason is reported at the FRONT of the walk.
+    expect([...product.keys()].filter((k) => !k.endsWith('@ID') && !k.endsWith('@RO'))).toEqual([
+      'war@WB',
+    ]);
+  });
+
+  it('STEP 2 — the young `addi` is FINISHED and held, while the older `add` has not read', () => {
+    const trace = reuse();
+    const wars = trace.flatMap((c) =>
+      c.events.flatMap((e) =>
+        e.type === 'stall' && e.reason === 'war' ? [{ cycle: c.cycle, instr: e.instr }] : [],
+      ),
+    );
+    expect(
+      wars.map((w) => w.cycle),
+      'four consecutive cycles',
+    ).toEqual([13, 14, 15, 16]);
+    expect(new Set(wars.map((w) => w.instr)).size, 'all one instruction').toBe(1);
+    const held = wars[0]!.instr;
+
+    // "Issue 10, Read Operands 11, Execute complete 12 — and then nothing." Three columns filled,
+    // the fourth blank, for the whole hold. This is the picture the step's first sentence rests on,
+    // and it is a shape no other stall in the product can produce.
+    for (const cycle of [13, 14, 15, 16]) {
+      const row = (micro(trace[cycle]!).instructions ?? []).find((r) => r.instr === held)!;
+      expect(
+        [row.issue, row.readOperands, row.executeComplete, row.writeResult],
+        `${held}'s row at c${cycle}`,
+      ).toEqual([10, 11, 12, null]);
+    }
+
+    // The older reader, one row above: issued at 8 and STILL with a blank Read Operands column.
+    const all = rows(trace);
+    const heldIndex = all.findIndex((r) => r.instr === held);
+    const older = all[heldIndex - 1]!;
+    expect(older.mnemonic, 'the row directly above the held one is the `add` that reads t2').toBe(
+      'add',
+    );
+    expect(older.issue, 'it issued at cycle 8').toBe(8);
+    const olderAt13 = (micro(trace[13]!).instructions ?? []).find((r) => r.instr === older.instr)!;
+    expect(olderAt13.readOperands, 'and has read nothing at c13').toBeNull();
+
+    // The check itself: `Fk` is x7 and `Rk` — ready and NOT YET READ — is still set on the unit
+    // holding the older `add`. The expert tier names both, and this is the only place in the file
+    // that reads the pair carrying the WAR rule.
+    const int1 = (micro(trace[13]!).units ?? []).find((u) => u.name === 'INT1')!;
+    expect(int1.instr, 'INT1 holds the older add').toBe(older.instr);
+    expect(int1.fk, 'its second source is x7, which is t2').toBe(7);
+    expect(int1.rk, 'ready, and not yet read — the whole WAR condition').toBe(true);
+
+    // The occupancy the expert tier prices: ten cycles of INT1 for a one-cycle add, seven of INT0.
+    const busyCycles = (unit: string, from: number, to: number): number[] =>
+      trace
+        .filter((c) => c.cycle >= from && c.cycle <= to)
+        .filter((c) => (micro(c).units ?? []).some((u) => u.name === unit && u.busy))
+        .map((c) => c.cycle);
+    expect(busyCycles('INT1', 8, 17), 'INT1 busy every cycle from 8 through 17').toHaveLength(10);
+    expect(busyCycles('INT0', 10, 16), 'INT0 busy every cycle from 10 through 16').toHaveLength(7);
+    // ...for a ONE-cycle addition, which is what makes those numbers a price rather than a latency.
+    expect(older.executeComplete! - older.readOperands!, 'the add itself executes in one').toBe(1);
+  });
+
+  it('STEP 3 — the hold ends on the READ, and the caption and the tables disagree by one cycle', () => {
+    // The step's honest half, and the thing that would have made it false: at the cycle it anchors
+    // on, the machine STILL reports the hold, while `micro` — snapshotted after the clock edge —
+    // already shows the read done. A narration saying "the stall is over" would be false against
+    // the caption sitting directly under it (M15 step 7's snapshot boundary).
+    const trace = reuse();
+    const c16 = trace[16]!;
+    const stalls = c16.events.filter((e) => e.type === 'stall');
+    expect(stalls, 'the fourth and last war stall is reported AT cycle 16').toHaveLength(1);
+    expect(stalls[0]).toMatchObject({ reason: 'war', stage: 'WB' });
+
+    const older = rows(trace).find((r) => r.mnemonic === 'add')!;
+    const at16 = (micro(c16).instructions ?? []).find((r) => r.instr === older.instr)!;
+    expect(at16.readOperands, 'and the SAME frame already shows Read Operands 16').toBe(16);
+    const int1 = (micro(c16).units ?? []).find((u) => u.name === 'INT1')!;
+    expect([int1.rj, int1.rk], 'with both ready-and-unread flags cleared').toEqual([false, false]);
+
+    // "it takes both sources in the same cycle" — the reason the window closes all at once.
+    expect(
+      c16.events.flatMap((e) =>
+        e.type === 'reg-read' && e.instr === older.instr ? [[e.reg, e.value]] : [],
+      ),
+    ).toEqual([
+      [28, 21],
+      [7, 3],
+    ]);
+    // "the value `li t2, 3` put there back in cycle 4"
+    const put3 = trace.find((c) =>
+      c.events.some((e) => e.type === 'reg-write' && e.reg === 7 && e.value === 3),
+    );
+    expect(put3!.cycle).toBe(4);
+    // "It has been holding a finished result since cycle 12."
+    expect(rows(trace).find((r) => r.writeResult === 17)!.executeComplete).toBe(12);
+  });
+
+  it('STEP 4 — the ONE cycle a younger row is finished and an older is not, read off the PICTURE', () => {
+    // ⚠ Asserted through `buildScoreboardTables`, never off `micro`: one cycle later the younger
+    // instruction has retired and `micro` stops rowing it altogether, so the out-of-order column
+    // the narration points at is a property of the FOLD's accumulation. Off `micro` this claim is
+    // unreachable rather than merely awkward.
+    const trace = reuse();
+    const columnAt = (cursor: number): { wr: number | null; issue: number | null }[] =>
+      buildScoreboardTables(trace[cursor]!, trace)!.instructions.map((r) => ({
+        wr: r.writeResult,
+        issue: r.issue,
+      }));
+
+    // An older ISSUED row still blank while a younger one is filled — over every cursor in the run.
+    const inverted = trace
+      .map((c) => c.cycle)
+      .filter((cursor) =>
+        columnAt(cursor).some(
+          (row, i, all) =>
+            row.wr !== null &&
+            all.slice(0, i).some((older) => older.issue !== null && older.wr === null),
+        ),
+      );
+    expect(inverted, 'exactly one cycle of the thirty-one').toEqual([17]);
+    expect(trace.length).toBe(31);
+
+    // "Next cycle the `add` fills its own column in — 18, sitting above the 17."
+    const at18 = columnAt(18);
+    expect(at18[at18.findIndex((r) => r.wr === 17) - 1]!.wr, 'the older row, one above').toBe(18);
+    // ...and it stays that way: the pair is still inverted at the end of the run.
+    const atEnd = columnAt(trace.length - 1);
+    expect(atEnd[atEnd.findIndex((r) => r.wr === 17) - 1]!.wr).toBe(18);
+
+    // "Issue here is strictly program order and never varies from it." The premise the whole step
+    // rests on — without it the inversion would prove nothing about write order.
+    const issues = rows(trace).map((r) => r.issue);
+    expect(issues, 'eleven instructions').toHaveLength(11);
+    expect(issues.every((v, i) => i === 0 || (v ?? 0) > (issues[i - 1] ?? 0))).toBe(true);
+    // "the write-result column carries exactly one inversion in the whole run"
+    const wrs = rows(trace).map((r) => r.writeResult!);
+    expect(wrs.filter((v, i) => i > 0 && v < wrs[i - 1]!)).toEqual([17]);
+  });
+
+  it('STEP 5 — 24 is what the hold bought, and 26 is what the other order computes', () => {
+    const trace = reuse();
+    expect(trace.at(-1)!.state.registers[10], 'a0 is 24').toBe(24);
+
+    // "Move `addi t2, x0, 5` above the `add` and `a0` comes out 26 instead — every machine in this
+    // simulator agrees on that." A claim about the PROGRAM rather than about the machine, so it is
+    // swept over the whole model list: a future model joining the picker cannot falsify it quietly.
+    const src = sourceOf('register-reuse').split('\n');
+    const isCode = (l: string): boolean => !l.trimStart().startsWith('#');
+    const addLines = src.flatMap((l, i) => (isCode(l) && l.includes('add  a0, t3, t2') ? [i] : []));
+    const addiLines = src.flatMap((l, i) => (isCode(l) && l.includes('addi t2, x0, 5') ? [i] : []));
+    // ⚠ A SWAP needs its own guard, and step 2's replace-once harness does not transfer: both
+    // needles appear verbatim in the header, and a swap of the wrong pair still assembles.
+    expect([addLines.length, addiLines.length], 'one code line each').toEqual([1, 1]);
+    expect(addiLines[0]! - addLines[0]!, 'and the `addi` is the very next line').toBe(1);
+    const swapped = [...src];
+    swapped[addLines[0]!] = src[addiLines[0]!]!;
+    swapped[addiLines[0]!] = src[addLines[0]!]!;
+    for (const model of MODELS) {
+      const t = runSource(swapped.join('\n'), model.id);
+      expect(t.at(-1)!.state.registers[10], `a0 on ${model.id} with the lines swapped`).toBe(26);
+    }
+
+    // "Give that `addi` a register nobody else is using, and the `add a1` below it the same new
+    // name to read, and this program still takes 31 cycles."
+    const renamed = runSource(
+      editCode(sourceOf('register-reuse'), [
+        ['addi t2, x0, 5', 'addi t4, x0, 5'],
+        ['add  a1, t1, t2', 'add  a1, t1, t4'],
+      ]),
+      'scoreboard',
+    );
+    expect(renamed.length, 'not one cycle saved').toBe(31);
+    expect(stallsByReason(renamed), 'the four war cycles gone, one more operand cycle').toEqual({
+      operand: 14,
+      'structural-int': 6,
+      'structural-mem': 5,
+      waw: 5,
+    });
+    // "Thirty-three stall cycles become thirty."
+    expect([totalStalls(stallsByReason(trace)), totalStalls(stallsByReason(renamed))]).toEqual([
+      33, 30,
+    ]);
+    // The architectural results the reader cares about are untouched by the rename.
+    expect([renamed.at(-1)!.state.registers[10], renamed.at(-1)!.state.registers[11]]).toEqual([
+      24, 14,
+    ]);
+
+    // "the next integer operation gets its unit one cycle earlier, at 17 instead of 18, and then
+    // waits for a load until cycle 23 exactly as it did before." The measured reason the head start
+    // buys nothing — and the half that matters is the SECOND number, which does not move.
+    //
+    // Found by mnemonic and destination rather than by index: it is `add a1, t1, t2` (x11), the
+    // only instruction between the held `addi` and the end that competes for an integer unit.
+    const nextInt = (t: readonly CycleTrace[]): StatusRow => {
+      const candidates = rows(t).filter((r) => r.mnemonic === 'add');
+      expect(candidates, 'two `add`s in this program').toHaveLength(2);
+      return candidates[1]!;
+    };
+    expect([nextInt(trace).issue, nextInt(trace).readOperands]).toEqual([18, 23]);
+    expect([nextInt(renamed).issue, nextInt(renamed).readOperands]).toEqual([17, 23]);
+  });
+
+  it('THE DISCRIMINATOR — swap the model and there is no such stall to narrate', () => {
+    // M12's rule. `war` is emitted by exactly one engine in the product (the scarcity test above
+    // measures that), so a lesson that drifted onto any other model would be five steps of prose
+    // about a hazard with no spelling there — and step 2's anchor would not fire at all.
+    const shallow = stallsByReason(recordProgram('register-reuse', () => new PipelineProcessor()));
+    expect(Object.keys(shallow)).toEqual(['raw']);
+    expect(shallow.war).toBeUndefined();
+    // ...and the answer is the same on every machine regardless, which is the point of the hold:
+    // the scoreboard has to WORK to produce what an in-order machine gets for free.
+    for (const model of MODELS) {
+      const t = recordProgram(
+        'register-reuse',
+        model.make,
+        engineConfigFor(model, defaultConfig()),
+      );
+      expect(t.at(-1)!.state.registers[10], `a0 on ${model.id}`).toBe(24);
+      expect(t.at(-1)!.state.registers[7], `t2 on ${model.id}`).toBe(5);
+    }
   });
 });
