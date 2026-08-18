@@ -720,10 +720,28 @@ FIRST shown on" is single-cycle — a claim about which lesson gets there first,
 earlier one did. Three lessons between the two also run `sum-loop` (`deep-bet-pays-double`,
 `two-at-once`, `where-widening-stops`) and **none is single-cycle**, so promoting any of them past
 `sum-loop-tour` makes the sentence name the wrong machine while every ordering comparison stays
-true. So the pin asserts the FIRST `sum-loop` lesson by id AND its model, and P7 below is what shows
-that half is not decoration.
+true. So the pin asserts the model of the first showing, and P7 below is what shows that half is not
+decoration.
 
-### The perturbation harness — seven reorderings, each with its red set predicted first
+⚠ **And the first draft of THAT pin repeated the count-pin mistake — the same species, twice in one
+step, the second time immediately after writing the finding up.** It asserted
+`LESSONS.find(l => l.program === 'sum-loop')?.id === 'sum-loop-tour'`: an identity, over the whole
+library, where the sentence claims a MACHINE, over the lessons the reader has already passed.
+Introduce a second single-cycle `sum-loop` lesson ahead of the tour and the prose stays true — the
+loop is still first shown on a single-cycle machine — while the id assertion reddens. Rewritten to
+search the PREFIX of the order (which folds the precedence claim into the same expression instead of
+leaving it as a separate comparison that can drift) and to assert existence and model; the id is
+kept last, as a labelled canary. P6/P7 now fail on `expected 'deep-pipeline' to be 'single-cycle'`
+rather than on the id, and P8 (the scoreboard track promoted to the very front) fails on the
+existence branch — the reader has not been shown the loop at all.
+
+**Recurrence in one step is the finding, not the two instances.** Both drafts were written by someone
+who had the rule in front of them, and neither was caught by a green suite or by a perturbation run.
+The only check that catches this class is asking, of each assertion: _what exactly does the sentence
+claim, and what does this expression claim?_ — and the two differ most often in SCOPE (whole library
+vs. the reader's path) and in KIND (identity vs. property).
+
+### The perturbation harness — eight reorderings, each with its red set predicted first
 
 Predictions written before any perturbation, against a committed tree
 (`M:\claud_projects\temp\m16-step4\predictions.md`). A single scramble that reddens everything
@@ -739,7 +757,8 @@ and reverted with `git checkout --`, with `git status --porcelain` empty after e
 | P5  | a fourth id inserted BETWEEN writers and wait | #3 fires (first that can)                                                                           | 2 failed: `expected 2 to be 1` + the membership set                        | ✓                            |
 | P4′ | P4 re-run after the correction                | #1–#3 GREEN, the run stops at the CANARY with its message                                           | 2 failed: the labelled canary + membership                                 | ✓                            |
 | P6  | the language track moved LAST                 | #6/#7's pin red; the two exhaustive lists red                                                       | 4 failed — incl. TWO not predicted                                         | ✗ on the set                 |
-| P7  | the deeper-machine track moved FIRST          | #7's pin red **on `first.id`, not on an ordering comparison**; the two lists red                    | 5 failed — incl. TWO not predicted                                         | ✗ on the set, ✓ on the claim |
+| P7  | the deeper-machine track moved FIRST          | #7's pin red **on the MACHINE claim, not on any ordering comparison**; the two lists red            | 5 failed — incl. TWO not predicted                                         | ✗ on the set, ✓ on the claim |
+| P8  | the scoreboard track moved FIRST              | #7's pin red on its EXISTENCE branch; #5's pin red; the known collateral                            | 5 failed, all predicted                                                    | ✓                            |
 
 ⚠ **P4 was written up as "the load-bearing run" and it is not.** #1–#3 did all pass under it, and
 the count assertion did fire alone — but firing alone measures INDEPENDENCE, not guardianship, and

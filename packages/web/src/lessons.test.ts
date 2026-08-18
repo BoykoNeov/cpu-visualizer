@@ -1089,15 +1089,29 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
     // "first shown on" names a machine they were never shown it on.
     //
     // The second sentence claims more than an order, so more than an order is asserted: it says the
-    // FIRST lesson to show this loop is a SINGLE-CYCLE one. Slide any of the three intervening
+    // first lesson to show this loop is a SINGLE-CYCLE one. Slide any of the three intervening
     // lessons that also run `sum-loop` (`deep-bet-pays-double`, `two-at-once`, `where-widening-
     // stops` — none of them single-cycle) in front of `sum-loop-tour` and the sentence names the
-    // wrong machine while every ordering comparison here stays green.
-    const first = LESSONS.find((l) => l.program === 'sum-loop');
-    expect(first?.id, 'the first lesson to show this loop').toBe('sum-loop-tour');
-    expect(first?.model, 'and it shows it on the machine the callback names').toBe('single-cycle');
-    expect(LESSON_ORDER.indexOf('sum-loop-tour')).toBeLessThan(
-      LESSON_ORDER.indexOf('two-units-one-queue'),
+    // wrong machine while every ordering comparison here stays true.
+    //
+    // ⚠ Asserted over the lessons BEFORE this one, and about the MACHINE rather than the lesson id,
+    // and both of those are corrections to a first draft that made this step's own count-pin
+    // mistake a second time. `LESSONS.find(...)?.id === 'sum-loop-tour'` is broader than the
+    // sentence: introduce ANOTHER single-cycle `sum-loop` lesson ahead of the tour and the prose is
+    // still true — the loop is still first shown on a single-cycle machine — while an id assertion
+    // reddens. What the sentence actually claims is that by the time the reader arrives here, the
+    // first showing they passed was single-cycle, so that is what is asserted. Searching the prefix
+    // rather than the library also makes the precedence claim part of the same expression instead
+    // of a separate comparison that could drift from it.
+    const before = LESSON_ORDER.slice(0, LESSON_ORDER.indexOf('two-units-one-queue'));
+    const first = before.map((id) => byId(id)).find((l) => l.program === 'sum-loop');
+    expect(first, 'the reader has been shown this loop before this lesson').toBeDefined();
+    expect(first?.model, 'and shown it on the machine the callback names').toBe('single-cycle');
+    // A canary, NOT a pin, for the same reason as the track-length one above: a second single-cycle
+    // lesson on this loop would redden this without making any sentence false. It is here because
+    // "which lesson introduces `sum-loop`" is a pedagogical fact worth a human glance if it moves.
+    expect(first?.id, 'a different lesson now introduces this loop — re-read the callback').toBe(
+      'sum-loop-tour',
     );
     expect(resolveNarration(byId('two-units-one-queue').steps[0]!.narration, 'detailed')).toContain(
       'This is `sum-loop` again',

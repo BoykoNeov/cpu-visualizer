@@ -150,8 +150,11 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   assertion can be arithmetically independent of every other and still not guard its sentence), and a
   mention sweep that called itself exhaustive while being a KEYWORD REGEX blind to two of seven mentions
   (a reference naming no lesson — "This is `sum-loop` again" — has none of the stock phrases). Both
-  survived a green suite AND a seven-run perturbation harness; **only reading the prose against the
-  perturbation found them**. Three pins needed ADJACENCY rather than precedence because two lessons
+  survived a green suite AND an eight-run perturbation harness; **only reading the prose against the
+  perturbation found them** — and the second class RECURRED inside the same step, in the very pin
+  written to fix the first (an identity over the whole library where the sentence claimed a machine
+  over the reader's path): **ask of every assertion what the SENTENCE claims vs. what the EXPRESSION
+  claims — they diverge in SCOPE and in KIND**. Three pins needed ADJACENCY rather than precedence because two lessons
   SHARE A PROGRAM, and the nearest precedent's guard was the INVERSE of the claim.
 - [Future microarchitectures](future-microarchitectures.md) — **DISCHARGED** (depth by M11, width by
   M13). Read for the predictions that held and the one that was FALSE.
