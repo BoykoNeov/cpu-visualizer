@@ -21,7 +21,7 @@ import {
   type ProcessorConfig,
   type TraceEvent,
 } from '@cpu-viz/trace';
-import { MODELS, modelById } from './models';
+import { MODELS, engineConfigFor, modelById } from './models';
 import { EXAMPLE_PROGRAMS } from './programs';
 import {
   LESSON_ORDER,
@@ -774,6 +774,7 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The deeper machine',
       'The wide machine',
       'The out-of-order machine',
+      'The scoreboard',
     ]);
   });
 
@@ -1060,6 +1061,7 @@ describe('the lesson picker teaches in the authored order (M5 step 0)', () => {
       'The deeper machine',
       'The wide machine',
       'The out-of-order machine',
+      'The scoreboard',
     ]);
     expect(sections.flatMap((s) => s.lessons.map((l) => l.id))).toEqual(LESSONS.map((l) => l.id));
   });
@@ -1128,7 +1130,13 @@ describe('authored lessons (INV-6)', () => {
     // rather than two. It declares `dynamic-1bit` and asks the reader for `dynamic-2bit`; its
     // config-exclusive step is alive at the DECLARED position and dies on the flip, which is
     // `branch-bet`'s shape run backwards — the step disappearing IS the thing being taught.
-    expect(LESSONS.length).toBe(26);
+    // A NINTH µarch track opens at M16 and it is the first with NO TOGGLE TO FLIP: the scoreboard
+    // honors none of the config cluster, so `buildPositions` gives its lessons exactly one position
+    // and the sweep's "fires in at least one position" collapses to "fires, period." Its first
+    // lesson's subject is the term M15 step 3 measured as this machine's DOMINANT cost and which is
+    // not a hazard at all — a unit is claimed at Issue and held to Write Result, so two integer
+    // units cap the machine at one instruction every two cycles before any hazard is considered.
+    expect(LESSONS.length).toBe(27);
     // Sorted, because the claim in this test's own sentence is MEMBERSHIP. `LESSONS` is not in a
     // sorted order for it to borrow (order is pinned exhaustively, once, against `index.json` above).
     // Six pipeline lessons now: the three flagships plus the cache track — all of the machine and
@@ -5841,5 +5849,215 @@ describe('deep-drain — depth costs even when nothing goes wrong (M12 step 3)',
     // so the transport's "halted" marker means the same thing here as on every other lesson — the
     // browser pass can assert it without a special case.
     expect(deep().at(-1)!.state.halted).toBe(true);
+  });
+});
+
+/**
+ * The scoreboard track's opening lesson (M16 step 1), and the first oracle in this file written for
+ * a model that honors NO config knob. Two consequences shape everything below.
+ *
+ * The sweep above is a STRONGER net here than anywhere else — `positionsFor('scoreboard')` has
+ * length 1, so "every step anchors in at least one position" is exactly "every step anchors," and a
+ * config-exclusive step cannot exist to hide in. What the sweep still cannot see is what it has
+ * never been able to see: whether the PROSE is true about the machine on screen. That is what these
+ * named claims are for.
+ *
+ * And the lesson declares no `config` at all, which is lawful and deliberate (`Lesson.config`'s own
+ * docblock: "a config-blind model ignores every knob; a lesson that omits it has no opinion"). A
+ * declared config here would pin knobs this engine provably ignores, and would silently move the
+ * reader's session position on every OTHER model the moment the lesson opened.
+ */
+describe('two-units-one-queue — the ceiling is not a hazard (M16 step 1)', () => {
+  const lesson = (): Lesson => byId('two-units-one-queue');
+
+  const board = (): readonly CycleTrace[] =>
+    recordProgram(lesson().program, modelById(lesson().model).make, defaultConfig());
+
+  /** One row of the instruction-status table, as much of it as this oracle reads. */
+  interface StatusRow {
+    readonly instr: string;
+    readonly mnemonic: string;
+    readonly issue: number | null;
+    readonly readOperands: number | null;
+    readonly executeComplete: number | null;
+    readonly writeResult: number | null;
+  }
+
+  /** Latest observed status row per instruction id, over the whole recording. */
+  const rows = (trace: readonly CycleTrace[]): StatusRow[] => {
+    const latest = new Map<string, StatusRow>();
+    for (const c of trace) {
+      const micro = (c.state as { micro?: { instructions?: readonly StatusRow[] } }).micro;
+      for (const r of micro?.instructions ?? []) latest.set(r.instr, r);
+    }
+    return [...latest.values()];
+  };
+
+  const stallsByReason = (trace: readonly CycleTrace[]): Record<string, number> => {
+    const h: Record<string, number> = {};
+    for (const c of trace) {
+      for (const e of c.events) if (e.type === 'stall') h[e.reason] = (h[e.reason] ?? 0) + 1;
+    }
+    return h;
+  };
+
+  it('declares the knob-blind model, and therefore declares NO config', () => {
+    expect(lesson().model).toBe('scoreboard');
+    expect(lesson().program).toBe('sum-loop');
+    // Not a stylistic omission — the five-flag capability set is what makes it lawful, and a model
+    // that later gained a knob would redden here rather than quietly leaving this lesson's prose
+    // describing one position of a machine the reader can now move.
+    expect(lesson().config).toBeUndefined();
+    const caps = modelById('scoreboard').capabilities;
+    expect([
+      caps.configurableForwarding,
+      caps.configurableBranchPrediction,
+      caps.configurableCache,
+      caps.configurableIssueWidth,
+      caps.configurableOutOfOrder,
+    ]).toEqual([false, false, false, false, false]);
+    // The consequence the sweep depends on: exactly one position, so "at least one" IS "every".
+    expect(positionsFor('scoreboard').map((p) => p.label)).toEqual(['neutral config']);
+  });
+
+  it('THE THESIS — every stall in the run is structural or control, and NONE is a data hazard', () => {
+    // Steps 1 and 4 both state this outright ("all three of this machine's data-hazard checks are
+    // silent here"; "not one cycle of the eighty was a data hazard"). It is the lesson's whole
+    // premise, and nothing else in this suite asserts it.
+    expect(stallsByReason(board())).toEqual({ 'structural-int': 23, control: 10 });
+  });
+
+  it('THE DISCRIMINATOR — the same claim is FALSE on the 5-stage pipeline', () => {
+    // M12's rule: swap the model and the narration must become a lie. It does, in the sharpest
+    // possible way — the shallower machine stalls on this very program for exactly the reason this
+    // lesson says never happens here.
+    const shallow = stallsByReason(recordProgram('sum-loop', () => new PipelineProcessor()));
+    expect(Object.keys(shallow)).toEqual(['raw']);
+    expect(shallow.raw).toBeGreaterThan(0);
+    // And in the other direction: `structural-int` is a reason the pipeline cannot emit at all, so
+    // this lesson's subject has no shallower spelling to be mistaken for.
+    expect(shallow['structural-int']).toBeUndefined();
+  });
+
+  it('STEP 3 — no instruction row anywhere has a gap between its four columns', () => {
+    // The step's central claim, and the one a reader checks against the table: Issue, Read Operands,
+    // Execute complete, Write Result on four CONSECUTIVE cycles, for every instruction in the run.
+    // It is the same fact as the zero `operand` stalls read off the PICTURE rather than the event
+    // stream — which is why both are asserted and not just the cheaper one.
+    const issued = rows(board()).filter((r) => r.issue !== null);
+    expect(issued.length, 'the squashed fetches never issue and are excluded').toBe(34);
+    for (const r of issued) {
+      expect(
+        [r.readOperands, r.executeComplete, r.writeResult],
+        `${r.instr} (${r.mnemonic}) issued at ${r.issue} with a gap in its row`,
+      ).toEqual([r.issue! + 1, r.issue! + 2, r.issue! + 3]);
+    }
+    // The named row the step quotes, found by its mnemonic rather than by position in the list.
+    const first = issued.find((r) => r.mnemonic === 'add')!;
+    expect([first.issue, first.readOperands, first.executeComplete, first.writeResult]).toEqual([
+      5, 6, 7, 8,
+    ]);
+  });
+
+  it('STEP 2 — the UNIT is what binds, not the operand, and the run proves which', () => {
+    const trace = board();
+    const anchored = anchorLesson(lesson(), trace);
+    expect(anchored[1]!.cycle, 'the first structural-int stall').toBe(3);
+
+    // The expert tier CONCEDES that the operand is also outstanding at cycle 3, and then says which
+    // constraint binds. Both halves are pinned, because the concession is the honest part: a
+    // narration claiming the `add` already had its data would be false with every anchor green.
+    const t0Written = trace.find((c) =>
+      c.events.some((e) => e.type === 'reg-write' && e.reg === 5 && e.value === 10),
+    );
+    expect(t0Written!.cycle, 't0 is not written until cycle 5').toBe(5);
+    const add = rows(trace).find((r) => r.mnemonic === 'add')!;
+    expect(add.issue, 'and the add issues the cycle after a unit frees').toBe(5);
+    expect(add.readOperands, 'reading t0 the very next cycle, with no wait').toBe(6);
+  });
+
+  it('STEP 4 — 55 lands in cycle 71, the run is 80, and the loop period is 7', () => {
+    const trace = board();
+    const anchored = anchorLesson(lesson(), trace);
+    expect(anchored[3]!.cycle, 'the total').toBe(71);
+    expect(trace.length, 'and the exit sequence carries the run to 80').toBe(80);
+    expect(trace.at(-1)!.state.halted).toBe(true);
+
+    const retires = trace.flatMap((c) => c.events.filter((e) => e.type === 'instr-retire'));
+    expect(retires).toHaveLength(34);
+    // 0.425 to three places is the figure the narration prints. Asserted as the quotient rather than
+    // as a literal, so a corpus edit that moved either term reddens instead of drifting.
+    expect(+(retires.length / trace.length).toFixed(3)).toBe(0.425);
+
+    // The seven-cycle period the expert tier breaks down — measured between consecutive `add`
+    // issues, rather than re-asserted from the breakdown's own terms.
+    const addIssues = rows(trace)
+      .filter((r) => r.mnemonic === 'add' && r.issue !== null)
+      .map((r) => r.issue!)
+      .sort((a, b) => a - b);
+    expect(addIssues.slice(0, 3)).toEqual([5, 12, 19]);
+    expect(new Set(addIssues.slice(1).map((c, i) => c - addIssues[i]!))).toEqual(new Set([7]));
+    // ...and the terms that breakdown names inside one period.
+    const bne = rows(trace).find((r) => r.mnemonic === 'bne')!;
+    expect(bne.issue, 'the branch waits two cycles for a unit after the addi takes the other').toBe(
+      9,
+    );
+    const resolved = trace.find((c) => c.events.some((e) => e.type === 'branch-resolved'))!;
+    expect(resolved.cycle, 'resolves at 11').toBe(11);
+    expect(
+      resolved.events.some((e) => e.type === 'instr-fetch'),
+      'and redirects fetch in the same cycle',
+    ).toBe(true);
+  });
+
+  it('THE OCCUPANCY CEILING — a unit is held Issue-to-Write-Result, so its turnaround is 4', () => {
+    // The mechanism steps 3 and 4 both rest on, stated as the thing that would have to change for
+    // the prose to stop being true: the unit is busy for exactly the row's span, from the Issue
+    // cycle up to (not including) the Write Result cycle.
+    const trace = board();
+    const span = new Map<string, number[]>();
+    for (const c of trace) {
+      const micro = (
+        c.state as {
+          micro?: { units?: readonly { busy: boolean; instr: string | null }[] };
+        }
+      ).micro;
+      for (const u of micro?.units ?? []) {
+        if (!u.busy || u.instr === null) continue;
+        const seen = span.get(u.instr);
+        if (seen) seen.push(c.cycle);
+        else span.set(u.instr, [c.cycle]);
+      }
+    }
+    for (const r of rows(trace).filter((x) => x.issue !== null)) {
+      const held = span.get(r.instr) ?? [];
+      expect(held[0], `${r.instr} claims its unit at Issue`).toBe(r.issue);
+      expect(held.at(-1), `${r.instr} holds it until the cycle before Write Result`).toBe(
+        r.writeResult! - 1,
+      );
+    }
+    // Two units and a four-cycle turnaround each is one integer instruction per two cycles — the
+    // ceiling the closing narration quotes, with 0.425 sitting under it.
+    expect(2 / 4).toBe(0.5);
+    expect(34 / trace.length).toBeLessThan(0.5);
+  });
+
+  it('THE CROSS-MODEL SENTENCE — 34 cycles at 1.0 on single-cycle, and 55 on every model', () => {
+    // A lesson declares ONE model, so a number it quotes about another is protected by NO
+    // declaration (M12's trap). The expert tier's "finishes it in 34 cycles at 1.0" is therefore
+    // pinned against a real recording of the machine it names, never computed.
+    const single = recordProgram('sum-loop', modelById('single-cycle').make);
+    expect(single.length).toBe(34);
+    expect(single.flatMap((c) => c.events.filter((e) => e.type === 'instr-retire'))).toHaveLength(
+      34,
+    );
+
+    // And step 4's "the same answer every machine in this simulator computes" — INV-8 in the
+    // reader's hands, swept over the shell's whole model list rather than a hand-kept subset, so a
+    // future model cannot join the picker and quietly falsify the sentence.
+    for (const model of MODELS) {
+      const trace = recordProgram('sum-loop', model.make, engineConfigFor(model, defaultConfig()));
+      expect(trace.at(-1)!.state.registers[10], `a0 on ${model.id}`).toBe(55);
+    }
   });
 });

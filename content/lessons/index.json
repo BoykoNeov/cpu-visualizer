@@ -42,5 +42,9 @@
       "commit-in-order",
       "reservation-station-holds"
     ]
+  },
+  {
+    "track": "The scoreboard",
+    "lessons": ["two-units-one-queue"]
   }
 ]

@@ -1,0 +1,62 @@
+{
+  "id": "two-units-one-queue",
+  "title": "Two units, and a queue for them",
+  "program": "sum-loop",
+  "model": "scoreboard",
+  "depthDefault": "detailed",
+  "steps": [
+    {
+      "trigger": {
+        "event": "instr-fetch",
+        "nth": 1
+      },
+      "narration": {
+        "essentials": "The same counting loop you toured before, now on a machine with two arithmetic units. Ten trips round, 55 at the end — and eighty cycles to get there.",
+        "detailed": "This is `sum-loop` again: `add a0, a0, t0`, `addi t0, t0, -1`, `bnez t0, loop`, ten times over, leaving 55 in a0. The scoreboard takes 80 cycles. Nothing about this program is hard — no memory, no long operation, and every value an instruction needs has already been written by the time it looks for it. Watch the functional-unit status table as it runs. There are two integer units, and everything queues for them.",
+        "expert": "Eighty cycles for thirty-four retired instructions is 0.425 instructions per cycle, on a program whose entire data flow is one three-instruction recurrence. Not one `operand` stall fires in the whole run, and neither does a `waw` or a `war`. All three of this machine's data-hazard checks are silent here: every stall in the eighty cycles is `structural-int` or `control`. This lesson is about the term that is left over."
+      }
+    },
+    {
+      "trigger": {
+        "event": "stall",
+        "nth": 1,
+        "where": {
+          "reason": "structural-int"
+        }
+      },
+      "narration": {
+        "essentials": "The loop's `add` cannot start. Both units are taken by the two instructions that set the loop up.",
+        "detailed": "Cycle 3. The two setup instructions, `li a0, 0` and `li t0, 10`, hold INT0 and INT1, and the loop's `add a0, a0, t0` is stopped at Issue behind them. The reason the machine gives is `structural-int` — not enough units. Issue happens in program order and it blocks, so nothing behind the `add` moves either, however ready it is. And look at what is holding those units: two one-cycle adds, neither of which is computing anything at all in three of the four cycles it owns a unit for.",
+        "expert": "The issue check asks about units before it asks about anything else, so `structural-int` is what an instruction reports when it lacks a unit — whether or not its operands are also outstanding. Both are true of this `add` at cycle 3: `t0` is not written until cycle 5. What matters is which constraint binds, and it is the unit. The `add` issues at 5, the cycle after one frees, and reads `t0` at 6 without waiting a moment for it. Every dependence in this program is like that — the queue for a unit is longer than the wait for the data, always, which is exactly why no `operand` stall ever fires."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 10
+        }
+      },
+      "narration": {
+        "essentials": "The first `add` is finished: one cycle to start, one to read, one to add, one to write. Four cycles for a one-cycle sum.",
+        "detailed": "The loop's first `add` has just written 10 into a0. Find its row in the instruction status table: Issue 5, Read Operands 6, Execute complete 7, Write Result 8 — four consecutive cycles with no gap anywhere in them. That is what an instruction that never waits looks like, and every one of the thirty-four rows in this run looks the same. But the unit was hers for all four. A one-cycle add costs a unit four cycles, and there are two units.",
+        "expert": "The four columns are consecutive for every instruction in the recording — no row anywhere in the eighty cycles has a gap between Issue and Read Operands, or between Read Operands and Execute complete. That is the same fact as the zero `operand` stalls, read off the table instead of off the event stream. The cost is occupancy: a unit is claimed at Issue and not released until Write Result, so its turnaround is four cycles even for an operation whose execution takes one. Two units at four cycles apiece is one integer instruction every two cycles — a ceiling of 0.5 instructions per cycle, standing before any hazard is considered at all."
+      }
+    },
+    {
+      "trigger": {
+        "event": "reg-write",
+        "where": {
+          "reg": 10,
+          "value": 55
+        }
+      },
+      "narration": {
+        "essentials": "55 lands in cycle 71, and the exit sequence carries the run to 80. Thirty-four instructions, eighty cycles.",
+        "detailed": "The total is 55 — the same answer every machine in this simulator computes for this program, from the three-cycle-per-instruction one to the out-of-order one. It arrives in cycle 71 and the exit sequence takes the run to 80: thirty-four instructions in eighty cycles, 0.425 of an instruction per cycle. Two integer units, each held four cycles per instruction, allow one instruction every two cycles at best — 0.5. This loop gets 0.425, and the shortfall is the branch, which has to be resolved ten times before the machine knows what to fetch next. Not one cycle of the eighty was a data hazard. When you meet this machine's held writes in the next two lessons, remember what the wall behind them is made of.",
+        "expert": "Thirty-four instructions, eighty cycles, 0.425 instructions per cycle. The ceiling is structural: an integer operation executes in one cycle, but its unit is held from Issue through Write Result, so two units resolve to one instruction per two cycles. The loop's period is seven cycles for three instructions — the `add` and the `addi` issue one apart into the two units at 5 and 6, the `bnez` waits two cycles for a unit and issues at 9, resolves at 11 and redirects fetch in the same cycle, and the next iteration's `add` issues at 12. Twenty-three `structural-int` stalls and ten `control` stalls are the entire stall inventory of the run. The single-cycle machine this loop was first shown on finishes it in 34 cycles at 1.0 — so the scoreboard is not slow here because it schedules badly, but because each unit is expensive to recycle and this program can never keep more than two of them fed."
+      }
+    }
+  ]
+}
