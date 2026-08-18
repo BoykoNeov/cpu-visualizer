@@ -1,6 +1,6 @@
 ---
 name: m16-scoreboard-lessons-step0
-description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). STEPS 0-4 DONE 2026-08-18: the dump decided the design, ALL THREE LESSONS SHIP (the ceiling, WAW, WAR) and the track's ORDER PINS are in; next is step 5, the browser pass — the last step. Step 4's carry-forward findings: TWO of its own conclusions were WRONG and are corrected in place — the COUNT 'pin' fires when NO SENTENCE LIES (append a fourth lesson AFTER the third and 'the next two lessons' stays true, so it was relabelled a CANARY; an assertion can be arithmetically independent of every other and still not guard the sentence it is filed under, and only READING the prose against the perturbation can tell the two apart), and the mention enumeration that called itself exhaustive was a KEYWORD REGEX blind to two of seven mentions (a reference that names no lesson — 'This is sum-loop again', 'the single-cycle machine this loop was first shown on' — has none of the stock phrases; re-run over TITLES, model names and history verbs instead). Both survived a green suite AND a eight-run perturbation harness. Also: three of the cross-references needed ADJACENCY rather than precedence BECAUSE TWO LESSONS SHARE A PROGRAM (a toBeLessThan is green over the one reorder that matters — ask what else could occupy the slot the sentence names); the nearest precedent's guard was the INVERSE of the claim (the OoO pin's toBeGreaterThan(0) asserts 'not first', this one asserts 'IS first'); and a pin can be UN-ISOLATABLE at the current size of the thing it guards and still be the only one that catches the defect once it grows (pin 3: in a three-lesson track any three of the four intra-track pins imply the fourth, so PERTURB THE SIZE as well as the order — but note the count pin FAILED this same test and was demoted). Also: vitest stops a test at its FIRST failed assertion, so a per-run red set is 'which fires first', not 'which are false'. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 five more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it); and a CORPUS claim composed out of a PROGRAM claim (two true numbers in one sentence do not license a third). Step 3 also found the SURVIVING TWIN of step 2's positional claim still in register-reuse.s's header, and an occupancy assertion in its OWN new oracle that was necessary but not sufficient — step 1's OCCUPANCY CEILING species, same organ, and NO stub ever exercised it. The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
+description: "M16 (the scoreboard's LESSON track — the seventh model's, and the last one missing). COMPLETE 2026-08-18, all six steps 0-5: the dump decided the design, ALL THREE LESSONS SHIP (the ceiling, WAW, WAR), the track's ORDER PINS are in, and the BROWSER PASS closed it (227 checks, 0 failures over the shipped bundle). Step 5's carry-forward findings: the browser found a FALSE COUNT whose oracle was green BECAUSE IT FILTERED THE COUNTER-EVIDENCE (filter(r => r.issue !== null).toBe(34) discards the nine rows that make 'every one of the thirty-four rows in this run' false; the panel's own note reads 41 at that lesson's closing cursor and 43 at the end) — and the FIRST DRAFT OF THE FIX was false the same way, caught by the pin written for the original, because THE ROW COUNT IS CURSOR-DEPENDENT (5 at cycle 8, 41 at 71, 43 at 79): before pinning any number in prose ask whether the thing it counts GROWS with the cursor, and if it does quote only the part that does not move. Also: a NON-VACUITY PROBE can be vacuous in its SUBJECT even when its geometry is right (the caption squeeze ran on a 56-char caption and reported 3 wanted vs 3 available — what a correct app and a dead metric both print); the three scoreboard tables all print INT0/INT1/MEM so every read must be scoped by <h3> subhead or marker class; and 21 prose instruction quotes have no row of that spelling (a LIBRARY-WIDE convention, nine lessons over five tracks, reported not fixed — but these are the only three lessons that send a reader to a specific ROW, and the spelling note lands in the THIRD). Step 4's carry-forward findings: TWO of its own conclusions were WRONG and are corrected in place — the COUNT 'pin' fires when NO SENTENCE LIES (append a fourth lesson AFTER the third and 'the next two lessons' stays true, so it was relabelled a CANARY; an assertion can be arithmetically independent of every other and still not guard the sentence it is filed under, and only READING the prose against the perturbation can tell the two apart), and the mention enumeration that called itself exhaustive was a KEYWORD REGEX blind to two of seven mentions (a reference that names no lesson — 'This is sum-loop again', 'the single-cycle machine this loop was first shown on' — has none of the stock phrases; re-run over TITLES, model names and history verbs instead). Both survived a green suite AND a eight-run perturbation harness. Also: three of the cross-references needed ADJACENCY rather than precedence BECAUSE TWO LESSONS SHARE A PROGRAM (a toBeLessThan is green over the one reorder that matters — ask what else could occupy the slot the sentence names); the nearest precedent's guard was the INVERSE of the claim (the OoO pin's toBeGreaterThan(0) asserts 'not first', this one asserts 'IS first'); and a pin can be UN-ISOLATABLE at the current size of the thing it guards and still be the only one that catches the defect once it grows (pin 3: in a three-lesson track any three of the four intra-track pins imply the fourth, so PERTURB THE SIZE as well as the order — but note the count pin FAILED this same test and was demoted). Also: vitest stops a test at its FIRST failed assertion, so a per-run red set is 'which fires first', not 'which are false'. THE HEADLINE CONSTRAINT: this model honors NO config knob, so buildPositions returns exactly ONE position and there is NO FLIP TO ASK FOR — which makes the sweep a STRONGER net (every step must fire) and RETIRES the M11+M12 finding-2 class entirely. But across three lessons the sweep has now been measured BOTH WAYS and neither is about meaning: step 2 found it GREEN while every sentence in the lesson was false, and step 3 found it RED — by ACCIDENT OF ANCHOR ORDER, because the stub pushed one step past another. A green sweep proves nothing about the prose and a red one is not evidence it can read. The recurring defect class in this track is the UNGUARDED SENTENCE: step 2 shipped three false ones and step 3 five more, all caught by hand, none reachable by any oracle or stub — a position claim that INVERTED the hazard (the young writer comes AFTER the older reader, so "in between" describes a read-after-write); a register spelling quoted from the wrong table (the instruction and functional-unit tables print x7, ONLY the register-result table says t2 — a real product wart, reported not fixed); a sentence contradicted by the on-screen caption because micro is snapshotted after the clock edge; and a claim about the PICTURE that is unreachable off micro because the row it points at has already retired (assert it through buildScoreboardTables, the fold that draws it); and a CORPUS claim composed out of a PROGRAM claim (two true numbers in one sentence do not license a third). Step 3 also found the SURVIVING TWIN of step 2's positional claim still in register-reuse.s's header, and an occupancy assertion in its OWN new oracle that was necessary but not sufficient — step 1's OCCUPANCY CEILING species, same organ, and NO stub ever exercised it. The renaming A/B is REAL but SMALL: both hazards renamed away move the scoreboard 31 -> 30 cycles and the WAR ALONE COSTS ZERO — the head start is absorbed one instruction downstream, where the next integer op takes its unit at 17 instead of 18 and then waits for a load until 23 EITHER WAY. The hazards buy CORRECTNESS, not speed: without the WAR hold a0 lands on 26 (measured by stub), and moving the young write above its reader makes a0 = 26 on all seven models (measured by source edit — and a line SWAP needs its own adjacency guard, since the replace-once harness does not transfer). That A/B was a NULL RESULT on its first run because String.replace over the whole source hit the program's own comment header, which quotes every instruction verbatim. Also measured: war fires FOUR times in the entire product (13 programs x 7 models) and all four are one instruction on register-reuse; war@WB is the ONLY (reason, stage) pair in the product outside the front of the walk; the reorder is ONE cycle (c17); i4 holds an integer unit for TEN cycles to run a one-cycle add (the earned reservation-station callback, kept at the DETAILED tier because resolveNarration falls back downward); and a cross-model cycle comparison measures MEM_LATENCY, not the scheduling discipline."
 metadata:
   node_type: memory
   type: project
@@ -8,10 +8,10 @@ metadata:
   modified: 2026-08-18T09:37:22.503Z
 ---
 
-**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: steps 0–4 DONE — ALL THREE LESSONS SHIP and
-the track's order pins are in. Decisions 1–4 PINNED by the user (three lessons; `sum-loop` for the
-ceiling; a NEW track, appended last), 5 applied as seeded (the rename A/B is an ORACLE, never an
-invitation), 6–8 open. Next is step 5, the browser pass — the last step.**
+**Plan: `docs/plans/m16-tasks.md`. Status 2026-08-18: ✅ COMPLETE — all six steps (0–5) DONE. ALL
+THREE LESSONS SHIP, the track's order pins are in, and the browser pass closed it. Decisions 1–4
+PINNED by the user (three lessons; `sum-loop` for the ceiling; a NEW track, appended last), 5
+applied as seeded (the rename A/B is an ORACLE, never an invitation), 6–8 open.**
 The dump lives at `M:\claud_projects\temp\m16-step0\` (`dump.txt` 639 lines + `dump2.txt`, both
 with JSON twins). It was run BEFORE the plan, which is this repo's method for a lesson track
 ([[m12-deep-pipeline-lessons]]), and it decided the design. Read it before authoring any step.
@@ -446,3 +446,77 @@ prediction misses on collateral every time and the misses train you to ignore th
 
 ⚠ **Vitest stops a test at its FIRST failed assertion**, so a per-run red set is "which fires
 first", not "which are false" — P1's #3 is genuinely false and invisible in the output.
+
+## Step 5 — the browser pass (DONE 2026-08-18, repo 11923 → 11924)
+
+`M:\claud_projects\temp\m16-step5\` — `s5-scoreboard-lessons.mjs` (**227 checks, 0 failures**,
+`run3.log`), `dump.probe.test.ts` + `probe.config.ts` → `oracle.json`, `findings.md`, screenshots.
+Read [[browser-is-the-only-net]] and its four siblings first; everything below is what this pass
+ADDED to them.
+
+**The rig's shape is forced by the model having no knob.** There is no flip to drive and no config
+axis to sweep, so the whole pass is one question: **does the prose tell the truth about the tables
+on the screen?** The oracle dumps all fourteen anchors' three status tables **through the same fold
+the view draws from**, so the rig compares the RENDER rather than re-deriving a second expectation
+that can be wrong in its own way. Green at every anchor, row for row.
+
+⚠ **THE PROSE DEFECT, AND WHY THE ORACLE WAS GREEN: it FILTERED AWAY THE COUNTER-EVIDENCE AND THEN
+COUNTED WHAT WAS LEFT.** Lesson 1 step 3 said "every one of the thirty-four rows in this run looks
+the same". The panel's own window note prints **"the last 10 of 41 fetched"** at that lesson's
+closing cursor and **"43 fetched"** at the end of the run — 43 rows, 34 that issue, 9 squashed
+fetches printed as all-dashes with a `· flushed` marker. The step-1 oracle was
+`rows(board()).filter(r => r.issue !== null)` then `.toBe(34)`: it discards the very rows that make
+the sentence false. **Green because it asserted the filtered thing** — the M15 step-8 shape one
+milestone later, and a new species of the step-4 lesson (an assertion can be arithmetically
+independent of the sentence it is filed under). Every number in it is correct and none is about the
+claim.
+
+⚠ **AND THE FIRST DRAFT OF THE FIX WAS FALSE IN THE SAME WAY, caught by the pin written for the
+original** — the third time in this milestone that the correction repeated the mistake. It wrote
+"the table ends up holding forty-one", which is the count at step 4's cursor, not at the end.
+**THE ROW COUNT IS CURSOR-DEPENDENT: 5 at cycle 8, 41 at cycle 71, 43 at cycle 79.** A moving number
+quoted as a fixed one is false at every cursor but one. **Before pinning any number in prose, ask
+whether the thing it counts GROWS with the cursor** — and if it does, quote only the part that does
+not move and NAME the disagreement. The shipped sentence quotes 34 (the issued count, fixed) and
+says the counter reads higher because it counts every fetch. Its pin reads both numbers off one
+recording, requires the counter to EXCEED the sentence's number, and forbids any total appearing at
+all. Three stubs, each red on the clause it targets — and stub 1 is the finding stated as a
+measurement: with the false sentence restored, **the old filtered assertion stays green**.
+
+**The product wart, measured and left alone (21 quotes).** The prose speaks the SOURCE's language
+(`li a0, 0`, `bnez t0, loop`, `lw t1, 4(t0)`); the instruction status table prints the assembled
+form (`addi x10, x0, 0`, `bne x5, x0, -8`, `lw x6, 4(x5)`). **Not this milestone's defect** —
+quoting pseudo-instructions is a library-wide convention (nine lessons, five prior tracks) and the
+Source panel shows that spelling. The narrowing that IS specific: **these are the only three lessons
+in the library that send a reader to a specific ROW of a table**, and the mapping note lands in the
+THIRD lesson (`t2` → `x7`, step 3's known wart). Lessons 1 and 2 point at the same tables first and
+carry nothing — sharpest at lesson 1 step 2, where "`li a0, 0` and `li t0, 10` hold INT0 and INT1"
+faces a unit table whose `op` says `addi` twice and whose `Fi` says `x10`/`x5`.
+
+⚠ **A NON-VACUITY PROBE CAN BE VACUOUS IN ITS SUBJECT even when its GEOMETRY is right.** The caption
+squeeze probe ran wherever the walk left the cursor — a 56-character "no stall this cycle" — and
+reported 3 lines wanted against 3 available at 200px, which is what a correct app AND a dead metric
+both print. **A short caption fits a narrow box honestly.** Fixed by scrubbing to the LONGEST caption
+(the 289-char `structural-int` one) and asserting its length BEFORE squeezing: 10 wanted vs 3 at
+200px, still fitting at the real 1120px. This is the [[browser-is-the-only-net]] rule ("re-run the
+measurement against the FIX") one level deeper — also choose the probe's SUBJECT deliberately.
+
+**Three panel-scoping rules this surface forces, all load-bearing:** `INT0`/`INT1`/`MEM` appear in
+ALL THREE tables (instruction unit column, unit name column, every claimed register cell), so scope
+by the `<h3>` subhead (walk UP to the first ancestor owning a `table`) or by the marker classes the
+layout guard already carries (`sb-unit-row`, `sb-reg-cell`, `sb-window-note`, `sb-stall-caption`);
+the unit table spells `x7` where the register grid spells `t2` **by design**, so a rig that mixes
+them reports the authored subject as a defect; and the page now has a **second visible `<p>`**
+(`sb-stall-caption`) that no earlier lesson rig had to exclude from `__narration()`.
+
+**What the pass proved that no headless test can:** `depthDefault` is live on all three lessons AND
+**re-applied on every start** (dial moved to expert, next lesson reopened at detailed — the second
+hop is what proves it fires more than once); `essentials` and `expert` render correctly too; every
+backtick pair became a code span with none left over (the only way an unbalanced backtick becomes
+visible, since `renderNarration` SPLITS on backticks); the write-result column inverts on **exactly
+one cycle of thirty-one**, read off the live table; the fetched count does not move across 19–22
+while INT1 is idle 18–22; and the hazard hue is amber against ink in **all three** theme states,
+with `--mono-amber` MOVING between light and dark while `--ink-3` is invariant by design.
+
+**Run 1's three failures were ALL the rig** (the house record again): the Program picker's option
+VALUES strip `.s` (`add`, not `add.s`) — twice — and the caption probe above.

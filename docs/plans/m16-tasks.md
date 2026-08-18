@@ -1,9 +1,9 @@
 # Milestone 16 — The scoreboard lesson track
 
-**Status: steps 0–3 DONE 2026-08-18.** The dump is run and it decided the design; decisions
-1–4 are pinned by the user and 5 is applied as seeded; **all three lessons ship.** **Next: step 4,
-the track and its order pins** — three order-dependent sentences are already listed under "Step 3
-as built" so a reorder does not have to discover them.
+**Status: ✅ COMPLETE — all six steps (0–5) DONE 2026-08-18.** The dump decided the design;
+decisions 1–4 are pinned by the user and 5 is applied as seeded; **all three lessons ship**, the
+track's order pins are in, and the browser pass closed the milestone against the only net that can
+see a rendered table.
 
 Source of truth for scope: `cpu-visualizer-spec.md` §13 (the curriculum system). The load-bearing
 invariants are INV-6 (lessons anchor to trace EVENTS, never cycle numbers), INV-2 (depth is a
@@ -219,10 +219,11 @@ with renaming and one without. Three non-vacuous pins are available and each is 
   commit; repo 11920 → 11923). Seven mentions found, five pinned across three tests; three needed
   ADJACENCY rather than precedence. ⚠ Two of the seven were invisible to the first enumeration,
   and one "pin" turned out to fire when nothing lies — see "Step 4 as built" below.
-- **Step 5 — the browser pass.** Every lesson reached ONLY through `startLesson`, each started from
-  a different model so every assertion is about what the lesson dragged. Read the RENDERED panel,
-  not the DOM. [[browser-is-the-only-net]] — 11 of the last 12 view steps shipped a defect only the
-  browser caught.
+- **Step 5 — the browser pass. ✅ DONE 2026-08-18** (repo 11923 → 11924). 227 checks, 0 failures
+  over the SHIPPED bundle; each lesson reached only through `startLesson` from a different model AND
+  a different program. ⚠ One prose defect found — a fixed count against a CURSOR-DEPENDENT counter,
+  whose oracle was green because it FILTERED the counter-evidence — and the first draft of the fix
+  was false in the same way. One product wart measured and left alone. See "Step 5 as built" below.
 
 ## Step 1 as built — `two-units-one-queue` (2026-08-18)
 
@@ -810,6 +811,178 @@ source file — `packages/web/src/lessons.test.ts`.
 5. **No new `Lesson` field** — no lesson JSON changed; **no prose was touched at this step**, which
    is the criterion this step could most easily have violated: the honest fix for an unpinnable
    sentence is to reword it, and none needed rewording. ✓
+
+## Step 5 as built — the browser pass (2026-08-18)
+
+The milestone's closing step, and the only one whose net can see a click. **227 checks, 0
+failures** on the final run (`M:\claud_projects\temp\m16-step5\run3.log`), against the SHIPPED
+bundle under `vite preview` — `/assets/index-*.js`, confirmed in §0, not the dev module graph.
+One prose defect found and fixed; one product wart found, measured and left alone. Repo 11923 →
+11924; five gates green.
+
+### The rig, and why it is shaped this way
+
+`M:\claud_projects\temp\m16-step5\s5-scoreboard-lessons.mjs`, with `dump.probe.test.ts` +
+`probe.config.ts` producing `oracle.json` BEFORE the browser ran. **This model honors no knob**, so
+unlike every prior track there is no flip to drive and no config axis to sweep: the whole
+evidentiary weight falls on one question no headless test here can ask — **does the prose tell the
+truth about the tables actually on the screen?** The oracle therefore dumps, for each of the
+fourteen anchors, the three status tables THROUGH THE SAME FOLD THE VIEW DRAWS FROM, so the rig
+compares the RENDER rather than re-deriving a second expectation that could be wrong in its own way.
+
+Three scoping rules the panel forces, all of them load-bearing:
+
+- **`INT0`/`INT1`/`MEM` appear in all three tables** — the instruction table's unit column, the unit
+  table's name column, and every claimed register cell. Every read is scoped by its own `<h3>`
+  subhead (walking UP from the subhead to the first ancestor owning a table) or by the marker
+  classes the view already carries for the layout guard: `sb-unit-row`, `sb-reg-cell`,
+  `sb-window-note`, `sb-stall-caption`.
+- **The unit table spells registers `x7` and the register-result grid spells them `t2`, by design**
+  — which is the wart lesson 3 step 1 narrates. A rig that mixed them would "find" the authored
+  subject and report it as a defect.
+- **The page now carries a second visible `<p>`** (`sb-stall-caption`) that no earlier lesson rig
+  had to exclude, so `__narration()` stays scoped to `section[aria-label="Lesson narration"]`.
+
+### What the pass established
+
+- **All fourteen anchors**: the rail dot parks the cursor on the anchored cycle, the step counter
+  agrees, and the **rendered narration is the JSON's `detailed` string word for word**.
+- **At every anchor the three tables match the oracle row for row** — instruction status
+  (pc / text / unit / four cycle columns / stall column, including the ` · flushed` suffix),
+  functional-unit status (all eleven fields × three rows), the register-result claims, the window
+  note and the stall caption. This is the net for "the prose is true about the screen".
+- The claims that need a SCAN rather than a cursor, read off the LIVE table: the write-result
+  column **inverts on exactly one cycle of thirty-one (17)** — lesson 3 step 4's sharpest sentence,
+  guarded by nothing on screen before this — the fetched count **does not move across 19–22**, and
+  **INT1 is idle 18–22**.
+- **`depthDefault` in both rot directions**: the dial moves to `expert` and the prose changes, and
+  then **starting the NEXT lesson puts it back to `detailed`** — which is what proves `setTier`
+  fires on every start rather than only the first. Plus all three tiers rendered and compared on
+  one step of each lesson: `essentials` is authored on all fifteen steps of this track and nothing
+  had ever been shown to read it on screen.
+- **Every backtick pair became a code span and none was left over**, per step — the only way an
+  unbalanced backtick becomes visible, since `renderNarration` splits on backticks and an odd count
+  silently swallows the rest of a sentence into (or out of) a code span.
+- **Hazard hue, computed, in all three theme states**: `war` amber against `structural-int` ink,
+  with `--mono-amber` MOVING between light and dark (`#a06400` / `#d9a441`) so the theme drive is
+  not vacuous, while `--ink-3` is invariant across all three **by design** — asserted as its own
+  check so the next reader is not told twice (M14 step 5's rule).
+- Cross-route identity on exit, all thirty-two register cells drawn at every cursor, and **no
+  console error or warning in the whole pass**.
+
+### ⚠ The prose defect, and the oracle that was green BECAUSE it filtered the counter-evidence
+
+Lesson 1 step 3 said: _"every one of the thirty-four rows in this run looks the same."_ On screen
+the panel's own window note reads **"the last 10 of 41 fetched"** at this lesson's closing cursor
+and **"43 fetched"** at the end of the run. The run rows 43 instructions: 34 issue, 9 are fetches
+the branch squashed, which print all dashes and a ` · flushed` marker.
+
+**The step-1 oracle is why it survived**, and this is the durable part:
+
+```js
+const issued = rows(board()).filter((r) => r.issue !== null);
+expect(issued.length, 'the squashed fetches never issue and are excluded').toBe(34);
+```
+
+It filters away the very rows that make the sentence false and then counts what is left — **green
+because it asserted the filtered thing**, the M15 step-8 shape one milestone later. Every count in
+that assertion is correct; none of them is about the sentence.
+
+⚠ **And the FIRST DRAFT OF THE FIX was false too, caught by the pin written for the original.** It
+read "the table ends up holding forty-one", which is the count at step 4's cursor, not at the end of
+the run. **The row count is CURSOR-DEPENDENT — 5 at this step's own cycle 8, 41 at cycle 71, 43 at
+cycle 79 — so no single total can be true in the prose.** That is the M15 step-8 rule ("pinning a
+moving string to one line makes it HIDE") in its content form: a moving number quoted as a fixed one
+is false at every cursor but one. The shipped sentence quotes only the number that does not move:
+
+> "…and so does every other row in this run that ever issues — thirty-four of them. The counter
+> above the table reads higher than that, because it counts every fetch: the ones the branch
+> squashed are rowed too, marked `flushed`, and they never start at all."
+
+The new pin reads BOTH numbers off the SAME recording (43 rowed, 34 issued, 9 squashed), asserts
+that the counter MUST exceed the sentence's number, quotes the two clauses, and forbids any total
+from appearing at all.
+
+**The mutation check — three stubs, each with a declared purpose:**
+
+| #   | stub                                                           | predicted red                  | observed                                                                                                      |
+| --- | -------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 1   | restore the original "thirty-four rows" sentence               | the new pin only               | 1 red, 3672 green — **the old filtered assertion stayed green**, which is the finding stated as a measurement |
+| 2   | keep the fix but quote a total ("ends up holding forty-three") | the clause pin                 | 1 red, on the "counter reads higher" clause                                                                   |
+| 3   | keep the sentence intact and APPEND a total elsewhere          | the `not.toMatch` clause alone | 1 red, on exactly that clause — so it is a guard, not a comment                                               |
+
+### The product wart, measured and left alone
+
+§6b: **21 instruction quotes across the three lessons have no row of that spelling.** The prose
+speaks the SOURCE's language (`li a0, 0`, `bnez t0, loop`, `lw t1, 4(t0)`) and the instruction
+status table prints the assembled form (`addi x10, x0, 0`, `bne x5, x0, -8`, `lw x6, 4(x5)`).
+
+It is **not a defect this milestone introduced**: quoting pseudo-instructions in narration is a
+library-wide convention — `forwarding-bubble`, `sum-loop-tour`, `two-at-once`, `four-in-a-row`,
+`deep-bet-pays-double`, `sign-and-zero`, `one-branch-unit`, `pair-that-cant` and
+`where-widening-stops` all do it — and the Program source panel shows exactly that spelling, so
+nothing in the prose is untrue.
+
+What IS specific to this track, and is the narrowing worth recording: **these are the only three
+lessons in the library that direct a reader to a specific ROW of a table** ("Find its row in the
+instruction status table", "Look at the functional-unit table first", "the row directly above it",
+"two lines above") — and **the mapping note lands in the THIRD lesson**, lesson 3 step 1's "`t2`,
+which the instruction and functional-unit tables spell by its number, `x7`". Lessons 1 and 2 point
+at the same tables first and carry nothing. The sharpest instance is lesson 1 step 2, the track's
+first sentence to point at a machine table: "the two setup instructions, `li a0, 0` and `li t0, 10`,
+hold INT0 and INT1", where the unit table's `op` column says `addi` twice and its `Fi` column says
+`x10` and `x5` — two mappings with nothing on the page naming either. Reported, not fixed: growing a
+new prose claim plus its pin on the milestone's last step buys less than it risks, and the
+convention is the library's, not this track's.
+
+### Three rig failures on run 1, and all three were the RIG
+
+The house record again (M11 step 5: five of five; M11 step 7: all of them; M14 step 5: `MULTIPLE:2`
+on thirteen walks).
+
+1. & 2. **The Program picker's option VALUES strip `.s`** — `add`, not `add.s`. Twice.
+2. **The caption non-vacuity probe measured nothing.** It ran wherever the walk happened to leave
+   the cursor — a 56-character "no stall this cycle" — and reported 3 lines wanted against 3
+   available, which is what a correct app AND a dead metric both report. **A short caption fits a
+   narrow box honestly.** Fixed by scrubbing to the LONGEST caption first (the `structural-int`
+   one, 289 chars) and asserting that length before squeezing: 10 lines wanted at 200px against 3
+   available, and still fitting at the real 1120px. This is the M15 step-8 trap
+   ([[browser-is-the-only-net]]: "a metric can stop measuring anything the moment you FIX the
+   defect") caught in a new place — **the probe's SUBJECT can be vacuous even when its geometry is
+   right.**
+
+The caption fix itself holds on new content: 1–2 lines wanted against the three-line reserve at
+every one of the fourteen anchors.
+
+### The falsifiable UNCHANGED criteria, checked
+
+Against `git show --stat` for this step's commit, which touches exactly two files — the lesson JSON
+and `lessons.test.ts`.
+
+1. **No trace-schema change** — nothing under `packages/trace`. ✓
+2. **No engine change** — nothing under `packages/engine`. The three mutation stubs were applied to
+   `content/lessons/two-units-one-queue.json` only and restored from a byte copy taken before the
+   first stub, with `git diff --stat` showing the two intended files after each. ✓
+3. **No new corpus program** — `sum-loop` and `register-reuse`, both already in the corpus. ✓
+4. **No view change** — nothing under `packages/web/src` except the test file. **This is the
+   criterion the step tested rather than merely satisfied**: the spelling wart above is a view-side
+   fact, and it was surfaced and measured rather than absorbed. ✓
+5. **No new `Lesson` field** — one `narration.detailed` string reworded; no field added. ✓
+
+### The acceptance list, closed by name
+
+| criterion                                                                                    | closed by                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| three lessons authored, in `index.json`, swept green at the single `neutral config` position | headless sweep (steps 1–3); **browser §1** shows the picker's seventh optgroup with the three, in order                                                                                |
+| no two steps of a lesson share a cycle                                                       | the validator, headless; **browser §2** parks on 14 distinct anchors and reads the cursor back                                                                                         |
+| the discriminator asserted, not argued                                                       | headless (each lesson's own oracle)                                                                                                                                                    |
+| every cross-model number pinned against a real recording                                     | headless (the three oracles named in "The cross-model problem")                                                                                                                        |
+| every number in narration READ from a recording                                              | headless; **browser** re-reads all of them off the RENDERED tables at every anchor                                                                                                     |
+| `depthDefault: 'detailed'`, narration differing from `expert`                                | headless for the difference; **browser only** for the shell actually opening at it — on all three lessons, and re-applying on every start                                              |
+| no `*` outside a code span                                                                   | the existing headless guard; **browser §2** per rendered step, plus the new code-span-count check                                                                                      |
+| criteria 1–5 checked and reported, with the check named                                      | the section above                                                                                                                                                                      |
+| mutation-checked, every new line RED against the broken thing                                | three stubs, table above                                                                                                                                                               |
+| the browser pass drives the shipped bundle                                                   | §0: `/assets/index-*.js` present, `/src/main.tsx` absent, CSS sheets + rule count asserted, a KNOWN-PRESENT control resolved on a model that HAS one before any absence check below it |
 
 ## Acceptance criteria
 

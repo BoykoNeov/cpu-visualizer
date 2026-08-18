@@ -1,16 +1,16 @@
 # Project memory — CPU Visualizer
 
-A pedagogical RV32I simulator. **M1–M15 ALL COMPLETE** (spec §12's roadmap finished at M10; M11–M15
+A pedagogical RV32I simulator. **M1–M16 ALL COMPLETE** (spec §12's roadmap finished at M10; M11–M15
 came from the don't-foreclose flag), each code-reviewed with every finding fixed. **SEVEN models are
-selectable**; six have a lesson track, the scoreboard's is M16. Work since M14 is UX/product gaps in the shell plus one new feature: of
+selectable and ALL SEVEN now have a lesson track** (the scoreboard's shipped at M16). Work since M14 is UX/product gaps in the shell plus one new feature: of
 the four UX gaps a post-M14 survey found, **three are done** (keyboard clock control, continuous
 play, the sticky transport bar's jitter — all 2026-07-30). The corpus is **thirteen** programs, the
-library is **29 lessons**, the repo runs **11923 passing tests** (11924 counting the one skipped
+library is **29 lessons**, the repo runs **11924 passing tests** (11925 counting the one skipped
 file), five gates green.
 
-**Open work:** URL permalinks; session persistence; **M16 — the scoreboard's lesson track (steps 0–4 DONE
-2026-08-18: dump run, plan written, decisions 1–4 pinned and 5 applied, ALL THREE LESSONS SHIPPED and the
-track's ORDER PINS in; next is step 5, the browser pass — the last step)**.
+**Open work:** URL permalinks; session persistence. **M16 is ✅ COMPLETE (all six steps 0–5,
+2026-08-18)** — the seventh model's lesson track, closed by a browser pass that found a false count
+whose oracle was green because it filtered away the counter-evidence.
 **M15 is ✅ COMPLETE (all nine steps, 2026-08-10)** — the seventh model, its corpus program, and its
 canonical picture, closed by a browser pass that found two defects 11 872 green tests could not see. **Dynamic branch prediction is ✅ COMPLETE (steps 0–8, 2026-08-09).**
 
@@ -136,7 +136,14 @@ that area. **Keep this index to one line per entry; detail belongs in the file, 
   evidence it can read prose**. The track's recurring defect is the UNGUARDED SENTENCE: **eight false ones
   across two lessons, every one caught by hand** — including one that **INVERTED the hazard** and one that
   **quoted the wrong table's register spelling** (the instruction and unit tables print `x7`; only the
-  register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** The renaming A/B is real but small (31 → 30,
+  register-result table says `t2` — reported as a product wart, not fixed). **Read before authoring any scoreboard lesson.** ⚠ **Step 5 (the browser pass, 227 checks green over the
+  shipped bundle) adds three that outlive the milestone: an oracle can be green BECAUSE IT FILTERS AWAY THE
+  COUNTER-EVIDENCE (`filter(r => r.issue !== null).toBe(34)` discards the nine rows that made "every one of the
+  thirty-four rows in this run" false, while the panel's own counter prints 41 then 43) — and the FIRST DRAFT
+  OF THE FIX repeated it, because **the row count is CURSOR-DEPENDENT**, so before pinning any number in prose
+  ask whether the thing it counts GROWS with the cursor; and **a non-vacuity probe can be vacuous in its
+  SUBJECT** even when its geometry is right — the caption squeeze ran on a 56-character caption and reported
+  3 lines wanted against 3 available, which is exactly what a dead metric prints.** The renaming A/B is real but small (31 → 30,
   and the WAR alone costs ZERO) — and it was a NULL RESULT on its first run because the edit harness
   patched the program's COMMENT HEADER, which quotes every instruction verbatim. Step 1's mutation
   check found a **FALSE NET in its own oracle** — and discarded a stub that DEADLOCKED the machine,
