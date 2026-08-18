@@ -1,9 +1,9 @@
 # Milestone 16 — The scoreboard lesson track
 
-**Status: steps 0–2 DONE 2026-08-18.** The dump is run and it decided the design; decisions
-1–4 are pinned by the user; two of the three lessons ship. **Next: step 3, the WAR lesson and
-the reorder at c17** — decision 5 (oracle yes, invitation no) governs its closing beat, and c17
-is reserved for it by finding 2.
+**Status: steps 0–3 DONE 2026-08-18.** The dump is run and it decided the design; decisions
+1–4 are pinned by the user and 5 is applied as seeded; **all three lessons ship.** **Next: step 4,
+the track and its order pins** — three order-dependent sentences are already listed under "Step 3
+as built" so a reorder does not have to discover them.
 
 Source of truth for scope: `cpu-visualizer-spec.md` §13 (the curriculum system). The load-bearing
 invariants are INV-6 (lessons anchor to trace EVENTS, never cycle numbers), INV-2 (depth is a
@@ -210,10 +210,11 @@ with renaming and one without. Three non-vacuous pins are available and each is 
   oracle claims, three mutation stubs. ⚠ The seeded framing "blocking every younger instruction
   behind it" was DROPPED as false on screen — fetch is a one-deep slot, so nothing is behind `i8`
   at all; what is visible is that nothing is fetched for four cycles. See "Step 2 as built" below.
-- **Step 3 — the WAR lesson**, and the reorder at c17. The only WAR in the product; the only stall
-  in the product that fires at the END of an instruction's life; costs zero cycles and buys the
-  answer. Carries the `reservation-station-holds` callback from finding 3, and the track's closing beat —
-  subject to decision 5, which seeds the rename A/B as an ORACLE ONLY.
+- **Step 3 — the WAR lesson. ✅ DONE 2026-08-18** (repo 11904 → 11920).
+  `finished-and-told-to-wait` on `register-reuse`, five steps at cycles 0, 13, 16, 17 and 18.
+  Eight named oracle claims, three mutation stubs. ⚠ FOUR sentences were false before any stub ran,
+  including one that INVERTED the hazard into a read-after-write picture and one that quoted the
+  wrong table's register spelling. See "Step 3 as built" below.
 - **Step 4 — the track and its order pins.** `index.json`, the exhaustive track-NAME `toEqual` at
   `lessons.test.ts:770`, the `LESSONS.length` count at `:1085`, and the per-model membership set
   beside the `deep-pipeline` one at `:1150`. Every order pin gets the cache track's discriminator
@@ -388,6 +389,172 @@ green cell there is not coverage. And the mutation table measures the FIXED `SCO
 that fix landed before the stubs, not after — the "re-run against the fix" rule was satisfied by
 sequencing rather than by a second pass.
 
+## Step 3 as built — `finished-and-told-to-wait` (2026-08-18)
+
+Five steps on `register-reuse`, at cycles 0, 13, 16, 17 and 18 — c17 spent on the reorder exactly
+as finding 2 reserved it, and no two steps sharing a cycle. Eight named oracle claims, three
+mutation stubs. Repo 11904 → 11920 passing, and **all sixteen new tests are accounted for**
+(8 from the generic sweep and validator, 8 from the oracle) rather than inferred from the delta.
+
+**Two of the oracle's claims are counts over the WHOLE product, not over this recording**, because
+the prose is. `war` fires **four times in the entire library** — thirteen programs on seven
+machines — and all four are the same instruction here. And the `(reason, stage)` product over the
+same 91 recordings is exactly `control@ID`, `operand@RO`, `raw@ID`, `structural-int@ID`,
+`structural-mem@ID`, `waw@ID` and **`war@WB`**: every other stall the simulator can report fires at
+the FRONT of the walk, before its instruction has done anything. That is the opening step's thesis
+and it is measured rather than asserted. (The config-independent backing is a grep: there are
+exactly six `type: 'stall'` emission sites in the product and exactly one of them names a stage
+other than `'ID'`/`'RO'`.)
+
+### ⚠ FOUR sentences were false before any stub ran, and two of them are new species
+
+**1. "In between them sits `addi t2, x0, 5`" — the hazard INVERTED.** The listing is `li t2, 3`,
+`la t0, first`, `lw t3`, `add a0, t3, t2`, `addi t2, x0, 5`: the young writer comes AFTER the older
+reader, which is the entire hazard. "In between" describes a read-after-write and would have made
+the whole lesson a picture of the wrong dependence. Step 2's finding 3 said counting and position
+claims are unguarded BY CONSTRUCTION and that reading them against the listing by hand is the only
+net there is; this is that net catching one on the first draft.
+
+**2. The cycle-16 caption CONTRADICTS the cycle-16 prose, and the draft did not concede it.** The
+fourth `war` stall still fires at c16, so `primaryStall` puts _"an older instruction has not yet
+READ the register this one writes"_ on screen — while `micro`, snapshotted after the clock edge,
+already shows the older `add`'s Read Operands column reading 16 and its unit's `Rj`/`Rk` cleared.
+Both are true, one cycle apart (M15 step 7's snapshot boundary). The draft said the hold was over.
+The shipped step states both halves and names the offset, which is `two-units-one-queue` step 2's
+concession move applied to a different axis — there the concession was about which of two
+constraints binds, here about which of two surfaces is a cycle ahead.
+
+**3. "18 above 17" cannot be pinned off `micro` at all.** At c18 `micro` rows only `i4`, `i6`, `i7`
+and `i8` — `i5` retired at c17 and is gone from the snapshot. The out-of-order write-result column
+is a property of `buildScoreboardTables`'s ACCUMULATION, which is the departure M15 step 7 made for
+exactly this reason. Asserted off `micro` the claim is not merely awkward, it is unreachable, and
+a test written that way would have been vacuous. The oracle calls the fold at every cursor instead.
+
+**4. ⚠ THE THREE TABLES DO NOT SPELL REGISTERS THE SAME WAY, and the draft quoted the wrong one.**
+`formatInstruction` and `regCell` both print `x7`; only the register-result table uses
+`ABI_REGISTER_NAMES` and says `t2`. So "INT1's row shows `Fk` as `t2`" is false on screen, and
+"find `addi t2, x0, 5` in the instruction status table" points at a row that reads
+`addi x7, x0, 5`. The lesson now says which table uses which, once, in its opening step. **This is
+a real product wart and it is REPORTED, not absorbed**: UNCHANGED criterion 4 forbids the view
+change, and a shell where two panels name the same register two ways is a finding for the plan, not
+something a lesson should quietly paper over. Note the shape — the previous lesson's prose is
+correct only because it happened to quote the one table that uses names.
+
+### The mutation check — three stubs, each with a DECLARED purpose
+
+Predictions written first, against the committed tree (`M:\claud_projects\temp\m16-step3\
+predictions.md`, commit `a25dbb0`). The repo-wide rows are enumerated FRESH; step 2's three-column
+shape is not copied (M15 step 6: copying a table's shape silently drops every suite added since).
+
+- **M-1 — `warBlocked` returns `false`.** Breaks correctness by design, so per step 1's rule it can
+  measure only the CORRECTNESS claim, and that is the one it is reported for: **`a0` ends on 26**,
+  exactly as step 5 promises, with `a1` and `t2` untouched. The rest of its column is reported but
+  claimed as nothing.
+- **M-2 — the hold released when the older reader is DONE rather than when it has READ.** A
+  coherent machine: holding longer is always safe, and the extra hold can only be imposed by a unit
+  that already has all its operands and therefore cannot be waiting on the held write. **This is the
+  discriminating stub for step 3's thesis** ("the machine was never waiting for the older `add` to
+  finish, only for it to have read"). Result: the young write moves from c17 to **c19**, `war` goes
+  4 → 6 (c13–c18), and **the out-of-order inversion vanishes entirely** — the older row fills its
+  column at 18 and the younger at 19, so the write-result column is in order and step 4 has no
+  subject at all. `a0` is still 24, which is what proves the stub coherent rather than broken.
+- **M-3 — `MEM_LATENCY` 4 → 2.** A coherent machine (the memory unit is simply faster). Measures
+  the four-cycle width of the window: `war` drops 4 → **2**, the anchors collapse to 0/13/14/15/16,
+  and the inversion SURVIVES at cycle 15 instead of 17.
+
+| oracle claim                           | M-1     | M-2       | M-3   |
+| -------------------------------------- | ------- | --------- | ----- |
+| declares knob-blind model              | green   | green     | green |
+| THE FIVE STEPS (0 / 13 / 16 / 17 / 18) | RED     | RED       | RED   |
+| THE SCARCITY (4 in the product)        | RED     | RED       | RED   |
+| THE THESIS (`war` is the only `@WB`)   | RED ⚠   | green     | green |
+| STEP 2 (finished, and held)            | RED     | RED       | RED   |
+| STEP 3 (the hold ends on the READ)     | RED     | **RED**   | RED   |
+| STEP 4 (the one inversion)             | RED     | **RED**   | RED ⚠ |
+| STEP 5 (24 / 26 / 31)                  | RED     | RED       | RED   |
+| THE DISCRIMINATOR (`a0` = 24)          | **RED** | green     | green |
+| the sweep (validator)                  | RED     | **RED** ⚠ | green |
+
+Repo-wide: M-1 reddens 9 files / 29 tests; M-2 7 files / 31 tests; M-3 7 files / 52 tests.
+
+⚠ **THE SWEEP CELL UNDER M-2 IS THE HEADLINE, AND IT IS STEP 2's HEADLINE RUN BACKWARDS.** Step 2
+found a stub under which the validator was perfectly happy while every sentence in the lesson was
+false. Here the validator DOES catch the stub — and the reason is worth more than the catch:
+it reddens on **anchor ORDER**, because holding the write two cycles longer pushes step 4's anchor
+(c19) past step 5's (c18). The validator has no more opinion about this lesson's prose than it had
+about the last one's; it caught this stub by an accident of which cycles moved. **A green sweep
+proves nothing about the prose, and a red one is not evidence that it can read.** Note also which
+half fired: `the steps that fire anchor in order` reddened, while under M-1 that same test stayed
+GREEN and the sweep failed through `every step fires in at least one position` instead — the two
+halves catch different things and neither is about meaning.
+
+⚠ **`THE THESIS` under M-1 reddens through its PREMISE, not its subject** — with no `war` events
+left the `(reason, stage)` product simply loses a key, which says nothing about whether `war` is
+the only late stall. Same species as step 2's `STEP 4`-under-M-2 miss, and it is why the cell is
+marked rather than counted as coverage.
+
+⚠ **`STEP 4` under M-3 answers a question the predictions recorded rather than forecast.** The
+prediction file asked whether the inversion is a property of the two instructions' relative timing
+or of the memory latency, and said so instead of guessing. The answer: the SHAPE survives (there is
+still exactly one inversion) and the CYCLE moves, 17 → 15, so the test reddens on its literal. That
+is the right behaviour — the lesson prints "Cycle 17" in its own prose — but the distinction is
+worth keeping, because a test that had asserted only "exactly one inversion" would have stayed
+green under a stub that moved every cycle number the narration quotes.
+
+**Nine of ten cells landed as predicted in each column** (M-1 10/10, M-2 9/10 with the sweep the
+miss, M-3 9/10 with the recorded question resolved).
+
+### The three sentences step 4 must pin
+
+All three satisfy M14's discriminator as written — reorder and they go FALSE, not merely
+unexplained — so they are listed here rather than left for a reorder to discover. Two are new; the
+third is the pair step 2 already recorded.
+
+1. **Step 1, `detailed`: "You met `register-reuse` in the last lesson, where a young write was
+   stopped before it could start."** A claim about the reader's history AND about what that lesson
+   contains. False in both halves if `one-name-two-writers` moves after this one.
+2. **Step 2, `detailed`: "In "The reservation station holds" a waiting instruction had a station to
+   sit in and blocked no one behind it. This machine has no such place."** This is decision 4's
+   EARNED order pin, and it is deliberately at `detailed` rather than `expert` — `resolveNarration`
+   falls back downward, so a pin asserting at `detailed` cannot see an expert-only sentence. The
+   premise holds at that tier: `reservation-station-holds`'s own `detailed` text distinguishes the
+   station from the unit ("sits in its reservation station and waits" while the shift "holds its
+   functional unit").
+3. **Step 5, `expert`: "the dominant cost here is structural, two units held four cycles apiece,
+   which is what the first lesson measured."** A past-tense claim about `two-units-one-queue`.
+
+### Decision 5, applied
+
+The rename A/B ships as an **ORACLE only** — there is no hand-off step and no invitation to edit.
+The plan's own status line names decision 5 as governing this step, so this is the seeded answer
+applied rather than a fresh choice. The measurement it pins is the one that makes the track honest:
+renaming the WAR away leaves the run at **31 cycles, unchanged**, with thirty-three stall cycles
+becoming thirty. The reason none of it becomes speed is measured too, and it is one instruction
+downstream — the next integer operation takes its unit at 17 instead of 18 and then waits for a
+load until 23 either way. **The head start is absorbed by something the rename never touched.**
+
+A SECOND counterfactual ships beside it and it is not the same claim: moving `addi t2, x0, 5` above
+the `add` makes `a0` come out **26 on all seven models**, which is a fact about the PROGRAM rather
+than about any machine, and it is what step 5 narrates. ⚠ **A line SWAP needs its own guard and
+step 2's replace-once harness does not transfer** — both needles appear verbatim in the header, and
+a swap of the wrong pair still assembles. The oracle requires exactly one code line for each and
+asserts they are adjacent, in that order.
+
+### The falsifiable UNCHANGED criteria, checked
+
+Checked and named rather than asserted by silence, against `git show --stat` for the step's commit,
+which touches three files: the new lesson JSON, `index.json`, and `lessons.test.ts`.
+
+1. **No trace-schema change** — nothing under `packages/trace`. ✓
+2. **No engine change** — nothing under `packages/engine`. The three mutation stubs were applied to
+   a committed tree and reverted with `git checkout --`, with `git status --porcelain` empty after
+   each. ✓
+3. **No new corpus program** — `register-reuse` only. ✓
+4. **No view change** — and this is the one that was TESTED rather than merely satisfied: the step
+   found a real inconsistency in the shipped tables (finding 4 above) and left it alone, authoring
+   around it and reporting it. ✓
+5. **No new `Lesson` field** — five steps, `trigger` and `narration`, nothing else. ✓
+
 ## Acceptance criteria
 
 - Every lesson decision 1 pins authored, each listed in `index.json`, each swept
@@ -428,13 +595,13 @@ sequencing rather than by a second pass.
 
 ## Decisions to pin (seeded with recommended answers)
 
-| #   | Decision                                       | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Pinned answer                                                                                 |
-| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| 1   | **How many lessons, and which subjects**       | **Three: the ceiling, WAW, WAR+reorder.** Matches M12 and M14. A fourth ("finished out of order" as its own lesson) is available but its only cycle is c17, which lesson 3 needs; splitting it costs lesson 3 its payoff. Gates steps 1–3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Three, as seeded** (user, 2026-08-18): the ceiling, WAW, WAR+reorder                        |
-| 2   | **The ceiling lesson's program**               | **`sum-loop`** — 80 cycles, IPC 0.425, and **zero `operand`/`waw`/`war` stalls in the whole run**, which is M15's "say the ceiling out loud" requirement stated directly. Alternative: **`add.s`** (3 instructions, 9 cycles) — sharper, but it collides with `deep-drain`, which is _"Three instructions, ten cycles"_ on the SAME program and already asks "where do the extra cycles go?". Not just a title clash: it is the same rhetorical move one track later with a SMALLER number, which a reader will take as "the scoreboard beats the deep pipeline" — finding 5's confound, and `add.s` touches no memory so the comparison is ALMOST fair, which is the trap. Neither program risks the step budget (9 and 80 cycles)                                                                                                       | **`sum-loop`, as seeded** (user, 2026-08-18) — `add.s` rejected on the `deep-drain` collision |
-| 3   | **A new track vs extending an existing one**   | **New track**, appended last. A new model is M12's case, not M14's; extending "The out-of-order machine" would file a non-renaming machine under a renaming one. Costs a hard edit to the exhaustive track-NAME `toEqual` and to the picker order, both expected. Name seeded as **"The scoreboard"**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **New track, as seeded** (user, 2026-08-18)                                                   |
-| 4   | **Track position**                             | **Last, after "The out-of-order machine"** — and the pin is EARNED rather than assumed, by finding 3: lesson 3's callback ("there is nowhere to park, so it waits in the unit") is not merely unexplained but false in its premise if the reader has not met the reservation station. Historically the scoreboard PRECEDES Tomasulo; M15's own rule appends a predecessor met after its successor **The discriminator is SATISFIED, not merely arguable**: the quoted sentence is a PREMISE the callback depends on, not a decoration, so reordering makes it false rather than unexplained                                                                                                                                                                                                                                               | **Last, after "The out-of-order machine", as seeded** (user, 2026-08-18)                      |
-| 5   | **Does the track close with a HAND-OFF**       | **The ORACLE yes, the INVITATION no — and the first seed of this row conflated them.** The rename A/B stays as a headless oracle through `loadSource`, which is what pins the renaming sentence. It must NOT become a "go edit this" step: the payoff is ONE cycle of 31, which the reader would have to COUNT across two runs from memory, in a sandbox where the fork has already DETACHED the lesson — and if they rename only the WAR (the natural single edit, and the very hazard lesson 3 is about) the payoff is **ZERO**. That is an invitation whose headline result is "nothing happened." `function-call`'s hand-off works because `max` returns your number, visibly, in one register. **If a hand-off is wanted anyway, its payoff must be the `war` and `waw` rows VANISHING from the status tables**, never a cycle count | _open_                                                                                        |
-| 6   | **Whether the ceiling lesson opens the track** | **Yes.** A reader who meets `structural-int` first as the wall it actually is will not misread the hazard lessons as a verdict on their program — which is M15's stated requirement. The alternative (hazards first, ceiling as the closer) makes the first two lessons quote a cycle total the third then reinterprets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _open_                                                                                        |
-| 7   | Depth tier                                     | **`detailed`**, matching all 26 shipped lessons, with the library-wide `depthDefault` pin making it not a choice a lesson can quietly make differently. Note `resolveNarration` falls back DOWNWARD, so anything written only at `detailed` is invisible to an `expert` reader                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | _open_                                                                                        |
-| 8   | A new trace event, field, program or view      | **No** — UNCHANGED criteria 1–5. Predicted, not assumed, and each checked at the close                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | _open_                                                                                        |
+| #   | Decision                                       | Recommendation (seed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Pinned answer                                                                                  |
+| --- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | **How many lessons, and which subjects**       | **Three: the ceiling, WAW, WAR+reorder.** Matches M12 and M14. A fourth ("finished out of order" as its own lesson) is available but its only cycle is c17, which lesson 3 needs; splitting it costs lesson 3 its payoff. Gates steps 1–3                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | **Three, as seeded** (user, 2026-08-18): the ceiling, WAW, WAR+reorder                         |
+| 2   | **The ceiling lesson's program**               | **`sum-loop`** — 80 cycles, IPC 0.425, and **zero `operand`/`waw`/`war` stalls in the whole run**, which is M15's "say the ceiling out loud" requirement stated directly. Alternative: **`add.s`** (3 instructions, 9 cycles) — sharper, but it collides with `deep-drain`, which is _"Three instructions, ten cycles"_ on the SAME program and already asks "where do the extra cycles go?". Not just a title clash: it is the same rhetorical move one track later with a SMALLER number, which a reader will take as "the scoreboard beats the deep pipeline" — finding 5's confound, and `add.s` touches no memory so the comparison is ALMOST fair, which is the trap. Neither program risks the step budget (9 and 80 cycles)                                                                                                       | **`sum-loop`, as seeded** (user, 2026-08-18) — `add.s` rejected on the `deep-drain` collision  |
+| 3   | **A new track vs extending an existing one**   | **New track**, appended last. A new model is M12's case, not M14's; extending "The out-of-order machine" would file a non-renaming machine under a renaming one. Costs a hard edit to the exhaustive track-NAME `toEqual` and to the picker order, both expected. Name seeded as **"The scoreboard"**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | **New track, as seeded** (user, 2026-08-18)                                                    |
+| 4   | **Track position**                             | **Last, after "The out-of-order machine"** — and the pin is EARNED rather than assumed, by finding 3: lesson 3's callback ("there is nowhere to park, so it waits in the unit") is not merely unexplained but false in its premise if the reader has not met the reservation station. Historically the scoreboard PRECEDES Tomasulo; M15's own rule appends a predecessor met after its successor **The discriminator is SATISFIED, not merely arguable**: the quoted sentence is a PREMISE the callback depends on, not a decoration, so reordering makes it false rather than unexplained                                                                                                                                                                                                                                               | **Last, after "The out-of-order machine", as seeded** (user, 2026-08-18)                       |
+| 5   | **Does the track close with a HAND-OFF**       | **The ORACLE yes, the INVITATION no — and the first seed of this row conflated them.** The rename A/B stays as a headless oracle through `loadSource`, which is what pins the renaming sentence. It must NOT become a "go edit this" step: the payoff is ONE cycle of 31, which the reader would have to COUNT across two runs from memory, in a sandbox where the fork has already DETACHED the lesson — and if they rename only the WAR (the natural single edit, and the very hazard lesson 3 is about) the payoff is **ZERO**. That is an invitation whose headline result is "nothing happened." `function-call`'s hand-off works because `max` returns your number, visibly, in one register. **If a hand-off is wanted anyway, its payoff must be the `war` and `waw` rows VANISHING from the status tables**, never a cycle count | **The ORACLE only, as seeded** — applied at step 3 (2026-08-18) per the plan's own status line |
+| 6   | **Whether the ceiling lesson opens the track** | **Yes.** A reader who meets `structural-int` first as the wall it actually is will not misread the hazard lessons as a verdict on their program — which is M15's stated requirement. The alternative (hazards first, ceiling as the closer) makes the first two lessons quote a cycle total the third then reinterprets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | _open_                                                                                         |
+| 7   | Depth tier                                     | **`detailed`**, matching all 26 shipped lessons, with the library-wide `depthDefault` pin making it not a choice a lesson can quietly make differently. Note `resolveNarration` falls back DOWNWARD, so anything written only at `detailed` is invisible to an `expert` reader                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | _open_                                                                                         |
+| 8   | A new trace event, field, program or view      | **No** — UNCHANGED criteria 1–5. Predicted, not assumed, and each checked at the close                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | _open_                                                                                         |
