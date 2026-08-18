@@ -171,8 +171,13 @@ screen.** Fetch is a ONE-DEEP slot, so nothing is behind the held instruction at
 visible is that **nothing is fetched for four cycles**. Narrate the picture, not the queue you
 imagined.
 
-**3. "The `la t0, first` on line 3" — it is the second instruction.** A position claim about source
-text is unguarded by every oracle in the file.
+**3. TWO positional claims were wrong — "the `la t0, first` on line 3" (it is the second
+instruction) and "the `lw t1, 4(t0)` four instructions back" (it is two back, and two source lines
+back, so no counting convention rescues it).** The second was in the `detailed` tier, the one the
+reader actually sees, and it survived a green suite AND a three-stub mutation table. **Counting and
+position claims about a program listing are unguarded BY CONSTRUCTION**: an anchor pins a
+transaction, a stub perturbs a machine, and neither has any opinion about where a line sits. Read
+every one against the listing by hand before shipping — that is the only net there is.
 
 ### The mutation check — three stubs, each with a DECLARED purpose
 
@@ -199,3 +204,11 @@ The ordinal handle is kept deliberately, because the lesson's anchor is `nth: 2`
 
 ⚠ **A green cell is not always coverage.** `two-units-one-queue`'s whole oracle stays green under
 M-3, correctly — `sum-loop` touches no memory. Say so, rather than counting it.
+
+### Two order-dependent sentences step 4 must pin
+
+Both satisfy M14's discriminator — reorder the track and they go FALSE, not merely unexplained.
+`one-name-two-writers`'s closing expert tier says "the ceiling **the previous lesson** measured";
+`two-units-one-queue`'s closing says "when you meet this machine's held writes in **the next two
+lessons**". A count and a direction, one in each lesson. Listed now so a reorder does not discover
+them.

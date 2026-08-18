@@ -316,8 +316,23 @@ the narration and the assertion, and it is a stronger claim than the one it repl
 lesson: a claim about SHAPE is a claim about spelling and will rot; find the property the shapes
 share and assert that.
 
-⚠ **The prose said "the `la t0, first` on line 3"** — it is the second instruction, and line 3 of
-nothing. Removed. A position claim about source text is unguarded by every oracle in the file.
+⚠ **THREE positional claims about source text were wrong, and NO oracle in this file can see
+one.** "The `la t0, first` on line 3" (it is the second instruction, and line 3 of nothing) and
+"the `lw t1, 4(t0)` four instructions back" (it is `i6` to the held `i8`'s — two back, and two
+source lines back, so no counting convention rescues it) both survived a green suite and a
+three-stub mutation table, and the second was in the `detailed` tier, which is the tier the reader
+actually sees. The third was the SHAPE claim above. **Counting and position claims about a program
+listing are unguarded BY CONSTRUCTION** — an anchor pins a transaction and a stub perturbs a
+machine, and neither has any opinion about where a line sits. Read every one of them against the
+listing by hand before shipping; that is the only net there is.
+
+### Two order-dependent sentences step 4 must pin
+
+Both satisfy M14's discriminator as it is written — reorder the track and they do not merely go
+unexplained, they go FALSE — so they are listed here rather than left to be discovered by a
+reorder. This lesson's closing expert tier says "the ceiling **the previous lesson** measured", and
+`two-units-one-queue`'s closing says "when you meet this machine's held writes in **the next two
+lessons**". A count and a direction, one in each lesson, each false if the track is resequenced.
 
 ### The mutation check — three stubs, each with a DECLARED purpose
 
